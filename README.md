@@ -20,20 +20,13 @@ https://www.tampermonkey.net/
 
 ### 2. 安装脚本
 
-进入本项目 GitHub 仓库，打开：
+[点击这里安装脚本](https://github.com/mikoto0710/esj-novel-downloader/raw/refs/heads/main/dist/esj-novel-downloader.user.js)
 
-```
-dist/esj-novel-downloader.user.js
-```
-
-点击 **Raw → 安装**。
-
-或[点击这里安装脚本](https://github.com/mikoto0710/esj-novel-downloader/raw/refs/heads/main/dist/esj-novel-downloader.user.js)
+或进入本项目 GitHub 仓库的 Release 自行安装
 
 ## 使用方法
 
-打开任意 ESJZone 小说详情页（例：  
-`https://www.esjzone.cc/detail/xxxx.html`）
+打开任意 ESJZone 小说详情页（例：`https://www.esjzone.cc/detail/xxxx.html`）
 
 会看到有一个新增按钮：
 
@@ -52,27 +45,28 @@ dist/esj-novel-downloader.user.js
 
 ```
 src
-│  index.js              # 入口文件
-│
-├─core
-│      epub.js           # EPUB 生成器
-│      scraper.js        # 章节抓取逻辑
-│      state.js          # 全局缓存状态管理
-│
-├─ui
-│      index.js          # UI 汇总
-│      popups.js         # 弹窗组件
-│      styles.js         # 样式定义
-│      tray.js           # 最小化托盘 UI
-│
-└─utils
-        dom.js           # DOM 辅助函数
-        index.js         # 工具函数汇总
+├── core                 # 核心业务逻辑
+│   ├── epub.ts          # EPUB 生成器
+│   ├── scraper.ts       # 爬虫主程序
+│   ├── state.ts         # 全局状态管理
+│   └── storage.ts       # 存储层
+├── ui                   # 界面与交互
+│   ├── index.ts         # UI 注入入口
+│   ├── popups.ts        # 弹窗组件
+│   ├── styles.ts        # CSS 样式定义
+│   └── tray.ts          # 最小化悬浮球组件
+├── utils                # 通用工具库
+│   ├── dom.ts           # DOM 操作
+│   ├── index.ts         # 基础工具
+│   └── text.ts          # 文本处理
+├── global.d.ts          # 全局类型声明
+├── index.ts             # 项目总入口
+└── types.ts             # TypeScript 类型定义接口
 ```
 
 ## 开发与构建
 
-本项目使用 **Rollup** 进行模块化构建。
+本项目使用 **Rollup** 和 **ESBuild** 进行模块化构建。
 
 ### 环境要求
 - Node.js 14+
