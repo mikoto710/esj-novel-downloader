@@ -66,7 +66,7 @@ src
 
 ## 开发与构建
 
-本项目使用 **Rollup** 和 **ESBuild** 进行模块化构建。
+本项目使用 **Rollup** 和 **esbuild** 进行模块化构建。
 
 ### 环境要求
 - Node.js 14+
