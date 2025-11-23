@@ -1,9 +1,9 @@
 import resolve from '@rollup/plugin-node-resolve';
 import commonjs from '@rollup/plugin-commonjs';
-import { createRequire } from 'module';
+import fs from 'fs';
 
-const require = createRequire(import.meta.url);
-const pkg = require('./package.json');
+const pkgContent = fs.readFileSync('./package.json', 'utf-8');
+const pkg = JSON.parse(pkgContent);;
 
 const meta = {
   name: 'ESJZone 全本下载',
@@ -41,7 +41,7 @@ export default {
     format: 'iife',
     name: 'EsjNovelDownloader',
     sourcemap: false,
-    banner: getUserscriptHeader(),
+    banner: getUserscriptHeader,
   },
   plugins: [
     resolve(),

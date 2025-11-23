@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name          ESJZone 全本下载
 // @namespace     http://tampermonkey.net/
-// @version       1.0.0
+// @version       1.0.1
 // @description   在 ESJZone 小说详情页注入 "全本下载" 按钮，支持 TXT/EPUB 导出
 // @author        Shigure Sora
 // @match         https://www.esjzone.cc/detail/*
@@ -441,28 +441,52 @@
                 introTxt += "\n\n";
                 introTxt += (document.querySelector("#details")?.innerText || "") + "\n\n";
 
-                // 封面下载
-                let coverBlob = null;
-                let coverExt = "jpg";
-                try {
-                    const imgNode = document.querySelector(".product-gallery img");
-                    if (imgNode) {
-                        const src = imgNode.src;
-                        log("正在下载封面...");
-                        const resp = await fetch(src, { method: "GET", referrerPolicy: "no-referrer", credentials: "omit" });
-                        if (resp.ok) {
-                            coverBlob = await resp.blob();
-                            if (coverBlob.size < 1000) {
-                                log("⚠ 封面过小，跳过"); coverBlob = null;
-                            } else {
-                                const type = coverBlob.type;
-                                if (type.includes("png")) coverExt = "png";
-                                else if (type.includes("jpeg") || type.includes("jpg")) coverExt = "jpg";
-                                log("✔ 封面下载成功");
-                            }
-                        }
+                // 下载封面附加超时处理
+                const fetchCoverWithTimeout = async (url, timeout = 5000) => {
+                    const controller = new AbortController();
+                    const id = setTimeout(() => controller.abort(), timeout);
+                    try {
+                        const response = await fetch(url, { 
+                            method: "GET", 
+                            referrerPolicy: "no-referrer", 
+                            credentials: "omit",
+                            signal: controller.signal 
+                        });
+                        clearTimeout(id);
+                        if (!response.ok) throw new Error(`Status ${response.status}`);
+                        return await response.blob();
+                    } catch (e) {
+                        clearTimeout(id);
+                        throw e;
                     }
-                } catch (e) { log("⚠ 封面下载失败"); }
+                };
+
+                // 封面下载
+                const coverTaskPromise = (async () => {
+                    try {
+                        const imgNode = document.querySelector(".product-gallery img");
+                        if (!imgNode) return null;
+
+                        log("启动封面下载...");
+                        // 封面获取 15s 超时
+                        const blob = await fetchCoverWithTimeout(imgNode.src, 15000);
+                        
+                        if (blob.size < 1000) {
+                            log("⚠ 封面文件过小，已忽略");
+                            return null;
+                        }
+
+                        let ext = "jpg";
+                        if (blob.type.includes("png")) ext = "png";
+                        else if (blob.type.includes("jpeg") || blob.type.includes("jpg")) ext = "jpg";
+                        
+                        log("✔ 封面下载完成");
+                        return { blob, ext };
+                    } catch (e) {
+                        log(`⚠ 封面下载跳过: ${e.message}`);
+                        return null;
+                    }
+                })();
 
                 // 并发控制逻辑
                 const CONCURRENCY = 2;
@@ -516,13 +540,13 @@
                             txtSegment: `${h2 || chapterTitle} [${author}]\n${content}\n\n`
                         });
 
-                        // 随机延迟：200ms ~ 400ms，防止请求过快
-                        const delay = Math.floor(Math.random() * 200) + 200;
-                        await sleep(delay);
-
                     } catch (e) {
                         log(`❌ 抓取失败：${e}`);
                         // 失败不写入，依靠后续完整性检查补漏
+                    } finally {
+                        // 随机延迟：100ms ~ 300ms，防止请求过快
+                        const delay = Math.floor(Math.random() * 200) + 100;
+                        await sleep(delay);
                     }
 
                     completedCount++;
@@ -579,6 +603,11 @@
                     log("✅ 完整性检查通过，无缺漏。");
                 }
 
+                // 等待获取封面结果
+                const coverResult = await coverTaskPromise; 
+                const finalCoverBlob = coverResult ? coverResult.blob : null;
+                const finalCoverExt = coverResult ? coverResult.ext : "jpg";    
+
                 log("✅ 所有任务处理完毕");
                 document.title = state.originalTitle;
 
@@ -602,8 +631,8 @@
                     metadata: {
                         title: bookName,
                         author: "",
-                        coverBlob: coverBlob, 
-                        coverExt: coverExt
+                        coverBlob: finalCoverBlob, 
+                        coverExt: finalCoverExt
                     },
                     epubBlob: null
                 });
