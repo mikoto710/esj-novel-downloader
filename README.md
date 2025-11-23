@@ -20,21 +20,10 @@ https://www.tampermonkey.net/
 
 ### 2. 安装脚本
 
-[点击这里安装脚本](https://github.com/mikoto710/esj-novel-downloader/raw/refs/heads/main/dist/esj-novel-downloader.user.js)
+[点击这里安装脚本](https://github.com/mikoto710/esj-novel-downloader/releases/latest/download/esj-novel-downloader.user.js)
 
-或进入本项目 GitHub 仓库，打开：
+或进入本项目 GitHub 仓库的 Release 自行安装
 
-```
-dist/esj-novel-downloader.user.js
-```
-
-点击 **Raw** 进行安装。
-
-<<<<<<< HEAD
-=======
-或[点击这里安装脚本](https://github.com/mikoto0710/esj-novel-downloader/raw/refs/heads/main/dist/esj-novel-downloader.user.js)
-
->>>>>>> dev
 ## 使用方法
 
 打开任意 ESJZone 小说详情页（例：  
@@ -75,10 +64,6 @@ src
         index.js         # 工具函数汇总
 ```
 
-<<<<<<< HEAD
-
-=======
->>>>>>> dev
 ## 开发与构建
 
 本项目使用 **Rollup** 进行模块化构建。

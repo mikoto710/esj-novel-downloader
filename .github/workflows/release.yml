@@ -1,0 +1,36 @@
+name: Release UserScript
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Build UserScript
+        run: npm run build
+
+      - name: Create Release & Upload Asset
+        uses: softprops/action-gh-release@v1
+        with:
+          files: dist/esj-novel-downloader.user.js
+          generate_release_notes: true
+          prerelease: false
