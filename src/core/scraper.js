@@ -110,7 +110,7 @@ export async function doScrapeAndExport() {
                 if (state.abortFlag) return;
 
                 const node = chaptersNodes[i];
-                const chapterTitle = node.innerText.trim();
+                const chapterTitle = (node.getAttribute("data-title") || node.innerText || "").trim();
                 const chapterUrl = node.href;
 
                 // 断点续传检查
