@@ -3,7 +3,7 @@ import { escapeXml, escapeHtmlPreserveLine } from '../utils/text';
 import { Chapter, BookMetadata } from '../types';
 
 /**
- * 生成 EPUB 文件
+ * 封装数据，生成 EPUB 文件
  */
 export async function buildEpub(chapters: Chapter[], metadata: BookMetadata): Promise<Blob> {
   try {

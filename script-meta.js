@@ -12,8 +12,8 @@ export default function getMeta() {
     match: [
       'https://www.esjzone.cc/detail/*',
       'https://www.esjzone.one/detail/*',
-      'https://www.esjzone.net/detail/*',
-      'https://www.esjzone.me/detail/*'
+      'https://www.esjzone.cc/forum/*',
+      'https://www.esjzone.one/forum/*'
     ],
     'run-at': 'document-start',
     grant: 'none',

@@ -1,15 +1,15 @@
 import { state } from '../core/state';
-import { doScrapeAndExport } from '../core/scraper';
+import { scrapeDetail } from '../scrapers/detail';
 import { showFormatChoice } from './popups';
 import { el } from '../utils/dom';
 
 /**
- * 向页面注入“全本下载”按钮
+ * 向页面注入 "全本下载" 按钮
  */
-export function injectButton(): void {
+export function injectDetailButton(): void {
     const btnGroup = document.querySelector(".sp-buttons");
     if (!btnGroup) return;
-    
+
     // 防止重复注入
     if (document.querySelector("#btn-download-book")) return;
 
@@ -37,9 +37,10 @@ export function injectButton(): void {
             if (state.cachedData) {
                 showFormatChoice();
                 return;
+            } else {
+                scrapeDetail().catch((e: Error) => console.error("主流程异常: " + e.message));
             }
 
-            doScrapeAndExport().catch((e: Error) => console.error("主流程异常: " + e.message));
         }
     }, [
         el('i', { className: 'icon-download' }),

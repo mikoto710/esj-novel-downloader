@@ -1,16 +1,35 @@
-import { injectButton } from './ui/index';
+import { injectDetailButton } from './ui/detail';
+import { injectSinglePageButton } from './ui/single';
+import { injectForumButton } from './ui/forum';
 import { injectStyles } from './ui/styles';
 
-// ESJ 前后端没分离，直接从 document-start 开始执行注入，避免评论区加载过慢影响按钮的加载
 (function init() {
 
     // 先注入 CSS 样式
-    injectStyles(); 
+    injectStyles();
 
-    // 有页面缓存就直接注入按钮
-    if (document.querySelector(".sp-buttons")) {
-        injectButton();
-    }
+    const url = location.href;
+
+    // 路由
+    const isDetailPage = url.includes('/detail/');
+    // TODO: 论坛页的获取逻辑待完善
+    // const isForumPage = url.includes('/forum/') && !url.endsWith('.html');
+    const isForumPage = false;
+    const isSinglePage = url.includes('/forum/') && url.endsWith('.html');
+
+    // 定义通用的注入尝试函数
+    const tryInject = () => {
+        if (isDetailPage) {
+            if (document.querySelector(".sp-buttons")) injectDetailButton();
+        } else if (isSinglePage) {
+            if (document.querySelector(".entry-navigation")) injectSinglePageButton();
+        } else if (isForumPage) {
+            if (document.querySelector(".forum-list-page")) injectForumButton();
+        }
+    };
+
+    // 立即尝试一次
+    tryInject();
 
     // 此时 body 可能还没生成，所以监听 documentElement 也就是 html 根节点
     const observer = new MutationObserver((mutations) => {
@@ -19,15 +38,27 @@ import { injectStyles } from './ui/styles';
                 if (node.nodeType === 1) {
                     const el = node as HTMLElement;
 
-                    // 检查节点本身
-                    if (el.classList && el.classList.contains("sp-buttons")) {
-                        injectButton();
-                        return;
-                    }
-                    // 检查节点内部
-                    if (el.querySelector && el.querySelector(".sp-buttons")) {
-                        injectButton();
-                        return;
+                    if (isDetailPage) {
+                        // 详情页监听 .sp-buttons
+                        if ((el.classList && el.classList.contains("sp-buttons")) ||
+                            (el.querySelector && el.querySelector(".sp-buttons"))) {
+                            injectDetailButton();
+                            return;
+                        }
+                    } else if (isSinglePage) {
+                        // 单页监听 .entry-navigation
+                        if ((el.classList && el.classList.contains("entry-navigation")) ||
+                            (el.querySelector && el.querySelector(".entry-navigation"))) {
+                            injectSinglePageButton();
+                            return;
+                        }
+                    } else if (isForumPage) {
+                        // 论坛页监听 .forum-list-page
+                        if ((el.classList && el.classList.contains("forum-list-page")) ||
+                            (el.querySelector && el.querySelector(".forum-list-page"))) {
+                            injectForumButton();
+                            return;
+                        }
                     }
                 }
             }
@@ -41,8 +72,18 @@ import { injectStyles } from './ui/styles';
 
     // 兜底定时器，防止 observer 没扫到
     const timer = setInterval(() => {
-        if (document.querySelector(".sp-buttons") && !document.querySelector("#btn-download-book")) {
-            injectButton();
+        if (isDetailPage) {
+            if (document.querySelector(".sp-buttons") && !document.querySelector("#btn-download-book")) {
+                injectDetailButton();
+            }
+        } else if (isSinglePage) {
+            if (document.querySelector(".entry-navigation") && !document.querySelector("#btn-download-single")) {
+                injectSinglePageButton();
+            }
+        } else if (isForumPage) {
+            if (document.querySelector(".forum-list-page") && !document.querySelector("#btn-download-forum")) {
+                injectForumButton();
+            }
         }
     }, 1000);
 
