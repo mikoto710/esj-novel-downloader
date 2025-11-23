@@ -24,7 +24,7 @@ const STYLES = `
         background: rgba(43, 155, 215, 0.9); color: #fff;
         padding: 10px 15px; border-radius: 25px;
         box-shadow: 0 2px 10px rgba(0,0,0,0.3);
-        cursor: pointer; z-index: 999999;
+        cursor: pointer; z-index: 9999999; /* 确保层级够高 */
         font-size: 14px; font-weight: bold;
         display: flex; align-items: center; gap: 8px;
         transition: transform 0.2s;
@@ -44,8 +44,9 @@ const STYLES = `
     #esj-format { width: 420px; }
 `;
 
-export function injectStyles() {
+export function injectStyles(): void {
     const styleEl = document.createElement('style');
     styleEl.textContent = STYLES;
+    // 尝试插入 head，如果 document-start 阶段 head 不存在，则插入 html 根节点
     (document.head || document.documentElement).appendChild(styleEl);
 }
