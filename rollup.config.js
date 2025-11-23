@@ -44,7 +44,10 @@ export default {
     banner: getUserscriptHeader,
   },
   plugins: [
-    resolve(),
+    resolve({
+      browser: true,
+      preferBuiltins: false
+    }),
     commonjs(),
   ],
 };

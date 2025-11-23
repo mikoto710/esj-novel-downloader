@@ -36,12 +36,12 @@ export function createDownloadPopup() {
         `;
 
     document.body.appendChild(popup);
-    // 使用 popup.querySelector 确保绑定的是当前这个弹窗的头部
+    
     enableDrag(popup, "#esj-header");
 
     popup.querySelector("#esj-cancel").onclick = () => {
         setAbortFlag(true);
-        log("正在取消...已下载的数据会保留在内存中，下次可续传。");
+        log("正在取消...已下载的数据会保留在缓存中，下次可续传。");
         setTimeout(() => fullCleanup(state.originalTitle), 1000);
     };
 

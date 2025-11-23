@@ -6,7 +6,7 @@ import { injectStyles } from './ui/styles.js';
     // 注入 CSS 样式
     injectStyles(); 
 
-    // 有页面缓存就直接注入
+    // 有页面缓存就直接注入按钮
     if (document.querySelector(".sp-buttons")) {
         injectButton();
     }

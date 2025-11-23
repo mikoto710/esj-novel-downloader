@@ -3,10 +3,24 @@ import { log, sleep } from '../utils/index.js';
 import { fullCleanup } from '../utils/dom.js';
 import { createDownloadPopup, createConfirmPopup, showFormatChoice } from '../ui/popups.js';
 import { updateTrayText } from '../ui/tray.js';
+import { loadBookCache, saveBookCache, clearBookCache } from './storage.js';
+
+// 获取书籍 ID
+function getBookId() {
+    const match = location.href.match(/\/detail\/(\d+)/);
+    return match ? match[1] : 'unknown';
+}
 
 export async function doScrapeAndExport() {
     setAbortFlag(false);
     state.originalTitle = document.title;
+
+    // 尝试读取 IndexedDB 缓存
+    const bookId = getBookId();
+    const cacheResult = await loadBookCache(bookId);
+    if (cacheResult.map) {
+        state.globalChaptersMap = cacheResult.map;
+    }
 
     return new Promise((resolveMain) => {
         createConfirmPopup(async () => {
@@ -24,7 +38,7 @@ export async function doScrapeAndExport() {
             log(`发现 ${total} 个章节，准备开始抓取...`);
 
             // 元数据
-            let bookName = document.querySelector("h2.p-t-10.text-normal")?.innerText.trim() || "未命名小说";
+            let bookName = document.querySelector("h2.p-t-10.text-normal")?.innerText.trim() || "未命名";
             const symbolMap = { "\\": "-", "/": "- ", ":": "：", "*": "☆", "?": "？", "\"": " ", "<": "《", ">": "》", "|": "-", ".": "。", "\t": " ", "\n": " " };
             const escapeFileName = (name) => {
                 for (let k in symbolMap) name = name.replace(new RegExp("\\" + k, "g"), symbolMap[k]);
@@ -45,11 +59,11 @@ export async function doScrapeAndExport() {
                 const controller = new AbortController();
                 const id = setTimeout(() => controller.abort(), timeout);
                 try {
-                    const response = await fetch(url, { 
-                        method: "GET", 
-                        referrerPolicy: "no-referrer", 
+                    const response = await fetch(url, {
+                        method: "GET",
+                        referrerPolicy: "no-referrer",
                         credentials: "omit",
-                        signal: controller.signal 
+                        signal: controller.signal
                     });
                     clearTimeout(id);
                     if (!response.ok) throw new Error(`Status ${response.status}`);
@@ -69,7 +83,7 @@ export async function doScrapeAndExport() {
                     log("启动封面下载...");
                     // 封面获取 15s 超时
                     const blob = await fetchCoverWithTimeout(imgNode.src, 15000);
-                    
+
                     if (blob.size < 1000) {
                         log("⚠ 封面文件过小，已忽略");
                         return null;
@@ -78,7 +92,7 @@ export async function doScrapeAndExport() {
                     let ext = "jpg";
                     if (blob.type.includes("png")) ext = "png";
                     else if (blob.type.includes("jpeg") || blob.type.includes("jpg")) ext = "jpg";
-                    
+
                     log("✔ 封面下载完成");
                     return { blob, ext };
                 } catch (e) {
@@ -117,6 +131,11 @@ export async function doScrapeAndExport() {
                         content: msg,
                         txtSegment: `${chapterTitle}\n${msg}\n\n`
                     });
+
+                    if (i % 5 === 0) {
+                        saveBookCache(bookId, state.globalChaptersMap);
+                    }
+
                     completedCount++;
                     updateProgress();
                     await sleep(100);
@@ -139,11 +158,12 @@ export async function doScrapeAndExport() {
                         txtSegment: `${h2 || chapterTitle} [${author}]\n${content}\n\n`
                     });
 
+                    if (completedCount % 5 === 0) {
+                        saveBookCache(bookId, state.globalChaptersMap);
+                    }
                 } catch (e) {
                     log(`❌ 抓取失败：${e}`);
-                    // 失败不写入，依靠后续完整性检查补漏
                 } finally {
-                    // 随机延迟：100ms ~ 300ms，防止请求过快
                     const delay = Math.floor(Math.random() * 200) + 100;
                     await sleep(delay);
                 }
@@ -161,7 +181,7 @@ export async function doScrapeAndExport() {
                 if (progressEl) progressEl.style.width = (completedCount / total) * 100 + "%";
             }
 
-            // Worker
+            // 启动并发抓取
             async function worker() {
                 while (queue.length > 0 && !state.abortFlag) {
                     const index = queue.shift();
@@ -177,7 +197,8 @@ export async function doScrapeAndExport() {
             await Promise.all(workers);
 
             if (state.abortFlag) {
-                log("任务已手动取消。");
+                saveBookCache(bookId, state.globalChaptersMap);
+                log("任务已手动取消，进度已保存。");
                 document.title = state.originalTitle;
                 return resolveMain();
             }
@@ -193,19 +214,21 @@ export async function doScrapeAndExport() {
                 log(`⚠ 发现 ${missingIndices.length} 个章节抓取失败或遗漏，尝试自动补抓...`);
                 // 补漏时使用单线程
                 for (const i of missingIndices) {
-                    if (state.abortFlag) break;
+                    if (state.abortFlag) { saveBookCache(bookId, state.globalChaptersMap); break; }
                     log(`补抓 [${i + 1}/${total}]...`);
                     await processChapter(i);
-                    await sleep(300);
+                    saveBookCache(bookId, state.globalChaptersMap);
+                    const delay = Math.floor(Math.random() * 200) + 100;
+                    await sleep(delay);
                 }
             } else {
                 log("✅ 完整性检查通过，无缺漏。");
             }
 
             // 等待获取封面结果
-            const coverResult = await coverTaskPromise; 
+            const coverResult = await coverTaskPromise;
             const finalCoverBlob = coverResult ? coverResult.blob : null;
-            const finalCoverExt = coverResult ? coverResult.ext : "jpg";    
+            const finalCoverExt = coverResult ? coverResult.ext : "jpg";
 
             log("✅ 所有任务处理完毕");
             document.title = state.originalTitle;
@@ -230,12 +253,14 @@ export async function doScrapeAndExport() {
                 metadata: {
                     title: bookName,
                     author: "",
-                    coverBlob: finalCoverBlob, 
+                    coverBlob: finalCoverBlob,
                     coverExt: finalCoverExt
                 },
                 epubBlob: null
             });
 
+            // 完成后清理缓存和弹窗，显示下载选项
+            clearBookCache(bookId);
             fullCleanup(state.originalTitle);
             showFormatChoice();
             return resolveMain();
