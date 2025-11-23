@@ -47,6 +47,5 @@ const STYLES = `
 export function injectStyles() {
     const styleEl = document.createElement('style');
     styleEl.textContent = STYLES;
-    // 尝试插入 head，如果没有 head (document-start 早期) 则插入 documentElement
     (document.head || document.documentElement).appendChild(styleEl);
 }

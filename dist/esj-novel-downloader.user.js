@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name          ESJZone 全本下载
 // @namespace     http://tampermonkey.net/
-// @version       1.0.1
+// @version       1.1.0
 // @description   在 ESJZone 小说详情页注入 "全本下载" 按钮，支持 TXT/EPUB 导出
 // @author        Shigure Sora
 // @match         https://www.esjzone.cc/detail/*
@@ -253,12 +253,12 @@
         `;
 
         document.body.appendChild(popup);
-        // 使用 popup.querySelector 确保绑定的是当前这个弹窗的头部
+        
         enableDrag(popup, "#esj-header");
 
         popup.querySelector("#esj-cancel").onclick = () => {
             setAbortFlag(true);
-            log("正在取消...已下载的数据会保留在内存中，下次可续传。");
+            log("正在取消...已下载的数据会保留在缓存中，下次可续传。");
             setTimeout(() => fullCleanup(state.originalTitle), 1000);
         };
 
@@ -405,9 +405,143 @@
         setTimeout(() => URL.revokeObjectURL(a.href), 60000);
     }
 
+    function promisifyRequest(request) {
+        return new Promise((resolve, reject) => {
+            // @ts-ignore - file size hacks
+            request.oncomplete = request.onsuccess = () => resolve(request.result);
+            // @ts-ignore - file size hacks
+            request.onabort = request.onerror = () => reject(request.error);
+        });
+    }
+    function createStore(dbName, storeName) {
+        let dbp;
+        const getDB = () => {
+            if (dbp)
+                return dbp;
+            const request = indexedDB.open(dbName);
+            request.onupgradeneeded = () => request.result.createObjectStore(storeName);
+            dbp = promisifyRequest(request);
+            dbp.then((db) => {
+                // It seems like Safari sometimes likes to just close the connection.
+                // It's supposed to fire this event when that happens. Let's hope it does!
+                db.onclose = () => (dbp = undefined);
+            }, () => { });
+            return dbp;
+        };
+        return (txMode, callback) => getDB().then((db) => callback(db.transaction(storeName, txMode).objectStore(storeName)));
+    }
+    let defaultGetStoreFunc;
+    function defaultGetStore() {
+        if (!defaultGetStoreFunc) {
+            defaultGetStoreFunc = createStore('keyval-store', 'keyval');
+        }
+        return defaultGetStoreFunc;
+    }
+    /**
+     * Get a value by its key.
+     *
+     * @param key
+     * @param customStore Method to get a custom store. Use with caution (see the docs).
+     */
+    function get(key, customStore = defaultGetStore()) {
+        return customStore('readonly', (store) => promisifyRequest(store.get(key)));
+    }
+    /**
+     * Set a value with a key.
+     *
+     * @param key
+     * @param value
+     * @param customStore Method to get a custom store. Use with caution (see the docs).
+     */
+    function set(key, value, customStore = defaultGetStore()) {
+        return customStore('readwrite', (store) => {
+            store.put(value, key);
+            return promisifyRequest(store.transaction);
+        });
+    }
+    /**
+     * Delete a particular key from the store.
+     *
+     * @param key
+     * @param customStore Method to get a custom store. Use with caution (see the docs).
+     */
+    function del(key, customStore = defaultGetStore()) {
+        return customStore('readwrite', (store) => {
+            store.delete(key);
+            return promisifyRequest(store.transaction);
+        });
+    }
+
+    // 下载缓存配置，24h过期
+    const CACHE_PREFIX = 'esj_down_';
+    const CACHE_EXPIRE_TIME = 24 * 60 * 60 * 1000;
+
+    // 读取缓存
+    async function loadBookCache(bookId) {
+        const key = CACHE_PREFIX + bookId;
+        try {
+            const data = await get(key);
+            if (!data) return { size: 0, map: null };
+
+            // 检查过期
+            if (Date.now() - data.ts > CACHE_EXPIRE_TIME) {
+                log("⚠ 本地缓存已过期，自动清理");
+                await del(key);
+                return { size: 0, map: null };
+            }
+
+            // 恢复 Map
+            if (Array.isArray(data.chapters)) {
+                const map = new Map(data.chapters);
+                log(`💾 已从 IndexedDB 恢复 ${map.size} 章缓存`);
+                return { size: map.size, map: map };
+            }
+        } catch (e) {
+            console.error("读取缓存失败", e);
+        }
+        return { size: 0, map: null };
+    }
+
+    // 保存缓存
+    async function saveBookCache(bookId, map) {
+        const key = CACHE_PREFIX + bookId;
+        const data = {
+            ts: Date.now(),
+            chapters: Array.from(map.entries())
+        };
+        try {
+            await set(key, data);
+        } catch (e) {
+            console.error("保存缓存失败", e);
+        }
+    }
+
+    // 清理缓存
+    async function clearBookCache(bookId) {
+        try {
+            await del(CACHE_PREFIX + bookId);
+            log("🗑️ 任务完成，已清理本地缓存");
+        } catch (e) {
+            console.error("清理缓存失败", e);
+        }
+    }
+
+    // 获取书籍 ID
+    function getBookId() {
+        const match = location.href.match(/\/detail\/(\d+)/);
+        return match ? match[1] : 'unknown';
+    }
+
     async function doScrapeAndExport() {
         setAbortFlag(false);
         state.originalTitle = document.title;
+
+        // 尝试读取 IndexedDB 缓存
+        const bookId = getBookId();
+        const cacheResult = await loadBookCache(bookId);
+        if (cacheResult.map) {
+            state.globalChaptersMap = cacheResult.map;
+        }
 
         return new Promise((resolveMain) => {
             createConfirmPopup(async () => {
@@ -425,7 +559,7 @@
                 log(`发现 ${total} 个章节，准备开始抓取...`);
 
                 // 元数据
-                let bookName = document.querySelector("h2.p-t-10.text-normal")?.innerText.trim() || "未命名小说";
+                let bookName = document.querySelector("h2.p-t-10.text-normal")?.innerText.trim() || "未命名";
                 const symbolMap = { "\\": "-", "/": "- ", ":": "：", "*": "☆", "?": "？", "\"": " ", "<": "《", ">": "》", "|": "-", ".": "。", "\t": " ", "\n": " " };
                 const escapeFileName = (name) => {
                     for (let k in symbolMap) name = name.replace(new RegExp("\\" + k, "g"), symbolMap[k]);
@@ -446,11 +580,11 @@
                     const controller = new AbortController();
                     const id = setTimeout(() => controller.abort(), timeout);
                     try {
-                        const response = await fetch(url, { 
-                            method: "GET", 
-                            referrerPolicy: "no-referrer", 
+                        const response = await fetch(url, {
+                            method: "GET",
+                            referrerPolicy: "no-referrer",
                             credentials: "omit",
-                            signal: controller.signal 
+                            signal: controller.signal
                         });
                         clearTimeout(id);
                         if (!response.ok) throw new Error(`Status ${response.status}`);
@@ -470,7 +604,7 @@
                         log("启动封面下载...");
                         // 封面获取 15s 超时
                         const blob = await fetchCoverWithTimeout(imgNode.src, 15000);
-                        
+
                         if (blob.size < 1000) {
                             log("⚠ 封面文件过小，已忽略");
                             return null;
@@ -479,7 +613,7 @@
                         let ext = "jpg";
                         if (blob.type.includes("png")) ext = "png";
                         else if (blob.type.includes("jpeg") || blob.type.includes("jpg")) ext = "jpg";
-                        
+
                         log("✔ 封面下载完成");
                         return { blob, ext };
                     } catch (e) {
@@ -518,6 +652,11 @@
                             content: msg,
                             txtSegment: `${chapterTitle}\n${msg}\n\n`
                         });
+
+                        if (i % 5 === 0) {
+                            saveBookCache(bookId, state.globalChaptersMap);
+                        }
+
                         completedCount++;
                         updateProgress();
                         await sleep(100);
@@ -540,11 +679,12 @@
                             txtSegment: `${h2 || chapterTitle} [${author}]\n${content}\n\n`
                         });
 
+                        if (completedCount % 5 === 0) {
+                            saveBookCache(bookId, state.globalChaptersMap);
+                        }
                     } catch (e) {
                         log(`❌ 抓取失败：${e}`);
-                        // 失败不写入，依靠后续完整性检查补漏
                     } finally {
-                        // 随机延迟：100ms ~ 300ms，防止请求过快
                         const delay = Math.floor(Math.random() * 200) + 100;
                         await sleep(delay);
                     }
@@ -562,7 +702,7 @@
                     if (progressEl) progressEl.style.width = (completedCount / total) * 100 + "%";
                 }
 
-                // Worker
+                // 启动并发抓取
                 async function worker() {
                     while (queue.length > 0 && !state.abortFlag) {
                         const index = queue.shift();
@@ -578,7 +718,8 @@
                 await Promise.all(workers);
 
                 if (state.abortFlag) {
-                    log("任务已手动取消。");
+                    saveBookCache(bookId, state.globalChaptersMap);
+                    log("任务已手动取消，进度已保存。");
                     document.title = state.originalTitle;
                     return resolveMain();
                 }
@@ -594,19 +735,21 @@
                     log(`⚠ 发现 ${missingIndices.length} 个章节抓取失败或遗漏，尝试自动补抓...`);
                     // 补漏时使用单线程
                     for (const i of missingIndices) {
-                        if (state.abortFlag) break;
+                        if (state.abortFlag) { saveBookCache(bookId, state.globalChaptersMap); break; }
                         log(`补抓 [${i + 1}/${total}]...`);
                         await processChapter(i);
-                        await sleep(300);
+                        saveBookCache(bookId, state.globalChaptersMap);
+                        const delay = Math.floor(Math.random() * 200) + 100;
+                        await sleep(delay);
                     }
                 } else {
                     log("✅ 完整性检查通过，无缺漏。");
                 }
 
                 // 等待获取封面结果
-                const coverResult = await coverTaskPromise; 
+                const coverResult = await coverTaskPromise;
                 const finalCoverBlob = coverResult ? coverResult.blob : null;
-                const finalCoverExt = coverResult ? coverResult.ext : "jpg";    
+                const finalCoverExt = coverResult ? coverResult.ext : "jpg";
 
                 log("✅ 所有任务处理完毕");
                 document.title = state.originalTitle;
@@ -631,12 +774,14 @@
                     metadata: {
                         title: bookName,
                         author: "",
-                        coverBlob: finalCoverBlob, 
+                        coverBlob: finalCoverBlob,
                         coverExt: finalCoverExt
                     },
                     epubBlob: null
                 });
 
+                // 完成后清理缓存和弹窗，显示下载选项
+                clearBookCache(bookId);
                 fullCleanup(state.originalTitle);
                 showFormatChoice();
                 return resolveMain();
@@ -718,7 +863,6 @@
     function injectStyles() {
         const styleEl = document.createElement('style');
         styleEl.textContent = STYLES;
-        // 尝试插入 head，如果没有 head (document-start 早期) 则插入 documentElement
         (document.head || document.documentElement).appendChild(styleEl);
     }
 
@@ -727,7 +871,7 @@
         // 注入 CSS 样式
         injectStyles(); 
 
-        // 有页面缓存就直接注入
+        // 有页面缓存就直接注入按钮
         if (document.querySelector(".sp-buttons")) {
             injectButton();
         }

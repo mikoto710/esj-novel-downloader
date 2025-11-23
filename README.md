@@ -6,12 +6,11 @@
 -  **TXT 导出**
 -  **EPUB 导出（含封面）**
 -  **多线程并发抓取**
--  **断点续传（基于内存做缓存，后续考虑改造为 LocalStorage）**
+-  **断点续传（基于 IndexedDB 实现缓存）**
 -  **抓取完整性检查与自动补漏**
--  **最小化托盘模式**
+-  **最小化托盘模式，不影响浏览**
 
 抓取逻辑部分参考自：https://github.com/ZALin/ESJ-novel-backup  
-并在此基础上实现更多增强功能。
 
 ## 安装方式
 
@@ -31,6 +30,11 @@ dist/esj-novel-downloader.user.js
 
 点击 **Raw** 进行安装。
 
+<<<<<<< HEAD
+=======
+或[点击这里安装脚本](https://github.com/mikoto0710/esj-novel-downloader/raw/refs/heads/main/dist/esj-novel-downloader.user.js)
+
+>>>>>>> dev
 ## 使用方法
 
 打开任意 ESJZone 小说详情页（例：  
@@ -71,7 +75,10 @@ src
         index.js         # 工具函数汇总
 ```
 
+<<<<<<< HEAD
 
+=======
+>>>>>>> dev
 ## 开发与构建
 
 本项目使用 **Rollup** 进行模块化构建。
