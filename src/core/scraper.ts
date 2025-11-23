@@ -103,7 +103,7 @@ export async function doScrapeAndExport(): Promise<void> {
             })();
 
             // 并发控制逻辑
-            const CONCURRENCY = 2;
+            const CONCURRENCY = 3;
             let completedCount = 0;
             let queue = [...Array(total).keys()];
 
