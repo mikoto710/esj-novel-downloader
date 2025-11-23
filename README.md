@@ -13,9 +13,7 @@
 抓取逻辑部分参考自：https://github.com/ZALin/ESJ-novel-backup  
 并在此基础上实现更多增强功能。
 
----
-
-# 安装方式
+## 安装方式
 
 ### 1. 安装 Tampermonkey
 
@@ -23,19 +21,17 @@ https://www.tampermonkey.net/
 
 ### 2. 安装脚本
 
-进入本项目 GitHub 仓库，打开：
+[点击这里安装脚本](https://github.com/mikoto710/esj-novel-downloader/raw/refs/heads/main/dist/esj-novel-downloader.user.js)
+
+或进入本项目 GitHub 仓库，打开：
 
 ```
 dist/esj-novel-downloader.user.js
 ```
 
-点击 **Raw → 安装**。
+点击 **Raw** 进行安装。
 
-或[点击这里安装脚本](https://github.com/mikoto0710/esj-novel-downloader/raw/refs/heads/main/dist/esj-novel-downloader.user.js)
-
----
-
-# 使用方法
+## 使用方法
 
 打开任意 ESJZone 小说详情页（例：  
 `https://www.esjzone.cc/detail/xxxx.html`）
@@ -52,9 +48,8 @@ dist/esj-novel-downloader.user.js
 2. 点击确定开始抓取，显示进度条与日志  
 3. 抓取完成后选择导出（TXT / EPUB）  
 
----
 
-# 🛠 项目结构
+## 项目结构
 
 ```
 src
@@ -76,27 +71,26 @@ src
         index.js         # 工具函数汇总
 ```
 
----
 
-# 开发与构建
+## 开发与构建
 
 本项目使用 **Rollup** 进行模块化构建。
 
-## 环境要求
+### 环境要求
 - Node.js 14+
 - npm
 
-## 安装依赖
+### 安装依赖
 ```bash
 npm install
 ```
 
-## 开发模式（自动监听）
+### 开发模式（自动监听）
 ```bash
 npm run watch
 ```
 
-## 生产构建
+### 生产构建
 ```bash
 npm run build
 ```
@@ -106,10 +100,3 @@ npm run build
 ```
 dist/esj-novel-downloader.user.js
 ```
-
----
-
-# License
-
-项目遵循 **MIT License**。  
-可自由 Fork / 修改 / 分发，但需保留原许可声明。
