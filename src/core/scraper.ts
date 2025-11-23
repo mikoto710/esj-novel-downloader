@@ -17,7 +17,7 @@ export async function doScrapeAndExport(): Promise<void> {
     state.originalTitle = document.title;
 
     const bookId = getBookId();
-    
+
     let cachedCount = 0;
     const cacheResult = await loadBookCache(bookId);
     if (cacheResult.map) {
@@ -36,7 +36,7 @@ export async function doScrapeAndExport(): Promise<void> {
             }
 
             const chaptersNodes = Array.from(document.querySelectorAll("#chapterList a")) as HTMLAnchorElement[];
-            
+
             if (chaptersNodes.length === 0) {
                 alert("未找到章节列表 #chapterList");
                 fullCleanup(state.originalTitle);
@@ -126,8 +126,6 @@ export async function doScrapeAndExport(): Promise<void> {
                     return;
                 }
 
-                log(`抓取 (${i + 1}/${total})：${chapterTitle}\nURL: ${chapterUrl}`);
-
                 // 非站内链接处理
                 if (!/esjzone\.cc\/forum\/\d+\/\d+\.html/.test(chapterUrl)) {
                     const msg = `${chapterUrl} {非站內連結}`;
@@ -136,6 +134,8 @@ export async function doScrapeAndExport(): Promise<void> {
                         content: msg,
                         txtSegment: `${chapterTitle}\n${msg}\n\n`
                     });
+
+                    log(`跳过 (${completedCount}/${total})：${chapterTitle} (非站内)`);
 
                     if (i % 5 === 0) {
                         saveBookCache(bookId, state.globalChaptersMap);
@@ -166,15 +166,20 @@ export async function doScrapeAndExport(): Promise<void> {
                     if (completedCount % 5 === 0) {
                         saveBookCache(bookId, state.globalChaptersMap);
                     }
+
+                    completedCount++;
+                    updateProgress();
+                    
+                    log(`抓取 (${completedCount}/${total})：${chapterTitle} 成功\nURL: ${chapterUrl}`);
                 } catch (e) {
+                    completedCount++;
+                    updateProgress();
                     log(`❌ 抓取失败：${e}`);
                 } finally {
                     const delay = Math.floor(Math.random() * 200) + 100;
                     await sleep(delay);
                 }
 
-                completedCount++;
-                updateProgress();
             }
 
             function updateProgress() {
