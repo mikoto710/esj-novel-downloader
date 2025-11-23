@@ -1,15 +1,21 @@
 import { get, set, del } from 'idb-keyval';
-import { log } from '../utils/index.js';
+import { log } from '../utils/index';
+import { Chapter } from '../types';
+
+interface StoredCache {
+    ts: number;
+    chapters: [number, Chapter][];
+}
 
 // 下载缓存配置，24h过期
 const CACHE_PREFIX = 'esj_down_';
 const CACHE_EXPIRE_TIME = 24 * 60 * 60 * 1000;
 
 // 读取缓存
-export async function loadBookCache(bookId) {
+export async function loadBookCache(bookId: string): Promise<{ size: number; map: Map<number, Chapter> | null }> {
     const key = CACHE_PREFIX + bookId;
     try {
-        const data = await get(key);
+        const data = await get<StoredCache>(key);
         if (!data) return { size: 0, map: null };
 
         // 检查过期
@@ -32,7 +38,7 @@ export async function loadBookCache(bookId) {
 }
 
 // 保存缓存
-export async function saveBookCache(bookId, map) {
+export async function saveBookCache(bookId: string, map: Map<number, Chapter>) {
     const key = CACHE_PREFIX + bookId;
     const data = {
         ts: Date.now(),
@@ -46,7 +52,7 @@ export async function saveBookCache(bookId, map) {
 }
 
 // 清理缓存
-export async function clearBookCache(bookId) {
+export async function clearBookCache(bookId: string) {
     try {
         await del(CACHE_PREFIX + bookId);
         log("🗑️ 任务完成，已清理本地缓存");

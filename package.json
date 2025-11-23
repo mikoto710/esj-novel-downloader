@@ -1,16 +1,23 @@
 {
   "name": "esj-novel-downloader",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "type": "module",
   "scripts": {
     "build": "rollup -c",
+    "check": "tsc --noEmit",
     "watch": "rollup -c -w"
   },
   "devDependencies": {
     "@rollup/plugin-commonjs": "^29.0.0",
     "@rollup/plugin-node-resolve": "^16.0.3",
+    "@rollup/plugin-typescript": "^12.3.0",
+    "@types/node": "^24.10.1",
+    "esbuild": "^0.27.0",
     "rollup": "^4.53.3",
-    "rollup-plugin-userscript-metablock": "^0.4.3"
+    "rollup-plugin-esbuild": "^6.2.1",
+    "rollup-plugin-userscript-metablock": "^0.4.3",
+    "tslib": "^2.8.1",
+    "typescript": "^5.9.3"
   },
   "dependencies": {
     "idb-keyval": "^6.2.2"
