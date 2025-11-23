@@ -20,7 +20,7 @@ export async function loadBookCache(bookId: string): Promise<{ size: number; map
 
         // 检查过期
         if (Date.now() - data.ts > CACHE_EXPIRE_TIME) {
-            log("⚠ 本地缓存已过期，自动清理");
+            console.warn("⚠ 本地缓存已过期，自动清理");
             await del(key);
             return { size: 0, map: null };
         }
@@ -28,7 +28,7 @@ export async function loadBookCache(bookId: string): Promise<{ size: number; map
         // 恢复 Map
         if (Array.isArray(data.chapters)) {
             const map = new Map(data.chapters);
-            log(`💾 已从 IndexedDB 恢复 ${map.size} 章缓存`);
+            console.log(`✅ 读取到本地缓存，章节数：${map.size}`);
             return { size: map.size, map: map };
         }
     } catch (e) {

@@ -18,9 +18,11 @@ export async function doScrapeAndExport(): Promise<void> {
 
     const bookId = getBookId();
     
+    let cachedCount = 0;
     const cacheResult = await loadBookCache(bookId);
     if (cacheResult.map) {
         state.globalChaptersMap = cacheResult.map;
+        cachedCount = cacheResult.size;
     }
 
     return new Promise((resolveMain) => {
@@ -28,6 +30,10 @@ export async function doScrapeAndExport(): Promise<void> {
             const popup = createDownloadPopup();
             const progressEl = document.querySelector("#esj-progress") as HTMLElement;
             const titleEl = document.querySelector("#esj-title") as HTMLElement;
+
+            if (cachedCount > 0) {
+                log(`💾 已从 IndexedDB 恢复 ${cachedCount} 章缓存`);
+            }
 
             const chaptersNodes = Array.from(document.querySelectorAll("#chapterList a")) as HTMLAnchorElement[];
             
