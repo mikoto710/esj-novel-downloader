@@ -13,21 +13,37 @@ export function injectButton(): void {
     // 防止重复注入
     if (document.querySelector("#btn-download-book")) return;
 
-    // 使用 el 构建按钮结构：<button> <i class="..."></i> 全本下载 </button>
+    // 构建按钮结构
     const btn = el('button', {
         id: 'btn-download-book',
         className: 'btn btn-info m-b-10',
         style: 'margin-left: 10px;',
         onclick: () => {
+
+            // 防止弹窗已存在的情景
+            const runningPopup = document.querySelector("#esj-popup") as HTMLElement;
+            if (runningPopup) {
+                // 恢复弹窗显示
+                runningPopup.style.display = "flex";
+                // 有托盘就顺手删掉
+                document.querySelector("#esj-min-tray")?.remove();
+                return;
+            }
+
+            if (document.querySelector("#esj-confirm") || document.querySelector("#esj-format")) {
+                return;
+            }
+
             if (state.cachedData) {
                 showFormatChoice();
-            } else {
-                doScrapeAndExport().catch((e: Error) => console.error("主流程异常: " + e.message));
+                return;
             }
+
+            doScrapeAndExport().catch((e: Error) => console.error("主流程异常: " + e.message));
         }
     }, [
-        el('i', { className: 'icon-download' }), // 图标
-        ' 全本下载' // 文本节点
+        el('i', { className: 'icon-download' }),
+        ' 全本下载'
     ]);
 
     btnGroup.appendChild(btn);

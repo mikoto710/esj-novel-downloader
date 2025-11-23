@@ -87,15 +87,14 @@ export function createDownloadPopup(): HTMLElement {
     function onMinimize() {
         popup.style.display = "none";
         const currentTitle = titleEl.textContent || "";
-        const match = currentTitle.match(/（.*?）/);
-        const statusText = match ? match[0] : "下载中...";
+        const statusText = currentTitle.replace(/^📘\s*/,"").trim() || "下载中...";
         createMinimizedTray(statusText);
     }
 
     return popup;
 }
 
-/**
+/**s
  * 创建确认下载的对话框
  * 根据是否有缓存显示不同的提示语
  */
