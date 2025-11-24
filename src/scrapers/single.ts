@@ -1,41 +1,59 @@
 import { log } from '../utils/index';
-import { parseChapterHtml } from '../core/parser';
+import { parseChapterHtml, parseBookMetadata } from '../core/parser';
 
 /**
- * 抓取当前单章页面并导出为 TXT
+ * 抓取并下载当前单章节页面
  */
-export function downloadCurrentPage(): void {
+export async function downloadCurrentPage(): Promise<void> {
     try {
-        // 获取 HTML
+        log("开始抓取当前单章...");
+
+        const viewAllBtn = document.querySelector('.entry-navigation .view-all') as HTMLAnchorElement;
+        let metaHeader = "";
+        let bookNamePrefix = "";
+
+        if (viewAllBtn && viewAllBtn.href) {
+            try {
+                log("正在获取书籍信息...");
+                const resp = await fetch(viewAllBtn.href);
+                const html = await resp.text();
+                const doc = new DOMParser().parseFromString(html, "text/html");
+                
+                const meta = parseBookMetadata(doc, viewAllBtn.href);
+                
+                metaHeader = meta.introTxt + 
+                             "====================================\n\n";
+                bookNamePrefix = `[${meta.bookName}] `;
+            } catch (e) {
+                console.warn("书籍元数据获取失败，仅下载正文");
+            }
+        }
+
         const html = document.documentElement.outerHTML;
         const defaultTitle = document.title.split(' - ')[0] || "未命名章节";
-
-        // 提取内容
-        const { bookName, title, author, content } = parseChapterHtml(html, defaultTitle);
+        const { title, author, content } = parseChapterHtml(html, defaultTitle);
 
         if (!content) {
             alert("未找到正文内容");
             return;
         }
 
-        // 组装 TXT
-        const txtContent = `书名: ${bookName}\n标题: ${title}\n作者: ${author}\nURL: ${location.href}\n\n${content}`;
+        const finalTxt = `${metaHeader}${title}\n${author}\n本章URL: ${location.href}\n\n${content}`;
 
-        // 生成 Blob 并下载
-        const blob = new Blob([txtContent], { type: 'text/plain;charset=utf-8' });
+        const blob = new Blob([finalTxt], { type: 'text/plain;charset=utf-8' });
         const a = document.createElement('a');
         a.href = URL.createObjectURL(blob);
         
-        // 净化文件名
-        const safeFilename = title.replace(/[\\/:*?"<>|]/g, "_").trim();
-        a.download = `${safeFilename}.txt`;
+        const safeTitle = title.replace(/[\\/:*?"<>|]/g, "_").trim();
+        a.download = `${bookNamePrefix}${safeTitle}.txt`;
         
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
         URL.revokeObjectURL(a.href);
 
-        log(`单章下载完成: ${safeFilename}`);
+        log(`✔ 单章下载完成`);
+
     } catch (e: any) {
         console.error(e);
         alert("下载出错: " + e.message);

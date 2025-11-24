@@ -30,7 +30,10 @@ export function log(msg: string): void {
     
     const box = document.querySelector("#esj-log");
     if (box) {
+        const isAtBottom = (box.scrollTop + box.clientHeight) >= (box.scrollHeight - 10);
         box.textContent += line + "\n";
-        (box as HTMLElement).scrollTop = box.scrollHeight;
+        if (isAtBottom) {
+            box.scrollTop = box.scrollHeight;
+        }
     }
 }

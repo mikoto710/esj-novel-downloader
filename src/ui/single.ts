@@ -18,7 +18,7 @@ export function injectSinglePageButton(): void {
     // 创建按钮
     const btn = el('a', {
         id: 'btn-download-single',
-        className: 'btn btn-outline-secondary',
+        className: 'btn btn-outline-secondary view-all',
         style: 'margin-left: 5px; cursor: pointer;', 
         title: '下载本章 (TXT)',
         onclick: (e: Event) => {

@@ -4,7 +4,7 @@ import { fullCleanup } from '../utils/dom';
 import { createDownloadPopup, showFormatChoice } from '../ui/popups';
 import { updateTrayText } from '../ui/tray';
 import { loadBookCache, saveBookCache, clearBookCache } from './storage';
-import { Chapter, BookMetadata } from '../types';
+import { Chapter } from '../types';
 import { parseChapterHtml } from './parser';
 
 export interface DownloadTask {
@@ -48,7 +48,11 @@ export async function batchDownload(options: DownloadOptions): Promise<void> {
     setAbortFlag(false);
 
     // 创建弹窗
-    const popup = createDownloadPopup();
+    let popup = document.querySelector("#esj-popup") as HTMLElement;
+    if (!popup) {
+        popup = createDownloadPopup();
+    }
+
     const progressEl = document.querySelector("#esj-progress") as HTMLElement;
     const titleEl = document.querySelector("#esj-title") as HTMLElement;
 
@@ -149,7 +153,7 @@ export async function batchDownload(options: DownloadOptions): Promise<void> {
                 state.globalChaptersMap.set(index, {
                     title: result.title,
                     content: result.content,
-                    txtSegment: `${result.title} [${result.author}]\n${result.content}\n\n`
+                    txtSegment: `${result.title}\n\n${result.author}\n\n${result.content}\n\n`
                 });
 
                 if (completedCount % 5 === 0) {

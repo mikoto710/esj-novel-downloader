@@ -5,16 +5,13 @@ import { injectStyles } from './ui/styles';
 
 (function init() {
 
-    // 先注入 CSS 样式
     injectStyles();
 
     const url = location.href;
 
     // 路由
     const isDetailPage = url.includes('/detail/');
-    // TODO: 论坛页的获取逻辑待完善
-    // const isForumPage = url.includes('/forum/') && !url.endsWith('.html');
-    const isForumPage = false;
+    const isForumPage = url.includes('/forum/') && !url.endsWith('.html');
     const isSinglePage = url.includes('/forum/') && url.endsWith('.html');
 
     // 定义通用的注入尝试函数
