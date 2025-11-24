@@ -1,0 +1,29 @@
+import { log } from '../utils/index';
+
+// 默认配置
+const DEFAULT_CONFIG = {
+    concurrency: 3
+};
+
+/**
+ * 获取并发数
+ */
+export function getConcurrency(): number {
+    // 从 Tampermonkey 存储中读取
+    let val = GM_getValue('concurrency', DEFAULT_CONFIG.concurrency);
+    
+    if (typeof val !== 'number' || val <= 0) {
+        val = DEFAULT_CONFIG.concurrency;
+    }
+    return val;
+}
+
+/**
+ * 保存并发数
+ */
+export function setConcurrency(num: number): void {
+    if (num > 10) num = 10;
+    if (num < 1) num = 1;
+    GM_setValue('concurrency', num);
+    log(`并发数已更新为: ${num}`);
+}

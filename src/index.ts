@@ -6,7 +6,6 @@ import { injectStyles } from './ui/styles';
 (function init() {
 
     injectStyles();
-
     const url = location.href;
 
     // 路由

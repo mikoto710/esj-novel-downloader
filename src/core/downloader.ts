@@ -6,6 +6,7 @@ import { updateTrayText } from '../ui/tray';
 import { loadBookCache, saveBookCache, clearBookCache } from './storage';
 import { Chapter } from '../types';
 import { parseChapterHtml } from './parser';
+import { getConcurrency } from './config';
 
 export interface DownloadTask {
     index: number;
@@ -81,7 +82,7 @@ export async function batchDownload(options: DownloadOptions): Promise<void> {
     })();
 
     // 并发量
-    const CONCURRENCY = 3;
+    const CONCURRENCY = getConcurrency();
 
     // 复制任务队列
     let queue = [...tasks];

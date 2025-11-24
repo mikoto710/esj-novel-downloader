@@ -9,7 +9,7 @@ const STYLES = `
     }
     
     /* 头部 */
-    #esj-header, #esj-confirm-header, #esj-format-header {
+    #esj-header, #esj-confirm-header, #esj-format-header #esj-settings-header {
         padding: 10px; background: #2b9bd7; color: #fff;
         display: flex; justify-content: space-between; align-items: center;
         cursor: move; border-radius: 8px 8px 0 0;
@@ -41,7 +41,11 @@ const STYLES = `
         border-radius: 8px; box-shadow: 0 0 18px rgba(0,0,0,0.28);
         z-index: 999999; display: flex; flex-direction: column;
     }
-    #esj-format { width: 420px; }
+        
+    #esj-format { 
+        width: 420px; 
+    }
+
 `;
 
 export function injectStyles(): void {

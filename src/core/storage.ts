@@ -1,6 +1,7 @@
-import { get, set, del } from 'idb-keyval';
+import { get, set, del, keys } from 'idb-keyval';
 import { log } from '../utils/index';
 import { Chapter } from '../types';
+import { resetGlobalState } from './state';
 
 interface StoredCache {
     ts: number;
@@ -69,5 +70,27 @@ export async function clearBookCache(bookId: string) {
         log("🗑️ 任务完成，已清理本地缓存");
     } catch (e) {
         console.error("清理缓存失败", e);
+    }
+}
+
+/**
+ * 清理所有本脚本产生的缓存
+ */
+export async function clearAllCaches(): Promise<void> {
+    try {
+        const allKeys = await keys();
+        
+        const targetKeys = allKeys.filter(k => String(k).startsWith(CACHE_PREFIX));
+
+        const promises = targetKeys.map(k => del(k));
+        await Promise.all(promises);
+
+        resetGlobalState();
+
+        console.log("Cache cleared:", targetKeys);
+
+    } catch (e: any) {
+        console.error("清理缓存失败", e);
+        alert("清理失败: " + e.message);
     }
 }

@@ -16,7 +16,10 @@ export default function getMeta() {
       'https://www.esjzone.one/forum/*'
     ],
     'run-at': 'document-start',
-    grant: 'none',
+    grant: [
+      'GM_setValue',
+      'GM_getValue',
+    ],
     // icon: 'https://www.esjzone.cc/favicon.ico', 
   };
 }

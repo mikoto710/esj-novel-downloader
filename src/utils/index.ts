@@ -47,6 +47,19 @@ export function sleepWithAbort(ms: number, signal?: AbortSignal): Promise<void> 
 }
 
 /**
+ * 触发浏览器下载逻辑
+ */
+export function triggerDownload(blob: Blob, filename: string): void {
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 60000);
+}
+
+/**
  * 输出日志到 UI 面板和控制台
  * @param msg 日志内容
  */

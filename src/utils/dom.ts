@@ -45,7 +45,8 @@ export function fullCleanup(originalTitle?: string): void {
         "#esj-popup", 
         "#esj-min-tray", 
         "#esj-confirm", 
-        "#esj-format"
+        "#esj-format",
+        "#esj-settings"
     ];
 
     selectors.forEach(sel => {
@@ -55,6 +56,10 @@ export function fullCleanup(originalTitle?: string): void {
     if (originalTitle) {
         document.title = originalTitle;
     }
+    
+    const settingsBtns = document.querySelectorAll('.esj-settings-trigger');
+    
+    settingsBtns.forEach(btn => (btn as HTMLButtonElement).disabled = false);
 }
 
 /**
