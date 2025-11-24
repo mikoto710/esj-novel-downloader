@@ -2,7 +2,7 @@ import { el } from '../utils/dom';
 import { downloadCurrentPage } from '../scrapers/single';
 
 /**
- * 在单页注入 "下载本章" 按钮
+ * 在单章阅读页注入 "下载本章" 按钮
  */
 export function injectSinglePageButton(): void {
     // 定位中间的 column

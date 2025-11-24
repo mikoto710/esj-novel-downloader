@@ -4,7 +4,7 @@ import { showFormatChoice } from './popups';
 import { el } from '../utils/dom';
 
 /**
- * 向页面注入 "全本下载" 按钮
+ * 向小说详情页注入 "全本下载" 按钮
  */
 export function injectDetailButton(): void {
     const btnGroup = document.querySelector(".sp-buttons");
@@ -18,7 +18,7 @@ export function injectDetailButton(): void {
         id: 'btn-download-book',
         className: 'btn btn-info m-b-10',
         style: 'margin-left: 10px;',
-        onclick: () => {
+        onclick: async () => {
 
             // 防止弹窗已存在的情景
             const runningPopup = document.querySelector("#esj-popup") as HTMLElement;
@@ -37,8 +37,20 @@ export function injectDetailButton(): void {
             if (state.cachedData) {
                 showFormatChoice();
                 return;
-            } else {
-                scrapeDetail().catch((e: Error) => console.error("主流程异常: " + e.message));
+            }
+
+            if (btn.disabled) return;
+            // 设置加载状态
+            const originalHtml = btn.innerHTML;
+            btn.disabled = true;
+            btn.innerHTML = '<i class="icon-refresh fa-spin"></i> 准备中...';
+            try {
+                await scrapeDetail();
+            } catch (err: any) {
+                console.error("Main Error: " + err.message);
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = originalHtml;
             }
 
         }

@@ -1,5 +1,5 @@
-import { state, setCachedData, setAbortFlag } from './state';
-import { log, sleep } from '../utils/index';
+import { state, setCachedData } from './state';
+import { log, sleepWithAbort, sleep } from '../utils/index';
 import { fullCleanup } from '../utils/dom';
 import { createDownloadPopup, showFormatChoice } from '../ui/popups';
 import { updateTrayText } from '../ui/tray';
@@ -24,19 +24,47 @@ export interface DownloadOptions {
 
 // 带超时控制的通用 Fetch
 async function fetchWithTimeout(url: string, options: RequestInit = {}, timeout = 15000): Promise<Response> {
+
     const controller = new AbortController();
     const id = window.setTimeout(() => controller.abort(), timeout);
+
+    // 获取全局中断信号
+    const globalSignal = state.abortController?.signal;
+
+    // 监听全局中断
+    let onGlobalAbort: (() => void) | undefined;
+
+    // 无论 fetch 在干什么，这个 Promise 会瞬间报错，强行结束 await
+    const abortPromise = new Promise<never>((_, reject) => {
+        if (globalSignal?.aborted) {
+            return reject(new Error('User Aborted'));
+        }
+        onGlobalAbort = () => reject(new Error('User Aborted'));
+        globalSignal?.addEventListener('abort', onGlobalAbort);
+    });
+
+    const fetchPromise = fetch(url, {
+        ...options,
+        signal: controller.signal
+    }).then(res => {
+        if (!res.ok) throw new Error(`Status ${res.status}`);
+        return res;
+    });
+
     try {
-        const response = await fetch(url, {
-            ...options,
-            signal: controller.signal
-        });
-        window.clearTimeout(id);
+        // 用户一点取消，abortPromise 就会立刻 reject，跳过 fetch 的等待
+        const response = await Promise.race([fetchPromise, abortPromise]);
+        clearTimeout(id);
         if (!response.ok) throw new Error(`Status ${response.status}`);
         return response;
     } catch (e) {
-        window.clearTimeout(id);
+        clearTimeout(id);
+        controller.abort();
         throw e;
+    } finally {
+        if (globalSignal && onGlobalAbort) {
+            globalSignal.removeEventListener('abort', onGlobalAbort);
+        }
     }
 }
 
@@ -44,8 +72,6 @@ async function fetchWithTimeout(url: string, options: RequestInit = {}, timeout 
 export async function batchDownload(options: DownloadOptions): Promise<void> {
     const { bookId, bookName, author = "未知作者", introTxt, coverUrl, tasks } = options;
     const total = tasks.length;
-
-    setAbortFlag(false);
 
     // 创建弹窗
     let popup = document.querySelector("#esj-popup") as HTMLElement;
@@ -118,7 +144,9 @@ export async function batchDownload(options: DownloadOptions): Promise<void> {
         }
 
         // 非站内链接处理
-        if (!url.includes("esjzone.cc/forum/") || !url.endsWith(".html")) {
+        const isValidChapter = /\/forum\/\d+\/\d+\.html/.test(url)
+            && url.includes("esjzone");
+        if (!isValidChapter) {
             const msg = `${url} {非站內链接}`;
             state.globalChaptersMap.set(index, {
                 title: title,
@@ -126,13 +154,15 @@ export async function batchDownload(options: DownloadOptions): Promise<void> {
                 txtSegment: `${title}\n${msg}\n\n`
             });
 
-            if (index % 5 === 0) saveBookCache(bookId, state.globalChaptersMap);
+            if (!state.abortFlag && completedCount % 5 === 0) {
+                saveBookCache(bookId, state.globalChaptersMap);
+            }
 
             completedCount++;
             updateProgress();
             log(`⚠️ 跳过 (${completedCount}/${total})：${title} (非站内)`);
 
-            await sleep(100);
+            await sleepWithAbort(100);
             return;
         }
 
@@ -156,21 +186,26 @@ export async function batchDownload(options: DownloadOptions): Promise<void> {
                     txtSegment: `${result.title}\n\n${result.author}\n\n${result.content}\n\n`
                 });
 
-                if (completedCount % 5 === 0) {
+                if (!state.abortFlag && completedCount % 5 === 0) {
                     saveBookCache(bookId, state.globalChaptersMap);
                 }
 
                 success = true;
                 break;
 
-            } catch (e) {
+            } catch (e: any) {
+                if (e.name === 'AbortError' || state.abortFlag) {
+                    return;
+                }
                 if (attempt === MAX_RETRIES) {
                     log(`❌ 抓取失败 (${title}): ${e}`);
                 } else {
-                    await sleep(300 * attempt);
+                    await sleepWithAbort(300 * attempt);
                 }
             }
         }
+
+        if (state.abortFlag) return;
 
         // 无论成功与否，都增加计数，失败的会在最后补漏环节再次尝试
         completedCount++;
@@ -182,7 +217,7 @@ export async function batchDownload(options: DownloadOptions): Promise<void> {
 
         // 随机延迟
         const delay = Math.floor(Math.random() * 200) + 100;
-        await sleep(delay);
+        await sleepWithAbort(delay);
     }
 
     function updateProgress() {
@@ -209,9 +244,15 @@ export async function batchDownload(options: DownloadOptions): Promise<void> {
     await Promise.all(workers);
 
     if (state.abortFlag) {
-        saveBookCache(bookId, state.globalChaptersMap);
+
+        log("正在写入 IndexedDB...");
+        await saveBookCache(bookId, state.globalChaptersMap);
         log("任务已手动取消，进度已保存。");
+
+        await sleep(800);
+
         document.title = state.originalTitle;
+        fullCleanup(state.originalTitle);
         return;
     }
 
@@ -229,7 +270,7 @@ export async function batchDownload(options: DownloadOptions): Promise<void> {
             log(`补抓 [${task.index + 1}/${total}]...`);
             await processChapter(task);
             saveBookCache(bookId, state.globalChaptersMap);
-            await sleep(300);
+            await sleepWithAbort(300);
         }
     } else {
         log("✅ 完整性检查通过，无缺漏。");

@@ -14,7 +14,7 @@ export function createDownloadPopup(): HTMLElement {
     fullCleanup(state.originalTitle);
 
     // DOM 构建
-    // 1. 头部 (Header)
+    // 1. Header
     const titleEl = el('span', { id: 'esj-title' }, ['📘 全本下载任务']);
     const btnMin = el('button', {
         id: 'esj-min',
@@ -75,8 +75,10 @@ export function createDownloadPopup(): HTMLElement {
 
     function onCancel() {
         setAbortFlag(true);
-        log("正在取消...已下载的数据会保留在缓存中，下次可续传。");
-        setTimeout(() => fullCleanup(state.originalTitle), 1000);
+        btnCancel.disabled = true;
+        btnCancel.textContent = "正在保存...";
+        btnCancel.style.backgroundColor = "#999";
+        log("🛑 正在停止任务，请稍候...");
     }
 
     function onClose() {

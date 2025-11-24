@@ -2,7 +2,9 @@ import { log } from '../utils/index';
 import { batchDownload, DownloadTask } from '../core/downloader';
 import { parseBookMetadata } from '../core/parser';
 import { createConfirmPopup, createDownloadPopup } from '../ui/popups';
-import { setAbortFlag, state } from '../core/state';
+import { setAbortFlag, state, resetAbortController } from '../core/state';
+import { loadBookCache } from '../core/storage';
+import { fullCleanup } from '../utils/dom';
 
 /**
  * 抓取论坛页面的章节列表并启动下载
@@ -10,27 +12,38 @@ import { setAbortFlag, state } from '../core/state';
 export async function scrapeForum(): Promise<void> {
 
     setAbortFlag(false);
+    resetAbortController();
+
     state.originalTitle = document.title;
+
+    let bid = "";
+
+    if (!bid) {
+        const urlParts = location.pathname.split('/').filter(p => p);
+        for (let i = urlParts.length - 1; i >= 0; i--) {
+            if (/^\d+$/.test(urlParts[i])) {
+                bid = urlParts[i];
+                break;
+            }
+        }
+    }
+
+    // 提前加载缓存
+    if (bid) {
+        const cacheResult = await loadBookCache(bid);
+        if (cacheResult.map) {
+            state.globalChaptersMap = cacheResult.map;
+        }
+    }
 
     return new Promise<void>((resolveMain) => {
         createConfirmPopup(async () => {
 
             createDownloadPopup();
-            
+
             try {
                 log("正在分析论坛页面...");
 
-                let bid = "";
-
-                if (!bid) {
-                    const urlParts = location.pathname.split('/').filter(p => p);
-                    for (let i = urlParts.length - 1; i >= 0; i--) {
-                        if (/^\d+$/.test(urlParts[i])) {
-                            bid = urlParts[i];
-                            break;
-                        }
-                    }
-                }
 
                 if (!bid) {
                     alert("无法解析版块 ID，请确保当前是有效的书籍论坛页。");
@@ -42,17 +55,28 @@ export async function scrapeForum(): Promise<void> {
 
                 let doc: Document;
                 try {
-                    const resp = await fetch(detailUrl);
+                    const resp = await fetch(detailUrl, {
+                        signal: state.abortController?.signal 
+                    });
                     if (!resp.ok) throw new Error(`HTTP Error ${resp.status}`);
                     const html = await resp.text();
                     doc = new DOMParser().parseFromString(html, "text/html");
-                } catch (e) {
+                } catch (e: any) {
+                    if (e.name === 'AbortError' || e.message === 'User Aborted') {
+                        fullCleanup(state.originalTitle);
+                        return;
+                    }
                     console.error(e);
                     alert("无法获取书籍详情页数据！");
                     return;
                 }
 
-                const meta = parseBookMetadata(doc, detailUrl);
+                if (state.abortFlag) {
+                    fullCleanup(state.originalTitle);
+                    return;
+                }
+
+                const meta = parseBookMetadata(doc!, detailUrl);
                 log(`元数据解析成功: 《${meta.rawBookName}》`);
 
                 // 尝试从 Detail 页的 #chapterList 获取
@@ -78,6 +102,11 @@ export async function scrapeForum(): Promise<void> {
                     }
                 });
 
+                if (state.abortFlag) {
+                    fullCleanup(state.originalTitle);
+                    return;
+                }
+
                 await batchDownload({
                     bookId: bid,
                     bookName: meta.bookName,
@@ -89,6 +118,8 @@ export async function scrapeForum(): Promise<void> {
             } catch (e: any) {
                 console.error(e);
                 log("❌ 抓取流程异常: " + e.message);
+            } finally {
+                return resolveMain();
             }
         }, () => {
             log("用户取消确认");
