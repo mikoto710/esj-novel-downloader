@@ -9,7 +9,7 @@ import { showFormatChoice, createSettingsPanel } from './popups';
 export function createSettingButton(customClass: string = ''): HTMLElement {
     return el('button', {
         className: `btn btn-primary esj-settings-trigger ${customClass}`,
-        style: 'margin-left: 10px; color: white; cursor: pointer;',
+        style: 'color: white; cursor: pointer;',
         onclick: (e: Event) => {
             e.preventDefault();
             // 如果被禁用，直接返回
@@ -42,7 +42,7 @@ export function createDownloadButton(
     const btn = el('button', {
         id: id,
         className: `btn btn-info ${customClass}`,
-        style: 'margin-left: 10px; color: white; cursor: pointer;',
+        style: 'color: white; cursor: pointer;',
         onclick: async () => {
             
             // 防止弹窗已存在的情景
