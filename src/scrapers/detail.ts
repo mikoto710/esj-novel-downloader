@@ -64,6 +64,7 @@ export async function scrapeDetail(): Promise<void> {
                 await batchDownload({
                     bookId: getBookId(),
                     bookName: meta.bookName,
+                    author: meta.author,
                     introTxt: meta.introTxt,
                     coverUrl: meta.coverUrl,
                     tasks
