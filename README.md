@@ -3,7 +3,7 @@
 ![Version](https://img.shields.io/github/v/release/mikoto710/esj-novel-downloader?label=version) ![License](https://img.shields.io/github/license/mikoto710/esj-novel-downloader) ![Language](https://img.shields.io/badge/language-TypeScript-blue)
 
 一个用于 **ESJZone** 的 Tampermonkey 脚本。  
-支持 **TXT / EPUB 下载**，并适配多种页面类型（详情页 / 单章正文页 / 论坛列表页）。
+支持 **TXT / EPUB 下载**，并适配多种页面类型（小说详情页 / 单章阅读页 / 论坛列表页）。
 
 
 
@@ -11,9 +11,9 @@
 
 - 📚 **多格式导出**：支持 **TXT** 和 **EPUB**（自动内嵌封面）。
 - ⚡ **极速下载**：多线程并发抓取。
-- 💾 **断点续传**：使用 IndexedDB 进行持久化存储，刷新页面或关闭浏览器不丢失进度。
+- 💾 **断点续传**：使用 IndexedDB 作为缓存，刷新页面或关闭浏览器不丢失进度。
 - 🛡️ **智能补漏**：自动检测抓取失败的章节并尝试重试，确保内容完整。
-- 🧩 **全页面适配**：支持详情页、论坛版块、单章阅读页多种场景。
+- 🧩 **多页面适配**：支持详情页、论坛版块、单章阅读页多种场景。
 
 > 💡 抓取逻辑部分参考自 [ESJ-novel-backup](https://github.com/ZALin/ESJ-novel-backup)，感谢原项目作者提供的抓取思路
 
@@ -56,7 +56,7 @@
     -   在顶部/底部导航栏中间会出现下载图标按钮。
     -   点击直接下载当前章节的 TXT 文件。
 
-> **注**: 首次下载长篇小说时，可能会请求浏览器存储权限以保存缓存。
+> **Note**: 首次下载长篇小说时，可能会请求浏览器存储权限以保存缓存。
 
 
 
