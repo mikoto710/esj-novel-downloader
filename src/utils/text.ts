@@ -1,5 +1,7 @@
 /**
  * XML/HTML 特殊字符转义
+ * @param s 输入字符串
+ * @return 转义后的字符串
  */
 export function escapeXml(s: string | null | undefined): string {
     if (!s) return "";
@@ -12,6 +14,8 @@ export function escapeXml(s: string | null | undefined): string {
 
 /**
  * 转义 HTML 并保留换行符
+ * @param s HTML 字符串
+ * @return 转义后的字符串
  */
 export function escapeHtmlPreserveLine(s: string | null | undefined): string {
     if (!s) return "";

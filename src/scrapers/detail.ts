@@ -61,7 +61,6 @@ export async function scrapeDetail(): Promise<void> {
                     return;
                 }
 
-                // 调用通用下载器
                 await batchDownload({
                     bookId: getBookId(),
                     bookName: meta.bookName,

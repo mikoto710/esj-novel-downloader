@@ -1,5 +1,5 @@
 import { state, setCachedData } from './state';
-import { log, sleepWithAbort, sleep } from '../utils/index';
+import { log, sleepWithAbort, sleep, fetchWithTimeout } from '../utils/index';
 import { fullCleanup } from '../utils/dom';
 import { createDownloadPopup, showFormatChoice } from '../ui/popups';
 import { updateTrayText } from '../ui/tray';
@@ -22,53 +22,9 @@ export interface DownloadOptions {
     tasks: DownloadTask[];
 }
 
-// 带超时控制的通用 Fetch
-async function fetchWithTimeout(url: string, options: RequestInit = {}, timeout = 15000): Promise<Response> {
-
-    const controller = new AbortController();
-    const id = window.setTimeout(() => controller.abort(), timeout);
-
-    // 获取全局中断信号
-    const globalSignal = state.abortController?.signal;
-
-    // 监听全局中断
-    let onGlobalAbort: (() => void) | undefined;
-
-    // 无论 fetch 在干什么，这个 Promise 会瞬间报错，强行结束 await
-    const abortPromise = new Promise<never>((_, reject) => {
-        if (globalSignal?.aborted) {
-            return reject(new Error('User Aborted'));
-        }
-        onGlobalAbort = () => reject(new Error('User Aborted'));
-        globalSignal?.addEventListener('abort', onGlobalAbort);
-    });
-
-    const fetchPromise = fetch(url, {
-        ...options,
-        signal: controller.signal
-    }).then(res => {
-        if (!res.ok) throw new Error(`Status ${res.status}`);
-        return res;
-    });
-
-    try {
-        // 用户一点取消，abortPromise 就会立刻 reject，跳过 fetch 的等待
-        const response = await Promise.race([fetchPromise, abortPromise]);
-        clearTimeout(id);
-        if (!response.ok) throw new Error(`Status ${response.status}`);
-        return response;
-    } catch (e) {
-        clearTimeout(id);
-        controller.abort();
-        throw e;
-    } finally {
-        if (globalSignal && onGlobalAbort) {
-            globalSignal.removeEventListener('abort', onGlobalAbort);
-        }
-    }
-}
-
-
+/**
+ * 批量下载章节
+ */
 export async function batchDownload(options: DownloadOptions): Promise<void> {
     const { bookId, bookName, author = "未知作者", introTxt, coverUrl, tasks } = options;
     const total = tasks.length;

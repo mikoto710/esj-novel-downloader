@@ -11,7 +11,11 @@ interface StoredCache {
 const CACHE_PREFIX = 'esj_down_';
 const CACHE_EXPIRE_TIME = 24 * 60 * 60 * 1000;
 
-// 读取缓存
+/**
+ * 读取 IndexedDB 中的小说缓存
+ * @param bookId
+ * @returns 缓存数据和章节数量
+ */
 export async function loadBookCache(bookId: string): Promise<{ size: number; map: Map<number, Chapter> | null }> {
     const key = CACHE_PREFIX + bookId;
     try {
@@ -37,7 +41,11 @@ export async function loadBookCache(bookId: string): Promise<{ size: number; map
     return { size: 0, map: null };
 }
 
-// 保存缓存
+/**
+ * 保存章节缓存到 IndexedDB
+ * @param bookId
+ * @param map 章节数据
+ */
 export async function saveBookCache(bookId: string, map: Map<number, Chapter>) {
     const key = CACHE_PREFIX + bookId;
     const data = {
@@ -51,7 +59,10 @@ export async function saveBookCache(bookId: string, map: Map<number, Chapter>) {
     }
 }
 
-// 清理缓存
+/**
+ * 清理指定 ID 的缓存
+ * @param bookId 
+ */
 export async function clearBookCache(bookId: string) {
     try {
         await del(CACHE_PREFIX + bookId);

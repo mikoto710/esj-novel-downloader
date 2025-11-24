@@ -38,6 +38,7 @@ export function enableDrag(popup: HTMLElement, headerSelector: string): void {
 
 /**
  * 清理所有弹窗和悬浮球，并恢复标题
+ * @param originalTitle 原始标题
  */
 export function fullCleanup(originalTitle?: string): void {
     const selectors = [
@@ -58,6 +59,9 @@ export function fullCleanup(originalTitle?: string): void {
 
 /**
  * 快速创建带属性和子元素的 DOM 节点
+ * @param tag 标签名
+ * @param attrs 属性对象
+ * @param children 子元素数组
  */
 export function el<K extends keyof HTMLElementTagNameMap>(
     tag: K,
