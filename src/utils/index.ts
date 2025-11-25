@@ -1,17 +1,74 @@
 /**
- * 通过 CDN 动态加载外部脚本
- * @param src 脚本 URL
+ * 安全获取全局变量 (兼容油猴沙箱环境)
+ * @param name 变量名，如 'JSZip'
  */
-export function loadScript(src: string): Promise<any> {
-    return new Promise((resolve, reject) => {
-        if (window.JSZip) return resolve(window.JSZip);
+function getGlobalVar<T>(name: string): T | undefined {
+    // 优先检查当前上下文
+    if (window && (window as any)[name]) {
+        return (window as any)[name];
+    }
+    // 检查沙箱环境
+    if (typeof unsafeWindow !== 'undefined' && unsafeWindow[name]) {
+        return unsafeWindow[name];
+    }
+    return undefined;
+}
 
+/**
+ * 单脚本加载
+ * @param src 脚本 URL
+ * @param globalName 全局变量名，如 'JSZip'
+ */
+export function loadSingleScript<T>(src: string, globalName: string): Promise<T> {
+    return new Promise((resolve, reject) => {
+        // 检查是否存在
+        const existing = getGlobalVar<T>(globalName);
+        if (existing) return resolve(existing);
+
+        // 动态注入 + 异步加载
         const s = document.createElement("script");
         s.src = src;
-        s.onload = () => resolve(window.JSZip);
-        s.onerror = () => reject(new Error("加载脚本失败: " + src));
+        s.async = true;
+
+        s.onload = () => {
+            const loaded = getGlobalVar<T>(globalName);
+            if (loaded) {
+                resolve(loaded);
+            } else {
+                reject(new Error(`脚本加载成功但全局变量未找到: ${globalName}`));
+            }
+        };
+
+        s.onerror = () => {
+            // 加载失败移除标签，保持 DOM 干净
+            s.remove();
+            reject(new Error(`网络错误: ${src}`));
+        };
+
         document.head.appendChild(s);
     });
+}
+
+/**
+ * 支持自动 Fallback 的脚本加载器
+ * @param srcs 单个 URL 或 URL 数组 (按序重试)
+ * @param globalName 全局变量名，如 'JSZip'
+ */
+export async function loadScript<T>(srcs: string | string[], globalName: string): Promise<T> {
+    const urls = Array.isArray(srcs) ? srcs : [srcs];
+    let lastError: Error | null = null;
+
+    for (const url of urls) {
+        try {
+            return await loadSingleScript<T>(url, globalName);
+        } catch (e: any) {
+            console.warn(`[ESJ-Downloader] CDN 加载失败 (${url}):`, e.message);
+            lastError = e;
+        }
+    }
+
+    // 如果循环结束还没返回，说明全挂了
+    throw new Error(`所有 CDN 均加载失败。最后一次错误: ${lastError?.message}`);
 }
 
 /**
@@ -86,9 +143,9 @@ export function log(msg: string): void {
  * @param cancelSignal 外部取消信号
  */
 export async function fetchWithTimeout(
-    url: string, 
-    options: RequestInit = {}, 
-    timeout = 10000, 
+    url: string,
+    options: RequestInit = {},
+    timeout = 10000,
     cancelSignal?: AbortSignal
 ): Promise<Response> {
     // 超时控制器
@@ -110,7 +167,7 @@ export async function fetchWithTimeout(
     // 发起请求
     const fetchPromise = fetch(url, {
         ...options,
-        signal: controller.signal 
+        signal: controller.signal
     }).then(res => {
         if (!res.ok) throw new Error(`Status ${res.status}`);
         return res;

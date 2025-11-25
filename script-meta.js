@@ -19,6 +19,7 @@ export default function getMeta() {
     grant: [
       'GM_setValue',
       'GM_getValue',
+      'unsafeWindow',
     ],
     // icon: 'https://www.esjzone.cc/favicon.ico', 
   };

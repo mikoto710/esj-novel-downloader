@@ -25,7 +25,7 @@ function toggleSettingsLock(locked: boolean) {
 function createCommonHeader(title: string, onClose: () => void, onMinimize?: () => void): HTMLElement {
     const btnGroup: HTMLElement[] = [];
 
-    // 1. 最小化按钮 (如果有回调就创建)
+    // 最小化按钮
     if (onMinimize) {
         const btnMin = el('button', {
             title: '最小化',
@@ -35,7 +35,7 @@ function createCommonHeader(title: string, onClose: () => void, onMinimize?: () 
         btnGroup.push(btnMin);
     }
 
-    // 2. 关闭按钮 (红色)
+    // 关闭按钮
     const btnClose = el('button', {
         title: '关闭',
         style: 'border:none;background:#ef5350;color:#fff;padding:4px 10px;border-radius:6px;cursor:pointer;font-weight:bold;',
@@ -43,9 +43,9 @@ function createCommonHeader(title: string, onClose: () => void, onMinimize?: () 
     }, ['✕']);
     btnGroup.push(btnClose);
 
-    // 3. 容器
+    // 容器
     return el('div', {
-        className: 'esj-common-header', // 用于拖拽选择器
+        className: 'esj-common-header',
         style: 'padding:10px;background:#2b9bd7;color:#fff;display:flex;justify-content:space-between;align-items:center;cursor:move;border-radius:8px 8px 0 0;'
     }, [
         el('span', { style: 'font-weight:bold;' }, [title]),
@@ -257,8 +257,11 @@ export function showFormatChoice(): void {
             return;
         }
 
+        const originalText = btn.innerText;
+        const originalBg = btn.style.background;
+        const oldTitle = document.title;
         try {
-            const oldText = btn.innerText;
+
             btn.innerText = "生成中...";
             btn.disabled = true;
             btn.style.background = "#7ab8d6";
@@ -272,17 +275,18 @@ export function showFormatChoice(): void {
             const filename = (currentData.metadata.title || "book") + ".epub";
             triggerDownload(blob, filename);
 
-            document.title = oldTitle;
-            btn.innerText = oldText;
-            btn.disabled = false;
-            btn.style.background = "#2b9bd7";
         } catch (e: any) {
+            console.error(e);
             alert("EPUB 生成失败: " + e.message);
-            btn.innerText = "EPUB 失败";
+        } finally {
+            btn.innerText = originalText;
             btn.disabled = false;
+            btn.style.background = originalBg;
+            document.title = oldTitle;
         }
     }
 }
+
 
 /**
  * 创建设置面板弹窗
@@ -307,7 +311,7 @@ export function createSettingsPanel(): void {
         style: 'width: 60px; padding: 6px; border: 1px solid #ccc; border-radius: 4px; text-align: center;',
         oninput: (e: Event) => {
             const target = e.target as HTMLInputElement;
-            
+
             if (target.value === '') return;
 
             let val = parseInt(target.value, 10);
@@ -333,7 +337,8 @@ export function createSettingsPanel(): void {
                 target.value = currentConcurrency.toString();
                 setConcurrency(currentConcurrency);
             }
-        }});
+        }
+    });
 
     let confirmTimer: number;
     let isConfirming = false;

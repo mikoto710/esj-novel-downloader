@@ -1,6 +1,9 @@
-interface Window {
-    JSZip: any;
-}
+/**
+ * Tampermonkey 全局变量声明
+ */
+
+// unsafeWindow 沙箱
+declare const unsafeWindow: any;
 
 // GM API 类型定义
 declare function GM_setValue(key: string, value: any): void;

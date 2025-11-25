@@ -2,18 +2,29 @@ import { loadScript, log } from '../utils/index';
 import { escapeXml, escapeHtmlPreserveLine } from '../utils/text';
 import { Chapter, BookMetadata } from '../types';
 
+import type JSZip from 'jszip';
+
 /**
  * 封装数据，生成 EPUB 文件
  */
 export async function buildEpub(chapters: Chapter[], metadata: BookMetadata): Promise<Blob> {
+
+  let ZipClass: new () => JSZip;
+
+  const JSZIP_URLS = [
+      "https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js",
+      "https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js",
+      "https://unpkg.com/jszip@3.10.1/dist/jszip.min.js"
+  ];
+
   try {
-    await loadScript("https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js");
-    if (!window.JSZip) throw new Error("JSZip 未就绪");
+    ZipClass = await loadScript<new () => JSZip>(JSZIP_URLS, "JSZip");
   } catch (e: any) {
-    throw new Error("加载 JSZip 失败: " + e.message);
+    throw new Error("JSZip 核心库加载失败: " + e.message);
   }
 
-  const zip = new window.JSZip();
+
+  const zip = new ZipClass();
   zip.file("mimetype", "application/epub+zip", { binary: true, compression: "STORE" });
 
   zip.folder("META-INF")?.file("container.xml",
