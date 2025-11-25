@@ -2,7 +2,7 @@ import { log } from '../utils/index';
 
 // 默认配置
 const DEFAULT_CONFIG = {
-    concurrency: 3
+    concurrency: 5
 };
 
 /**

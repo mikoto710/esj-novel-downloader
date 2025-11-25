@@ -95,7 +95,6 @@ export function createDownloadPopup(): HTMLElement {
     const span = header.querySelector('span');
     if (span) span.id = 'esj-title';
 
-
     const progressBar = el('div', { id: 'esj-progress', style: 'width:0%;height:100%;background:#2b9bd7;transition:width .2s;' });
 
     const logBox = el('div', {
@@ -142,11 +141,14 @@ export function createConfirmPopup(onOk: () => void, onCancel?: () => void): voi
         ? `检测到已有 ${cachedCount} 章缓存，点击确定将跳过已下载章节继续下载。`
         : "是否开始抓取该小说全部章节？";
 
-    const header = el('div', {
-        id: 'esj-confirm-header',
-        style: 'padding:10px;background:#2b9bd7;color:#fff;border-radius:8px 8px 0 0;cursor:move;'
-    }, ['确认下载']);
+    const closeAction = () => {
+        document.querySelector("#esj-confirm")?.remove();
+        toggleSettingsLock(false);
+        if (onCancel) onCancel(); 
+    };
 
+    const header = createCommonHeader('✔️ 确认下载', closeAction);
+    
     const body = el('div', { style: 'padding:16px;font-size:14px;' }, [hintText]);
 
     const btnCancel = el('button', {
@@ -176,7 +178,7 @@ export function createConfirmPopup(onOk: () => void, onCancel?: () => void): voi
 
     const popup = el('div', {
         id: 'esj-confirm',
-        style: 'position: fixed; top: 30%; left: 50%; transform: translateX(-50%); width: 380px; background:#fff;border:1px solid #aaa;border-radius:8px;box-shadow:0 0 18px rgba(0,0,0,.28);z-index:999999;padding:0;'
+        style: 'position: fixed; top: 30%; left: 50%; transform: translateX(-50%); width: 380px; background:#fff;border:1px solid #aaa;border-radius:8px;box-shadow:0 4px 20px rgba(0,0,0,0.15);z-index:999999;padding:0;display:flex;flex-direction:column;'
     }, [header, body, footer]);
 
     document.body.appendChild(popup);
@@ -305,8 +307,18 @@ export function createSettingsPanel(): void {
         style: 'width: 60px; padding: 6px; border: 1px solid #ccc; border-radius: 4px; text-align: center;'
     });
     inputConcurrency.onchange = (e: Event) => {
-        const val = parseInt((e.target as HTMLInputElement).value, 10);
-        if (!isNaN(val)) setConcurrency(val);
+        const target = e.target as HTMLInputElement;
+        let val = parseInt(target.value, 10);
+
+        if (isNaN(val))
+            return;
+
+        if (val > 10) val = 10;
+        if (val < 1) val = 1;
+
+        target.value = val.toString();
+
+        setConcurrency(val);
     };
 
     let confirmTimer: number;
@@ -320,7 +332,7 @@ export function createSettingsPanel(): void {
             if (!isConfirming) {
                 isConfirming = true;
                 btn.textContent = "确定删除?";
-                
+
                 // 3秒后如果不点，自动还原
                 confirmTimer = window.setTimeout(() => {
                     isConfirming = false;
@@ -338,7 +350,7 @@ export function createSettingsPanel(): void {
 
             try {
                 await clearAllCaches();
-                
+
                 btn.classList.remove('btn-danger');
                 btn.classList.add('btn-success');
                 btn.style.backgroundColor = '#28a745';
