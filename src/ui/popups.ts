@@ -144,11 +144,11 @@ export function createConfirmPopup(onOk: () => void, onCancel?: () => void): voi
     const closeAction = () => {
         document.querySelector("#esj-confirm")?.remove();
         toggleSettingsLock(false);
-        if (onCancel) onCancel(); 
+        if (onCancel) onCancel();
     };
 
     const header = createCommonHeader('✔️ 确认下载', closeAction);
-    
+
     const body = el('div', { style: 'padding:16px;font-size:14px;' }, [hintText]);
 
     const btnCancel = el('button', {
@@ -304,22 +304,36 @@ export function createSettingsPanel(): void {
     const inputConcurrency = el('input', {
         type: 'number',
         min: 1, max: 10, value: currentConcurrency,
-        style: 'width: 60px; padding: 6px; border: 1px solid #ccc; border-radius: 4px; text-align: center;'
-    });
-    inputConcurrency.onchange = (e: Event) => {
-        const target = e.target as HTMLInputElement;
-        let val = parseInt(target.value, 10);
+        style: 'width: 60px; padding: 6px; border: 1px solid #ccc; border-radius: 4px; text-align: center;',
+        oninput: (e: Event) => {
+            const target = e.target as HTMLInputElement;
+            
+            if (target.value === '') return;
 
-        if (isNaN(val))
-            return;
+            let val = parseInt(target.value, 10);
 
-        if (val > 10) val = 10;
-        if (val < 1) val = 1;
+            if (isNaN(val)) return;
 
-        target.value = val.toString();
+            if (val > 10) {
+                val = 10;
+                target.value = '10';
+            } else if (val < 1) {
+                val = 1;
+                target.value = '1';
+            }
 
-        setConcurrency(val);
-    };
+            setConcurrency(val);
+        },
+
+        onblur: (e: Event) => {
+            const target = e.target as HTMLInputElement;
+            let val = parseInt(target.value, 10);
+
+            if (isNaN(val) || target.value === '') {
+                target.value = currentConcurrency.toString();
+                setConcurrency(currentConcurrency);
+            }
+        }});
 
     let confirmTimer: number;
     let isConfirming = false;
