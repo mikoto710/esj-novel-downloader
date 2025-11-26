@@ -41,7 +41,7 @@ export function createDownloadButton(
     
     const btn = el('button', {
         id: id,
-        className: `btn btn-info ${customClass}`,
+        className: `btn btn-info esj-download-trigger ${customClass}`,
         style: 'color: white; cursor: pointer;',
         onclick: async () => {
             
@@ -79,7 +79,7 @@ export function createDownloadButton(
             } catch (err: any) {
                 console.error("Scrape Error: " + err.message);
             } finally {
-                btn.disabled = false;
+                // btn.disabled = false;
                 btn.innerHTML = originalHtml;
             }
         }

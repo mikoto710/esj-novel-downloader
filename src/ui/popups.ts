@@ -17,6 +17,15 @@ function toggleSettingsLock(locked: boolean) {
 }
 
 /**
+ * 锁定/解锁页面上的设置按钮
+ * @param locked true=禁用, false=启用
+ */
+function toggleDownloadLock(locked: boolean) {
+    const btns = document.querySelectorAll('.esj-download-trigger');
+    btns.forEach(b => (b as HTMLButtonElement).disabled = locked);
+}
+
+/**
  * 创建通用头部
  * @param title 标题
  * @param onClose 关闭回调
@@ -197,13 +206,16 @@ export function showFormatChoice(): void {
 
     fullCleanup();
 
+    // 禁用设置和下载按钮，防止重复操作
     toggleSettingsLock(true);
+    toggleDownloadLock(true);
 
     const data = state.cachedData as CachedData;
 
     const closeAction = () => {
         document.querySelector("#esj-format")?.remove();
         toggleSettingsLock(false);
+        toggleDownloadLock(false);
     };
 
     const header = createCommonHeader('💾 导出选项', closeAction);
