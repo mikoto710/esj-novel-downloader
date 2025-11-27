@@ -65,12 +65,12 @@ export function createDownloadButton(
                 return;
             }
 
-            // 执行抓取任务，进入 loading
             if (btn.disabled) return;
             
             // 保存原始 HTML 以便恢复
             const originalHtml = btn.innerHTML;
             
+            // 执行抓取任务，进入 loading
             btn.disabled = true;
             btn.innerHTML = '<i class="icon-refresh fa-spin"></i> 准备中...';
 

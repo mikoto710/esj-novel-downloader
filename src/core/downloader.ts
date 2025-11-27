@@ -82,7 +82,7 @@ export async function batchDownload(options: DownloadOptions): Promise<void> {
     })();
 
     // 并发量
-    const CONCURRENCY = getConcurrency();
+    const concurrency = getConcurrency();
 
     // 复制任务队列
     let queue = [...tasks];
@@ -193,9 +193,9 @@ export async function batchDownload(options: DownloadOptions): Promise<void> {
         }
     }
 
-    log(`启动 ${CONCURRENCY} 个并发线程...`);
+    log(`启动 ${concurrency} 个并发线程...`);
     const workers = [];
-    for (let k = 0; k < CONCURRENCY; k++) {
+    for (let k = 0; k < concurrency; k++) {
         workers.push(worker());
     }
     await Promise.all(workers);
