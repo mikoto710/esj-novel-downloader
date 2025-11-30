@@ -17,7 +17,7 @@ function toggleSettingsLock(locked: boolean) {
 }
 
 /**
- * 锁定/解锁页面上的设置按钮
+ * 锁定/解锁页面上的下载按钮
  * @param locked true=禁用, false=启用
  */
 function toggleDownloadLock(locked: boolean) {
@@ -144,7 +144,6 @@ export function createConfirmPopup(onOk: () => void, onCancel?: () => void): voi
     fullCleanup(state.originalTitle);
 
     toggleSettingsLock(true);
-    toggleDownloadLock(true);
 
     const cachedCount = state.globalChaptersMap.size;
     const hintText = cachedCount > 0
@@ -154,7 +153,6 @@ export function createConfirmPopup(onOk: () => void, onCancel?: () => void): voi
     const closeAction = () => {
         document.querySelector("#esj-confirm")?.remove();
         toggleSettingsLock(false);
-        toggleDownloadLock(false);
         if (onCancel) onCancel();
     };
 
@@ -169,7 +167,6 @@ export function createConfirmPopup(onOk: () => void, onCancel?: () => void): voi
             popup.remove();
             if (onCancel) {
                 toggleSettingsLock(false);
-                toggleDownloadLock(false);
                 onCancel();
             };
         }

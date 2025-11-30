@@ -79,8 +79,13 @@ export function createDownloadButton(
             } catch (err: any) {
                 console.error("Scrape Error: " + err.message);
             } finally {
-                // btn.disabled = false;
-                btn.innerHTML = originalHtml;
+                // 没有缓存数据时，才恢复按钮可用
+                if (!state.cachedData) {
+                    btn.disabled = false;
+                    btn.innerHTML = originalHtml;
+                } else {
+                    btn.innerHTML = originalHtml;
+                }
             }
         }
     }, [

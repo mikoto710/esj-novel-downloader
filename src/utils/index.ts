@@ -62,7 +62,7 @@ export async function loadScript<T>(srcs: string | string[], globalName: string)
         try {
             return await loadSingleScript<T>(url, globalName);
         } catch (e: any) {
-            console.warn(`[ESJ-Downloader] CDN 加载失败 (${url}):`, e.message);
+            console.warn(`[esj-novel-downloader] CDN 加载失败 (${url}):`, e.message);
             lastError = e;
         }
     }
