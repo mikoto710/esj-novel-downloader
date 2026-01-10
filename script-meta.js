@@ -5,10 +5,13 @@ export default function getMeta() {
 
   return {
     name: 'ESJZone 全本下载',
-    namespace: 'http://tampermonkey.net/',
+    namespace: 'https://github.com/mikoto710/esj-novel-downloader',
+    homepageURL: 'https://github.com/mikoto710/esj-novel-downloader',
+    supportURL: 'https://github.com/mikoto710/esj-novel-downloader/issues',
     version: pkg.version,
     description: '在 ESJZone 小说详情页/论坛页注入下载按钮，支持 TXT/EPUB 全本导出，支持阅读页单章节下载',
     author: 'Shigure Sora',
+    license: 'MIT',
     match: [
       'https://www.esjzone.cc/detail/*',
       'https://www.esjzone.one/detail/*',
