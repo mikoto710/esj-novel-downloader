@@ -351,7 +351,7 @@ export function createSettingsPanel(): void {
         style: 'color: white; min-width: 110px; transition: all 0.2s;',
         onclick: async (e: Event) => {
             const btn = e.target as HTMLButtonElement;
-            
+
             if (!isConfirming) {
                 isConfirming = true;
                 btn.textContent = "确定删除?";
@@ -394,14 +394,15 @@ export function createSettingsPanel(): void {
     const checkboxImage = el('input', {
         type: 'checkbox',
         checked: isImageEnabled,
-        style: 'transform: scale(1.3); cursor: pointer;', // 稍微调小一点点 scale 会精致些
+        style: 'transform: scale(1.3); cursor: pointer;',
         onchange: (e: Event) => {
             const checked = (e.target as HTMLInputElement).checked;
             setImageDownloadSetting(checked);
+            log(`正文图片下载已${checked ? '开启' : '关闭'}`);
         }
     });
 
-
+    log(`初始化参数：并发数=${currentConcurrency}，图片下载=${isImageEnabled}`);
 
     // 创建分隔线
     const createDivider = () => el('hr', { style: 'margin: 15px 0; border: 0; border-top: 1px solid #eee;' });
@@ -422,7 +423,7 @@ export function createSettingsPanel(): void {
     const rowImage = el('div', { style: rowStyle }, [
         el('div', {}, [
             el('label', { style: 'color: #333;' }, ['下载正文插图: ']),
-            el('div', { style: 'font-size:12px; color:#999; margin-top: 2px;' }, ['(开启后速度变慢，体积变大)'])
+            el('div', { style: 'font-size:12px; color:#999; margin-top: 2px;' }, ['(适用于epub导出，开启后速度变慢，体积变大)'])
         ]),
         checkboxImage
     ]);
