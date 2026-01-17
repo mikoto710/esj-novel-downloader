@@ -432,9 +432,9 @@ export function createSettingsPanel(): void {
     const body = el('div', { style: 'padding: 25px 20px; font-size: 14px;' }, [
         rowConcurrency,
         createDivider(),
-        rowCache,
+        rowImage,
         createDivider(),
-        rowImage
+        rowCache
     ]);
 
     const popup = el('div', {
