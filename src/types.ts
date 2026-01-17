@@ -3,6 +3,14 @@ export interface Chapter {
     title: string;
     content: string;
     txtSegment: string;
+    images?: ChapterImage[];
+}
+
+// 章节图片结构
+export interface ChapterImage {
+    id: string;         // EPUB 内部的文件名 (如 img_0_1.jpg)
+    blob: Blob;
+    mediaType: string;
 }
 
 // 书籍元数据

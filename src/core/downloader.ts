@@ -6,7 +6,8 @@ import { updateTrayText } from '../ui/tray';
 import { loadBookCache, saveBookCache, clearBookCache } from './storage';
 import { Chapter } from '../types';
 import { parseChapterHtml } from './parser';
-import { getConcurrency } from './config';
+import { getConcurrency, getImageDownloadSetting } from './config';
+import { processHtmlImages } from '../utils/image';
 
 export interface DownloadTask {
     index: number;
@@ -81,8 +82,9 @@ export async function batchDownload(options: DownloadOptions): Promise<void> {
         }
     })();
 
-    // 并发量
+    // 获取自定义配置
     const concurrency = getConcurrency();
+    const enableImage = getImageDownloadSetting();
 
     // 复制任务队列
     let queue = [...tasks];
@@ -137,10 +139,25 @@ export async function batchDownload(options: DownloadOptions): Promise<void> {
                 // 调用解析器
                 const result = parseChapterHtml(html, title);
 
+                let finalHtml = result.contentHtml; // 默认用原始 HTML
+                let chapterImages: any[] = [];
+
+                if (enableImage) {
+                    // 如果开启了图片下载，处理 HTML
+                    const processed = await processHtmlImages(
+                        result.contentHtml,
+                        index,
+                        state.abortController?.signal
+                    );
+                    finalHtml = processed.processedHtml;
+                    chapterImages = processed.images;
+                }
+
                 state.globalChaptersMap.set(index, {
                     title: result.title,
-                    content: result.content,
-                    txtSegment: `${result.title}\n\n${result.author}\n\n${result.content}\n\n`
+                    content: finalHtml,
+                    txtSegment: `${result.title}\n\n${result.author}\n\n${result.contentText}\n\n`,
+                    images: chapterImages
                 });
 
                 if (!state.abortFlag && completedCount % 5 === 0) {

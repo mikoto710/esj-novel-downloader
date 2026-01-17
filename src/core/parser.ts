@@ -16,7 +16,7 @@ export function parseBookMetadata(doc: Document, pageUrl: string) {
 
     let author = "未知作者";
     let infoBlock = "";
-    
+
     const infoUl = doc.querySelector(".book-detail ul.book-detail");
     if (infoUl) {
         const listItems = Array.from(infoUl.querySelectorAll('li'));
@@ -91,7 +91,7 @@ export function parseBookMetadata(doc: Document, pageUrl: string) {
 /**
  * 解析单个章节页面的 HTML，提取标题、作者和正文
  */
-export function parseChapterHtml(html: string, defaultTitle: string): { title: string, author: string, content: string, bookName: string } {
+export function parseChapterHtml(html: string, defaultTitle: string) {
     const doc = new DOMParser().parseFromString(html, "text/html");
 
     const h2 = (doc.querySelector("h2") as HTMLElement)?.innerText || defaultTitle;
@@ -103,9 +103,26 @@ export function parseChapterHtml(html: string, defaultTitle: string): { title: s
     let content = (doc.querySelector(".forum-content") as HTMLElement)?.innerText || "";
 
     // 检测并移除正文开头重复的标题
-    const safeTitle = h2.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const titleRegex = new RegExp(`^\\s*${safeTitle}\\s*`, 'i');
-    content = content.replace(titleRegex, '').trim();
+    const contentEl = doc.querySelector(".forum-content") as HTMLElement;
 
-    return { title: h2, author, content, bookName };
+    // 获取用于 EPUB 的 HTML (包含 img 标签)
+    let contentHtml = contentEl ? contentEl.innerHTML : "";
+
+    // 获取用于 TXT 的纯文本
+    let contentText = contentEl ? contentEl.innerText : "";
+
+    if (contentEl) {
+        const safeTitle = h2.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const titleRegex = new RegExp(`^\\s*${safeTitle}\\s*`, 'i');
+
+        contentText = contentText.replace(titleRegex, '').trim();
+    }
+
+    return {
+        title: h2,
+        author,
+        contentHtml,
+        contentText,
+        bookName
+    };
 }

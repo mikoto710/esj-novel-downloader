@@ -4,7 +4,7 @@ import { log, triggerDownload } from '../utils/index';
 import { createMinimizedTray } from './tray';
 import { buildEpub } from '../core/epub';
 import { CachedData } from '../types';
-import { getConcurrency, setConcurrency } from '../core/config';
+import { getConcurrency, setConcurrency, setImageDownloadSetting, getImageDownloadSetting } from '../core/config';
 import { clearAllCaches } from '../core/storage';
 
 /**
@@ -316,6 +316,7 @@ export function createSettingsPanel(): void {
 
     const header = createCommonHeader('⚙️ 脚本设置', closeAction);
 
+    // 并发数输入框
     const currentConcurrency = getConcurrency();
     const inputConcurrency = el('input', {
         type: 'number',
@@ -323,28 +324,18 @@ export function createSettingsPanel(): void {
         style: 'width: 60px; padding: 6px; border: 1px solid #ccc; border-radius: 4px; text-align: center;',
         oninput: (e: Event) => {
             const target = e.target as HTMLInputElement;
-
             if (target.value === '') return;
-
             let val = parseInt(target.value, 10);
-
             if (isNaN(val)) return;
 
-            if (val > 10) {
-                val = 10;
-                target.value = '10';
-            } else if (val < 1) {
-                val = 1;
-                target.value = '1';
-            }
+            if (val > 10) { val = 10; target.value = '10'; }
+            else if (val < 1) { val = 1; target.value = '1'; }
 
             setConcurrency(val);
         },
-
         onblur: (e: Event) => {
             const target = e.target as HTMLInputElement;
             let val = parseInt(target.value, 10);
-
             if (isNaN(val) || target.value === '') {
                 target.value = currentConcurrency.toString();
                 setConcurrency(currentConcurrency);
@@ -352,6 +343,7 @@ export function createSettingsPanel(): void {
         }
     });
 
+    // 缓存清理按钮
     let confirmTimer: number;
     let isConfirming = false;
     const btnClear = el('button', {
@@ -359,29 +351,25 @@ export function createSettingsPanel(): void {
         style: 'color: white; min-width: 110px; transition: all 0.2s;',
         onclick: async (e: Event) => {
             const btn = e.target as HTMLButtonElement;
-
+            
             if (!isConfirming) {
                 isConfirming = true;
                 btn.textContent = "确定删除?";
-
-                // 3秒后如果不点，自动还原
                 confirmTimer = window.setTimeout(() => {
                     isConfirming = false;
                     btn.textContent = "清空缓存";
                 }, 3000);
                 return;
             }
-
             clearTimeout(confirmTimer);
             isConfirming = false;
 
-            // 进入 Loading 状态
             btn.disabled = true;
             btn.textContent = "清理中...";
-
+            
             try {
                 await clearAllCaches();
-
+                
                 btn.classList.remove('btn-danger');
                 btn.classList.add('btn-success');
                 btn.style.backgroundColor = '#28a745';
@@ -401,22 +389,59 @@ export function createSettingsPanel(): void {
         }
     }, [' 清空缓存']);
 
+    // 图片下载开关
+    const isImageEnabled = getImageDownloadSetting();
+    const checkboxImage = el('input', {
+        type: 'checkbox',
+        checked: isImageEnabled,
+        style: 'transform: scale(1.3); cursor: pointer;', // 稍微调小一点点 scale 会精致些
+        onchange: (e: Event) => {
+            const checked = (e.target as HTMLInputElement).checked;
+            setImageDownloadSetting(checked);
+        }
+    });
+
+
+
+    // 创建分隔线
+    const createDivider = () => el('hr', { style: 'margin: 15px 0; border: 0; border-top: 1px solid #eee;' });
+
+    // 通用行样式
+    const rowStyle = 'display:flex; align-items:center; justify-content:space-between;';
+
+    const rowConcurrency = el('div', { style: rowStyle }, [
+        el('label', { style: 'color: #333;' }, ['下载线程数 (1-10):']),
+        inputConcurrency
+    ]);
+
+    const rowCache = el('div', { style: rowStyle }, [
+        el('label', { style: 'color: #333;' }, ['下载缓存:']),
+        btnClear
+    ]);
+
+    const rowImage = el('div', { style: rowStyle }, [
+        el('div', {}, [
+            el('label', { style: 'color: #333;' }, ['下载正文插图: ']),
+            el('div', { style: 'font-size:12px; color:#999; margin-top: 2px;' }, ['(开启后速度变慢，体积变大)'])
+        ]),
+        checkboxImage
+    ]);
+
+    // 组装整体面板
+    const body = el('div', { style: 'padding: 25px 20px; font-size: 14px;' }, [
+        rowConcurrency,
+        createDivider(),
+        rowCache,
+        createDivider(),
+        rowImage
+    ]);
+
     const popup = el('div', {
         id: 'esj-settings',
         style: 'position:fixed;top:30%;left:50%;transform:translateX(-50%);width:320px;background:#fff;border:1px solid #ccc;border-radius:8px;box-shadow:0 4px 20px rgba(0,0,0,0.15);z-index:999999;display:flex;flex-direction:column;'
     }, [
         header,
-        el('div', { style: 'padding: 25px 20px; font-size: 14px;' }, [
-            el('div', { style: 'margin-bottom: 20px; display:flex; align-items:center; justify-content:space-between;' }, [
-                el('label', { style: 'color: #333;' }, ['下载线程数 (1-10):']),
-                inputConcurrency
-            ]),
-            el('hr', { style: 'margin: 15px 0; border: 0; border-top: 1px solid #eee;' }),
-            el('div', { style: 'display:flex; align-items:center; justify-content:space-between;' }, [
-                el('label', { style: 'color: #333;' }, ['下载缓存:']),
-                btnClear
-            ])
-        ])
+        body
     ]);
 
     document.body.appendChild(popup);

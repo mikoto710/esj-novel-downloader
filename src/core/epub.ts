@@ -1,5 +1,5 @@
 import { loadScript, log } from '../utils/index';
-import { escapeXml, escapeHtmlPreserveLine } from '../utils/text';
+import { escapeXml } from '../utils/text';
 import { Chapter, BookMetadata } from '../types';
 
 import type JSZip from 'jszip';
@@ -65,13 +65,26 @@ export async function buildEpub(chapters: Chapter[], metadata: BookMetadata): Pr
     const filename = `${id}.xhtml`;
     const title = chapters[i].title || (`第${i + 1}章`);
     const body = chapters[i].content || "";
+    
+    // 处理章节中的图片
+    const chap = chapters[i];
+    if (chap.images && chap.images.length > 0) {
+        chap.images.forEach(img => {
+            // 写入文件到 OEBPS 根目录
+            oebps.file(img.id, img.blob);
+            // 添加到 Manifest
+            manifestItems.push(
+                `<item id="${img.id.replace('.', '_')}" href="${img.id}" media-type="${img.mediaType}" />`
+            );
+        });
+    }
 
     const xhtml = `<?xml version="1.0" encoding="utf-8"?>
             <html xmlns="http://www.w3.org/1999/xhtml">
               <head><title>${escapeXml(title)}</title></head>
               <body>
                 <h2>${escapeXml(title)}</h2>
-                <div>${escapeHtmlPreserveLine(body)}</div>
+                <div>${body}</div>
               </body>
             </html>`;
 

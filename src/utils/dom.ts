@@ -16,7 +16,7 @@ export function enableDrag(popup: HTMLElement, headerSelector: string): void {
         const rect = popup.getBoundingClientRect();
         offsetX = e.clientX - rect.left;
         offsetY = e.clientY - rect.top;
-        
+
         document.addEventListener("mousemove", onMove);
         document.addEventListener("mouseup", onUp, { once: true });
     });
@@ -42,9 +42,9 @@ export function enableDrag(popup: HTMLElement, headerSelector: string): void {
  */
 export function fullCleanup(originalTitle?: string): void {
     const selectors = [
-        "#esj-popup", 
-        "#esj-min-tray", 
-        "#esj-confirm", 
+        "#esj-popup",
+        "#esj-min-tray",
+        "#esj-confirm",
         "#esj-format",
         "#esj-settings"
     ];
@@ -56,9 +56,9 @@ export function fullCleanup(originalTitle?: string): void {
     if (originalTitle) {
         document.title = originalTitle;
     }
-    
+
     const settingsBtns = document.querySelectorAll('.esj-settings-trigger');
-    
+
     settingsBtns.forEach(btn => (btn as HTMLButtonElement).disabled = false);
 }
 
@@ -81,7 +81,10 @@ export function el<K extends keyof HTMLElementTagNameMap>(
             element.addEventListener(key.substring(2).toLowerCase(), value as EventListener);
         } else if (key === 'className') {
             element.className = value;
-        } else {
+        } else if (['checked', 'value', 'disabled', 'selected'].includes(key)) {
+            (element as any)[key] = value;
+        }
+        else {
             element.setAttribute(key, String(value));
         }
     }
