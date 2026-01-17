@@ -31,14 +31,15 @@ export async function downloadCurrentPage(): Promise<void> {
 
         const html = document.documentElement.outerHTML;
         const defaultTitle = document.title.split(' - ')[0] || "未命名章节";
-        const { title, author, content } = parseChapterHtml(html, defaultTitle);
+        
+        const { title, author, contentText } = parseChapterHtml(html, defaultTitle);
 
-        if (!content) {
+        if (!contentText) {
             alert("未找到正文内容");
             return;
         }
 
-        const finalTxt = `${metaHeader}${title}\n${author}\n本章URL: ${location.href}\n\n${content}`;
+        const finalTxt = `${metaHeader}${title}\n${author}\n本章URL: ${location.href}\n\n${contentText}`;
 
         const blob = new Blob([finalTxt], { type: 'text/plain;charset=utf-8' });
         const a = document.createElement('a');
