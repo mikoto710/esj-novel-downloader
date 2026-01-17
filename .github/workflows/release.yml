@@ -15,6 +15,17 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Ensure beta tag is from dev
+        if: contains(github.ref, 'beta')
+        run: |
+          branches=$(git branch -r --contains HEAD)
+          if ! echo "$branches" | grep -q "origin/dev"; then
+            echo "::error::⛔ Beta tags are allowed ONLY on the 'dev' branch!"
+            exit 1
+          fi
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
