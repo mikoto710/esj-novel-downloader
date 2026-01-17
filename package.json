@@ -3,8 +3,8 @@
   "version": "1.4.3-beta.1",
   "type": "module",
   "scripts": {
-    "build": "rollup -c",
     "check": "tsc --noEmit",
+    "build": "npm run check && rollup -c",
     "watch": "rollup -c -w"
   },
   "devDependencies": {
