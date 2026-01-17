@@ -40,7 +40,7 @@
 
 [👉 **点击这里直接安装最新版**](https://github.com/mikoto710/esj-novel-downloader/releases/latest/download/esj-novel-downloader.user.js) 
 
-或前往 [GreasyFork 发布页](https://github.com/mikoto710/esj-novel-downloader/releases/latest/download/esj-novel-downloader.user.js) 
+或前往 [GreasyFork 发布页](https://greasyfork.org/zh-CN/scripts/562046-esjzone-%E5%85%A8%E6%9C%AC%E4%B8%8B%E8%BD%BD) 
  / 本 GitHub 仓库的 [Releases 页面](https://github.com/mikoto710/esj-novel-downloader/releases) 手动下载。
 
 ## 使用方法
