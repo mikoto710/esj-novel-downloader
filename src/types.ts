@@ -4,6 +4,7 @@ export interface Chapter {
     content: string;
     txtSegment: string;
     images?: ChapterImage[];
+    imageErrors?: number;
 }
 
 // 章节图片结构

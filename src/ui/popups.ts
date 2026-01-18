@@ -221,13 +221,47 @@ export function showFormatChoice(): void {
     const header = createCommonHeader('💾 导出选项', closeAction);
 
     const coverStatus = data.metadata.coverBlob
-        ? el('div', { style: 'color:green;font-size:12px;margin-top:4px;' }, ['✔ 封面已包含在 epub 文件中'])
-        : el('div', { style: 'color:red;font-size:12px;margin-top:4px;' }, ['✖ 无封面']);
+        ? el('div', { style: 'color:green;font-size:12px;margin-top:4px;' }, ['✔  封面已包含在 epub 文件中'])
+        : el('div', { style: 'color:red;font-size:12px;margin-top:4px;' }, ['✖  无封面']);
+
+
+    // 正文插图统计
+    let imageStatus: HTMLElement | string = '';
+    const isImageDownloadEnabled = getImageDownloadSetting(); 
+    
+    if (isImageDownloadEnabled) {
+        let successCount = 0;
+        let failCount = 0;
+
+        // 遍历统计
+        data.chapters.forEach(chap => {
+            if (chap.images) successCount += chap.images.length;
+            if (chap.imageErrors) failCount += chap.imageErrors;
+        });
+
+        const totalCount = successCount + failCount;
+
+        if (totalCount > 0) {
+            // 有图片处理记录，失败显示橙色，全成功显示蓝色
+            const color = failCount > 0 ? '#e6a23c' : '#2b9bd7';
+            const errorHint = failCount > 0 ? ` (失败 ${failCount} 张，原因见 F12)` : '';
+            
+            imageStatus = el('div', { style: `color:${color}; font-size:12px; margin-top:4px;` }, 
+                [`🖼️ 正文插图: ${successCount} / ${totalCount} 张${errorHint}`]
+            );
+        } else {
+            // 开启了开关但没抓到任何图
+            imageStatus = el('div', { style: 'color:#999; font-size:12px; margin-top:4px;' }, 
+                ['🖼️ 正文插图: 未检测到图片']
+            );
+        }
+    }
 
     const infoBody = el('div', { style: 'padding:20px;font-size:14px;line-height:1.5;' }, [
         el('div', {}, [`《${data.metadata.title}》内容已就绪。`]),
         el('div', { style: 'color:#666;font-size:12px;margin-top:4px;' }, [`共 ${data.chapters.length} 章`]),
-        coverStatus
+        coverStatus,
+        imageStatus
     ]);
 
     const btnTxt = el('button', {
@@ -391,16 +425,33 @@ export function createSettingsPanel(): void {
 
     // 图片下载开关
     const isImageEnabled = getImageDownloadSetting();
-    const checkboxImage = el('input', {
+
+    // 旧版代码，使用 checkbox
+    // const checkboxImage = el('input', {
+    //     type: 'checkbox',
+    //     checked: isImageEnabled,
+    //     style: 'transform: scale(1.3); cursor: pointer;',
+    //     onchange: (e: Event) => {
+    //         const checked = (e.target as HTMLInputElement).checked;
+    //         setImageDownloadSetting(checked);
+    //         log(`正文图片下载已${checked ? '开启' : '关闭'}`);
+    //     }
+    // });
+
+    const checkboxInput = el('input', {
         type: 'checkbox',
         checked: isImageEnabled,
-        style: 'transform: scale(1.3); cursor: pointer;',
         onchange: (e: Event) => {
             const checked = (e.target as HTMLInputElement).checked;
             setImageDownloadSetting(checked);
             log(`正文图片下载已${checked ? '开启' : '关闭'}`);
         }
     });
+    
+    const switchToggleImage = el('label', { className: 'esj-switch' }, [
+        checkboxInput,
+        el('span', { className: 'esj-slider' })
+    ]);
 
     log(`初始化参数：并发数=${currentConcurrency}，图片下载=${isImageEnabled}`);
 
@@ -423,9 +474,9 @@ export function createSettingsPanel(): void {
     const rowImage = el('div', { style: rowStyle }, [
         el('div', {}, [
             el('label', { style: 'color: #333;' }, ['下载正文插图: ']),
-            el('div', { style: 'font-size:12px; color:#999; margin-top: 2px;' }, ['(适用于epub导出，开启后速度变慢，体积变大)'])
+            el('div', { style: 'font-size:12px; color:#999; margin-top: 2px;' }, ['(在epub中插入，会让速度变慢，体积变大)'])
         ]),
-        checkboxImage
+        switchToggleImage
     ]);
 
     // 组装整体面板

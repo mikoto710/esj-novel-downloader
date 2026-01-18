@@ -91,12 +91,12 @@ export async function batchDownload(options: DownloadOptions): Promise<void> {
 
     let completedCount = 0;
 
-    async function processChapter(task: DownloadTask) {
+    async function processChapter(task: DownloadTask, isRetry = false) {
         if (state.abortFlag) return;
         const { index, url, title } = task;
 
         // 缓存命中
-        if (state.globalChaptersMap.has(index)) {
+        if (!isRetry && state.globalChaptersMap.has(index)) {
             completedCount++;
             updateProgress();
             return;
@@ -125,73 +125,94 @@ export async function batchDownload(options: DownloadOptions): Promise<void> {
             return;
         }
 
-        // 抓取逻辑 (带重试)
+        // 抓取 HTML
+        let chapterHtml = "";
         let success = false;
         const MAX_RETRIES = 3;
 
         for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
-            if (state.abortFlag) break;
+            if (state.abortFlag)
+                break;
 
             try {
                 const res = await fetchWithTimeout(url, { credentials: "include" }, 15000);
-                const html = await res.text();
-
-                // 调用解析器
-                const result = parseChapterHtml(html, title);
-
-                let finalHtml = result.contentHtml; // 默认用原始 HTML
-                let chapterImages: any[] = [];
-
-                if (enableImage) {
-                    // 如果开启了图片下载，处理 HTML
-                    const processed = await processHtmlImages(
-                        result.contentHtml,
-                        index,
-                        state.abortController?.signal
-                    );
-                    finalHtml = processed.processedHtml;
-                    chapterImages = processed.images;
-                }
-
-                state.globalChaptersMap.set(index, {
-                    title: result.title,
-                    content: finalHtml,
-                    txtSegment: `${result.title}\n\n${result.author}\n\n${result.contentText}\n\n`,
-                    images: chapterImages
-                });
-
-                if (!state.abortFlag && completedCount % 5 === 0) {
-                    saveBookCache(bookId, state.globalChaptersMap);
-                }
-
+                chapterHtml = await res.text();
                 success = true;
                 break;
-
             } catch (e: any) {
-                if (e.name === 'AbortError' || state.abortFlag) {
-                    return;
-                }
+                if (e.name === 'AbortError' || state.abortFlag) return;
+
                 if (attempt === MAX_RETRIES) {
-                    log(`❌ 抓取失败 (${title}): ${e}`);
+                    log(`❌ 章节获取失败 (${title}): ${e.message}`);
                 } else {
                     await sleepWithAbort(300 * attempt);
                 }
             }
         }
 
-        if (state.abortFlag) return;
+        // 如果 HTML 没拿到，或者是被取消了，直接结束这一章的处理
+        if (!success || state.abortFlag)
+            return;
 
-        // 无论成功与否，都增加计数，失败的会在最后补漏环节再次尝试
-        completedCount++;
-        updateProgress();
+        // 解析 DOM
+        const result = parseChapterHtml(chapterHtml, title);
+        let finalHtml = result.contentHtml;
+        let chapterImages: any[] = [];
+        let imageErrors = 0;
 
-        if (success) {
-            log(`✔ 抓取 (${completedCount}/${total})：${title}\nURL: ${url}`);
+        if (enableImage) {
+            try {
+                const processed = await processHtmlImages(
+                    result.contentHtml,
+                    index,
+                    state.abortController?.signal
+                );
+                finalHtml = processed.processedHtml;
+                chapterImages = processed.images;
+                imageErrors = processed.failCount;
+            } catch (imgErr: any) {
+                // console.error(`第 ${index + 1} 章图片处理崩溃，回退到纯文本模式`, imgErr);
+                const imgMatches = result.contentHtml.match(/<img\s/gi);
+                imageErrors = imgMatches ? imgMatches.length : 0;
+                log(`⚠️ 图片处理异常，跳过 ${imageErrors} 张图片。第 ${index + 1} 章 标题：${title}`);
+            }
         }
 
-        // 随机延迟
-        const delay = Math.floor(Math.random() * 200) + 100;
-        await sleepWithAbort(delay);
+        state.globalChaptersMap.set(index, {
+            title: result.title,
+            content: finalHtml,
+            txtSegment: `${result.title}\n\n${result.author}\n\n${result.contentText}\n\n`,
+            images: chapterImages,
+            imageErrors: imageErrors
+        });
+
+
+        if (!state.abortFlag && completedCount % 5 === 0) {
+            saveBookCache(bookId, state.globalChaptersMap);
+        }
+
+        if (!isRetry) {
+            completedCount++;
+            updateProgress();
+        }
+
+        // 根据图片情况显示不同日志
+        if (success) {
+            const prefix = isRetry ? "♻️ 补抓成功" : "✔ 抓取";
+            const imageCount = chapterImages.length;
+            if (imageErrors > 0) {
+                log(`${prefix} (${completedCount}/${total})：${title} (${imageErrors}/${imageCount + imageErrors} 张图片获取失败)\nURL: ${url}`);
+            } else if (imageCount > 0 && imageErrors === 0) {
+                log(`${prefix} (${completedCount}/${total})：${title} (${imageCount} 张图片)\nURL: ${url}`);
+            } else {
+                log(`${prefix} (${completedCount}/${total})：${title}\nURL: ${url}`);
+            }
+        }
+
+        if (!state.abortFlag) {
+            const delay = Math.floor(Math.random() * 100) + 100;
+            await sleepWithAbort(delay);
+        }
     }
 
     function updateProgress() {
@@ -206,7 +227,7 @@ export async function batchDownload(options: DownloadOptions): Promise<void> {
     async function worker() {
         while (queue.length > 0 && !state.abortFlag) {
             const task = queue.shift();
-            if (task) await processChapter(task);
+            if (task) await processChapter(task, false);
         }
     }
 
@@ -232,17 +253,29 @@ export async function batchDownload(options: DownloadOptions): Promise<void> {
 
     // 完整性检查与补漏
     log("正在进行章节完整性检查...");
-    const missingTasks = tasks.filter(t => !state.globalChaptersMap.has(t.index));
+    const missingTasks = tasks.filter(t => {
+        const chap = state.globalChaptersMap.get(t.index);
+        if (!chap) 
+            return true;
+        if (enableImage && chap.imageErrors && chap.imageErrors > 0)
+            return true;
+        return false;
+    });
 
     if (missingTasks.length > 0) {
-        log(`⚠ 发现 ${missingTasks.length} 个章节抓取失败或遗漏，尝试自动补抓...`);
+        log(`⚠ 发现 ${missingTasks.length} 个章节不完整 (缺失或含失败图片)，尝试自动补抓...`);
         for (const task of missingTasks) {
             if (state.abortFlag) {
-                saveBookCache(bookId, state.globalChaptersMap);
+                await saveBookCache(bookId, state.globalChaptersMap);
+                fullCleanup(state.originalTitle);
                 break;
             }
-            log(`补抓 [${task.index + 1}/${total}]...`);
-            await processChapter(task);
+            
+            const chap = state.globalChaptersMap.get(task.index);
+            const reason = !chap ? "缺失" : `图片失败 ${chap.imageErrors} 张`;
+            log(`补抓 [${task.index + 1}/${total}] (${reason})...`);
+
+            await processChapter(task, true);
             saveBookCache(bookId, state.globalChaptersMap);
             await sleepWithAbort(300);
         }

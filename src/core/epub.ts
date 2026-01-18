@@ -1,5 +1,5 @@
 import { loadScript, log } from '../utils/index';
-import { escapeXml } from '../utils/text';
+import { escapeXml, convertToXhtml } from '../utils/text';
 import { Chapter, BookMetadata } from '../types';
 
 import type JSZip from 'jszip';
@@ -64,7 +64,7 @@ export async function buildEpub(chapters: Chapter[], metadata: BookMetadata): Pr
     const id = `chap_${i + 1}`;
     const filename = `${id}.xhtml`;
     const title = chapters[i].title || (`第${i + 1}章`);
-    const body = chapters[i].content || "";
+    const body = convertToXhtml(chapters[i].content || "");
     
     // 处理章节中的图片
     const chap = chapters[i];
