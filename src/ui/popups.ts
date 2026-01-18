@@ -227,8 +227,8 @@ export function showFormatChoice(): void {
 
     // 正文插图统计
     let imageStatus: HTMLElement | string = '';
-    const isImageDownloadEnabled = getImageDownloadSetting(); 
-    
+    const isImageDownloadEnabled = getImageDownloadSetting();
+
     if (isImageDownloadEnabled) {
         let successCount = 0;
         let failCount = 0;
@@ -245,13 +245,13 @@ export function showFormatChoice(): void {
             // 有图片处理记录，失败显示橙色，全成功显示蓝色
             const color = failCount > 0 ? '#e6a23c' : '#2b9bd7';
             const errorHint = failCount > 0 ? ` (失败 ${failCount} 张，原因见 F12)` : '';
-            
-            imageStatus = el('div', { style: `color:${color}; font-size:12px; margin-top:4px;` }, 
+
+            imageStatus = el('div', { style: `color:${color}; font-size:12px; margin-top:4px;` },
                 [`🖼️ 正文插图: ${successCount} / ${totalCount} 张${errorHint}`]
             );
         } else {
             // 开启了开关但没抓到任何图
-            imageStatus = el('div', { style: 'color:#999; font-size:12px; margin-top:4px;' }, 
+            imageStatus = el('div', { style: 'color:#999; font-size:12px; margin-top:4px;' },
                 ['🖼️ 正文插图: 未检测到图片']
             );
         }
@@ -400,10 +400,10 @@ export function createSettingsPanel(): void {
 
             btn.disabled = true;
             btn.textContent = "清理中...";
-            
+
             try {
                 await clearAllCaches();
-                
+
                 btn.classList.remove('btn-danger');
                 btn.classList.add('btn-success');
                 btn.style.backgroundColor = '#28a745';
@@ -441,13 +441,14 @@ export function createSettingsPanel(): void {
     const checkboxInput = el('input', {
         type: 'checkbox',
         checked: isImageEnabled,
-        onchange: (e: Event) => {
+        onchange: async (e: Event) => {
             const checked = (e.target as HTMLInputElement).checked;
             setImageDownloadSetting(checked);
+            await clearAllCaches();
             log(`正文图片下载已${checked ? '开启' : '关闭'}`);
         }
     });
-    
+
     const switchToggleImage = el('label', { className: 'esj-switch' }, [
         checkboxInput,
         el('span', { className: 'esj-slider' })
