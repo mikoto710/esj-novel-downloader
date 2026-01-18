@@ -22,7 +22,11 @@ export default function getMeta() {
     grant: [
       'GM_setValue',
       'GM_getValue',
+      'GM_xmlhttpRequest',
       'unsafeWindow',
+    ],
+    connect: [
+      '*' // 允许连接所有图床域名
     ],
     // icon: 'https://www.esjzone.cc/favicon.ico', 
   };
