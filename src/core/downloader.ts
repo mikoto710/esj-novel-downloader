@@ -209,11 +209,10 @@ async function processChapterTask(
         }
     }
 
-
     const chapter = state.globalChaptersMap.get(index);
     const imageErrors = chapter?.imageErrors || 0;
     const imageCount = chapter?.images?.length || 0;
-    const prefix = isRetry ? "♻️ 补抓成功" : "✔ 抓取";
+    const prefix = isRetry ? "♻️ 补抓" : "✔ 抓取";
 
     // 如果有图片错误，优先显示错误数量
     if (imageErrors > 0) {
