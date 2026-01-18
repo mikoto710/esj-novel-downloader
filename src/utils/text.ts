@@ -94,3 +94,10 @@ export function convertToXhtml(htmlString: string): string {
 
     return xhtmlParts.join("");
 }
+
+/**
+ * 移除 HTML 字符串中的所有 img 标签
+ */
+export function removeImgTags(html: string): string {
+    return html.replace(/<img[^>]*>/gi, "");
+}

@@ -8,6 +8,7 @@ import { Chapter } from '../types';
 import { parseChapterHtml } from './parser';
 import { getConcurrency, getImageDownloadSetting } from './config';
 import { processHtmlImages } from '../utils/image';
+import { removeImgTags } from '../utils/text';
 
 export interface DownloadTask {
     index: number;
@@ -176,6 +177,8 @@ export async function batchDownload(options: DownloadOptions): Promise<void> {
                 imageErrors = imgMatches ? imgMatches.length : 0;
                 log(`⚠️ 图片处理异常，跳过 ${imageErrors} 张图片。第 ${index + 1} 章 标题：${title}`);
             }
+        } else {
+            finalHtml = removeImgTags(result.contentHtml);
         }
 
         state.globalChaptersMap.set(index, {
@@ -255,7 +258,7 @@ export async function batchDownload(options: DownloadOptions): Promise<void> {
     log("正在进行章节完整性检查...");
     const missingTasks = tasks.filter(t => {
         const chap = state.globalChaptersMap.get(t.index);
-        if (!chap) 
+        if (!chap)
             return true;
         if (enableImage && chap.imageErrors && chap.imageErrors > 0)
             return true;
@@ -270,7 +273,7 @@ export async function batchDownload(options: DownloadOptions): Promise<void> {
                 fullCleanup(state.originalTitle);
                 break;
             }
-            
+
             const chap = state.globalChaptersMap.get(task.index);
             const reason = !chap ? "缺失" : `图片失败 ${chap.imageErrors} 张`;
             log(`补抓 [${task.index + 1}/${total}] (${reason})...`);
