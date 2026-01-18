@@ -192,7 +192,11 @@ export async function fetchWithTimeoutNative(
 }
 
 /**
- *  基于 GM_xmlhttpRequest 的请求封装，支持超时和外部中断
+ * 基于 GM_xmlhttpRequest 的请求封装，支持超时和外部中断
+ * @param url 请求地址
+ * @param options fetch配置
+ * @param timeout 超时时间(ms)
+ * @param cancelSignal 外部取消信号
  */
 export function fetchWithTimeout(
     url: string, 
