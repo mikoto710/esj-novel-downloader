@@ -140,7 +140,7 @@ async function handleChapterContent(
 }
 
 /**
- * 处理单个章节任务 (核心流程)
+ * 处理单个章节任务
  */
 async function processChapterTask(
     task: DownloadTask,
@@ -184,20 +184,15 @@ async function processChapterTask(
 
     // 下载 HTML
     const html = await downloadChapterHtml(url, title);
-
-    // 如果下载失败或取消，直接返回
     if (!html || state.abortFlag) return;
 
-    // 解析与处理
     await handleChapterContent(html, task, ctx);
 
-    // 更新进度
     if (!isRetry) {
         ctx.runtime.completedCount++;
         ctx.updateProgress();
     }
 
-    // 统一保存策略
     if (!state.abortFlag) {
         if (isRetry) {
             // 补漏每补完一章就存一次
