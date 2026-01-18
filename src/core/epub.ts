@@ -52,7 +52,7 @@ export async function buildEpub(chapters: Chapter[], metadata: BookMetadata): Pr
   }
 
   let navHtml = `<?xml version="1.0" encoding="utf-8"?>
-        <html xmlns="http://www.w3.org/1999/xhtml" xml:lang="zh">
+        <html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" xml:lang="zh">
           <head><title>目录</title></head>
           <body>
             <nav epub:type="toc" id="toc">
@@ -105,7 +105,7 @@ export async function buildEpub(chapters: Chapter[], metadata: BookMetadata): Pr
 
   const contentOpf = `<?xml version="1.0" encoding="utf-8"?>
         <package xmlns="http://www.idpf.org/2007/opf" unique-identifier="BookId" version="3.0">
-          <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
+          <metadata xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:opf="http://www.idpf.org/2007/opf">
             <dc:title>${title}</dc:title>
             <dc:language>zh-CN</dc:language>
             <dc:identifier id="BookId">${uniqueId}</dc:identifier>
