@@ -1,26 +1,31 @@
-import { injectDetailButton } from './ui/detail';
-import { injectSinglePageButton } from './ui/single';
-import { injectForumButton } from './ui/forum';
-import { injectStyles } from './ui/styles';
+import { injectDetailButton } from "./ui/detail";
+import { injectSinglePageButton } from "./ui/single";
+import { injectForumButton } from "./ui/forum";
+import { injectStyles } from "./ui/styles";
 
 (function init() {
-
     injectStyles();
     const url = location.href;
 
     // 路由
-    const isDetailPage = url.includes('/detail/');
-    const isForumPage = url.includes('/forum/') && !url.endsWith('.html');
-    const isSinglePage = url.includes('/forum/') && url.endsWith('.html');
+    const isDetailPage = url.includes("/detail/");
+    const isForumPage = url.includes("/forum/") && !url.endsWith(".html");
+    const isSinglePage = url.includes("/forum/") && url.endsWith(".html");
 
     // 定义通用的注入尝试函数
     const tryInject = () => {
         if (isDetailPage) {
-            if (document.querySelector(".sp-buttons")) injectDetailButton();
+            if (document.querySelector(".sp-buttons")) {
+                injectDetailButton();
+            }
         } else if (isSinglePage) {
-            if (document.querySelector(".entry-navigation")) injectSinglePageButton();
+            if (document.querySelector(".entry-navigation")) {
+                injectSinglePageButton();
+            }
         } else if (isForumPage) {
-            if (document.querySelector(".forum-list-page")) injectForumButton();
+            if (document.querySelector(".forum-list-page")) {
+                injectForumButton();
+            }
         }
     };
 
@@ -36,22 +41,28 @@ import { injectStyles } from './ui/styles';
 
                     if (isDetailPage) {
                         // 详情页监听 .sp-buttons
-                        if ((el.classList && el.classList.contains("sp-buttons")) ||
-                            (el.querySelector && el.querySelector(".sp-buttons"))) {
+                        if (
+                            (el.classList && el.classList.contains("sp-buttons")) ||
+                            (el.querySelector && el.querySelector(".sp-buttons"))
+                        ) {
                             injectDetailButton();
                             return;
                         }
                     } else if (isSinglePage) {
                         // 单页监听 .entry-navigation
-                        if ((el.classList && el.classList.contains("entry-navigation")) ||
-                            (el.querySelector && el.querySelector(".entry-navigation"))) {
+                        if (
+                            (el.classList && el.classList.contains("entry-navigation")) ||
+                            (el.querySelector && el.querySelector(".entry-navigation"))
+                        ) {
                             injectSinglePageButton();
                             return;
                         }
                     } else if (isForumPage) {
                         // 论坛页监听 .forum-list-page
-                        if ((el.classList && el.classList.contains("forum-list-page")) ||
-                            (el.querySelector && el.querySelector(".forum-list-page"))) {
+                        if (
+                            (el.classList && el.classList.contains("forum-list-page")) ||
+                            (el.querySelector && el.querySelector(".forum-list-page"))
+                        ) {
                             injectForumButton();
                             return;
                         }
@@ -85,8 +96,11 @@ import { injectStyles } from './ui/styles';
 
     // 超时自动清除
     setTimeout(() => {
-        if (observer) observer.disconnect();
-        if (timer) clearInterval(timer);
+        if (observer) {
+            observer.disconnect();
+        }
+        if (timer) {
+            clearInterval(timer);
+        }
     }, 30000);
-
 })();

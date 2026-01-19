@@ -1,14 +1,14 @@
-import { state, setCachedData, setAbortFlag, resetAbortController } from './state';
-import { log, sleepWithAbort, sleep, fetchWithTimeout } from '../utils/index';
-import { fullCleanup } from '../utils/dom';
-import { createDownloadPopup, showFormatChoice } from '../ui/popups';
-import { updateTrayText } from '../ui/tray';
-import { loadBookCache, saveBookCache, clearBookCache } from './storage';
-import { Chapter, BookMetadata } from '../types';
-import { parseChapterHtml } from './parser';
-import { getConcurrency, getImageDownloadSetting } from './config';
-import { processHtmlImages } from '../utils/image';
-import { removeImgTags } from '../utils/text';
+import { state, setCachedData, setAbortFlag, resetAbortController } from "./state";
+import { log, sleepWithAbort, sleep, fetchWithTimeout } from "../utils/index";
+import { fullCleanup } from "../utils/dom";
+import { createDownloadPopup, showFormatChoice } from "../ui/popups";
+import { updateTrayText } from "../ui/tray";
+import { loadBookCache, saveBookCache, clearBookCache } from "./storage";
+import { Chapter } from "../types";
+import { parseChapterHtml } from "./parser";
+import { getConcurrency, getImageDownloadSetting } from "./config";
+import { processHtmlImages } from "../utils/image";
+import { removeImgTags } from "../utils/text";
 
 export interface DownloadTask {
     index: number;
@@ -43,14 +43,18 @@ interface DownloadContext {
 /**
  * 封面下载逻辑
  */
-async function fetchCoverImage(url: string): Promise<{ blob: Blob, ext: 'jpg' | 'png' } | null> {
+async function fetchCoverImage(url: string): Promise<{ blob: Blob; ext: "jpg" | "png" } | null> {
     try {
         log("启动封面下载...");
-        const response = await fetchWithTimeout(url, {
-            method: "GET",
-            referrerPolicy: "no-referrer",
-            credentials: "omit"
-        }, 15000);
+        const response = await fetchWithTimeout(
+            url,
+            {
+                method: "GET",
+                referrerPolicy: "no-referrer",
+                credentials: "omit"
+            },
+            15000
+        );
 
         const blob = await response.blob();
 
@@ -59,9 +63,12 @@ async function fetchCoverImage(url: string): Promise<{ blob: Blob, ext: 'jpg' | 
             return null;
         }
 
-        let ext: 'jpg' | 'png' = "jpg";
-        if (blob.type.includes("png")) ext = "png";
-        else if (blob.type.includes("jpeg") || blob.type.includes("jpg")) ext = "jpg";
+        let ext: "jpg" | "png" = "jpg";
+        if (blob.type.includes("png")) {
+            ext = "png";
+        } else if (blob.type.includes("jpeg") || blob.type.includes("jpg")) {
+            ext = "jpg";
+        }
 
         log("✔ 封面下载完成");
         return { blob, ext };
@@ -77,12 +84,16 @@ async function fetchCoverImage(url: string): Promise<{ blob: Blob, ext: 'jpg' | 
 async function downloadChapterHtml(url: string, title: string): Promise<string | null> {
     const MAX_RETRIES = 3;
     for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
-        if (state.abortFlag) return null;
+        if (state.abortFlag) {
+            return null;
+        }
         try {
             const res = await fetchWithTimeout(url, { credentials: "include" }, 15000);
             return await res.text();
         } catch (e: any) {
-            if (e.name === 'AbortError' || state.abortFlag) return null;
+            if (e.name === "AbortError" || state.abortFlag) {
+                return null;
+            }
 
             if (attempt === MAX_RETRIES) {
                 log(`❌ 章节获取失败 (${title}): ${e.message}`);
@@ -97,11 +108,7 @@ async function downloadChapterHtml(url: string, title: string): Promise<string |
 /**
  * 解析内容与图片处理
  */
-async function handleChapterContent(
-    html: string,
-    task: DownloadTask,
-    ctx: DownloadContext
-): Promise<void> {
+async function handleChapterContent(html: string, task: DownloadTask, ctx: DownloadContext): Promise<void> {
     const { index, title } = task;
     const { options, enableImage } = ctx;
 
@@ -113,11 +120,7 @@ async function handleChapterContent(
 
     if (enableImage) {
         try {
-            const processed = await processHtmlImages(
-                result.contentHtml,
-                index,
-                state.abortController?.signal
-            );
+            const processed = await processHtmlImages(result.contentHtml, index, state.abortController?.signal);
             finalHtml = processed.processedHtml;
             chapterImages = processed.images;
             imageErrors = processed.failCount;
@@ -142,12 +145,10 @@ async function handleChapterContent(
 /**
  * 处理单个章节任务
  */
-async function processChapterTask(
-    task: DownloadTask,
-    ctx: DownloadContext,
-    isRetry = false
-): Promise<void> {
-    if (state.abortFlag) return;
+async function processChapterTask(task: DownloadTask, ctx: DownloadContext, isRetry = false): Promise<void> {
+    if (state.abortFlag) {
+        return;
+    }
     const { index, url, title } = task;
     const { total, options } = ctx;
 
@@ -184,7 +185,9 @@ async function processChapterTask(
 
     // 下载 HTML
     const html = await downloadChapterHtml(url, title);
-    if (!html || state.abortFlag) return;
+    if (!html || state.abortFlag) {
+        return;
+    }
 
     await handleChapterContent(html, task, ctx);
 
@@ -211,7 +214,9 @@ async function processChapterTask(
 
     // 如果有图片错误，优先显示错误数量
     if (imageErrors > 0) {
-        log(`${prefix} (${ctx.runtime.completedCount}/${total})：${title} (${imageErrors}/${imageCount + imageErrors} 张图片获取失败)\nURL: ${url}`);
+        log(
+            `${prefix} (${ctx.runtime.completedCount}/${total})：${title} (${imageErrors}/${imageCount + imageErrors} 张图片获取失败)\nURL: ${url}`
+        );
     } else if (imageCount > 0) {
         log(`${prefix} (${ctx.runtime.completedCount}/${total})：${title} (${imageCount} 张图片)\nURL: ${url}`);
     } else {
@@ -232,10 +237,14 @@ async function checkIntegrityAndRetry(tasks: DownloadTask[], ctx: DownloadContex
 
     log("正在进行章节完整性检查...");
 
-    const missingTasks = tasks.filter(t => {
+    const missingTasks = tasks.filter((t) => {
         const chap = state.globalChaptersMap.get(t.index);
-        if (!chap) return true;
-        if (enableImage && chap.imageErrors && chap.imageErrors > 0) return true;
+        if (!chap) {
+            return true;
+        }
+        if (enableImage && chap.imageErrors && chap.imageErrors > 0) {
+            return true;
+        }
         return false;
     });
 
@@ -268,7 +277,9 @@ export async function batchDownload(options: DownloadOptions): Promise<void> {
 
     // 初始化 UI 和状态
     let popup = document.querySelector("#esj-popup") as HTMLElement;
-    if (!popup) popup = createDownloadPopup();
+    if (!popup) {
+        popup = createDownloadPopup();
+    }
     const progressEl = document.querySelector("#esj-progress") as HTMLElement;
     const titleEl = document.querySelector("#esj-title") as HTMLElement;
 
@@ -297,13 +308,19 @@ export async function batchDownload(options: DownloadOptions): Promise<void> {
         ui: { progressEl, titleEl },
         runtime: { completedCount: 0 },
         updateProgress: () => {
-            if (state.abortFlag) return;
+            if (state.abortFlag) {
+                return;
+            }
             const count = ctx.runtime.completedCount;
             const statusStr = `全本下载（${count}/${total}）`;
-            if (titleEl) titleEl.textContent = "📘 " + statusStr;
+            if (titleEl) {
+                titleEl.textContent = "📘 " + statusStr;
+            }
             document.title = `[${count}/${total}] ${state.originalTitle}`;
             updateTrayText(statusStr);
-            if (progressEl) progressEl.style.width = (count / total) * 100 + "%";
+            if (progressEl) {
+                progressEl.style.width = (count / total) * 100 + "%";
+            }
         }
     };
 
@@ -314,12 +331,16 @@ export async function batchDownload(options: DownloadOptions): Promise<void> {
     async function worker() {
         while (queue.length > 0 && !state.abortFlag) {
             const task = queue.shift();
-            if (task) await processChapterTask(task, ctx, false);
+            if (task) {
+                await processChapterTask(task, ctx, false);
+            }
         }
     }
 
     log(`启动 ${concurrency} 个并发线程...`);
-    const workers = Array(concurrency).fill(0).map(() => worker());
+    const workers = Array(concurrency)
+        .fill(0)
+        .map(() => worker());
     await Promise.all(workers);
 
     // 用户取消操作

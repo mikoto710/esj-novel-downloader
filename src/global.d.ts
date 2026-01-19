@@ -5,7 +5,6 @@
 // unsafeWindow 沙箱
 declare const unsafeWindow: any;
 
-
 interface GM_Response {
     finalUrl: string;
     readyState: number;
@@ -44,8 +43,7 @@ interface GM_RequestDetails {
     onerror?: (response: GM_Response) => void;
 }
 
-
 // GM API 类型定义
 declare function GM_setValue(key: string, value: any): void;
 declare function GM_getValue<T>(key: string, defaultValue?: T): T;
-declare function GM_xmlhttpRequest(details: GM_RequestDetails): { abort: () => void }
+declare function GM_xmlhttpRequest(details: GM_RequestDetails): { abort: () => void };

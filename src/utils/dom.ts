@@ -5,7 +5,9 @@
  */
 export function enableDrag(popup: HTMLElement, headerSelector: string): void {
     const header = popup.querySelector(headerSelector) as HTMLElement | null;
-    if (!header) return;
+    if (!header) {
+        return;
+    }
 
     let dragging = false;
     let offsetX = 0;
@@ -22,9 +24,11 @@ export function enableDrag(popup: HTMLElement, headerSelector: string): void {
     });
 
     function onMove(e: MouseEvent): void {
-        if (!dragging) return;
-        popup.style.left = (e.clientX - offsetX) + "px";
-        popup.style.top = (e.clientY - offsetY) + "px";
+        if (!dragging) {
+            return;
+        }
+        popup.style.left = e.clientX - offsetX + "px";
+        popup.style.top = e.clientY - offsetY + "px";
         // 清除 transform 防止定位冲突
         popup.style.transform = "none";
     }
@@ -35,21 +39,14 @@ export function enableDrag(popup: HTMLElement, headerSelector: string): void {
     }
 }
 
-
 /**
  * 清理所有弹窗和悬浮球，并恢复标题
  * @param originalTitle 原始标题
  */
 export function fullCleanup(originalTitle?: string): void {
-    const selectors = [
-        "#esj-popup",
-        "#esj-min-tray",
-        "#esj-confirm",
-        "#esj-format",
-        "#esj-settings"
-    ];
+    const selectors = ["#esj-popup", "#esj-min-tray", "#esj-confirm", "#esj-format", "#esj-settings"];
 
-    selectors.forEach(sel => {
+    selectors.forEach((sel) => {
         document.querySelector(sel)?.remove();
     });
 
@@ -57,9 +54,9 @@ export function fullCleanup(originalTitle?: string): void {
         document.title = originalTitle;
     }
 
-    const settingsBtns = document.querySelectorAll('.esj-settings-trigger');
+    const settingsBtns = document.querySelectorAll(".esj-settings-trigger");
 
-    settingsBtns.forEach(btn => (btn as HTMLButtonElement).disabled = false);
+    settingsBtns.forEach((btn) => ((btn as HTMLButtonElement).disabled = false));
 }
 
 /**
@@ -75,21 +72,20 @@ export function el<K extends keyof HTMLElementTagNameMap>(
 ): HTMLElementTagNameMap[K] {
     const element = document.createElement(tag);
     for (const [key, value] of Object.entries(attrs)) {
-        if (key === 'style' && typeof value === 'object') {
+        if (key === "style" && typeof value === "object") {
             Object.assign(element.style, value);
-        } else if (key.startsWith('on') && typeof value === 'function') {
+        } else if (key.startsWith("on") && typeof value === "function") {
             element.addEventListener(key.substring(2).toLowerCase(), value as EventListener);
-        } else if (key === 'className') {
+        } else if (key === "className") {
             element.className = value;
-        } else if (['checked', 'value', 'disabled', 'selected'].includes(key)) {
+        } else if (["checked", "value", "disabled", "selected"].includes(key)) {
             (element as any)[key] = value;
-        }
-        else {
+        } else {
             element.setAttribute(key, String(value));
         }
     }
-    children.forEach(child => {
-        if (typeof child === 'string' || typeof child === 'number') {
+    children.forEach((child) => {
+        if (typeof child === "string" || typeof child === "number") {
             element.appendChild(document.createTextNode(String(child)));
         } else if (child instanceof Node) {
             element.appendChild(child);

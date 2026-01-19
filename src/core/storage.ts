@@ -1,7 +1,7 @@
-import { get, set, del, keys } from 'idb-keyval';
-import { log } from '../utils/index';
-import { Chapter } from '../types';
-import { resetGlobalState } from './state';
+import { get, set, del, keys } from "idb-keyval";
+import { log } from "../utils/index";
+import { Chapter } from "../types";
+import { resetGlobalState } from "./state";
 
 interface StoredCache {
     ts: number;
@@ -9,7 +9,7 @@ interface StoredCache {
 }
 
 // 下载缓存配置，24h过期
-const CACHE_PREFIX = 'esj_down_';
+const CACHE_PREFIX = "esj_down_";
 const CACHE_EXPIRE_TIME = 24 * 60 * 60 * 1000;
 
 /**
@@ -21,7 +21,9 @@ export async function loadBookCache(bookId: string): Promise<{ size: number; map
     const key = CACHE_PREFIX + bookId;
     try {
         const data = await get<StoredCache>(key);
-        if (!data) return { size: 0, map: null };
+        if (!data) {
+            return { size: 0, map: null };
+        }
 
         // 检查过期
         if (Date.now() - data.ts > CACHE_EXPIRE_TIME) {
@@ -62,7 +64,7 @@ export async function saveBookCache(bookId: string, map: Map<number, Chapter>) {
 
 /**
  * 清理指定 ID 的缓存
- * @param bookId 
+ * @param bookId
  */
 export async function clearBookCache(bookId: string) {
     try {
@@ -79,16 +81,15 @@ export async function clearBookCache(bookId: string) {
 export async function clearAllCaches(): Promise<void> {
     try {
         const allKeys = await keys();
-        
-        const targetKeys = allKeys.filter(k => String(k).startsWith(CACHE_PREFIX));
 
-        const promises = targetKeys.map(k => del(k));
+        const targetKeys = allKeys.filter((k) => String(k).startsWith(CACHE_PREFIX));
+
+        const promises = targetKeys.map((k) => del(k));
         await Promise.all(promises);
 
         resetGlobalState();
 
         console.log("Cache cleared:", targetKeys);
-
     } catch (e: any) {
         console.error("清理缓存失败", e);
         alert("清理失败: " + e.message);

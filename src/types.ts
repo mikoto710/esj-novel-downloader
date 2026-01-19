@@ -9,7 +9,7 @@ export interface Chapter {
 
 // 章节图片结构
 export interface ChapterImage {
-    id: string;         // EPUB 内部的文件名 (如 img_0_1.jpg)
+    id: string; // EPUB 内部的文件名 (如 img_0_1.jpg)
     blob: Blob;
     mediaType: string;
 }
@@ -19,7 +19,7 @@ export interface BookMetadata {
     title: string;
     author: string;
     coverBlob: Blob | null;
-    coverExt: 'jpg' | 'png';
+    coverExt: "jpg" | "png";
     uuid?: string;
 }
 

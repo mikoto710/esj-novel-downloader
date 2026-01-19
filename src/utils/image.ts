@@ -1,17 +1,22 @@
-import { fetchWithTimeout, log, sleepWithAbort } from './index';
+import { fetchWithTimeout, log, sleepWithAbort } from "./index";
 
 /**
  * 根据 MIME 类型获取文件后缀
  */
 function getExtensionFromMime(mime: string): string {
     switch (mime.toLowerCase()) {
-        case 'image/png': return 'png';
-        case 'image/gif': return 'gif';
-        case 'image/webp': return 'webp';
-        case 'image/bmp': return 'bmp';
-        case 'image/jpeg':
-        case 'image/jpg':
-        default: return 'jpg';
+        case "image/png":
+            return "png";
+        case "image/gif":
+            return "gif";
+        case "image/webp":
+            return "webp";
+        case "image/bmp":
+            return "bmp";
+        case "image/jpeg":
+        case "image/jpg":
+        default:
+            return "jpg";
     }
 }
 
@@ -37,25 +42,34 @@ async function compressImage(blob: Blob, quality = 0.7, maxWidth = 800): Promise
                 width = maxWidth;
             }
 
-            const canvas = document.createElement('canvas');
+            const canvas = document.createElement("canvas");
             canvas.width = width;
             canvas.height = height;
 
-            const ctx = canvas.getContext('2d');
+            const ctx = canvas.getContext("2d");
             // 降级返回原图
-            if (!ctx) return resolve(blob);
+            if (!ctx) {
+                return resolve(blob);
+            }
 
             // 填充白色背景 (防止透明 PNG 变黑)
-            ctx.fillStyle = '#FFFFFF';
+            ctx.fillStyle = "#FFFFFF";
             ctx.fillRect(0, 0, width, height);
 
             ctx.drawImage(img, 0, 0, width, height);
 
             // 导出为 JPEG 进行压缩
-            canvas.toBlob((b) => {
-                if (b) resolve(b);
-                else resolve(blob);
-            }, 'image/jpeg', quality);
+            canvas.toBlob(
+                (b) => {
+                    if (b) {
+                        resolve(b);
+                    } else {
+                        resolve(blob);
+                    }
+                },
+                "image/jpeg",
+                quality
+            );
         };
 
         img.onerror = () => {
@@ -79,15 +93,14 @@ export async function processHtmlImages(
     signal?: AbortSignal
 ): Promise<{
     processedHtml: string;
-    images: import('../types').ChapterImage[],
-    failCount: number
+    images: import("../types").ChapterImage[];
+    failCount: number;
 }> {
-
-    const div = document.createElement('div');
+    const div = document.createElement("div");
     div.innerHTML = htmlContent;
 
-    const imgs = Array.from(div.querySelectorAll('img'));
-    const images: import('../types').ChapterImage[] = [];
+    const imgs = Array.from(div.querySelectorAll("img"));
+    const images: import("../types").ChapterImage[] = [];
     let failCount = 0;
 
     if (imgs.length > 0) {
@@ -96,8 +109,10 @@ export async function processHtmlImages(
 
     for (let i = 0; i < imgs.length; i++) {
         const img = imgs[i];
-        let src = img.getAttribute('src');
-        if (!src) continue;
+        let src = img.getAttribute("src");
+        if (!src) {
+            continue;
+        }
 
         let downloadSuccess = false;
 
@@ -105,31 +120,38 @@ export async function processHtmlImages(
 
         // URL 预处理
         try {
-            if (src.startsWith('/')) {
+            if (src.startsWith("/")) {
                 src = location.origin + src;
-                img.setAttribute('src', src);
-            } else if (!src.startsWith('http')) {
+                img.setAttribute("src", src);
+            } else if (!src.startsWith("http")) {
                 src = new URL(src, location.href).href;
-                img.setAttribute('src', src);
+                img.setAttribute("src", src);
             }
         } catch (e: any) {
             console.warn(`非法 URL: ${src}`, e);
             errorMsg = "URL 格式错误";
         }
 
-        if (src.startsWith('http')) {
+        if (src.startsWith("http")) {
             const MAX_RETRIES = 3;
 
             for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
                 // 每次重试前检查取消信号
-                if (signal?.aborted) break;
+                if (signal?.aborted) {
+                    break;
+                }
 
                 try {
-                    const response = await fetchWithTimeout(src!, {
-                        method: 'GET',
-                        referrerPolicy: 'no-referrer',
-                        credentials: 'omit'
-                    }, 1000, signal);
+                    const response = await fetchWithTimeout(
+                        src!,
+                        {
+                            method: "GET",
+                            referrerPolicy: "no-referrer",
+                            credentials: "omit"
+                        },
+                        1000,
+                        signal
+                    );
 
                     let blob = await response.blob();
                     let mimeType = blob.type;
@@ -140,8 +162,8 @@ export async function processHtmlImages(
                         const compressedBlob = await compressImage(blob);
                         if (compressedBlob !== blob) {
                             blob = compressedBlob;
-                            mimeType = 'image/jpeg';
-                            extension = 'jpg';
+                            mimeType = "image/jpeg";
+                            extension = "jpg";
                         }
                     }
 
@@ -154,18 +176,17 @@ export async function processHtmlImages(
                     });
 
                     // 成功修改 DOM
-                    img.removeAttribute('src');
-                    img.setAttribute('data-epub-src', imageFilename);
-                    img.removeAttribute('srcset');
-                    img.removeAttribute('loading');
-                    img.style.maxWidth = '100%';
+                    img.removeAttribute("src");
+                    img.setAttribute("data-epub-src", imageFilename);
+                    img.removeAttribute("srcset");
+                    img.removeAttribute("loading");
+                    img.style.maxWidth = "100%";
 
                     downloadSuccess = true;
                     break;
-
                 } catch (e: any) {
                     // 如果是用户手动取消，直接中断重试，也不记录失败
-                    if (e.message === 'User Aborted' || signal?.aborted) {
+                    if (e.message === "User Aborted" || signal?.aborted) {
                         break;
                     }
                     errorMsg = e.message;
@@ -183,14 +204,13 @@ export async function processHtmlImages(
 
             log(`❌ [插图获取失败] 序列${chapterIndex + 1}: ${src} \n失败原因： ${errorMsg}`);
             // 失败后保留远程链接
-            img.removeAttribute('srcset');
-            img.removeAttribute('loading');
-            img.style.maxWidth = '100%';
+            img.removeAttribute("srcset");
+            img.removeAttribute("loading");
+            img.style.maxWidth = "100%";
 
-            const originalAlt = img.getAttribute('alt') || '';
-            img.setAttribute('alt', `${originalAlt} (图片加载失败)`);
+            const originalAlt = img.getAttribute("alt") || "";
+            img.setAttribute("alt", `${originalAlt} (图片加载失败)`);
         }
-
     }
 
     // 还原 HTML，替换 data-epub-src 为 src

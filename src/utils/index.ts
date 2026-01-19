@@ -1,5 +1,3 @@
-import { deprecate } from "util";
-
 /**
  * 安全获取全局变量 (兼容油猴沙箱环境)
  * @param name 变量名，如 'JSZip'
@@ -10,7 +8,7 @@ function getGlobalVar<T>(name: string): T | undefined {
         return (window as any)[name];
     }
     // 检查沙箱环境
-    if (typeof unsafeWindow !== 'undefined' && unsafeWindow[name]) {
+    if (typeof unsafeWindow !== "undefined" && unsafeWindow[name]) {
         return unsafeWindow[name];
     }
     return undefined;
@@ -25,7 +23,9 @@ export function loadSingleScript<T>(src: string, globalName: string): Promise<T>
     return new Promise((resolve, reject) => {
         // 检查是否存在
         const existing = getGlobalVar<T>(globalName);
-        if (existing) return resolve(existing);
+        if (existing) {
+            return resolve(existing);
+        }
 
         // 动态注入 + 异步加载
         const s = document.createElement("script");
@@ -78,7 +78,7 @@ export async function loadScript<T>(srcs: string | string[], globalName: string)
  * @param ms 延迟时间(ms)
  */
 export function sleep(ms: number): Promise<void> {
-    return new Promise(r => setTimeout(r, ms));
+    return new Promise((r) => setTimeout(r, ms));
 }
 
 /**
@@ -88,20 +88,22 @@ export function sleep(ms: number): Promise<void> {
  */
 export function sleepWithAbort(ms: number, signal?: AbortSignal): Promise<void> {
     return new Promise((resolve) => {
-        if (signal?.aborted) return resolve();
+        if (signal?.aborted) {
+            return resolve();
+        }
 
         const onAbort = () => {
             clearTimeout(timer);
-            signal?.removeEventListener('abort', onAbort);
+            signal?.removeEventListener("abort", onAbort);
             resolve();
         };
 
         const timer = setTimeout(() => {
-            signal?.removeEventListener('abort', onAbort);
+            signal?.removeEventListener("abort", onAbort);
             resolve();
         }, ms);
 
-        signal?.addEventListener('abort', onAbort);
+        signal?.addEventListener("abort", onAbort);
     });
 }
 
@@ -129,7 +131,7 @@ export function log(msg: string): void {
 
     const box = document.querySelector("#esj-log");
     if (box) {
-        const isAtBottom = (box.scrollTop + box.clientHeight) >= (box.scrollHeight - 10);
+        const isAtBottom = box.scrollTop + box.clientHeight >= box.scrollHeight - 10;
         box.textContent += line + "\n";
         if (isAtBottom) {
             box.scrollTop = box.scrollHeight;
@@ -161,18 +163,20 @@ export async function fetchWithTimeoutNative(
     // 无论 fetch 在干什么，这个 Promise 会瞬间报错，强行结束 await
     const abortPromise = new Promise<never>((_, reject) => {
         if (cancelSignal?.aborted) {
-            return reject(new Error('User Aborted'));
+            return reject(new Error("User Aborted"));
         }
-        onCancel = () => reject(new Error('User Aborted'));
-        cancelSignal?.addEventListener('abort', onCancel);
+        onCancel = () => reject(new Error("User Aborted"));
+        cancelSignal?.addEventListener("abort", onCancel);
     });
 
     // 发起请求
     const fetchPromise = fetch(url, {
         ...options,
         signal: controller.signal
-    }).then(res => {
-        if (!res.ok) throw new Error(`Status ${res.status}`);
+    }).then((res) => {
+        if (!res.ok) {
+            throw new Error(`Status ${res.status}`);
+        }
         return res;
     });
 
@@ -186,7 +190,7 @@ export async function fetchWithTimeoutNative(
         throw e;
     } finally {
         if (cancelSignal && onCancel) {
-            cancelSignal.removeEventListener('abort', onCancel);
+            cancelSignal.removeEventListener("abort", onCancel);
         }
     }
 }
@@ -199,15 +203,15 @@ export async function fetchWithTimeoutNative(
  * @param cancelSignal 外部取消信号
  */
 export function fetchWithTimeout(
-    url: string, 
-    options: RequestInit = {}, 
+    url: string,
+    options: RequestInit = {},
     timeout = 15000,
     cancelSignal?: AbortSignal
 ): Promise<Response> {
     return new Promise((resolve, reject) => {
         // 如果信号开局就已经中断，直接返回
         if (cancelSignal?.aborted) {
-            return reject(new Error('User Aborted'));
+            return reject(new Error("User Aborted"));
         }
 
         let requestHandle: { abort: () => void } | null = null;
@@ -215,14 +219,14 @@ export function fetchWithTimeout(
         // GM 提供的物理中断
         const onAbort = () => {
             if (requestHandle) {
-                requestHandle.abort(); 
+                requestHandle.abort();
             }
-            reject(new Error('User Aborted'));
+            reject(new Error("User Aborted"));
         };
 
         // 挂载中断监听
         if (cancelSignal) {
-            cancelSignal.addEventListener('abort', onAbort);
+            cancelSignal.addEventListener("abort", onAbort);
         }
 
         // 发起 GM 请求
@@ -233,20 +237,22 @@ export function fetchWithTimeout(
             data: options.body,
             timeout: timeout,
             responseType: "blob",
-            anonymous: options.credentials === 'omit', 
+            anonymous: options.credentials === "omit",
 
             onload: (res) => {
                 // 清理监听
-                if (cancelSignal) cancelSignal.removeEventListener('abort', onAbort);
+                if (cancelSignal) {
+                    cancelSignal.removeEventListener("abort", onAbort);
+                }
 
                 if (res.status >= 200 && res.status < 300) {
                     const response = new Response(res.response, {
                         status: res.status,
                         statusText: res.statusText
                     });
-                    
+
                     Object.defineProperty(response, "url", { value: res.finalUrl });
-                    
+
                     resolve(response);
                 } else {
                     reject(new Error(`Status ${res.status}`));
@@ -254,13 +260,17 @@ export function fetchWithTimeout(
             },
 
             ontimeout: () => {
-                if (cancelSignal) cancelSignal.removeEventListener('abort', onAbort);
-                reject(new Error('Timeout'));
+                if (cancelSignal) {
+                    cancelSignal.removeEventListener("abort", onAbort);
+                }
+                reject(new Error("Timeout"));
             },
 
             onerror: (err) => {
-                if (cancelSignal) cancelSignal.removeEventListener('abort', onAbort);
-                reject(new Error('Network Error'));
+                if (cancelSignal) {
+                    cancelSignal.removeEventListener("abort", onAbort);
+                }
+                reject(new Error("Network Error"));
             }
         });
     });

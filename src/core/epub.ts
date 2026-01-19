@@ -1,57 +1,61 @@
-import { loadScript, log } from '../utils/index';
-import { escapeXml, convertToXhtml } from '../utils/text';
-import { Chapter, BookMetadata } from '../types';
+import { loadScript, log } from "../utils/index";
+import { escapeXml, convertToXhtml } from "../utils/text";
+import { Chapter, BookMetadata } from "../types";
 
-import type JSZip from 'jszip';
+import type JSZip from "jszip";
 
 /**
  * 封装数据，生成 EPUB 文件
  */
 export async function buildEpub(chapters: Chapter[], metadata: BookMetadata): Promise<Blob> {
+    let ZipClass: new () => JSZip;
 
-  let ZipClass: new () => JSZip;
+    const JSZIP_URLS = [
+        "https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js",
+        "https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js",
+        "https://unpkg.com/jszip@3.10.1/dist/jszip.min.js"
+    ];
 
-  const JSZIP_URLS = [
-      "https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js",
-      "https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js",
-      "https://unpkg.com/jszip@3.10.1/dist/jszip.min.js"
-  ];
+    try {
+        ZipClass = await loadScript<new () => JSZip>(JSZIP_URLS, "JSZip");
+    } catch (e: any) {
+        throw new Error("JSZip 核心库加载失败: " + e.message);
+    }
 
-  try {
-    ZipClass = await loadScript<new () => JSZip>(JSZIP_URLS, "JSZip");
-  } catch (e: any) {
-    throw new Error("JSZip 核心库加载失败: " + e.message);
-  }
+    const zip = new ZipClass();
+    zip.file("mimetype", "application/epub+zip", { binary: true, compression: "STORE" });
 
-
-  const zip = new ZipClass();
-  zip.file("mimetype", "application/epub+zip", { binary: true, compression: "STORE" });
-
-  zip.folder("META-INF")?.file("container.xml",
-    `<?xml version="1.0" encoding="utf-8"?>
+    zip.folder("META-INF")?.file(
+        "container.xml",
+        `<?xml version="1.0" encoding="utf-8"?>
             <container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
                 <rootfiles>
                     <rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/>
                 </rootfiles>
-            </container>`);
+            </container>`
+    );
 
-  const oebps = zip.folder("OEBPS");
-  if (!oebps) throw new Error("无法创建 OEBPS 文件夹");
+    const oebps = zip.folder("OEBPS");
+    if (!oebps) {
+        throw new Error("无法创建 OEBPS 文件夹");
+    }
 
-  const manifestItems: string[] = [];
-  const spineItems: string[] = [];
+    const manifestItems: string[] = [];
+    const spineItems: string[] = [];
 
-  let coverMeta = "";
-  if (metadata.coverBlob) {
-    const coverFilename = "cover." + metadata.coverExt;
-    const coverMime = metadata.coverExt === "png" ? "image/png" : "image/jpeg";
+    let coverMeta = "";
+    if (metadata.coverBlob) {
+        const coverFilename = "cover." + metadata.coverExt;
+        const coverMime = metadata.coverExt === "png" ? "image/png" : "image/jpeg";
 
-    oebps.file(coverFilename, metadata.coverBlob);
-    manifestItems.push(`<item id="cover-image" href="${coverFilename}" media-type="${coverMime}" properties="cover-image"/>`);
-    coverMeta = `<meta name="cover" content="cover-image" />`;
-  }
+        oebps.file(coverFilename, metadata.coverBlob);
+        manifestItems.push(
+            `<item id="cover-image" href="${coverFilename}" media-type="${coverMime}" properties="cover-image"/>`
+        );
+        coverMeta = `<meta name="cover" content="cover-image" />`;
+    }
 
-  let navHtml = `<?xml version="1.0" encoding="utf-8"?>
+    let navHtml = `<?xml version="1.0" encoding="utf-8"?>
         <html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" xml:lang="zh">
           <head><title>目录</title></head>
           <body>
@@ -60,26 +64,26 @@ export async function buildEpub(chapters: Chapter[], metadata: BookMetadata): Pr
               <ol>
         `;
 
-  for (let i = 0; i < chapters.length; i++) {
-    const id = `chap_${i + 1}`;
-    const filename = `${id}.xhtml`;
-    const title = chapters[i].title || (`第${i + 1}章`);
-    const body = convertToXhtml(chapters[i].content || "");
-    
-    // 处理章节中的图片
-    const chap = chapters[i];
-    if (chap.images && chap.images.length > 0) {
-        chap.images.forEach(img => {
-            // 写入文件到 OEBPS 根目录
-            oebps.file(img.id, img.blob);
-            // 添加到 Manifest
-            manifestItems.push(
-                `<item id="${img.id.replace('.', '_')}" href="${img.id}" media-type="${img.mediaType}" />`
-            );
-        });
-    }
+    for (let i = 0; i < chapters.length; i++) {
+        const id = `chap_${i + 1}`;
+        const filename = `${id}.xhtml`;
+        const title = chapters[i].title || `第${i + 1}章`;
+        const body = convertToXhtml(chapters[i].content || "");
 
-    const xhtml = `<?xml version="1.0" encoding="utf-8"?>
+        // 处理章节中的图片
+        const chap = chapters[i];
+        if (chap.images && chap.images.length > 0) {
+            chap.images.forEach((img) => {
+                // 写入文件到 OEBPS 根目录
+                oebps.file(img.id, img.blob);
+                // 添加到 Manifest
+                manifestItems.push(
+                    `<item id="${img.id.replace(".", "_")}" href="${img.id}" media-type="${img.mediaType}" />`
+                );
+            });
+        }
+
+        const xhtml = `<?xml version="1.0" encoding="utf-8"?>
             <html xmlns="http://www.w3.org/1999/xhtml">
               <head><title>${escapeXml(title)}</title></head>
               <body>
@@ -88,22 +92,22 @@ export async function buildEpub(chapters: Chapter[], metadata: BookMetadata): Pr
               </body>
             </html>`;
 
-    oebps.file(filename, xhtml);
-    manifestItems.push(`<item id="${id}" href="${filename}" media-type="application/xhtml+xml"/>`);
-    spineItems.push(`<itemref idref="${id}"/>`);
-    navHtml += `<li><a href="${filename}">${escapeXml(title)}</a></li>`;
-  }
+        oebps.file(filename, xhtml);
+        manifestItems.push(`<item id="${id}" href="${filename}" media-type="application/xhtml+xml"/>`);
+        spineItems.push(`<itemref idref="${id}"/>`);
+        navHtml += `<li><a href="${filename}">${escapeXml(title)}</a></li>`;
+    }
 
-  navHtml += `</ol></nav></body></html>`;
-  oebps.file("nav.xhtml", navHtml);
-  manifestItems.push(`<item id="nav" href="nav.xhtml" properties="nav" media-type="application/xhtml+xml"/>`);
+    navHtml += `</ol></nav></body></html>`;
+    oebps.file("nav.xhtml", navHtml);
+    manifestItems.push(`<item id="nav" href="nav.xhtml" properties="nav" media-type="application/xhtml+xml"/>`);
 
-  const uniqueId = metadata.uuid || ("id-" + Date.now());
-  const title = escapeXml(metadata.title || "未知書名");
-  const author = escapeXml(metadata.author || "");
-  const pubdate = new Date().toISOString();
+    const uniqueId = metadata.uuid || "id-" + Date.now();
+    const title = escapeXml(metadata.title || "未知書名");
+    const author = escapeXml(metadata.author || "");
+    const pubdate = new Date().toISOString();
 
-  const contentOpf = `<?xml version="1.0" encoding="utf-8"?>
+    const contentOpf = `<?xml version="1.0" encoding="utf-8"?>
         <package xmlns="http://www.idpf.org/2007/opf" unique-identifier="BookId" version="3.0">
           <metadata xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:opf="http://www.idpf.org/2007/opf">
             <dc:title>${title}</dc:title>
@@ -121,9 +125,9 @@ export async function buildEpub(chapters: Chapter[], metadata: BookMetadata): Pr
           </spine>
         </package>`;
 
-  oebps.file("content.opf", contentOpf);
+    oebps.file("content.opf", contentOpf);
 
-  log("正在压缩生成 EPUB（可能需要几秒）...");
-  const blob = await zip.generateAsync({ type: "blob", compression: "DEFLATE" });
-  return blob;
+    log("正在压缩生成 EPUB（可能需要几秒）...");
+    const blob = await zip.generateAsync({ type: "blob", compression: "DEFLATE" });
+    return blob;
 }
