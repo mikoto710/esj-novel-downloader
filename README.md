@@ -5,8 +5,6 @@
 一个用于 **ESJZone** 的 Tampermonkey 脚本。  
 支持 **TXT / EPUB 下载**，并适配多种页面类型（小说详情页 / 单章阅读页 / 论坛列表页）。
 
-
-
 ## 功能特性
 
 - 📚 **多格式导出**：支持 **TXT** 和 **EPUB**（自动内嵌封面）。
@@ -18,16 +16,13 @@
 
 > 💡 抓取逻辑部分参考自 [ESJ-novel-backup](https://github.com/ZALin/ESJ-novel-backup)，感谢原项目作者提供的抓取思路
 
-
-
 ## 页面支持
-| 页面类型 | 支持功能 | 对应模块 | 链接格式示例 |
-| :--- | :--- | :--- | :--- |
-| **小说详情页** | 🟢 全本下载 (TXT/EPUB) | `scrapers/detail.ts` | `.../detail/123.html` |
-| **论坛列表页** | 🟢 全本下载 (TXT/EPUB) | `scrapers/forum.ts` | `.../forum/123/456/` |
-| **单章阅读页** | 🔵 单章导出 (TXT) | `scrapers/single.ts` | `.../forum/123/456.html` |
 
-
+| 页面类型       | 支持功能               | 对应模块             | 链接格式示例             |
+| :------------- | :--------------------- | :------------------- | :----------------------- |
+| **小说详情页** | 🟢 全本下载 (TXT/EPUB) | `scrapers/detail.ts` | `.../detail/123.html`    |
+| **论坛列表页** | 🟢 全本下载 (TXT/EPUB) | `scrapers/forum.ts`  | `.../forum/123/456/`     |
+| **单章阅读页** | 🔵 单章导出 (TXT)      | `scrapers/single.ts` | `.../forum/123/456.html` |
 
 ## 安装方式
 
@@ -38,25 +33,22 @@
 
 ### 2. 安装脚本
 
-[👉 **点击这里直接安装最新版**](https://github.com/mikoto710/esj-novel-downloader/releases/latest/download/esj-novel-downloader.user.js) 
+[👉 **点击这里直接安装最新版**](https://github.com/mikoto710/esj-novel-downloader/releases/latest/download/esj-novel-downloader.user.js)
 
-或前往 [GreasyFork 发布页](https://greasyfork.org/zh-CN/scripts/562046-esjzone-%E5%85%A8%E6%9C%AC%E4%B8%8B%E8%BD%BD) 
- / 本 GitHub 仓库的 [Releases 页面](https://github.com/mikoto710/esj-novel-downloader/releases) 手动下载。
+或前往 [GreasyFork 发布页](https://greasyfork.org/zh-CN/scripts/562046-esjzone-%E5%85%A8%E6%9C%AC%E4%B8%8B%E8%BD%BD) / 本 GitHub 仓库的 [Releases 页面](https://github.com/mikoto710/esj-novel-downloader/releases) 手动下载。
 
 ## 使用方法
 
 脚本会自动检测当前页面类型并注入按钮：
 
 1.  **小说详情页 / 论坛版块页**：
-    -   点击注入的 **“全本下载”** 按钮。
-    -   确认下载后，会出现进度弹窗（支持最小化）。
-    -   完成后选择导出格式即可。
+    - 点击注入的 **“全本下载”** 按钮。
+    - 确认下载后，会出现进度弹窗（支持最小化）。
+    - 完成后选择导出格式即可。
 
 2.  **单章阅读页**：
-    -   在顶部导航栏中间 "≡" 旁会出现下载按钮。
-    -   点击直接下载当前章节的 TXT 文件。
-
-
+    - 在顶部导航栏中间 "≡" 旁会出现下载按钮。
+    - 点击直接下载当前章节的 TXT 文件。
 
 在**小说详情页 / 论坛版块页**的 "**全本下载**" 按钮旁边，提供了 **“设置” (⚙️)** 按钮，点击可进行配置：
 
@@ -64,11 +56,7 @@
 - **下载正文插图**： 开启后可在生成的 EPUB 小说文件中加入对应的插图，若抓取失败会插入对应的 img 标签。
 - **清空缓存**：手动清理 IndexedDB 中的断点续传数据。
 
-
-
-> **Note**: 开启下载正文插图功能后 Tampermonkey 会请求跨域访问权限，请允许，否则无法正常拉取某些图床图片。
-
-
+> **Note**: 开启 **下载正文插图** 功能后，脚本管理器会请求跨域访问权限，请允许，否则无法正常拉取某些图床图片。
 
 ## 开发与构建
 
@@ -108,11 +96,13 @@ src
 ```
 
 ### 本地构建
-需要 Node.js 14+ 环境
+
+需要 Node.js 18+ 环境
 
 ```bash
-# 1. 安装依赖
-npm install
+# 1. 安装依赖，建议使用 npm ci 防止 package-lock.json 不一致
+# npm install
+npm ci
 
 # 2. 开发模式 (监听文件变更自动构建)
 npm run watch
