@@ -3,26 +3,26 @@
 ![Version](https://img.shields.io/github/v/release/mikoto710/esj-novel-downloader?label=version) ![License](https://img.shields.io/github/license/mikoto710/esj-novel-downloader) ![Language](https://img.shields.io/badge/language-TypeScript-blue)
 
 一个用于 **ESJZone** 的 Tampermonkey 脚本。  
-支持 **TXT / EPUB 下载**，并适配多种页面类型 (小说详情页 / 单章阅读页 / 论坛列表页)。
+支持 **TXT / EPUB / HTML 下载**，并适配多种页面类型 (小说详情页 / 单章阅读页 / 论坛列表页)。
 
 ## 功能特性
 
-- 📚 **多格式导出**: 支持 **TXT** 和 **EPUB** (自动内嵌封面)。
+- 📚 **多格式导出**: 支持 **TXT**、**EPUB** 和 **HTML**，支持自动内嵌封面。
 - ⚡ **极速下载**: 多线程并发抓取，支持用户配置。
 - 💾 **断点续传**: 使用 IndexedDB 作为缓存，刷新页面或关闭浏览器不丢失进度。
 - 🛡️ **智能补漏**: 自动检测抓取失败的章节并尝试重试，确保内容完整。
 - 🧩 **多页面适配**: 支持详情页、论坛版块、单章阅读页多种场景。
-- 🖼️ **正文插图下载**: 支持导出 EPUB 时附带插图。**(功能尚未完全测试，不保证稳定性，谨慎使用)**
+- 🖼️ **正文插图下载**: 支持导出 EPUB / HTML 时附带插图。**(功能尚未完全测试，不保证稳定性，谨慎使用)**
 
 > 💡 抓取逻辑部分参考自 [ESJ-novel-backup](https://github.com/ZALin/ESJ-novel-backup)，感谢原项目作者提供的抓取思路
 
 ## 页面支持
 
-| 页面类型       | 支持功能               | 对应模块             | 链接格式示例             |
-| :------------- | :--------------------- | :------------------- | :----------------------- |
-| **小说详情页** | 🟢 全本下载 (TXT/EPUB) | `scrapers/detail.ts` | `.../detail/123.html`    |
-| **论坛列表页** | 🟢 全本下载 (TXT/EPUB) | `scrapers/forum.ts`  | `.../forum/123/456/`     |
-| **单章阅读页** | 🔵 单章导出 (TXT)      | `scrapers/single.ts` | `.../forum/123/456.html` |
+| 页面类型       | 支持功能                    | 对应模块             | 链接格式示例             |
+| :------------- | :-------------------------- | :------------------- | :----------------------- |
+| **小说详情页** | 🟢 全本下载 (TXT/EPUB/HTML) | `scrapers/detail.ts` | `.../detail/123.html`    |
+| **论坛列表页** | 🟢 全本下载 (TXT/EPUB/HTML) | `scrapers/forum.ts`  | `.../forum/123/456/`     |
+| **单章阅读页** | 🔵 单章导出 (TXT)           | `scrapers/single.ts` | `.../forum/123/456.html` |
 
 ## 安装方式
 
@@ -45,7 +45,7 @@
 1.  **小说详情页 / 论坛版块页**:
     - 点击注入的 **“全本下载”** 按钮。
     - 确认下载后，会出现进度弹窗(支持最小化)。
-    - 完成后选择导出格式即可。
+    - 完成后选择导出格式即可，若开启插图下载，会显示图片的拉取情况。
 
 2.  **单章阅读页**:
     - 在顶部导航栏中间 "≡" 旁会出现下载按钮。
@@ -71,6 +71,7 @@ src
 │   ├── config.ts        # 用户配置管理
 │   ├── downloader.ts    # 通用下载控制器
 │   ├── epub.ts          # EPUB 生成器
+│   ├── html.ts          # 单页 HTML 生成器
 │   ├── parser.ts        # HTML 解析器
 │   ├── state.ts         # 全局状态管理
 │   └── storage.ts       # 持久化存储层

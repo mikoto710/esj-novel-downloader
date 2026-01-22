@@ -1,5 +1,3 @@
-// src/core/html.ts
-
 import { Chapter, BookMetadata } from "../types";
 import { blobToBase64, log } from "../utils/index";
 
