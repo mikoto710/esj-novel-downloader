@@ -6,6 +6,7 @@ import { buildEpub } from "../core/epub";
 import { CachedData } from "../types";
 import { getConcurrency, setConcurrency, setImageDownloadSetting, getImageDownloadSetting } from "../core/config";
 import { clearAllCaches } from "../core/storage";
+import { buildHtml } from "../core/html";
 
 /**
  * 锁定/解锁页面上的设置按钮
@@ -40,10 +41,10 @@ function createCommonHeader(title: string, onClose: () => void, onMinimize?: () 
             "button",
             {
                 title: "最小化",
-                style: "border:none;background:#81d4fa;color:#000;padding:2px 10px;border-radius:4px;cursor:pointer;font-weight:bold;line-height:1.2;margin-right:5px;",
+                style: "border:none;background:#81d4fa;color:#000;padding:4px 10px;border-radius:6px;cursor:pointer;font-weight:bold;margin-right:5px;",
                 onclick: onMinimize
             },
-            ["_"]
+            ["__"]
         );
         btnGroup.push(btnMin);
     }
@@ -329,9 +330,19 @@ export function showFormatChoice(): void {
         {
             id: "esj-epub",
             style: "flex:1;padding:10px 0;border:none;background:#2b9bd7;color:#fff;border-radius:6px;cursor:pointer;font-weight:bold;",
-            onclick: async () => handleEpubDownload(btnEpub)
+            onclick: async () => handleEpubDownload()
         },
         ["⬇ EPUB 下载"]
+    );
+
+    const btnHtml = el(
+        "button",
+        {
+            id: "esj-html",
+            style: "flex:1;padding:10px 0;border:none;background:#999;color:#fff;border-radius:6px;cursor:pointer;font-weight:bold;",
+            onclick: async () => handleHtmlDownload()
+        },
+        ["⬇ HTML 下载"]
     );
 
     const footer = el(
@@ -339,7 +350,7 @@ export function showFormatChoice(): void {
         {
             style: "display:flex;gap:15px;justify-content:center;padding:0 20px 20px 20px;"
         },
-        [btnTxt, btnEpub]
+        [btnTxt, btnEpub, btnHtml]
     );
 
     const popup = el(
@@ -355,7 +366,8 @@ export function showFormatChoice(): void {
     enableDrag(popup, ".esj-common-header");
 
     // 下载 EPUB
-    async function handleEpubDownload(btn: HTMLButtonElement) {
+    async function handleEpubDownload() {
+        const btn = document.querySelector("#esj-epub") as HTMLButtonElement;
         const currentData = state.cachedData as CachedData;
 
         // 如果已经生成过，直接下载缓存的 blob
@@ -389,6 +401,27 @@ export function showFormatChoice(): void {
             btn.disabled = false;
             btn.style.background = originalBg;
             document.title = oldTitle;
+        }
+    }
+
+    // 下载 HTML
+    async function handleHtmlDownload() {
+        const btn = document.querySelector("#esj-html") as HTMLButtonElement;
+        const originalText = btn.innerText;
+        try {
+            btn.innerText = "生成中...";
+            btn.disabled = true;
+
+            const blob = await buildHtml(data.chapters, data.metadata);
+
+            const filename = (data.metadata.title || "book") + ".html";
+            triggerDownload(blob, filename);
+        } catch (e: any) {
+            console.error(e);
+            alert("HTML 生成失败: " + e.message);
+        } finally {
+            btn.innerText = originalText;
+            btn.disabled = false;
         }
     }
 }

@@ -4,12 +4,17 @@
  */
 function getGlobalVar<T>(name: string): T | undefined {
     // 优先检查当前上下文
-    if (window && (window as any)[name]) {
-        return (window as any)[name];
+    const win = window as unknown as Record<string, unknown>;
+    if (name in win && win[name]) {
+        return win[name] as T;
     }
+
     // 检查沙箱环境
-    if (typeof unsafeWindow !== "undefined" && unsafeWindow[name]) {
-        return unsafeWindow[name];
+    if (typeof unsafeWindow !== "undefined") {
+        const uw = unsafeWindow as unknown as Record<string, unknown>;
+        if (name in uw && uw[name]) {
+            return uw[name] as T;
+        }
     }
     return undefined;
 }
@@ -266,12 +271,24 @@ export function fetchWithTimeout(
                 reject(new Error("Timeout"));
             },
 
-            onerror: (err) => {
+            onerror: () => {
                 if (cancelSignal) {
                     cancelSignal.removeEventListener("abort", onAbort);
                 }
                 reject(new Error("Network Error"));
             }
         });
+    });
+}
+
+/**
+ * 将 Blob 转换为 Base64 DataURL
+ */
+export function blobToBase64(blob: Blob): Promise<string> {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(reader.result as string);
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
     });
 }
