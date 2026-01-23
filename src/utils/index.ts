@@ -42,14 +42,14 @@ export function loadSingleScript<T>(src: string, globalName: string): Promise<T>
             if (loaded) {
                 resolve(loaded);
             } else {
-                reject(new Error(`脚本加载成功但全局变量未找到: ${globalName}`));
+                reject(new Error(`Script loaded but global variable not found: ${globalName}`));
             }
         };
 
         s.onerror = () => {
             // 加载失败移除标签，保持 DOM 干净
             s.remove();
-            reject(new Error(`网络错误: ${src}`));
+            reject(new Error(`Network Error: ${src}`));
         };
 
         document.head.appendChild(s);
@@ -69,13 +69,13 @@ export async function loadScript<T>(srcs: string | string[], globalName: string)
         try {
             return await loadSingleScript<T>(url, globalName);
         } catch (e: any) {
-            console.warn(`[esj-novel-downloader] CDN 加载失败 (${url}):`, e.message);
+            console.warn(`failed to load script (${url}):`, e.message);
             lastError = e;
         }
     }
 
     // 如果循环结束还没返回，说明全挂了
-    throw new Error(`所有 CDN 均加载失败。最后一次错误: ${lastError?.message}`);
+    throw new Error(`All scripts failed: ${lastError?.message}`);
 }
 
 /**
@@ -260,7 +260,7 @@ export function fetchWithTimeout(
 
                     resolve(response);
                 } else {
-                    reject(new Error(`Status ${res.status}`));
+                    reject(new Error(`HTTP Error Status ${res.status}`));
                 }
             },
 

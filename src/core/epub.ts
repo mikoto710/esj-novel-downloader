@@ -19,7 +19,7 @@ export async function buildEpub(chapters: Chapter[], metadata: BookMetadata): Pr
     try {
         ZipClass = await loadScript<new () => JSZip>(JSZIP_URLS, "JSZip");
     } catch (e: any) {
-        throw new Error("JSZip 核心库加载失败: " + e.message);
+        throw new Error("Failed to load JSZip: " + e.message);
     }
 
     const zip = new ZipClass();
@@ -37,7 +37,7 @@ export async function buildEpub(chapters: Chapter[], metadata: BookMetadata): Pr
 
     const oebps = zip.folder("OEBPS");
     if (!oebps) {
-        throw new Error("无法创建 OEBPS 文件夹");
+        throw new Error("Cannot create OEBPS folder in EPUB structure.");
     }
 
     const manifestItems: string[] = [];
