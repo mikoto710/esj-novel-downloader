@@ -117,7 +117,6 @@ export function parseChapterHtml(html: string, defaultTitle: string) {
 
     const author = (doc.querySelector(".single-post-meta div") as HTMLElement)?.innerText.trim() || "";
 
-    // 检测并移除正文开头重复的标题
     const contentEl = doc.querySelector(".forum-content") as HTMLElement;
 
     // 获取用于 EPUB 的 HTML (包含 img 标签)
@@ -126,10 +125,10 @@ export function parseChapterHtml(html: string, defaultTitle: string) {
     // 获取用于 TXT 的纯文本
     let contentText = contentEl ? contentEl.innerText : "";
 
+    // 检测并移除正文开头重复的标题
     if (contentEl) {
         const safeTitle = h2.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
         const titleRegex = new RegExp(`^\\s*${safeTitle}\\s*`, "i");
-
         contentText = contentText.replace(titleRegex, "").trim();
     }
 

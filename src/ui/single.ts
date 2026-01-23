@@ -19,8 +19,8 @@ export function injectSinglePageButton(): void {
         return;
     }
 
-    // 创建按钮
-    const btn = el(
+    // 创建按钮 (TXT)
+    const btnTxt = el(
         "a",
         {
             id: "btn-download-single",
@@ -29,12 +29,29 @@ export function injectSinglePageButton(): void {
             title: "下载本章 (TXT)",
             onclick: (e: Event) => {
                 e.preventDefault();
-                downloadCurrentPage();
+                downloadCurrentPage("txt");
             }
         },
         [el("i", { className: "icon-download" })]
     );
 
-    // 插入到回整合按钮后面
-    container.appendChild(btn);
+    // 创建按钮 (HTML)
+    const btnHtml = el(
+        "a",
+        {
+            id: "btn-download-single-html",
+            className: "btn btn-outline-secondary view-all",
+            style: "margin-left: 10px; cursor: pointer;",
+            title: "下载本章 (HTML)",
+            onclick: (e: Event) => {
+                e.preventDefault();
+                downloadCurrentPage("html");
+            }
+        },
+        [el("i", { className: "icon-code" })]
+    );
+
+    // 插入到 "回整合" 按钮后面
+    container.appendChild(btnTxt);
+    container.appendChild(btnHtml);
 }

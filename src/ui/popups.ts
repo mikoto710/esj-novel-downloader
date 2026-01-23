@@ -579,9 +579,7 @@ export function createSettingsPanel(): void {
     const rowImage = el("div", { style: rowStyle }, [
         el("div", {}, [
             el("label", { style: "color: #333;" }, ["下载正文插图: "]),
-            el("div", { style: "font-size:12px; color:#999; margin-top: 2px;" }, [
-                "(在epub中插入，会让速度变慢，体积变大)"
-            ])
+            el("div", { style: "font-size:12px; color:#999; margin-top: 2px;" }, ["(会让速度变慢、体积变大)"])
         ]),
         switchToggleImage
     ]);
