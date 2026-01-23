@@ -1,5 +1,7 @@
-import { log } from "../utils/index";
+import { log, blobToBase64 } from "../utils/index";
 import { parseChapterHtml, parseBookMetadata } from "../core/parser";
+import { getImageDownloadSetting } from "../core/config";
+import { processHtmlImages } from "../utils/image";
 
 /**
  * 抓取并下载当前单章节页面
@@ -35,27 +37,50 @@ export async function downloadCurrentPage(format: "txt" | "html" = "txt"): Promi
         const html = document.documentElement.outerHTML;
         const defaultTitle = document.title.split(" - ")[0] || "未命名章节";
 
-        const { title, author, contentText, contentHtml } = parseChapterHtml(html, defaultTitle);
+        const parsed = parseChapterHtml(html, defaultTitle);
+
+        const title = parsed.title;
+        const author = parsed.author;
+        const contentText = parsed.contentText;
+        let contentHtml = parsed.contentHtml;
 
         // 根据格式检查内容
-        if ((format === "txt" && !contentText) || (format === "html" && !contentHtml)) {
+        if (format === "txt" && !contentText) {
             alert("未找到正文内容");
             return;
-        }
-
-        const safeTitle = title.replace(/[\\/:*?"<>|]/g, "_").trim();
-        let blob: Blob;
-        let downloadFilename = "";
-
-        // 构建下载内容
-        // TODO: 增加对图片的支持
-        if (format === "txt") {
-            const finalTxt = `${metaHeader}${title}\n${author}\n本章URL: ${location.href}\n\n${contentText}`;
-            blob = new Blob([finalTxt], { type: "text/plain;charset=utf-8" });
-            downloadFilename = `${bookNamePrefix}${safeTitle}.txt`;
         } else {
-            // 构建 HTML
-            const style = `
+            if (getImageDownloadSetting()) {
+                log("正在下载并处理插图...");
+                try {
+                    const processed = await processHtmlImages(contentHtml, 0);
+
+                    let tempHtml = processed.processedHtml;
+
+                    for (const img of processed.images) {
+                        const b64 = await blobToBase64(img.blob);
+                        tempHtml = tempHtml.split(`src="${img.id}"`).join(`src="${b64}"`);
+                    }
+
+                    contentHtml = tempHtml;
+                    log(`已嵌入 ${processed.images.length} 张图片`);
+                } catch (imgErr: any) {
+                    console.error(imgErr);
+                    log(`⚠️ 图片处理失败，将保留原链接`);
+                }
+            }
+
+            const safeTitle = title.replace(/[\\/:*?"<>|]/g, "_").trim();
+            let blob: Blob;
+            let downloadFilename = "";
+
+            // 构建下载内容
+            if (format === "txt") {
+                const finalTxt = `${metaHeader}${title}\n${author}\n本章URL: ${location.href}\n\n${contentText}`;
+                blob = new Blob([finalTxt], { type: "text/plain;charset=utf-8" });
+                downloadFilename = `${bookNamePrefix}${safeTitle}.txt`;
+            } else {
+                // 构建 HTML
+                const style = `
                 <style>
                     body { font-family: sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; line-height: 1.6; color: #333; background: #f9f9f9; }
                     .chapter-card { background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
@@ -66,8 +91,8 @@ export async function downloadCurrentPage(format: "txt" | "html" = "txt"): Promi
                 </style>
             `;
 
-            const metaBlock = htmlMeta.intro ? `<div class="meta">${htmlMeta.intro}</div>` : "";
-            const finalHtml = `
+                const metaBlock = htmlMeta.intro ? `<div class="meta">${htmlMeta.intro}</div>` : "";
+                const finalHtml = `
                 <!DOCTYPE html>
                 <html lang="zh-CN">
                 <head>
@@ -90,20 +115,21 @@ export async function downloadCurrentPage(format: "txt" | "html" = "txt"): Promi
                 </body>
                 </html>
             `;
-            blob = new Blob([finalHtml], { type: "text/html;charset=utf-8" });
-            downloadFilename = `${bookNamePrefix}${safeTitle}.html`;
+                blob = new Blob([finalHtml], { type: "text/html;charset=utf-8" });
+                downloadFilename = `${bookNamePrefix}${safeTitle}.html`;
+            }
+
+            const a = document.createElement("a");
+            a.href = URL.createObjectURL(blob);
+            a.download = downloadFilename;
+
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(a.href);
+
+            log(`✔ 单章下载完成 (${format.toUpperCase()})`);
         }
-
-        const a = document.createElement("a");
-        a.href = URL.createObjectURL(blob);
-        a.download = downloadFilename;
-
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(a.href);
-
-        log(`✔ 单章下载完成 (${format.toUpperCase()})`);
     } catch (e: any) {
         console.error(e);
         alert("下载出错: " + e.message);

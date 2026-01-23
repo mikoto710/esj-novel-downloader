@@ -11,7 +11,7 @@ export function createSettingButton(customClass: string = ""): HTMLElement {
         "button",
         {
             className: `btn btn-primary esj-settings-trigger ${customClass}`,
-            style: "color: white; cursor: pointer;",
+            style: "color: white; cursor: pointer; margin-left: 10px",
             onclick: (e: Event) => {
                 e.preventDefault();
                 // 如果被禁用，直接返回
@@ -47,7 +47,7 @@ export function createDownloadButton(
         {
             id: id,
             className: `btn btn-info esj-download-trigger ${customClass}`,
-            style: "color: white; cursor: pointer;",
+            style: "color: white; cursor: pointer; margin-left: 5px;",
             onclick: async () => {
                 // 防止弹窗已存在的情景
                 const runningPopup = document.querySelector("#esj-popup") as HTMLElement;
