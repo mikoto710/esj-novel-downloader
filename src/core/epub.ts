@@ -127,7 +127,7 @@ export async function buildEpub(chapters: Chapter[], metadata: BookMetadata): Pr
 
     oebps.file("content.opf", contentOpf);
 
-    log("正在压缩生成 EPUB（可能需要几秒）...");
+    log("正在压缩生成 EPUB (可能需要几秒) ...");
     const blob = await zip.generateAsync({ type: "blob", compression: "DEFLATE" });
     return blob;
 }

@@ -312,7 +312,7 @@ export async function batchDownload(options: DownloadOptions): Promise<void> {
                 return;
             }
             const count = ctx.runtime.completedCount;
-            const statusStr = `全本下载（${count}/${total}）`;
+            const statusStr = `全本下载 (${count}/${total}) `;
             if (titleEl) {
                 titleEl.textContent = "📘 " + statusStr;
             }

@@ -89,7 +89,7 @@ export async function clearAllCaches(): Promise<void> {
 
         resetGlobalState();
 
-        console.log("Cache cleared:", targetKeys);
+        console.log("已清理缓存:", targetKeys);
     } catch (e: any) {
         console.error("清理缓存失败", e);
         alert("清理失败: " + e.message);
