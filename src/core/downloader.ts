@@ -215,12 +215,12 @@ async function processChapterTask(task: DownloadTask, ctx: DownloadContext, isRe
     // 如果有图片错误，优先显示错误数量
     if (imageErrors > 0) {
         log(
-            `${prefix} (${ctx.runtime.completedCount}/${total})：${title} (${imageErrors}/${imageCount + imageErrors} 张图片获取失败)\nURL: ${url}`
+            `${prefix} (${ctx.runtime.completedCount}/${total}): ${title} (${imageErrors}/${imageCount + imageErrors} 张图片获取失败)\nURL: ${url}`
         );
     } else if (imageCount > 0) {
-        log(`${prefix} (${ctx.runtime.completedCount}/${total})：${title} (${imageCount} 张图片)\nURL: ${url}`);
+        log(`${prefix} (${ctx.runtime.completedCount}/${total}): ${title} (${imageCount} 张图片)\nURL: ${url}`);
     } else {
-        log(`${prefix} (${ctx.runtime.completedCount}/${total})：${title}\nURL: ${url}`);
+        log(`${prefix} (${ctx.runtime.completedCount}/${total}): ${title}\nURL: ${url}`);
     }
 
     if (!state.abortFlag) {

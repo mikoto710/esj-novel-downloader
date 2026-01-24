@@ -202,7 +202,7 @@ export async function processHtmlImages(
         if (!downloadSuccess && !signal?.aborted) {
             failCount++;
 
-            log(`❌ [插图获取失败] 序列${chapterIndex + 1}: ${src} \n失败原因： ${errorMsg}`);
+            log(`❌ 插图获取失败，序列${chapterIndex + 1}: ${src} \n失败原因： ${errorMsg}`);
             // 失败后保留远程链接
             img.removeAttribute("srcset");
             img.removeAttribute("loading");
