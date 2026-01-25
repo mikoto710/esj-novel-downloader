@@ -104,8 +104,8 @@ export async function downloadCurrentPage(format: "txt" | "html" = "txt"): Promi
                 <body>
                     <div class="chapter-card">
                         <h1>${title}</h1>
-                        <p>作者: ${author}</p>
-                        <p>URL: <a href="${location.href}">${location.href}</a></p>
+                        <p>${author}</p>
+                        <p>本章URL: <a href="${location.href}">${location.href}</a></p>
                         ${metaBlock}
                         <hr/>
                         <div class="content">
