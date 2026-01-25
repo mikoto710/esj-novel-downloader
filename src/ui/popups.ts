@@ -265,7 +265,7 @@ export function showFormatChoice(): void {
     const header = createCommonHeader("💾 导出选项", closeAction);
 
     const coverStatus = data.metadata.coverBlob
-        ? el("div", { style: "color:green;font-size:12px;margin-top:4px;" }, ["✔  封面已包含在 epub 文件中"])
+        ? el("div", { style: "color:green;font-size:12px;margin-top:4px;" }, ["✔  封面已就绪"])
         : el("div", { style: "color:red;font-size:12px;margin-top:4px;" }, ["✖  无封面"]);
 
     // 正文插图统计
