@@ -44,7 +44,7 @@ function createCommonHeader(title: string, onClose: () => void, onMinimize?: () 
                 style: "border:none;background:#81d4fa;color:#000;padding:4px 10px;border-radius:6px;cursor:pointer;font-weight:bold;margin-right:5px;",
                 onclick: onMinimize
             },
-            ["__"]
+            ["＿"]
         );
         btnGroup.push(btnMin);
     }
