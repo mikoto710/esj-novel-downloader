@@ -1,16 +1,58 @@
-import { get, set, del, keys } from "idb-keyval";
+import { del, get, keys, set } from "idb-keyval";
+import { CacheMeta, Chapter, PersistentCacheEntry } from "../types";
 import { log } from "../utils/index";
-import { Chapter } from "../types";
 import { resetGlobalState } from "./state";
 
 interface StoredCache {
+    version?: number;
     ts: number;
     chapters: [number, Chapter][];
+    meta?: CacheMeta;
 }
 
 // 下载缓存配置，24h过期
 const CACHE_PREFIX = "esj_down_";
 const CACHE_EXPIRE_TIME = 24 * 60 * 60 * 1000;
+
+function getCacheKey(bookId: string): string {
+    return CACHE_PREFIX + bookId;
+}
+
+function isExpired(data: StoredCache): boolean {
+    return Date.now() - data.ts > CACHE_EXPIRE_TIME;
+}
+
+function normalizeMeta(bookId: string, meta?: CacheMeta): CacheMeta | undefined {
+    if (!meta) {
+        return undefined;
+    }
+
+    return {
+        ...meta,
+        bookId,
+        updatedAt: Date.now()
+    };
+}
+
+function toPersistentEntry(key: string, data: StoredCache): PersistentCacheEntry | null {
+    if (!Array.isArray(data.chapters)) {
+        return null;
+    }
+
+    const map = new Map<number, Chapter>(data.chapters);
+    const bookId = data.meta?.bookId || key.replace(CACHE_PREFIX, "");
+
+    return {
+        key,
+        bookId,
+        updatedAt: data.meta?.updatedAt || data.ts,
+        chapterCount: map.size,
+        totalChapters: data.meta?.totalChapters ?? null,
+        map,
+        meta: data.meta || null,
+        isLegacy: !data.meta
+    };
+}
 
 /**
  * 读取 IndexedDB 中的小说缓存
@@ -18,29 +60,28 @@ const CACHE_EXPIRE_TIME = 24 * 60 * 60 * 1000;
  * @returns 缓存数据和章节数量
  */
 export async function loadBookCache(bookId: string): Promise<{ size: number; map: Map<number, Chapter> | null }> {
-    const key = CACHE_PREFIX + bookId;
+    const key = getCacheKey(bookId);
     try {
         const data = await get<StoredCache>(key);
         if (!data) {
             return { size: 0, map: null };
         }
 
-        // 检查过期
-        if (Date.now() - data.ts > CACHE_EXPIRE_TIME) {
+        if (isExpired(data)) {
             console.warn("⚠ 本地缓存已过期，自动清理");
             await del(key);
             return { size: 0, map: null };
         }
 
-        // 恢复 Map
         if (Array.isArray(data.chapters)) {
-            const map = new Map(data.chapters);
+            const map = new Map<number, Chapter>(data.chapters);
             console.log(`✅ 读取到本地缓存，章节数：${map.size}`);
-            return { size: map.size, map: map };
+            return { size: map.size, map };
         }
     } catch (e) {
         console.error("读取缓存失败", e);
     }
+
     return { size: 0, map: null };
 }
 
@@ -49,16 +90,52 @@ export async function loadBookCache(bookId: string): Promise<{ size: number; map
  * @param bookId
  * @param map 章节数据
  */
-export async function saveBookCache(bookId: string, map: Map<number, Chapter>) {
-    const key = CACHE_PREFIX + bookId;
-    const data = {
-        ts: Date.now(),
-        chapters: Array.from(map.entries())
+export async function saveBookCache(bookId: string, map: Map<number, Chapter>, meta?: CacheMeta) {
+    const normalizedMeta = normalizeMeta(bookId, meta);
+    const data: StoredCache = {
+        version: normalizedMeta ? 1 : undefined,
+        ts: normalizedMeta?.updatedAt || Date.now(),
+        chapters: Array.from(map.entries()),
+        meta: normalizedMeta
     };
+
     try {
-        await set(key, data);
+        await set(getCacheKey(bookId), data);
     } catch (e) {
         console.error("保存缓存失败", e);
+    }
+}
+
+/**
+ * 列出所有持久缓存条目
+ */
+export async function listBookCaches(): Promise<PersistentCacheEntry[]> {
+    try {
+        const allKeys = await keys();
+        const targetKeys = allKeys.map((key) => String(key)).filter((key) => key.startsWith(CACHE_PREFIX));
+
+        const entries = await Promise.all(
+            targetKeys.map(async (key) => {
+                const data = await get<StoredCache>(key);
+                if (!data) {
+                    return null;
+                }
+
+                if (isExpired(data)) {
+                    await del(key);
+                    return null;
+                }
+
+                return toPersistentEntry(key, data);
+            })
+        );
+
+        return entries
+            .filter((entry): entry is PersistentCacheEntry => Boolean(entry))
+            .sort((a, b) => b.updatedAt - a.updatedAt);
+    } catch (e) {
+        console.error("读取缓存列表失败", e);
+        return [];
     }
 }
 
@@ -68,30 +145,32 @@ export async function saveBookCache(bookId: string, map: Map<number, Chapter>) {
  */
 export async function clearBookCache(bookId: string) {
     try {
-        await del(CACHE_PREFIX + bookId);
-        log("🗑️ 任务完成，已清理本地缓存");
+        await del(getCacheKey(bookId));
+        log("🗑️ 已清理本地缓存:" + bookId);
     } catch (e) {
         console.error("清理缓存失败", e);
     }
 }
 
 /**
- * 清理所有本脚本产生的缓存
+ * 仅清理 IndexedDB 中的全部持久缓存
  */
-export async function clearAllCaches(): Promise<void> {
+export async function clearAllPersistentCaches(): Promise<void> {
     try {
         const allKeys = await keys();
-
         const targetKeys = allKeys.filter((k) => String(k).startsWith(CACHE_PREFIX));
-
-        const promises = targetKeys.map((k) => del(k));
-        await Promise.all(promises);
-
-        resetGlobalState();
-
-        console.log("已清理缓存:", targetKeys);
+        await Promise.all(targetKeys.map((k) => del(k)));
+        console.log("已清理持久缓存:", targetKeys);
     } catch (e: any) {
         console.error("清理缓存失败", e);
         alert("清理失败: " + e.message);
     }
+}
+
+/**
+ * 清理全部缓存，包括持久缓存和当前页内存状态
+ */
+export async function clearAllCaches(): Promise<void> {
+    await clearAllPersistentCaches();
+    resetGlobalState();
 }

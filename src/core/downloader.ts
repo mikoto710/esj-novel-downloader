@@ -1,10 +1,17 @@
-import { state, setCachedData, setAbortFlag, resetAbortController } from "./state";
+import {
+    state,
+    setCachedData,
+    setAbortFlag,
+    resetAbortController,
+    startRuntimeCacheSession,
+    updateRuntimeCacheSession
+} from "./state";
 import { log, sleepWithAbort, sleep, fetchWithTimeout } from "../utils/index";
 import { fullCleanup } from "../utils/dom";
 import { createDownloadPopup, showFormatChoice } from "../ui/popups";
 import { updateTrayText } from "../ui/tray";
 import { loadBookCache, saveBookCache, clearBookCache } from "./storage";
-import { Chapter } from "../types";
+import { CacheMeta, Chapter, SourcePageType } from "../types";
 import { parseChapterHtml } from "./parser";
 import { getConcurrency, getImageDownloadSetting } from "./config";
 import { processHtmlImages } from "../utils/image";
@@ -19,15 +26,19 @@ export interface DownloadTask {
 export interface DownloadOptions {
     bookId: string;
     bookName: string;
+    rawBookName?: string;
     author?: string;
     introTxt: string;
     coverUrl?: string;
+    pageUrl?: string;
+    sourcePageType?: SourcePageType;
     tasks: DownloadTask[];
 }
 
 // 下载过程上下文，用于在各函数间传递状态和方法
 interface DownloadContext {
     options: DownloadOptions;
+    cacheMeta: CacheMeta;
     total: number;
     enableImage: boolean;
     ui: {
@@ -110,7 +121,7 @@ async function downloadChapterHtml(url: string, title: string): Promise<string |
  */
 async function handleChapterContent(html: string, task: DownloadTask, ctx: DownloadContext): Promise<void> {
     const { index, title } = task;
-    const { options, enableImage } = ctx;
+    const { enableImage } = ctx;
 
     // 解析 DOM
     const result = parseChapterHtml(html, title);
@@ -174,7 +185,7 @@ async function processChapterTask(task: DownloadTask, ctx: DownloadContext, isRe
         ctx.updateProgress();
 
         if (!state.abortFlag && ctx.runtime.completedCount % 5 === 0) {
-            saveBookCache(options.bookId, state.globalChaptersMap);
+            saveBookCache(options.bookId, state.globalChaptersMap, ctx.cacheMeta);
         }
 
         log(`⚠️ 跳过 (${ctx.runtime.completedCount}/${total})：${title} (非站内)`);
@@ -199,10 +210,10 @@ async function processChapterTask(task: DownloadTask, ctx: DownloadContext, isRe
     if (!state.abortFlag) {
         if (isRetry) {
             // 补漏每补完一章就存一次
-            saveBookCache(options.bookId, state.globalChaptersMap);
+            saveBookCache(options.bookId, state.globalChaptersMap, ctx.cacheMeta);
         } else {
             if (ctx.runtime.completedCount % 5 === 0) {
-                saveBookCache(options.bookId, state.globalChaptersMap);
+                saveBookCache(options.bookId, state.globalChaptersMap, ctx.cacheMeta);
             }
         }
     }
@@ -252,7 +263,7 @@ async function checkIntegrityAndRetry(tasks: DownloadTask[], ctx: DownloadContex
         log(`⚠ 发现 ${missingTasks.length} 个章节不完整 (缺失或含失败图片)，尝试自动补抓...`);
         for (const task of missingTasks) {
             if (state.abortFlag) {
-                await saveBookCache(options.bookId, state.globalChaptersMap);
+                await saveBookCache(options.bookId, state.globalChaptersMap, ctx.cacheMeta);
                 fullCleanup(state.originalTitle);
                 break;
             }
@@ -272,7 +283,7 @@ async function checkIntegrityAndRetry(tasks: DownloadTask[], ctx: DownloadContex
 
 // 批量下载主入口
 export async function batchDownload(options: DownloadOptions): Promise<void> {
-    const { bookId, bookName, author, introTxt, coverUrl, tasks } = options;
+    const { bookId, bookName, rawBookName, author, introTxt, coverUrl, pageUrl, sourcePageType, tasks } = options;
     const total = tasks.length;
 
     // 初始化 UI 和状态
@@ -297,12 +308,26 @@ export async function batchDownload(options: DownloadOptions): Promise<void> {
         log(`💾 已从 IndexedDB 恢复 ${cachedCount} 章缓存`);
     }
 
+    const cacheMeta: CacheMeta = {
+        bookId,
+        bookName,
+        rawBookName: rawBookName || bookName,
+        author: author || "未知作者",
+        pageUrl: pageUrl || location.href,
+        totalChapters: total,
+        sourcePageType: sourcePageType || "unknown",
+        imageEnabled: getImageDownloadSetting(),
+        updatedAt: Date.now()
+    };
+    startRuntimeCacheSession(cacheMeta, state.globalChaptersMap.size);
+
     // 启动封面下载
     const coverTaskPromise = coverUrl ? fetchCoverImage(coverUrl) : Promise.resolve(null);
 
     // 构造上下文
     const ctx: DownloadContext = {
         options,
+        cacheMeta,
         total,
         enableImage: getImageDownloadSetting(),
         ui: { progressEl, titleEl },
@@ -321,6 +346,11 @@ export async function batchDownload(options: DownloadOptions): Promise<void> {
             if (progressEl) {
                 progressEl.style.width = (count / total) * 100 + "%";
             }
+            updateRuntimeCacheSession({
+                completedCount: count,
+                cachedChapterCount: state.globalChaptersMap.size,
+                status: "downloading"
+            });
         }
     };
 
@@ -346,7 +376,13 @@ export async function batchDownload(options: DownloadOptions): Promise<void> {
     // 用户取消操作
     if (state.abortFlag) {
         log("正在写入 IndexedDB...");
-        await saveBookCache(bookId, state.globalChaptersMap);
+        await saveBookCache(bookId, state.globalChaptersMap, cacheMeta);
+        updateRuntimeCacheSession({
+            completedCount: ctx.runtime.completedCount,
+            cachedChapterCount: state.globalChaptersMap.size,
+            status: "cancelled",
+            hasExportData: false
+        });
         log("任务已手动取消，进度已保存。");
         await sleep(800);
         document.title = state.originalTitle;
@@ -385,6 +421,13 @@ export async function batchDownload(options: DownloadOptions): Promise<void> {
             coverExt: coverResult?.ext || "jpg"
         },
         epubBlob: null
+    });
+
+    updateRuntimeCacheSession({
+        completedCount: total,
+        cachedChapterCount: chaptersArr.length,
+        status: "export-ready",
+        hasExportData: true
     });
 
     clearBookCache(bookId);

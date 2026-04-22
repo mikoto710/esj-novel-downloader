@@ -1,10 +1,11 @@
-import { AppState, CachedData, Chapter } from "../types";
+import { AppState, CacheMeta, CachedData, Chapter, RuntimeCacheSession } from "../types";
 
 export const state: AppState & { abortController: AbortController | null } = {
     abortFlag: false,
     originalTitle: document.title || "ESJZone",
     cachedData: null,
     globalChaptersMap: new Map<number, Chapter>(),
+    runtimeCacheSession: null,
     abortController: null
 };
 
@@ -20,6 +21,12 @@ export function setAbortFlag(val: boolean): void {
  */
 export function setCachedData(data: CachedData): void {
     state.cachedData = data;
+
+    if (state.runtimeCacheSession) {
+        state.runtimeCacheSession.cachedChapterCount = data.chapters.length;
+        state.runtimeCacheSession.updatedAt = Date.now();
+        state.runtimeCacheSession.hasExportData = true;
+    }
 }
 
 /**
@@ -30,11 +37,51 @@ export function resetAbortController() {
 }
 
 /**
+ * 启动当前页会话缓存摘要
+ */
+export function startRuntimeCacheSession(meta: CacheMeta, initialChapterCount = 0): void {
+    state.runtimeCacheSession = {
+        ...meta,
+        completedCount: 0,
+        cachedChapterCount: initialChapterCount,
+        status: "downloading",
+        hasExportData: false
+    };
+}
+
+/**
+ * 更新当前页会话缓存摘要
+ */
+export function updateRuntimeCacheSession(progress: Partial<RuntimeCacheSession>): void {
+    if (!state.runtimeCacheSession) {
+        return;
+    }
+
+    state.runtimeCacheSession = {
+        ...state.runtimeCacheSession,
+        ...progress,
+        updatedAt: progress.updatedAt ?? Date.now()
+    };
+}
+
+/**
+ * 清理当前页会话缓存
+ */
+export function clearRuntimeCacheSession(bookId?: string): void {
+    if (bookId && state.runtimeCacheSession?.bookId !== bookId) {
+        return;
+    }
+
+    state.runtimeCacheSession = null;
+    state.cachedData = null;
+    state.globalChaptersMap.clear();
+}
+
+/**
  * 重置所有全局状态
  */
 export function resetGlobalState(): void {
-    state.cachedData = null;
-    state.globalChaptersMap.clear();
+    clearRuntimeCacheSession();
     // state.abortFlag = false;
     console.log("内存状态已重置");
 }

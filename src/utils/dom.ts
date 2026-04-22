@@ -44,7 +44,14 @@ export function enableDrag(popup: HTMLElement, headerSelector: string): void {
  * @param originalTitle 原始标题
  */
 export function fullCleanup(originalTitle?: string): void {
-    const selectors = ["#esj-popup", "#esj-min-tray", "#esj-confirm", "#esj-format", "#esj-settings"];
+    const selectors = [
+        "#esj-popup",
+        "#esj-min-tray",
+        "#esj-confirm",
+        "#esj-format",
+        "#esj-settings",
+        "#esj-cache-manager"
+    ];
 
     selectors.forEach((sel) => {
         document.querySelector(sel)?.remove();
@@ -53,9 +60,7 @@ export function fullCleanup(originalTitle?: string): void {
     if (originalTitle) {
         document.title = originalTitle;
     }
-
     const settingsBtns = document.querySelectorAll(".esj-settings-trigger");
-
     settingsBtns.forEach((btn) => ((btn as HTMLButtonElement).disabled = false));
 }
 

@@ -110,9 +110,12 @@ export async function scrapeForum(): Promise<void> {
                     await batchDownload({
                         bookId: bid,
                         bookName: meta.bookName,
+                        rawBookName: meta.rawBookName,
                         author: meta.author,
                         introTxt: meta.introTxt,
                         coverUrl: meta.coverUrl,
+                        pageUrl: detailUrl,
+                        sourcePageType: "forum",
                         tasks: tasks
                     });
                 } catch (e: any) {

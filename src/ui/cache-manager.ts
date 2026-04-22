@@ -1,0 +1,359 @@
+import { clearAllManagedCaches, clearManagedCache, listManagedCaches } from "../core/cache-manager";
+import { CacheListItem } from "../types";
+import { el, enableDrag } from "../utils/dom";
+
+function toggleSettingsLock(locked: boolean) {
+    const buttons = document.querySelectorAll(".esj-settings-trigger");
+    buttons.forEach((button) => ((button as HTMLButtonElement).disabled = locked));
+}
+
+function createHeader(title: string, onClose: () => void): HTMLElement {
+    return el(
+        "div",
+        {
+            className: "esj-common-header",
+            style: "padding:10px;background:#2b9bd7;color:#fff;display:flex;justify-content:space-between;align-items:center;cursor:move;border-radius:8px 8px 0 0;"
+        },
+        [
+            el("span", { style: "font-weight:bold;" }, [title]),
+            el("div", { style: "display:flex;" }, [
+                el(
+                    "button",
+                    {
+                        title: "关闭",
+                        style: "border:none;background:#ef5350;color:#fff;padding:4px 10px;border-radius:6px;cursor:pointer;font-weight:bold;",
+                        onclick: onClose
+                    },
+                    ["✕"]
+                )
+            ])
+        ]
+    );
+}
+
+function formatTime(timestamp: number): string {
+    if (!timestamp) {
+        return "-";
+    }
+    return new Date(timestamp).toLocaleString();
+}
+
+function formatProgress(item: CacheListItem): string {
+    if (!item.totalChapters) {
+        return `${item.progressCount} / ?`;
+    }
+    return `${item.progressCount} / ${item.totalChapters}`;
+}
+
+function getStatusText(item: CacheListItem): string {
+    switch (item.status) {
+        case "downloading":
+            return "下载中";
+        case "cancelled":
+            return "已取消";
+        case "export-ready":
+            return "可导出";
+        default:
+            return item.isLegacy ? "旧缓存" : "已缓存";
+    }
+}
+
+function createBadge(text: string, className = ""): HTMLElement {
+    return el("span", { className: `esj-cache-badge ${className}`.trim() }, [text]);
+}
+
+function createActionButton(
+    text: string,
+    onClick: () => Promise<void> | void,
+    tone: "default" | "primary" | "danger" = "default"
+) {
+    return el(
+        "button",
+        {
+            className: `btn btn-sm esj-cache-action esj-cache-action-${tone}`,
+            onclick: onClick
+        },
+        [text]
+    );
+}
+
+function showCacheConfirm(options: { title?: string; message: string; danger?: boolean }): Promise<boolean> {
+    document.querySelector("#esj-cache-confirm")?.remove();
+
+    return new Promise((resolve) => {
+        const cleanup = (result: boolean) => {
+            popup.remove();
+            resolve(result);
+        };
+
+        const header = createHeader(options.title || "❓ 确认操作", () => cleanup(false));
+
+        const body = el("div", { style: "padding:16px;font-size:14px;line-height:1.7;color:#333;" }, [options.message]);
+
+        const btnCancel = el(
+            "button",
+            {
+                id: "esj-cache-confirm-cancel",
+                style: "padding:8px 12px;background:#eee;border:1px solid #ccc;border-radius:6px;cursor:pointer;",
+                onclick: () => cleanup(false)
+            },
+            ["取消"]
+        );
+
+        const btnOk = el(
+            "button",
+            {
+                id: "esj-cache-confirm-ok",
+                style: `padding:8px 12px;${
+                    options.danger ? "background:#d9534f;" : "background:#2b9bd7;"
+                }color:#fff;border:none;border-radius:6px;cursor:pointer;`,
+                onclick: () => cleanup(true)
+            },
+            ["清理"]
+        );
+
+        const footer = el(
+            "div",
+            {
+                style: "padding:12px;display:flex;justify-content:flex-end;gap:8px;"
+            },
+            [btnCancel, btnOk]
+        );
+
+        const popup = el(
+            "div",
+            {
+                id: "esj-cache-confirm",
+                style: "position:fixed;top:30%;left:50%;transform:translateX(-50%);width:380px;background:#fff;border:1px solid #aaa;border-radius:8px;box-shadow:0 0 18px rgba(0,0,0,0.28);z-index:1000000;display:flex;flex-direction:column;"
+            },
+            [header, body, footer]
+        );
+
+        document.body.appendChild(popup);
+        enableDrag(popup, ".esj-common-header");
+    });
+}
+
+export function createCacheManagerPopup(): void {
+    document.querySelector("#esj-cache-manager")?.remove();
+    document.querySelector("#esj-cache-confirm")?.remove();
+    toggleSettingsLock(true);
+
+    const closeAction = () => {
+        document.querySelector("#esj-cache-confirm")?.remove();
+        document.querySelector("#esj-cache-manager")?.remove();
+        toggleSettingsLock(false);
+    };
+
+    const listBox = el("div", {
+        className: "esj-cache-list",
+        style: "flex:1;padding:14px;background:#fafafa;overflow:auto;"
+    });
+
+    const footer = el("div", {
+        style: "padding:12px;display:flex;justify-content:space-between;gap:8px;border-top:1px solid #eee;background:#fff;border-radius:0 0 8px 8px;"
+    });
+
+    const popup = el(
+        "div",
+        {
+            id: "esj-cache-manager",
+            style: "position:fixed;top:18%;left:50%;transform:translateX(-50%);width:620px;height:520px;background:#fff;border:1px solid #aaa;border-radius:8px;box-shadow:0 0 18px rgba(0,0,0,0.28);z-index:999999;display:flex;flex-direction:column;"
+        },
+        [createHeader("🗂️ 缓存管理", closeAction), listBox, footer]
+    );
+
+    async function renderList() {
+        const items = await listManagedCaches();
+        listBox.replaceChildren();
+        footer.replaceChildren();
+
+        const leftActions = el("div", { style: "display:flex;gap:8px;flex-wrap:wrap;" });
+        const rightActions = el("div", { style: "display:flex;gap:8px;flex-wrap:wrap;" });
+
+        leftActions.appendChild(
+            createActionButton("刷新", async () => {
+                await renderList();
+            })
+        );
+
+        if (items.length > 0) {
+            leftActions.appendChild(
+                createActionButton("清理全部持久缓存", async () => {
+                    const confirmed = await showCacheConfirm({
+                        title: "🗑️ 清理确认",
+                        message: "确定清理全部 IndexedDB 持久缓存吗？",
+                        danger: true
+                    });
+                    if (!confirmed) {
+                        return;
+                    }
+                    await clearAllManagedCaches(false);
+                    await renderList();
+                })
+            );
+
+            rightActions.appendChild(
+                createActionButton(
+                    "清理全部缓存",
+                    async () => {
+                        const confirmed = await showCacheConfirm({
+                            title: "🗑️ 清理确认",
+                            message: "确定清理全部缓存吗？这会同时移除当前页会话缓存。",
+                            danger: true
+                        });
+                        if (!confirmed) {
+                            return;
+                        }
+                        await clearAllManagedCaches(true);
+                        await renderList();
+                    },
+                    "danger"
+                )
+            );
+        }
+
+        footer.append(leftActions, rightActions);
+
+        if (items.length === 0) {
+            listBox.appendChild(
+                el(
+                    "div",
+                    {
+                        style: "height:100%;display:flex;align-items:center;justify-content:center;color:#666;font-size:14px;"
+                    },
+                    ["当前没有可管理的缓存。"]
+                )
+            );
+            return;
+        }
+
+        items.forEach((item) => {
+            listBox.appendChild(createCacheItem(item, renderList));
+        });
+    }
+
+    document.body.appendChild(popup);
+    enableDrag(popup, ".esj-common-header");
+    void renderList();
+}
+
+function createCacheItem(item: CacheListItem, rerender: () => Promise<void>): HTMLElement {
+    const badges = el("div", {
+        className: "esj-cache-badges",
+        style: "display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;"
+    });
+
+    if (item.sources.includes("indexeddb")) {
+        badges.appendChild(createBadge("IndexedDB"));
+    }
+    if (item.sources.includes("runtime")) {
+        badges.appendChild(createBadge("会话内存", "runtime"));
+    }
+    badges.appendChild(createBadge(getStatusText(item), "status"));
+    if (item.hasExportData) {
+        badges.appendChild(createBadge("可重复导出", "ready"));
+    }
+    if (item.isLegacy) {
+        badges.appendChild(createBadge("旧缓存", "legacy"));
+    }
+
+    const percent =
+        item.totalChapters && item.totalChapters > 0
+            ? Math.min(100, Math.round((item.progressCount / item.totalChapters) * 100))
+            : 0;
+
+    const progressBar = el("div", { className: "esj-cache-progress-bar", style: `width:${percent}%;` });
+    const progressTrack = el(
+        "div",
+        {
+            className: "esj-cache-progress-track",
+            style: "margin-top:8px;width:100%;height:10px;background:#e9ecef;border-radius:999px;overflow:hidden;"
+        },
+        [progressBar]
+    );
+
+    const actions = el("div", { style: "display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;" });
+
+    if (item.sources.includes("indexeddb")) {
+        actions.appendChild(
+            createActionButton("清理 IndexedDB", async () => {
+                const confirmed = await showCacheConfirm({
+                    title: "🗑️ 清理确认",
+                    message: `确定清理《${item.bookName}》的 IndexedDB 缓存吗？`,
+                    danger: true
+                });
+                if (!confirmed) {
+                    return;
+                }
+                await clearManagedCache(item.bookId, "indexeddb");
+                await rerender();
+            })
+        );
+    }
+
+    if (item.sources.includes("runtime")) {
+        actions.appendChild(
+            createActionButton("清理会话缓存", async () => {
+                const confirmed = await showCacheConfirm({
+                    title: "🗑️ 清理确认",
+                    message: `确定清理《${item.bookName}》的当前页会话缓存吗？`,
+                    danger: true
+                });
+                if (!confirmed) {
+                    return;
+                }
+                await clearManagedCache(item.bookId, "runtime");
+                await rerender();
+            })
+        );
+    }
+
+    if (item.sources.length > 1) {
+        actions.appendChild(
+            createActionButton(
+                "全部清理",
+                async () => {
+                    const confirmed = await showCacheConfirm({
+                        title: "🗑️ 清理确认",
+                        message: `确定清理《${item.bookName}》的全部缓存吗？`,
+                        danger: true
+                    });
+                    if (!confirmed) {
+                        return;
+                    }
+                    await clearManagedCache(item.bookId, "all");
+                    await rerender();
+                },
+                "danger"
+            )
+        );
+    }
+
+    return el(
+        "div",
+        {
+            className: "esj-cache-item",
+            style: "background:#fff;border:1px solid #e5e5e5;border-radius:8px;padding:12px;margin-bottom:10px;"
+        },
+        [
+            el("div", { style: "display:flex;justify-content:space-between;gap:12px;align-items:flex-start;" }, [
+                el("div", { style: "flex:1;min-width:0;" }, [
+                    el("div", { style: "font-weight:bold;color:#333;word-break:break-word;" }, [item.bookName]),
+                    el("div", { style: "margin-top:6px;font-size:12px;color:#666;word-break:break-word;" }, [
+                        `作者: ${item.author || "-"} | Book ID: ${item.bookId}`
+                    ]),
+                    el("div", { style: "margin-top:4px;font-size:12px;color:#666;" }, [
+                        `进度: ${formatProgress(item)} | 更新时间: ${formatTime(item.updatedAt)}`
+                    ]),
+                    el("div", { style: "margin-top:4px;font-size:12px;color:#666;word-break:break-word;" }, [
+                        `来源页: ${item.sourcePageType}${item.pageUrl ? ` | ${item.pageUrl}` : ""}`
+                    ]),
+                    badges,
+                    progressTrack,
+                    actions
+                ])
+            ])
+        ]
+    );
+}

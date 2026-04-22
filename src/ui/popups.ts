@@ -7,6 +7,7 @@ import { CachedData } from "../types";
 import { getConcurrency, setConcurrency, setImageDownloadSetting, getImageDownloadSetting } from "../core/config";
 import { clearAllCaches } from "../core/storage";
 import { buildHtml } from "../core/html";
+import { createCacheManagerPopup } from "./cache-manager";
 
 /**
  * 锁定/解锁页面上的设置按钮
@@ -480,54 +481,17 @@ export function createSettingsPanel(): void {
         }
     });
 
-    // 缓存清理按钮
-    let confirmTimer: number;
-    let isConfirming = false;
-    const btnClear = el(
+    const btnCacheManager = el(
         "button",
         {
-            className: "btn btn-danger btn-sm",
-            style: "color: white; min-width: 110px; transition: all 0.2s;",
-            onclick: async (e: Event) => {
-                const btn = e.target as HTMLButtonElement;
-
-                if (!isConfirming) {
-                    isConfirming = true;
-                    btn.textContent = "确定删除?";
-                    confirmTimer = window.setTimeout(() => {
-                        isConfirming = false;
-                        btn.textContent = "清空缓存";
-                    }, 3000);
-                    return;
-                }
-                clearTimeout(confirmTimer);
-                isConfirming = false;
-
-                btn.disabled = true;
-                btn.textContent = "清理中...";
-
-                try {
-                    await clearAllCaches();
-
-                    btn.classList.remove("btn-danger");
-                    btn.classList.add("btn-success");
-                    btn.style.backgroundColor = "#28a745";
-                    btn.textContent = "已清理";
-                } catch (err) {
-                    btn.textContent = "❌ 失败";
-                    console.error(err);
-                } finally {
-                    setTimeout(() => {
-                        btn.disabled = false;
-                        btn.classList.remove("btn-success");
-                        btn.classList.add("btn-danger");
-                        btn.style.backgroundColor = "";
-                        btn.textContent = "清空缓存";
-                    }, 2000);
-                }
+            className: "btn btn-primary btn-sm esj-cache-manager-trigger",
+            style: "color: white; min-width: 110px;",
+            onclick: () => {
+                document.querySelector("#esj-settings")?.remove();
+                createCacheManagerPopup();
             }
         },
-        [" 清空缓存"]
+        [" 缓存管理"]
     );
 
     // 图片下载开关
@@ -574,7 +538,10 @@ export function createSettingsPanel(): void {
         inputConcurrency
     ]);
 
-    const rowCache = el("div", { style: rowStyle }, [el("label", { style: "color: #333;" }, ["下载缓存:"]), btnClear]);
+    const rowCache = el("div", { style: rowStyle }, [
+        el("label", { style: "color: #333;" }, ["下载缓存:"]),
+        btnCacheManager
+    ]);
 
     const rowImage = el("div", { style: rowStyle }, [
         el("div", {}, [

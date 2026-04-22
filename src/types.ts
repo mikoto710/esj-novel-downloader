@@ -23,7 +23,67 @@ export interface BookMetadata {
     uuid?: string;
 }
 
-// 导出的数据结构
+export type CacheSource = "indexeddb" | "runtime";
+
+export type CacheStatus = "downloading" | "cancelled" | "export-ready" | "persisted";
+
+export type SourcePageType = "detail" | "forum" | "single" | "unknown";
+
+// 缓存展示和持久化共用的元信息
+export interface CacheMeta {
+    bookId: string;
+    bookName: string;
+    rawBookName?: string;
+    author: string;
+    pageUrl: string;
+    totalChapters: number;
+    sourcePageType: SourcePageType;
+    imageEnabled: boolean;
+    updatedAt: number;
+}
+
+// 当前页运行中的会话缓存摘要
+export interface RuntimeCacheSession extends CacheMeta {
+    completedCount: number;
+    cachedChapterCount: number;
+    status: CacheStatus;
+    hasExportData: boolean;
+}
+
+// IndexedDB 持久缓存条目
+export interface PersistentCacheEntry {
+    key: string;
+    bookId: string;
+    updatedAt: number;
+    chapterCount: number;
+    totalChapters: number | null;
+    map: Map<number, Chapter>;
+    meta: CacheMeta | null;
+    isLegacy: boolean;
+}
+
+// 缓存管理弹窗中的统一条目视图
+export interface CacheListItem {
+    bookId: string;
+    bookName: string;
+    rawBookName?: string;
+    author: string;
+    pageUrl: string;
+    totalChapters: number | null;
+    progressCount: number;
+    persistentChapterCount: number;
+    runtimeChapterCount: number;
+    runtimeCompletedCount: number;
+    updatedAt: number;
+    sourcePageType: SourcePageType;
+    imageEnabled: boolean | null;
+    sources: CacheSource[];
+    status: CacheStatus;
+    hasExportData: boolean;
+    isLegacy: boolean;
+}
+
+// 导出数据结构
 export interface CachedData {
     txt: string;
     chapters: Chapter[];
@@ -37,4 +97,5 @@ export interface AppState {
     originalTitle: string;
     cachedData: CachedData | null;
     globalChaptersMap: Map<number, Chapter>;
+    runtimeCacheSession: RuntimeCacheSession | null;
 }

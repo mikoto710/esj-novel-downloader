@@ -35,7 +35,7 @@ const STYLES = `
     #esj-progress { width: 0%; height: 100%; background: #2b9bd7; transition: width .2s; }
 
     /* 确认弹窗 & 格式弹窗 */
-    #esj-confirm, #esj-format {
+    #esj-confirm, #esj-format, #esj-cache-manager, #esj-cache-confirm {
         position: fixed; top: 30%; left: 50%; transform: translateX(-50%);
         width: 380px; background: #fff; border: 1px solid #aaa;
         border-radius: 8px; box-shadow: 0 0 18px rgba(0,0,0,0.28);
@@ -44,6 +44,95 @@ const STYLES = `
         
     #esj-format { 
         width: 420px; 
+    }
+
+    #esj-cache-manager {
+        width: 620px;
+        height: 520px;
+        top: 18%;
+        font-family: inherit;
+    }
+
+    #esj-cache-confirm {
+        z-index: 1000000;
+    }
+
+    .esj-cache-badge {
+        display: inline-flex;
+        align-items: center;
+        padding: 3px 9px;
+        border-radius: 999px;
+        font-size: 12px;
+        background: #eef6fb;
+        color: #2b9bd7;
+    }
+
+    .esj-cache-badge.runtime {
+        background: #f5f5f5;
+        color: #666;
+    }
+
+    .esj-cache-badge.status {
+        background: #e8f5e9;
+        color: #2e7d32;
+    }
+
+    .esj-cache-badge.ready {
+        background: #fff8e1;
+        color: #b26a00;
+    }
+
+    .esj-cache-badge.legacy {
+        background: #fcebea;
+        color: #b94a48;
+    }
+
+    .esj-cache-progress-bar {
+        height: 100%;
+        background: #2b9bd7;
+        transition: width .2s;
+    }
+
+    .esj-cache-action {
+        padding: 7px 12px;
+        border-radius: 6px;
+        cursor: pointer;
+        font-weight: 600;
+        font-size: 13px;
+        font-family: inherit;
+        line-height: 1.2;
+        white-space: nowrap;
+        transition: background-color 0.2s, border-color 0.2s;
+    }
+
+    .esj-cache-action-default {
+        background: #f5f5f5;
+        color: #333;
+        border: 1px solid #ccc;
+    }
+
+    .esj-cache-action-default:hover {
+        background: #ececec;
+    }
+
+    .esj-cache-action-primary {
+        background: #2b9bd7;
+        color: #fff;
+        border: 1px solid #2388bd;
+    }
+
+    .esj-cache-action-primary:hover {
+        background: #2388bd;
+    }
+
+    .esj-cache-action-danger {
+        background: #d9534f;
+        color: #fff;
+        border: 1px solid #c54541;
+    }
+
+    .esj-cache-action-danger:hover {
+        background: #c54541;
     }
 
     /* 开关样式 (Toggle Switch) */
