@@ -50,7 +50,8 @@ export function fullCleanup(originalTitle?: string): void {
         "#esj-confirm",
         "#esj-format",
         "#esj-settings",
-        "#esj-cache-manager"
+        "#esj-cache-manager",
+        "#esj-image-cache-confirm"
     ];
 
     selectors.forEach((sel) => {

@@ -1,4 +1,5 @@
 import { state, setAbortFlag } from "../core/state";
+import { listManagedCaches } from "../core/cache-manager";
 import { fullCleanup, enableDrag, el } from "../utils/dom";
 import { log, triggerDownload } from "../utils/index";
 import { createMinimizedTray } from "./tray";
@@ -243,6 +244,62 @@ export function createConfirmPopup(onOk: () => void, onCancel?: () => void): voi
  * 显示格式选择弹窗 (TXT / EPUB)
  * 在所有章节抓取完成后调用
  */
+function createImageCacheConfirmPopup(onOk: () => void, onCancel: () => void): void {
+    document.querySelector("#esj-image-cache-confirm")?.remove();
+
+    const closeAction = () => {
+        document.querySelector("#esj-image-cache-confirm")?.remove();
+        onCancel();
+    };
+
+    const header = createCommonHeader("🗑️ 清理确认", closeAction);
+
+    const body = el("div", { style: "padding:16px;font-size:14px;" }, [
+        "检测到当前存在缓存，切换“下载正文插图”会清理这些缓存后再生效，是否继续？"
+    ]);
+
+    const btnCancel = el(
+        "button",
+        {
+            style: "padding:8px 12px;background:#eee;border:1px solid #ccc;border-radius:6px;cursor:pointer;",
+            onclick: closeAction
+        },
+        ["取消"]
+    );
+
+    const btnOk = el(
+        "button",
+        {
+            style: "padding:8px 12px;background:#d9534f;color:#fff;border:none;border-radius:6px;cursor:pointer;",
+            onclick: () => {
+                popup.remove();
+                onOk();
+            }
+        },
+        ["清理"]
+    );
+
+    const footer = el(
+        "div",
+        {
+            style: "padding:12px;display:flex;justify-content:flex-end;gap:8px;"
+        },
+        [btnCancel, btnOk]
+    );
+
+    const popup = el(
+        "div",
+        {
+            id: "esj-image-cache-confirm",
+            style: "position: fixed; top: 30%; left: 50%; transform: translateX(-50%); width: 380px; background:#fff;border:1px solid #aaa;border-radius:8px;box-shadow:0 4px 20px rgba(0,0,0,0.15);z-index:1000000;padding:0;display:flex;flex-direction:column;"
+        },
+        [header, body, footer]
+    );
+
+    document.body.appendChild(popup);
+    enableDrag(popup, ".esj-common-header");
+}
+
 export function showFormatChoice(): void {
     if (!state.cachedData) {
         alert("暂无数据");
@@ -513,7 +570,24 @@ export function createSettingsPanel(): void {
         type: "checkbox",
         checked: isImageEnabled,
         onchange: async (e: Event) => {
-            const checked = (e.target as HTMLInputElement).checked;
+            const target = e.target as HTMLInputElement;
+            const checked = target.checked;
+            const previousChecked = !checked;
+            const managedCaches = await listManagedCaches();
+
+            if (managedCaches.length > 0) {
+                const confirmed = await new Promise<boolean>((resolve) => {
+                    createImageCacheConfirmPopup(
+                        () => resolve(true),
+                        () => resolve(false)
+                    );
+                });
+
+                if (!confirmed) {
+                    target.checked = previousChecked;
+                    return;
+                }
+            }
             setImageDownloadSetting(checked);
             await clearAllCaches();
             log(`正文图片下载已${checked ? "开启" : "关闭"}`);
