@@ -178,7 +178,7 @@ export function createCacheManagerPopup(): void {
         );
 
         if (items.length > 0) {
-            leftActions.appendChild(
+            rightActions.appendChild(
                 createActionButton("清理全部持久缓存", async () => {
                     const confirmed = await showCacheConfirm({
                         title: "🗑️ 清理确认",
