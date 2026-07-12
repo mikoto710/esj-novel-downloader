@@ -55,6 +55,25 @@ export async function buildEpub(chapters: Chapter[], metadata: BookMetadata): Pr
         coverMeta = `<meta name="cover" content="cover-image" />`;
     }
 
+    const tags = metadata.tags || [];
+    if (tags.length > 0) {
+        const tagsId = "tags";
+        const tagsFilename = "tags.xhtml";
+        const tagsList = tags.map((tag) => `<li>${escapeXml(tag)}</li>`).join("\n");
+        const tagsXhtml = `<?xml version="1.0" encoding="utf-8"?>
+            <html xmlns="http://www.w3.org/1999/xhtml">
+              <head><title>标签</title></head>
+              <body>
+                <h1>标签</h1>
+                <ul>${tagsList}</ul>
+              </body>
+            </html>`;
+
+        oebps.file(tagsFilename, tagsXhtml);
+        manifestItems.push(`<item id="${tagsId}" href="${tagsFilename}" media-type="application/xhtml+xml"/>`);
+        spineItems.push(`<itemref idref="${tagsId}"/>`);
+    }
+
     let navHtml = `<?xml version="1.0" encoding="utf-8"?>
         <html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" xml:lang="zh">
           <head><title>目录</title></head>
@@ -63,6 +82,10 @@ export async function buildEpub(chapters: Chapter[], metadata: BookMetadata): Pr
               <h1>目录</h1>
               <ol>
         `;
+
+    if (tags.length > 0) {
+        navHtml += `<li><a href="tags.xhtml">标签</a></li>`;
+    }
 
     for (let i = 0; i < chapters.length; i++) {
         const id = `chap_${i + 1}`;
@@ -114,6 +137,7 @@ export async function buildEpub(chapters: Chapter[], metadata: BookMetadata): Pr
             <dc:language>zh-CN</dc:language>
             <dc:identifier id="BookId">${uniqueId}</dc:identifier>
             <dc:creator>${author}</dc:creator>
+            <dc:description>${escapeXml(metadata.description || "")}</dc:description>
             <dc:date>${pubdate}</dc:date>
             ${coverMeta}
           </metadata>
