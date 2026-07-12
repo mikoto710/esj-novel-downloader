@@ -27,7 +27,7 @@ export async function downloadCurrentPage(format: "txt" | "html" = "txt"): Promi
                 metaHeader = meta.introTxt + "====================================\n\n";
                 bookNamePrefix = `[${meta.bookName}] `;
 
-                htmlMeta.intro = meta.introTxt;
+                htmlMeta.intro = meta.baseIntroTxt;
                 htmlMeta.bookName = meta.bookName;
             } catch (e) {
                 console.warn("书籍元数据获取失败，仅下载正文");

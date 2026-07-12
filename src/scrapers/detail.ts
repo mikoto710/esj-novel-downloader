@@ -65,6 +65,8 @@ export async function scrapeDetail(): Promise<void> {
                         rawBookName: meta.rawBookName,
                         author: meta.author,
                         introTxt: meta.introTxt,
+                        description: meta.description,
+                        tags: meta.tags,
                         coverUrl: meta.coverUrl,
                         pageUrl: location.href,
                         sourcePageType: "detail",

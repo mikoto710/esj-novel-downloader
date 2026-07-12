@@ -29,6 +29,8 @@ export interface DownloadOptions {
     rawBookName?: string;
     author?: string;
     introTxt: string;
+    description: string;
+    tags: string[];
     coverUrl?: string;
     pageUrl?: string;
     sourcePageType?: SourcePageType;
@@ -283,7 +285,19 @@ async function checkIntegrityAndRetry(tasks: DownloadTask[], ctx: DownloadContex
 
 // 批量下载主入口
 export async function batchDownload(options: DownloadOptions): Promise<void> {
-    const { bookId, bookName, rawBookName, author, introTxt, coverUrl, pageUrl, sourcePageType, tasks } = options;
+    const {
+        bookId,
+        bookName,
+        rawBookName,
+        author,
+        introTxt,
+        description,
+        tags,
+        coverUrl,
+        pageUrl,
+        sourcePageType,
+        tasks
+    } = options;
     const total = tasks.length;
 
     // 初始化 UI 和状态
@@ -417,6 +431,8 @@ export async function batchDownload(options: DownloadOptions): Promise<void> {
         metadata: {
             title: bookName,
             author: author || "未知作者",
+            description,
+            tags,
             coverBlob: coverResult?.blob || null,
             coverExt: coverResult?.ext || "jpg"
         },

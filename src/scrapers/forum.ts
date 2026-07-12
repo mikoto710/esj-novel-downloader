@@ -113,6 +113,8 @@ export async function scrapeForum(): Promise<void> {
                         rawBookName: meta.rawBookName,
                         author: meta.author,
                         introTxt: meta.introTxt,
+                        description: meta.description,
+                        tags: meta.tags,
                         coverUrl: meta.coverUrl,
                         pageUrl: detailUrl,
                         sourcePageType: "forum",

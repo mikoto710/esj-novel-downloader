@@ -58,6 +58,12 @@ export function parseBookMetadata(doc: Document, pageUrl: string) {
         infoBlock += "\n";
     }
 
+    // 标签
+    const tagsContainer = doc.querySelector("#details .tags") || doc.querySelector(".tags");
+    const tags = Array.from(tagsContainer?.querySelectorAll("a") || [])
+        .map((tag) => tag.textContent?.trim() || "")
+        .filter((tag, index, allTags) => tag.length > 0 && allTags.indexOf(tag) === index);
+
     // 封面
     const imgNode = doc.querySelector(".product-gallery img") as HTMLImageElement;
     let coverUrl: string | undefined = undefined;
@@ -70,7 +76,7 @@ export function parseBookMetadata(doc: Document, pageUrl: string) {
 
     // 简介
     let descText = "";
-    const descContainer = doc.querySelector("#details .description");
+    const descContainer = doc.querySelector("#details .description") || doc.querySelector(".description");
 
     if (descContainer) {
         const clone = descContainer.cloneNode(true) as HTMLElement;
@@ -94,14 +100,19 @@ export function parseBookMetadata(doc: Document, pageUrl: string) {
 
     infoBlock = infoBlock.trim() + "\n";
 
-    const fullIntro = `書名: ${bookName}\nURL: ${pageUrl}\n${infoBlock}\n${descText}\n\n`;
+    const baseIntro = `書名: ${bookName}\nURL: ${pageUrl}\n${infoBlock}\n${descText}\n\n`;
+    const infoBlockWithTags = tags.length > 0 ? `${infoBlock.trim()}\n标签: ${tags.join(", ")}\n` : infoBlock;
+    const fullIntro = `書名: ${bookName}\nURL: ${pageUrl}\n${infoBlockWithTags}\n${descText}\n\n`;
 
     return {
         bookName: safeBookName,
         rawBookName: bookName,
         author,
         coverUrl,
-        introTxt: fullIntro
+        introTxt: fullIntro,
+        baseIntroTxt: baseIntro,
+        description: descText,
+        tags
     };
 }
 
