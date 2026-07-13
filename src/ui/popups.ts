@@ -343,6 +343,38 @@ function createImageCacheConfirmPopup(onOk: () => void, onCancel: () => void): v
     enableDrag(popup, ".esj-common-header");
 }
 
+function showImageSettingProtectionNotice(protectedCount: number): void {
+    document.querySelector("#esj-image-setting-protection")?.remove();
+
+    const closeAction = () => document.querySelector("#esj-image-setting-protection")?.remove();
+    const popup = el(
+        "div",
+        {
+            id: "esj-image-setting-protection",
+            style: "position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:380px;background:#fff;border:1px solid #aaa;border-radius:8px;box-shadow:0 0 18px rgba(0,0,0,0.28);z-index:1000000;display:flex;flex-direction:column;"
+        },
+        [
+            createCommonHeader("🛡️ 下载任务保护", closeAction),
+            el("div", { style: "padding:16px;font-size:14px;line-height:1.7;color:#333;" }, [
+                `插图下载设置已保存。为保护 ${protectedCount} 个下载中的任务，相关缓存未被清理；当前任务将继续使用原设置，新设置仅应用于后续全本下载。`
+            ]),
+            el("div", { style: "padding:12px;display:flex;justify-content:flex-end;" }, [
+                el(
+                    "button",
+                    {
+                        style: "padding:8px 12px;background:#eee;border:1px solid #ccc;border-radius:6px;cursor:pointer;",
+                        onclick: closeAction
+                    },
+                    ["取消"]
+                )
+            ])
+        ]
+    );
+
+    document.body.appendChild(popup);
+    enableDrag(popup, ".esj-common-header");
+}
+
 export function showFormatChoice(): void {
     if (!state.cachedData) {
         alert("暂无数据");
@@ -635,6 +667,7 @@ export function createSettingsPanel(): void {
             const clearResult = await clearAllCaches();
             if (clearResult.protectedBookIds.length > 0) {
                 log(`已保留 ${clearResult.protectedBookIds.length} 本下载中的书籍缓存。`);
+                showImageSettingProtectionNotice(clearResult.protectedBookIds.length);
             }
             log(`正文图片下载已${checked ? "开启" : "关闭"}`);
         }
