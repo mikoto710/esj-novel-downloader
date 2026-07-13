@@ -31,6 +31,19 @@ export type CacheStatus = "downloading" | "cancelled" | "export-ready" | "persis
 
 export type SourcePageType = "detail" | "forum" | "single" | "unknown";
 
+export type BookDownloadLockStatus = "preparing" | "running" | "released";
+
+/** 跨页面的全本下载任务锁；单章导出不使用。 */
+export interface BookDownloadLock {
+    bookId: string;
+    taskId: string;
+    sourcePageType: Extract<SourcePageType, "detail" | "forum">;
+    status: BookDownloadLockStatus;
+    startedAt: number;
+    heartbeatAt: number;
+    releasedAt?: number;
+}
+
 // 缓存展示和持久化共用的元信息
 export interface CacheMeta {
     bookId: string;

@@ -1,10 +1,10 @@
-import { state, setAbortFlag } from "../core/state";
+import { abortActiveDownload, state } from "../core/state";
 import { listManagedCaches } from "../core/cache-manager";
 import { fullCleanup, enableDrag, el } from "../utils/dom";
 import { log, triggerDownload } from "../utils/index";
 import { createMinimizedTray } from "./tray";
 import { buildEpub } from "../core/epub";
-import { CachedData } from "../types";
+import { BookDownloadLock, CachedData } from "../types";
 import {
     getConcurrency,
     setConcurrency,
@@ -82,6 +82,42 @@ function createCommonHeader(title: string, onClose: () => void, onMinimize?: () 
 }
 
 /**
+ * 提示同一本书已有跨页面全本下载任务。单章导出不使用此弹窗。
+ */
+export function showBookDownloadInProgressPopup(lock: BookDownloadLock): void {
+    document.querySelector("#esj-book-lock")?.remove();
+
+    const sourceText = lock.sourcePageType === "detail" ? "详情页" : "论坛页";
+    const closeAction = () => document.querySelector("#esj-book-lock")?.remove();
+    const popup = el(
+        "div",
+        {
+            id: "esj-book-lock",
+            style: "position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:380px;background:#fff;border:1px solid #aaa;border-radius:8px;box-shadow:0 0 18px rgba(0,0,0,0.28);z-index:1000000;display:flex;flex-direction:column;"
+        },
+        [
+            createCommonHeader("📘 下载任务进行中", closeAction),
+            el("div", { style: "padding:16px;font-size:14px;line-height:1.7;color:#333;" }, [
+                `该书正在由${sourceText}发起全本下载，请等待任务完成或取消后再试。`
+            ]),
+            el("div", { style: "padding:12px;display:flex;justify-content:flex-end;" }, [
+                el(
+                    "button",
+                    {
+                        style: "padding:8px 12px;background:#2b9bd7;color:#fff;border:none;border-radius:6px;cursor:pointer;",
+                        onclick: closeAction
+                    },
+                    ["知道了"]
+                )
+            ])
+        ]
+    );
+
+    document.body.appendChild(popup);
+    enableDrag(popup, ".esj-common-header");
+}
+
+/**
  * 创建下载进度弹窗
  * 包含进度条、日志输出框、取消和最小化按钮
  */
@@ -91,7 +127,7 @@ export function createDownloadPopup(): HTMLElement {
     toggleSettingsLock(true);
 
     function onCancel() {
-        setAbortFlag(true);
+        abortActiveDownload();
         const btn = document.querySelector("#esj-cancel") as HTMLButtonElement;
         if (btn) {
             btn.disabled = true;
@@ -102,7 +138,7 @@ export function createDownloadPopup(): HTMLElement {
     }
 
     function onClose() {
-        setAbortFlag(true);
+        abortActiveDownload();
         fullCleanup(state.originalTitle);
     }
 

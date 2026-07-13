@@ -1,7 +1,13 @@
 import { state, setAbortFlag, resetAbortController } from "../core/state";
+import {
+    acquireBookDownloadLock,
+    markBookDownloadRunning,
+    releaseBookDownloadLock,
+    startBookDownloadLockHeartbeat
+} from "../core/book-lock";
 import { log } from "../utils/index";
 import { fullCleanup } from "../utils/dom";
-import { createConfirmPopup } from "../ui/popups";
+import { createConfirmPopup, showBookDownloadInProgressPopup } from "../ui/popups";
 import { batchDownload, DownloadTask } from "../core/downloader";
 import { parseBookMetadata } from "../core/parser";
 import { loadBookCache } from "../core/storage";
@@ -15,24 +21,42 @@ function getBookId(): string {
  * 解析详情页的章节列表并启动下载
  */
 export async function scrapeDetail(): Promise<void> {
+    const bookId = getBookId();
+    if (bookId === "unknown") {
+        log("无法解析书籍 ID，已取消全本下载任务。");
+        return;
+    }
+
+    const lockResult = await acquireBookDownloadLock(bookId, "detail");
+    if (!lockResult.acquired) {
+        showBookDownloadInProgressPopup(lockResult.lock);
+        return;
+    }
+
+    const lock = lockResult.lock;
+    state.activeBookLock = lock;
+    const stopHeartbeat = startBookDownloadLockHeartbeat(lock);
+
     setAbortFlag(false);
     resetAbortController();
 
     state.originalTitle = document.title;
 
     // 提前加载缓存
-    const bookId = getBookId();
-    if (bookId !== "unknown") {
-        const cacheResult = await loadBookCache(bookId);
-        if (cacheResult.map) {
-            state.globalChaptersMap = cacheResult.map;
-        }
+    const cacheResult = await loadBookCache(bookId);
+    if (cacheResult.map) {
+        state.globalChaptersMap = cacheResult.map;
     }
 
-    return new Promise((resolveMain) => {
+    return new Promise<void>((resolveMain) => {
         createConfirmPopup(
             async () => {
                 try {
+                    const lockOwned = await markBookDownloadRunning(lock);
+                    if (!lockOwned) {
+                        log("下载任务锁已失效，未启动重复下载。");
+                        return;
+                    }
                     // 解析 DOM 获取任务列表
                     const chaptersNodes = Array.from(
                         document.querySelectorAll("#chapterList a")
@@ -60,7 +84,7 @@ export async function scrapeDetail(): Promise<void> {
                     }
 
                     await batchDownload({
-                        bookId: getBookId(),
+                        bookId,
                         bookName: meta.bookName,
                         rawBookName: meta.rawBookName,
                         author: meta.author,
@@ -84,5 +108,11 @@ export async function scrapeDetail(): Promise<void> {
                 resolveMain();
             }
         );
+    }).finally(async () => {
+        stopHeartbeat();
+        await releaseBookDownloadLock(lock);
+        if (state.activeBookLock?.taskId === lock.taskId) {
+            state.activeBookLock = null;
+        }
     });
 }

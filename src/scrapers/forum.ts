@@ -1,8 +1,14 @@
 import { log } from "../utils/index";
 import { batchDownload, DownloadTask } from "../core/downloader";
 import { parseBookMetadata } from "../core/parser";
-import { createConfirmPopup, createDownloadPopup } from "../ui/popups";
+import { createConfirmPopup, createDownloadPopup, showBookDownloadInProgressPopup } from "../ui/popups";
 import { setAbortFlag, state, resetAbortController } from "../core/state";
+import {
+    acquireBookDownloadLock,
+    markBookDownloadRunning,
+    releaseBookDownloadLock,
+    startBookDownloadLockHeartbeat
+} from "../core/book-lock";
 import { loadBookCache } from "../core/storage";
 import { fullCleanup } from "../utils/dom";
 
@@ -28,6 +34,21 @@ export async function scrapeForum(): Promise<void> {
     }
 
     // 提前加载缓存
+    if (!bid) {
+        log("无法解析书籍 ID，已取消全本下载任务。");
+        return;
+    }
+
+    const lockResult = await acquireBookDownloadLock(bid, "forum");
+    if (!lockResult.acquired) {
+        showBookDownloadInProgressPopup(lockResult.lock);
+        return;
+    }
+
+    const lock = lockResult.lock;
+    state.activeBookLock = lock;
+    const stopHeartbeat = startBookDownloadLockHeartbeat(lock);
+
     if (bid) {
         const cacheResult = await loadBookCache(bid);
         if (cacheResult.map) {
@@ -38,6 +59,13 @@ export async function scrapeForum(): Promise<void> {
     return new Promise<void>((resolveMain) => {
         createConfirmPopup(
             async () => {
+                const lockOwned = await markBookDownloadRunning(lock);
+                if (!lockOwned) {
+                    log("下载任务锁已失效，未启动重复下载。");
+                    resolveMain();
+                    return;
+                }
+
                 createDownloadPopup();
 
                 try {
@@ -132,5 +160,11 @@ export async function scrapeForum(): Promise<void> {
                 resolveMain();
             }
         );
+    }).finally(async () => {
+        stopHeartbeat();
+        await releaseBookDownloadLock(lock);
+        if (state.activeBookLock?.taskId === lock.taskId) {
+            state.activeBookLock = null;
+        }
     });
 }

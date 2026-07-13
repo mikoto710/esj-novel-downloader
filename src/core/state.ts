@@ -1,12 +1,13 @@
-import { AppState, CacheMeta, CachedData, Chapter, RuntimeCacheSession } from "../types";
+import { AppState, BookDownloadLock, CacheMeta, CachedData, Chapter, RuntimeCacheSession } from "../types";
 
-export const state: AppState & { abortController: AbortController | null } = {
+export const state: AppState & { abortController: AbortController | null; activeBookLock: BookDownloadLock | null } = {
     abortFlag: false,
     originalTitle: document.title || "ESJZone",
     cachedData: null,
     globalChaptersMap: new Map<number, Chapter>(),
     runtimeCacheSession: null,
-    abortController: null
+    abortController: null,
+    activeBookLock: null
 };
 
 /**
@@ -34,6 +35,14 @@ export function setCachedData(data: CachedData): void {
  */
 export function resetAbortController() {
     state.abortController = new AbortController();
+}
+
+/**
+ * 中止当前下载任务及其正在进行的网络请求。
+ */
+export function abortActiveDownload(): void {
+    setAbortFlag(true);
+    state.abortController?.abort();
 }
 
 /**
