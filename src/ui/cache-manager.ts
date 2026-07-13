@@ -1,4 +1,9 @@
-import { clearAllManagedCaches, clearManagedCache, listManagedCaches, stopAndClearManagedCache } from "../core/cache-manager";
+import {
+    clearAllManagedCaches,
+    clearManagedCache,
+    listManagedCaches,
+    stopAndClearManagedCache
+} from "../core/cache-manager";
 import { CacheListItem } from "../types";
 import { el, enableDrag } from "../utils/dom";
 
@@ -159,7 +164,7 @@ function showCacheProtectionNotice(message: string): Promise<void> {
                             style: "padding:8px 12px;background:#eee;border:1px solid #ccc;border-radius:6px;cursor:pointer;",
                             onclick: cleanup
                         },
-                        ["取消"]
+                        ["关闭"]
                     )
                 ])
             ]
@@ -226,7 +231,9 @@ export function createCacheManagerPopup(): void {
                     }
                     const result = await clearAllManagedCaches(false);
                     if (result.protectedBookIds.length > 0) {
-                        await showCacheProtectionNotice(`已保留 ${result.protectedBookIds.length} 本下载中的书籍缓存。`);
+                        await showCacheProtectionNotice(
+                            `已保留 ${result.protectedBookIds.length} 本下载中的书籍缓存。`
+                        );
                     }
                     await renderList();
                 })
@@ -246,7 +253,9 @@ export function createCacheManagerPopup(): void {
                         }
                         const result = await clearAllManagedCaches(true);
                         if (result.protectedBookIds.length > 0) {
-                            await showCacheProtectionNotice(`已保留 ${result.protectedBookIds.length} 本下载中的书籍缓存。`);
+                            await showCacheProtectionNotice(
+                                `已保留 ${result.protectedBookIds.length} 本下载中的书籍缓存。`
+                            );
                         }
                         await renderList();
                     },

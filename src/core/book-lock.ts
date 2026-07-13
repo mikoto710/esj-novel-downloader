@@ -14,7 +14,8 @@ function getPageSessionId(): string {
         if (existing) {
             return existing;
         }
-        const created = typeof crypto.randomUUID === "function" ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
+        const created =
+            typeof crypto.randomUUID === "function" ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
         sessionStorage.setItem(storageKey, created);
         return created;
     } catch {
@@ -36,34 +37,38 @@ export async function getActiveBookDownloadLock(bookId: string): Promise<BookDow
 
 export async function listActiveBookDownloadLocks(): Promise<BookDownloadLock[]> {
     const allEntries = await entries<string, BookDownloadLock>(lockStore);
-    return allEntries
-        .map(([, lock]) => lock)
-        .filter((lock): lock is BookDownloadLock => isLockActive(lock));
+    return allEntries.map(([, lock]) => lock).filter((lock): lock is BookDownloadLock => isLockActive(lock));
 }
 
 export async function requestBookDownloadCancellation(bookId: string, discardCache: boolean): Promise<boolean> {
     let requested = false;
 
-    await update<BookDownloadLock>(bookId, (current) => {
-        if (!isLockActive(current)) {
-            return current || {
-                bookId,
-                taskId: "released",
-                sourcePageType: "detail",
-                status: "released",
-                startedAt: Date.now(),
-                heartbeatAt: Date.now(),
-                releasedAt: Date.now()
-            };
-        }
+    await update<BookDownloadLock>(
+        bookId,
+        (current) => {
+            if (!isLockActive(current)) {
+                return (
+                    current || {
+                        bookId,
+                        taskId: "released",
+                        sourcePageType: "detail",
+                        status: "released",
+                        startedAt: Date.now(),
+                        heartbeatAt: Date.now(),
+                        releasedAt: Date.now()
+                    }
+                );
+            }
 
-        requested = true;
-        return {
-            ...current,
-            cancelRequestedAt: Date.now(),
-            discardCacheOnCancel: discardCache
-        };
-    }, lockStore);
+            requested = true;
+            return {
+                ...current,
+                cancelRequestedAt: Date.now(),
+                discardCacheOnCancel: discardCache
+            };
+        },
+        lockStore
+    );
 
     return requested;
 }
@@ -87,20 +92,21 @@ export async function shouldDiscardBookDownloadCache(lock: BookDownloadLock | nu
 
     const current = await get<BookDownloadLock>(lock.bookId, lockStore);
     return Boolean(
-        current &&
-            current.taskId === lock.taskId &&
-            current.cancelRequestedAt &&
-            current.discardCacheOnCancel
+        current && current.taskId === lock.taskId && current.cancelRequestedAt && current.discardCacheOnCancel
     );
 }
 
 export async function updateBookDownloadLockTitle(lock: BookDownloadLock, bookName: string): Promise<void> {
-    await update<BookDownloadLock>(lock.bookId, (current) => {
-        if (!current || current.taskId !== lock.taskId || current.status === "released") {
-            return current || createReleasedLock(lock);
-        }
-        return { ...current, bookName, heartbeatAt: Date.now() };
-    }, lockStore);
+    await update<BookDownloadLock>(
+        lock.bookId,
+        (current) => {
+            if (!current || current.taskId !== lock.taskId || current.status === "released") {
+                return current || createReleasedLock(lock);
+            }
+            return { ...current, bookName, heartbeatAt: Date.now() };
+        },
+        lockStore
+    );
 }
 
 function isLockActive(lock: BookDownloadLock | undefined, now = Date.now()): lock is BookDownloadLock {
@@ -138,16 +144,20 @@ export async function acquireBookDownloadLock(
     };
     let result: AcquireBookLockResult | null = null;
 
-    await update<BookDownloadLock>(bookId, (current) => {
-        const isAbandonedByCurrentPage =
-            current?.ownerSessionId === pageSessionId && state.activeBookLock?.taskId !== current.taskId;
-        if (isLockActive(current, now) && !isAbandonedByCurrentPage) {
-            result = { acquired: false, lock: current };
-            return current;
-        }
-        result = { acquired: true, lock: candidate };
-        return candidate;
-    }, lockStore);
+    await update<BookDownloadLock>(
+        bookId,
+        (current) => {
+            const isAbandonedByCurrentPage =
+                current?.ownerSessionId === pageSessionId && state.activeBookLock?.taskId !== current.taskId;
+            if (isLockActive(current, now) && !isAbandonedByCurrentPage) {
+                result = { acquired: false, lock: current };
+                return current;
+            }
+            result = { acquired: true, lock: candidate };
+            return candidate;
+        },
+        lockStore
+    );
 
     if (!result) {
         throw new Error("无法创建下载任务锁");
@@ -157,29 +167,40 @@ export async function acquireBookDownloadLock(
 
 export async function markBookDownloadRunning(lock: BookDownloadLock): Promise<boolean> {
     let updated = false;
-    await update<BookDownloadLock>(lock.bookId, (current) => {
-        if (!current || current.taskId !== lock.taskId || current.status === "released") {
-            return current || createReleasedLock(lock);
-        }
-        updated = true;
-        return { ...current, status: "running", heartbeatAt: Date.now() };
-    }, lockStore);
+    await update<BookDownloadLock>(
+        lock.bookId,
+        (current) => {
+            if (!current || current.taskId !== lock.taskId || current.status === "released") {
+                return current || createReleasedLock(lock);
+            }
+            updated = true;
+            return { ...current, status: "running", heartbeatAt: Date.now() };
+        },
+        lockStore
+    );
     return updated;
 }
 
 export async function heartbeatBookDownloadLock(lock: BookDownloadLock): Promise<boolean> {
     let updated = false;
-    await update<BookDownloadLock>(lock.bookId, (current) => {
-        if (!current || current.taskId !== lock.taskId || current.status === "released") {
-            return current || createReleasedLock(lock);
-        }
-        updated = true;
-        return { ...current, heartbeatAt: Date.now() };
-    }, lockStore);
+    await update<BookDownloadLock>(
+        lock.bookId,
+        (current) => {
+            if (!current || current.taskId !== lock.taskId || current.status === "released") {
+                return current || createReleasedLock(lock);
+            }
+            updated = true;
+            return { ...current, heartbeatAt: Date.now() };
+        },
+        lockStore
+    );
     return updated;
 }
 
-export function startBookDownloadLockHeartbeat(lock: BookDownloadLock, onCancellationRequested?: () => void): () => void {
+export function startBookDownloadLockHeartbeat(
+    lock: BookDownloadLock,
+    onCancellationRequested?: () => void
+): () => void {
     let stopped = false;
     let refreshing = false;
     const timer = window.setInterval(() => {
@@ -205,11 +226,15 @@ export function startBookDownloadLockHeartbeat(lock: BookDownloadLock, onCancell
 }
 
 export async function releaseBookDownloadLock(lock: BookDownloadLock): Promise<void> {
-    await update<BookDownloadLock>(lock.bookId, (current) => {
-        if (!current || current.taskId !== lock.taskId) {
-            return current || createReleasedLock(lock);
-        }
-        const releasedAt = Date.now();
-        return { ...current, status: "released", releasedAt, heartbeatAt: releasedAt };
-    }, lockStore);
+    await update<BookDownloadLock>(
+        lock.bookId,
+        (current) => {
+            if (!current || current.taskId !== lock.taskId) {
+                return current || createReleasedLock(lock);
+            }
+            const releasedAt = Date.now();
+            return { ...current, status: "released", releasedAt, heartbeatAt: releasedAt };
+        },
+        lockStore
+    );
 }

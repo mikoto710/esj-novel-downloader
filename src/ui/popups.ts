@@ -365,7 +365,7 @@ function showImageSettingProtectionNotice(protectedCount: number): void {
                         style: "padding:8px 12px;background:#eee;border:1px solid #ccc;border-radius:6px;cursor:pointer;",
                         onclick: closeAction
                     },
-                    ["取消"]
+                    ["关闭"]
                 )
             ])
         ]
