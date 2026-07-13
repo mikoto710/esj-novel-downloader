@@ -36,12 +36,16 @@ export type BookDownloadLockStatus = "preparing" | "running" | "released";
 /** 跨页面的全本下载任务锁；单章导出不使用。 */
 export interface BookDownloadLock {
     bookId: string;
+    bookName?: string;
     taskId: string;
+    ownerSessionId?: string;
     sourcePageType: Extract<SourcePageType, "detail" | "forum">;
     status: BookDownloadLockStatus;
     startedAt: number;
     heartbeatAt: number;
     releasedAt?: number;
+    cancelRequestedAt?: number;
+    discardCacheOnCancel?: boolean;
 }
 
 // 缓存展示和持久化共用的元信息
@@ -96,6 +100,7 @@ export interface CacheListItem {
     status: CacheStatus;
     hasExportData: boolean;
     isLegacy: boolean;
+    activeTask: boolean;
 }
 
 // 导出数据结构

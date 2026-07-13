@@ -16,6 +16,7 @@ import { parseChapterHtml } from "./parser";
 import { getConcurrency, getImageDownloadSetting } from "./config";
 import { processHtmlImages } from "../utils/image";
 import { removeImgTags } from "../utils/text";
+import { shouldDiscardBookDownloadCache } from "./book-lock";
 
 export interface DownloadTask {
     index: number;
@@ -66,7 +67,8 @@ async function fetchCoverImage(url: string): Promise<{ blob: Blob; ext: "jpg" | 
                 referrerPolicy: "no-referrer",
                 credentials: "omit"
             },
-            15000
+            15000,
+            state.abortController?.signal
         );
 
         const blob = await response.blob();
@@ -101,7 +103,7 @@ async function downloadChapterHtml(url: string, title: string): Promise<string |
             return null;
         }
         try {
-            const res = await fetchWithTimeout(url, { credentials: "include" }, 15000);
+            const res = await fetchWithTimeout(url, { credentials: "include" }, 15000, state.abortController?.signal);
             return await res.text();
         } catch (e: any) {
             if (e.name === "AbortError" || state.abortFlag) {
@@ -245,7 +247,7 @@ async function processChapterTask(task: DownloadTask, ctx: DownloadContext, isRe
 /**
  * 完整性检查与补漏
  */
-async function checkIntegrityAndRetry(tasks: DownloadTask[], ctx: DownloadContext): Promise<void> {
+async function checkIntegrityAndRetry(tasks: DownloadTask[], ctx: DownloadContext): Promise<boolean> {
     const { total, options, enableImage } = ctx;
 
     log("正在进行章节完整性检查...");
@@ -265,9 +267,14 @@ async function checkIntegrityAndRetry(tasks: DownloadTask[], ctx: DownloadContex
         log(`⚠ 发现 ${missingTasks.length} 个章节不完整 (缺失或含失败图片)，尝试自动补抓...`);
         for (const task of missingTasks) {
             if (state.abortFlag) {
-                await saveBookCache(options.bookId, state.globalChaptersMap, ctx.cacheMeta);
+                const discardCache = await shouldDiscardBookDownloadCache(state.activeBookLock);
+                if (discardCache) {
+                    await clearBookCache(options.bookId);
+                } else {
+                    await saveBookCache(options.bookId, state.globalChaptersMap, ctx.cacheMeta);
+                }
                 fullCleanup(state.originalTitle);
-                break;
+                return false;
             }
 
             const chap = state.globalChaptersMap.get(task.index);
@@ -281,6 +288,8 @@ async function checkIntegrityAndRetry(tasks: DownloadTask[], ctx: DownloadContex
     } else {
         log("✅ 完整性检查通过，无缺漏。");
     }
+
+    return !state.abortFlag;
 }
 
 // 批量下载主入口
@@ -389,15 +398,21 @@ export async function batchDownload(options: DownloadOptions): Promise<void> {
 
     // 用户取消操作
     if (state.abortFlag) {
-        log("正在写入 IndexedDB...");
-        await saveBookCache(bookId, state.globalChaptersMap, cacheMeta);
+        const discardCache = await shouldDiscardBookDownloadCache(state.activeBookLock);
+        if (discardCache) {
+            await clearBookCache(bookId);
+            log("已停止任务并清理缓存。");
+        } else {
+            log("正在写入 IndexedDB...");
+            await saveBookCache(bookId, state.globalChaptersMap, cacheMeta);
+        }
         updateRuntimeCacheSession({
             completedCount: ctx.runtime.completedCount,
             cachedChapterCount: state.globalChaptersMap.size,
             status: "cancelled",
             hasExportData: false
         });
-        log("任务已手动取消，进度已保存。");
+        log(discardCache ? "任务已停止，缓存已清理。" : "任务已手动取消，进度已保存。");
         await sleep(800);
         document.title = state.originalTitle;
         fullCleanup(state.originalTitle);
@@ -405,7 +420,12 @@ export async function batchDownload(options: DownloadOptions): Promise<void> {
     }
 
     // 章节补漏
-    await checkIntegrityAndRetry(tasks, ctx);
+    const integrityPassed = await checkIntegrityAndRetry(tasks, ctx);
+    if (!integrityPassed) {
+        document.title = state.originalTitle;
+        fullCleanup(state.originalTitle);
+        return;
+    }
 
     // 导出数据
     const coverResult = await coverTaskPromise;

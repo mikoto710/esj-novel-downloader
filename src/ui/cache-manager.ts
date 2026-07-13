@@ -1,4 +1,4 @@
-import { clearAllManagedCaches, clearManagedCache, listManagedCaches } from "../core/cache-manager";
+import { clearAllManagedCaches, clearManagedCache, listManagedCaches, stopAndClearManagedCache } from "../core/cache-manager";
 import { CacheListItem } from "../types";
 import { el, enableDrag } from "../utils/dom";
 
@@ -293,6 +293,9 @@ function createCacheItem(item: CacheListItem, rerender: () => Promise<void>): HT
         badges.appendChild(createBadge("会话内存", "runtime"));
     }
     badges.appendChild(createBadge(getStatusText(item), "status"));
+    if (item.activeTask) {
+        badges.appendChild(createBadge("跨页面任务", "runtime"));
+    }
     if (item.hasExportData) {
         badges.appendChild(createBadge("可重复导出", "ready"));
     }
@@ -317,7 +320,34 @@ function createCacheItem(item: CacheListItem, rerender: () => Promise<void>): HT
 
     const actions = el("div", { style: "display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;" });
 
-    if (item.sources.includes("indexeddb")) {
+    if (item.activeTask) {
+        actions.appendChild(
+            createActionButton(
+                "停止并清除",
+                async () => {
+                    const confirmed = await showCacheConfirm({
+                        title: "🛑 停止并清除",
+                        message: `确定停止《${item.bookName}》的下载任务并清除其缓存吗？`,
+                        danger: true
+                    });
+                    if (!confirmed) {
+                        return;
+                    }
+
+                    const result = await stopAndClearManagedCache(item.bookId);
+                    await showCacheProtectionNotice(
+                        result.cleared
+                            ? "下载任务已停止，缓存已清理。"
+                            : result.requested
+                              ? "已请求任务停止，请稍后刷新确认缓存状态。"
+                              : "该下载任务已结束，无需停止。"
+                    );
+                    await rerender();
+                },
+                "danger"
+            )
+        );
+    } else if (item.sources.includes("indexeddb")) {
         actions.appendChild(
             createActionButton("清理 IndexedDB", async () => {
                 const confirmed = await showCacheConfirm({
@@ -337,7 +367,7 @@ function createCacheItem(item: CacheListItem, rerender: () => Promise<void>): HT
         );
     }
 
-    if (item.sources.includes("runtime")) {
+    if (!item.activeTask && item.sources.includes("runtime")) {
         actions.appendChild(
             createActionButton("清理会话缓存", async () => {
                 const confirmed = await showCacheConfirm({
@@ -357,7 +387,7 @@ function createCacheItem(item: CacheListItem, rerender: () => Promise<void>): HT
         );
     }
 
-    if (item.sources.length > 1) {
+    if (!item.activeTask && item.sources.length > 1) {
         actions.appendChild(
             createActionButton(
                 "全部清理",

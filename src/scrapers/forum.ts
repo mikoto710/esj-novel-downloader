@@ -2,12 +2,13 @@ import { log } from "../utils/index";
 import { batchDownload, DownloadTask } from "../core/downloader";
 import { parseBookMetadata } from "../core/parser";
 import { createConfirmPopup, createDownloadPopup, showBookDownloadInProgressPopup } from "../ui/popups";
-import { setAbortFlag, state, resetAbortController } from "../core/state";
+import { abortActiveDownload, setAbortFlag, state, resetAbortController } from "../core/state";
 import {
     acquireBookDownloadLock,
     markBookDownloadRunning,
     releaseBookDownloadLock,
-    startBookDownloadLockHeartbeat
+    startBookDownloadLockHeartbeat,
+    updateBookDownloadLockTitle
 } from "../core/book-lock";
 import { loadBookCache } from "../core/storage";
 import { fullCleanup } from "../utils/dom";
@@ -47,7 +48,7 @@ export async function scrapeForum(): Promise<void> {
 
     const lock = lockResult.lock;
     state.activeBookLock = lock;
-    const stopHeartbeat = startBookDownloadLockHeartbeat(lock);
+    const stopHeartbeat = startBookDownloadLockHeartbeat(lock, abortActiveDownload);
 
     if (bid) {
         const cacheResult = await loadBookCache(bid);
@@ -105,6 +106,7 @@ export async function scrapeForum(): Promise<void> {
                     }
 
                     const meta = parseBookMetadata(doc!, detailUrl);
+                    await updateBookDownloadLockTitle(lock, meta.rawBookName || meta.bookName);
                     log(`元数据解析成功: 《${meta.rawBookName}》`);
 
                     // 尝试从 Detail 页的 #chapterList 获取

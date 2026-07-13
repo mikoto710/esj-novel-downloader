@@ -1,9 +1,10 @@
-import { state, setAbortFlag, resetAbortController } from "../core/state";
+import { abortActiveDownload, state, setAbortFlag, resetAbortController } from "../core/state";
 import {
     acquireBookDownloadLock,
     markBookDownloadRunning,
     releaseBookDownloadLock,
-    startBookDownloadLockHeartbeat
+    startBookDownloadLockHeartbeat,
+    updateBookDownloadLockTitle
 } from "../core/book-lock";
 import { log } from "../utils/index";
 import { fullCleanup } from "../utils/dom";
@@ -35,7 +36,7 @@ export async function scrapeDetail(): Promise<void> {
 
     const lock = lockResult.lock;
     state.activeBookLock = lock;
-    const stopHeartbeat = startBookDownloadLockHeartbeat(lock);
+    const stopHeartbeat = startBookDownloadLockHeartbeat(lock, abortActiveDownload);
 
     setAbortFlag(false);
     resetAbortController();
@@ -77,6 +78,7 @@ export async function scrapeDetail(): Promise<void> {
 
                     // 解析元数据
                     const meta = parseBookMetadata(document, location.href);
+                    await updateBookDownloadLockTitle(lock, meta.rawBookName || meta.bookName);
 
                     if (state.abortFlag) {
                         log("用户取消，跳过下载");

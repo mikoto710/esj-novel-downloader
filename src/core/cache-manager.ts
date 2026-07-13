@@ -1,12 +1,22 @@
 import { CacheListItem, CacheStatus, PersistentCacheEntry } from "../types";
 import { clearRuntimeCacheSession, state } from "./state";
 import { clearAllPersistentCaches, clearBookCache, listBookCaches } from "./storage";
-import { getActiveBookDownloadLock, listActiveBookDownloadLocks } from "./book-lock";
+import {
+    getActiveBookDownloadLock,
+    listActiveBookDownloadLocks,
+    requestBookDownloadCancellation,
+    waitForBookDownloadCancellation
+} from "./book-lock";
 
 export type CacheClearScope = "indexeddb" | "runtime" | "all";
 
 export interface CacheClearResult {
     protectedBookIds: string[];
+}
+
+export interface StopAndClearResult {
+    requested: boolean;
+    cleared: boolean;
 }
 
 function createPersistentListItem(entry: PersistentCacheEntry): CacheListItem {
@@ -27,7 +37,8 @@ function createPersistentListItem(entry: PersistentCacheEntry): CacheListItem {
         sources: ["indexeddb"],
         status: "persisted",
         hasExportData: false,
-        isLegacy: entry.isLegacy
+        isLegacy: entry.isLegacy,
+        activeTask: false
     };
 }
 
@@ -78,9 +89,35 @@ export async function listManagedCaches(): Promise<CacheListItem[]> {
             sources: existing ? Array.from(new Set([...existing.sources, "runtime"])) : ["runtime"],
             status: existing ? mergeStatus(existing.status, runtime.status) : runtime.status,
             hasExportData: runtime.hasExportData,
-            isLegacy: existing?.isLegacy || false
+            isLegacy: existing?.isLegacy || false,
+            activeTask: false
         });
     }
+
+    const activeLocks = await listActiveBookDownloadLocks();
+    activeLocks.forEach((lock) => {
+        const existing = result.get(lock.bookId);
+        result.set(lock.bookId, {
+            bookId: lock.bookId,
+            bookName: existing?.bookName || lock.bookName || `Book ${lock.bookId}`,
+            rawBookName: existing?.rawBookName,
+            author: existing?.author || "-",
+            pageUrl: existing?.pageUrl || "",
+            totalChapters: existing?.totalChapters || null,
+            progressCount: existing?.progressCount || 0,
+            persistentChapterCount: existing?.persistentChapterCount || 0,
+            runtimeChapterCount: existing?.runtimeChapterCount || 0,
+            runtimeCompletedCount: existing?.runtimeCompletedCount || 0,
+            updatedAt: Math.max(existing?.updatedAt || 0, lock.heartbeatAt),
+            sourcePageType: existing?.sourcePageType || lock.sourcePageType,
+            imageEnabled: existing?.imageEnabled ?? null,
+            sources: existing?.sources || [],
+            status: "downloading",
+            hasExportData: existing?.hasExportData || false,
+            isLegacy: existing?.isLegacy || false,
+            activeTask: true
+        });
+    });
 
     return Array.from(result.values()).sort((a, b) => b.updatedAt - a.updatedAt);
 }
@@ -112,4 +149,19 @@ export async function clearAllManagedCaches(includeRuntime: boolean): Promise<Ca
     }
 
     return { protectedBookIds: Array.from(protectedBookIds) };
+}
+
+export async function stopAndClearManagedCache(bookId: string): Promise<StopAndClearResult> {
+    const requested = await requestBookDownloadCancellation(bookId, true);
+    if (!requested) {
+        return { requested: false, cleared: false };
+    }
+
+    const stopped = await waitForBookDownloadCancellation(bookId);
+    if (!stopped) {
+        return { requested: true, cleared: false };
+    }
+
+    await clearBookCache(bookId);
+    return { requested: true, cleared: true };
 }
