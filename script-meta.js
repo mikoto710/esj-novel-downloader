@@ -10,7 +10,7 @@ export default function getMeta() {
         supportURL: "https://github.com/mikoto710/esj-novel-downloader/issues",
         version: pkg.version,
         description:
-            "在 ESJZone 小说详情页/论坛页注入下载按钮，支持 TXT/EPUB/HTML 全本导出，支持单章节导出，支持插图嵌入",
+            "在 ESJZone 小说详情页/论坛页注入下载按钮，支持 TXT/EPUB/HTML 全本导出、简介与标签元数据、插图嵌入和单章节导出",
         author: "Shigure Sora",
         license: "MIT",
         match: [
