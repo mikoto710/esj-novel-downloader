@@ -134,6 +134,42 @@ function showCacheConfirm(options: { title?: string; message: string; danger?: b
     });
 }
 
+function showCacheProtectionNotice(message: string): Promise<void> {
+    document.querySelector("#esj-cache-protection-notice")?.remove();
+
+    return new Promise((resolve) => {
+        const cleanup = () => {
+            popup.remove();
+            resolve();
+        };
+
+        const popup = el(
+            "div",
+            {
+                id: "esj-cache-protection-notice",
+                style: "position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:380px;background:#fff;border:1px solid #aaa;border-radius:8px;box-shadow:0 0 18px rgba(0,0,0,0.28);z-index:1000000;display:flex;flex-direction:column;"
+            },
+            [
+                createHeader("🛡️ 下载任务保护", cleanup),
+                el("div", { style: "padding:16px;font-size:14px;line-height:1.7;color:#333;" }, [message]),
+                el("div", { style: "padding:12px;display:flex;justify-content:flex-end;" }, [
+                    el(
+                        "button",
+                        {
+                            style: "padding:8px 12px;background:#eee;border:1px solid #ccc;border-radius:6px;cursor:pointer;",
+                            onclick: cleanup
+                        },
+                        ["取消"]
+                    )
+                ])
+            ]
+        );
+
+        document.body.appendChild(popup);
+        enableDrag(popup, ".esj-common-header");
+    });
+}
+
 export function createCacheManagerPopup(): void {
     document.querySelector("#esj-cache-manager")?.remove();
     document.querySelector("#esj-cache-confirm")?.remove();
@@ -188,7 +224,10 @@ export function createCacheManagerPopup(): void {
                     if (!confirmed) {
                         return;
                     }
-                    await clearAllManagedCaches(false);
+                    const result = await clearAllManagedCaches(false);
+                    if (result.protectedBookIds.length > 0) {
+                        await showCacheProtectionNotice(`已保留 ${result.protectedBookIds.length} 本下载中的书籍缓存。`);
+                    }
                     await renderList();
                 })
             );
@@ -205,7 +244,10 @@ export function createCacheManagerPopup(): void {
                         if (!confirmed) {
                             return;
                         }
-                        await clearAllManagedCaches(true);
+                        const result = await clearAllManagedCaches(true);
+                        if (result.protectedBookIds.length > 0) {
+                            await showCacheProtectionNotice(`已保留 ${result.protectedBookIds.length} 本下载中的书籍缓存。`);
+                        }
                         await renderList();
                     },
                     "danger"
@@ -286,7 +328,10 @@ function createCacheItem(item: CacheListItem, rerender: () => Promise<void>): HT
                 if (!confirmed) {
                     return;
                 }
-                await clearManagedCache(item.bookId, "indexeddb");
+                const result = await clearManagedCache(item.bookId, "indexeddb");
+                if (result.protectedBookIds.length > 0) {
+                    await showCacheProtectionNotice("该书正在下载，缓存未被清理。");
+                }
                 await rerender();
             })
         );
@@ -303,7 +348,10 @@ function createCacheItem(item: CacheListItem, rerender: () => Promise<void>): HT
                 if (!confirmed) {
                     return;
                 }
-                await clearManagedCache(item.bookId, "runtime");
+                const result = await clearManagedCache(item.bookId, "runtime");
+                if (result.protectedBookIds.length > 0) {
+                    await showCacheProtectionNotice("该书正在下载，缓存未被清理。");
+                }
                 await rerender();
             })
         );
@@ -322,7 +370,10 @@ function createCacheItem(item: CacheListItem, rerender: () => Promise<void>): HT
                     if (!confirmed) {
                         return;
                     }
-                    await clearManagedCache(item.bookId, "all");
+                    const result = await clearManagedCache(item.bookId, "all");
+                    if (result.protectedBookIds.length > 0) {
+                        await showCacheProtectionNotice("该书正在下载，缓存未被清理。");
+                    }
                     await rerender();
                 },
                 "danger"

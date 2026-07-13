@@ -1,7 +1,8 @@
 import { del, get, keys, set } from "idb-keyval";
 import { CacheMeta, Chapter, PersistentCacheEntry } from "../types";
 import { log } from "../utils/index";
-import { resetGlobalState } from "./state";
+import { resetGlobalState, state } from "./state";
+import { listActiveBookDownloadLocks } from "./book-lock";
 
 interface StoredCache {
     version?: number;
@@ -155,10 +156,13 @@ export async function clearBookCache(bookId: string) {
 /**
  * 仅清理 IndexedDB 中的全部持久缓存
  */
-export async function clearAllPersistentCaches(): Promise<void> {
+export async function clearAllPersistentCaches(protectedBookIds: ReadonlySet<string> = new Set()): Promise<void> {
     try {
         const allKeys = await keys();
-        const targetKeys = allKeys.filter((k) => String(k).startsWith(CACHE_PREFIX));
+        const targetKeys = allKeys.filter((key) => {
+            const cacheKey = String(key);
+            return cacheKey.startsWith(CACHE_PREFIX) && !protectedBookIds.has(cacheKey.replace(CACHE_PREFIX, ""));
+        });
         await Promise.all(targetKeys.map((k) => del(k)));
         console.log("已清理持久缓存:", targetKeys);
     } catch (e: any) {
@@ -170,7 +174,15 @@ export async function clearAllPersistentCaches(): Promise<void> {
 /**
  * 清理全部缓存，包括持久缓存和当前页内存状态
  */
-export async function clearAllCaches(): Promise<void> {
-    await clearAllPersistentCaches();
-    resetGlobalState();
+export async function clearAllCaches(): Promise<{ protectedBookIds: string[] }> {
+    const activeLocks = await listActiveBookDownloadLocks();
+    const protectedBookIds = new Set(activeLocks.map((lock) => lock.bookId));
+    await clearAllPersistentCaches(protectedBookIds);
+
+    const runtimeBookId = state.runtimeCacheSession?.bookId;
+    if (!runtimeBookId || !protectedBookIds.has(runtimeBookId)) {
+        resetGlobalState();
+    }
+
+    return { protectedBookIds: Array.from(protectedBookIds) };
 }

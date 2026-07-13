@@ -1,8 +1,13 @@
 import { CacheListItem, CacheStatus, PersistentCacheEntry } from "../types";
 import { clearRuntimeCacheSession, state } from "./state";
 import { clearAllPersistentCaches, clearBookCache, listBookCaches } from "./storage";
+import { getActiveBookDownloadLock, listActiveBookDownloadLocks } from "./book-lock";
 
 export type CacheClearScope = "indexeddb" | "runtime" | "all";
+
+export interface CacheClearResult {
+    protectedBookIds: string[];
+}
 
 function createPersistentListItem(entry: PersistentCacheEntry): CacheListItem {
     return {
@@ -80,7 +85,11 @@ export async function listManagedCaches(): Promise<CacheListItem[]> {
     return Array.from(result.values()).sort((a, b) => b.updatedAt - a.updatedAt);
 }
 
-export async function clearManagedCache(bookId: string, scope: CacheClearScope): Promise<void> {
+export async function clearManagedCache(bookId: string, scope: CacheClearScope): Promise<CacheClearResult> {
+    if (await getActiveBookDownloadLock(bookId)) {
+        return { protectedBookIds: [bookId] };
+    }
+
     if (scope === "indexeddb" || scope === "all") {
         await clearBookCache(bookId);
     }
@@ -88,12 +97,19 @@ export async function clearManagedCache(bookId: string, scope: CacheClearScope):
     if (scope === "runtime" || scope === "all") {
         clearRuntimeCacheSession(bookId);
     }
+
+    return { protectedBookIds: [] };
 }
 
-export async function clearAllManagedCaches(includeRuntime: boolean): Promise<void> {
-    await clearAllPersistentCaches();
+export async function clearAllManagedCaches(includeRuntime: boolean): Promise<CacheClearResult> {
+    const activeLocks = await listActiveBookDownloadLocks();
+    const protectedBookIds = new Set(activeLocks.map((lock) => lock.bookId));
+    await clearAllPersistentCaches(protectedBookIds);
 
-    if (includeRuntime) {
+    const runtimeBookId = state.runtimeCacheSession?.bookId;
+    if (includeRuntime && (!runtimeBookId || !protectedBookIds.has(runtimeBookId))) {
         clearRuntimeCacheSession();
     }
+
+    return { protectedBookIds: Array.from(protectedBookIds) };
 }

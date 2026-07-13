@@ -632,7 +632,10 @@ export function createSettingsPanel(): void {
                 }
             }
             setImageDownloadSetting(checked);
-            await clearAllCaches();
+            const clearResult = await clearAllCaches();
+            if (clearResult.protectedBookIds.length > 0) {
+                log(`已保留 ${clearResult.protectedBookIds.length} 本下载中的书籍缓存。`);
+            }
             log(`正文图片下载已${checked ? "开启" : "关闭"}`);
         }
     });

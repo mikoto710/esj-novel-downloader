@@ -1,4 +1,4 @@
-import { createStore, update } from "idb-keyval";
+import { createStore, entries, get, update } from "idb-keyval";
 import { BookDownloadLock, SourcePageType } from "../types";
 
 const LOCK_TTL_MS = 2 * 60 * 1000;
@@ -9,6 +9,18 @@ export type FullBookSourcePageType = Extract<SourcePageType, "detail" | "forum">
 export type AcquireBookLockResult =
     | { acquired: true; lock: BookDownloadLock }
     | { acquired: false; lock: BookDownloadLock };
+
+export async function getActiveBookDownloadLock(bookId: string): Promise<BookDownloadLock | null> {
+    const lock = await get<BookDownloadLock>(bookId, lockStore);
+    return isLockActive(lock) ? lock : null;
+}
+
+export async function listActiveBookDownloadLocks(): Promise<BookDownloadLock[]> {
+    const allEntries = await entries<string, BookDownloadLock>(lockStore);
+    return allEntries
+        .map(([, lock]) => lock)
+        .filter((lock): lock is BookDownloadLock => isLockActive(lock));
+}
 
 function isLockActive(lock: BookDownloadLock | undefined, now = Date.now()): lock is BookDownloadLock {
     return Boolean(lock && lock.status !== "released" && now - lock.heartbeatAt < LOCK_TTL_MS);
