@@ -150,7 +150,7 @@ export function createDownloadPopup(): HTMLElement {
         "div",
         {
             id: "esj-popup",
-            style: "position: fixed; top: 18%; left: 50%; transform: translateX(-50%); width: 520px; height: 460px; background: #fff; border-radius: 8px; border: 1px solid #aaa; box-shadow: 0 0 18px rgba(0,0,0,0.28); z-index: 999999; display:flex;flex-direction:column;"
+            style: "position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%); width: 520px; height:min(460px,calc(100vh - 32px)); background: #fff; border-radius: 8px; border: 1px solid #aaa; box-shadow: 0 0 18px rgba(0,0,0,0.28); z-index: 999999; display:flex;flex-direction:column;"
         },
         [
             header,
@@ -238,7 +238,7 @@ export function createConfirmPopup(onOk: () => void, onCancel?: () => void): voi
         "div",
         {
             id: "esj-confirm",
-            style: "position: fixed; top: 30%; left: 50%; transform: translateX(-50%); width: 380px; background:#fff;border:1px solid #aaa;border-radius:8px;box-shadow:0 4px 20px rgba(0,0,0,0.15);z-index:999999;padding:0;display:flex;flex-direction:column;"
+            style: "position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%); width: 380px; background:#fff;border:1px solid #aaa;border-radius:8px;box-shadow:0 4px 20px rgba(0,0,0,0.15);z-index:999999;padding:0;display:flex;flex-direction:column;"
         },
         [header, body, footer]
     );
@@ -298,7 +298,7 @@ function createImageCacheConfirmPopup(onOk: () => void, onCancel: () => void): v
         "div",
         {
             id: "esj-image-cache-confirm",
-            style: "position: fixed; top: 30%; left: 50%; transform: translateX(-50%); width: 380px; background:#fff;border:1px solid #aaa;border-radius:8px;box-shadow:0 4px 20px rgba(0,0,0,0.15);z-index:1000000;padding:0;display:flex;flex-direction:column;"
+            style: "position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%); width: 380px; background:#fff;border:1px solid #aaa;border-radius:8px;box-shadow:0 4px 20px rgba(0,0,0,0.15);z-index:1000000;padding:0;display:flex;flex-direction:column;"
         },
         [header, body, footer]
     );
@@ -422,7 +422,7 @@ export function showFormatChoice(): void {
         "div",
         {
             id: "esj-format",
-            style: "position:fixed;top:30%;left:50%;transform:translateX(-50%);width:420px;background:#fff;border:1px solid #aaa;border-radius:8px;box-shadow:0 0 18px rgba(0,0,0,.28);z-index:999999;padding:0;display:flex;flex-direction:column;"
+            style: "position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:420px;background:#fff;border:1px solid #aaa;border-radius:8px;box-shadow:0 0 18px rgba(0,0,0,.28);z-index:999999;padding:0;display:flex;flex-direction:column;"
         },
         [header, infoBody, footer]
     );
@@ -662,6 +662,45 @@ export function createSettingsPanel(): void {
         switchToggleEpubTagPage
     ]);
 
+    const relatedLinkStyle =
+        "flex:1;display:block;padding:8px 6px;border-radius:6px;text-align:center;text-decoration:none;font-size:12px;font-weight:bold;";
+    const btnGithub = el(
+        "a",
+        {
+            href: "https://github.com/mikoto710/esj-novel-downloader",
+            target: "_blank",
+            rel: "noopener noreferrer",
+            style: relatedLinkStyle + "background:#24292f;color:#fff;"
+        },
+        ["GitHub 项目主页"]
+    );
+    const btnGreasyFork = el(
+        "a",
+        {
+            href: "https://greasyfork.org/zh-CN/scripts/562046-esjzone-%E5%85%A8%E6%9C%AC%E4%B8%8B%E8%BD%BD",
+            target: "_blank",
+            rel: "noopener noreferrer",
+            style: relatedLinkStyle + "background:#8b1a1a;color:#fff;"
+        },
+        ["GreasyFork 脚本页"]
+    );
+    const btnIssue = el(
+        "a",
+        {
+            href: "https://github.com/mikoto710/esj-novel-downloader/issues",
+            target: "_blank",
+            rel: "noopener noreferrer",
+            style: relatedLinkStyle + "margin-top:8px;background:#f6f8fa;border:1px solid #d0d7de;color:#24292f;"
+        },
+        ["反馈问题 / Issues"]
+    );
+    const relatedLinks = el("div", { style: "text-align:center;" }, [
+        el("div", { style: "color:#333;font-weight:bold;margin-bottom:8px;" }, ["相关链接"]),
+        el("div", { style: "display:flex;gap:8px;" }, [btnGithub, btnGreasyFork]),
+        btnIssue,
+        el("div", { style: "margin-top:12px;color:#999;font-size:12px;" }, ["ESJ Novel Downloader"])
+    ]);
+
     // 组装整体面板
     const body = el("div", { style: "padding: 25px 20px; font-size: 14px;" }, [
         rowConcurrency,
@@ -670,14 +709,16 @@ export function createSettingsPanel(): void {
         createDivider(),
         rowEpubTagPage,
         createDivider(),
-        rowCache
+        rowCache,
+        createDivider(),
+        relatedLinks
     ]);
 
     const popup = el(
         "div",
         {
             id: "esj-settings",
-            style: "position:fixed;top:30%;left:50%;transform:translateX(-50%);width:320px;background:#fff;border:1px solid #ccc;border-radius:8px;box-shadow:0 4px 20px rgba(0,0,0,0.15);z-index:999999;display:flex;flex-direction:column;"
+            style: "position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:320px;background:#fff;border:1px solid #ccc;border-radius:8px;box-shadow:0 4px 20px rgba(0,0,0,0.15);z-index:999999;display:flex;flex-direction:column;"
         },
         [header, body]
     );

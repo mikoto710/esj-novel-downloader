@@ -124,7 +124,7 @@ function showCacheConfirm(options: { title?: string; message: string; danger?: b
             "div",
             {
                 id: "esj-cache-confirm",
-                style: "position:fixed;top:30%;left:50%;transform:translateX(-50%);width:380px;background:#fff;border:1px solid #aaa;border-radius:8px;box-shadow:0 0 18px rgba(0,0,0,0.28);z-index:1000000;display:flex;flex-direction:column;"
+                style: "position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:380px;background:#fff;border:1px solid #aaa;border-radius:8px;box-shadow:0 0 18px rgba(0,0,0,0.28);z-index:1000000;display:flex;flex-direction:column;"
             },
             [header, body, footer]
         );
@@ -147,7 +147,7 @@ export function createCacheManagerPopup(): void {
 
     const listBox = el("div", {
         className: "esj-cache-list",
-        style: "flex:1;padding:14px;background:#fafafa;overflow:auto;"
+        style: "flex:1;min-height:0;padding:14px;background:#fafafa;overflow:auto;"
     });
 
     const footer = el("div", {
@@ -158,7 +158,7 @@ export function createCacheManagerPopup(): void {
         "div",
         {
             id: "esj-cache-manager",
-            style: "position:fixed;top:18%;left:50%;transform:translateX(-50%);width:620px;height:520px;background:#fff;border:1px solid #aaa;border-radius:8px;box-shadow:0 0 18px rgba(0,0,0,0.28);z-index:999999;display:flex;flex-direction:column;"
+            style: "position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:620px;height:min(520px,calc(100vh - 32px));background:#fff;border:1px solid #aaa;border-radius:8px;box-shadow:0 0 18px rgba(0,0,0,0.28);z-index:999999;display:flex;flex-direction:column;"
         },
         [createHeader("🗂️ 缓存管理", closeAction), listBox, footer]
     );

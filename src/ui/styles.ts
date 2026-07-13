@@ -1,10 +1,11 @@
 const STYLES = `
     /* 遮罩与弹窗基础 */
     #esj-popup {
-        position: fixed; top: 18%; left: 50%; transform: translateX(-50%);
+        position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%);
         width: 520px; background: #fff; border-radius: 8px;
         border: 1px solid #aaa; box-shadow: 0 0 18px rgba(0,0,0,0.28);
         z-index: 999999; display: flex; flex-direction: column;
+        max-height: calc(100vh - 32px);
         font-family: sans-serif;
     }
     
@@ -35,8 +36,8 @@ const STYLES = `
     #esj-progress { width: 0%; height: 100%; background: #2b9bd7; transition: width .2s; }
 
     /* 确认弹窗 & 格式弹窗 */
-    #esj-confirm, #esj-format, #esj-cache-manager, #esj-cache-confirm {
-        position: fixed; top: 30%; left: 50%; transform: translateX(-50%);
+    #esj-confirm, #esj-format, #esj-cache-confirm {
+        position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%);
         width: 380px; background: #fff; border: 1px solid #aaa;
         border-radius: 8px; box-shadow: 0 0 18px rgba(0,0,0,0.28);
         z-index: 999999; display: flex; flex-direction: column;
@@ -48,8 +49,9 @@ const STYLES = `
 
     #esj-cache-manager {
         width: 620px;
-        height: 520px;
-        top: 18%;
+        height: min(520px, calc(100vh - 32px));
+        top: 50%;
+        transform: translate(-50%,-50%);
         font-family: inherit;
     }
 
