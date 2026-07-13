@@ -59,8 +59,7 @@ export function parseBookMetadata(doc: Document, pageUrl: string) {
     }
 
     // 标签
-    const tagsContainer = doc.querySelector("#details .tags") || doc.querySelector(".tags");
-    const tags = Array.from(tagsContainer?.querySelectorAll("a") || [])
+    const tags = Array.from(doc.querySelectorAll("section.widget-tags a.tag"))
         .map((tag) => tag.textContent?.trim() || "")
         .filter((tag, index, allTags) => tag.length > 0 && allTags.indexOf(tag) === index);
 
