@@ -3,7 +3,8 @@ import { log } from "../utils/index";
 // 默认配置
 const DEFAULT_CONFIG = {
     concurrency: 5,
-    enableImageDownload: false
+    enableImageDownload: false,
+    enableEpubTagPage: false
 };
 
 /**
@@ -45,4 +46,18 @@ export function getImageDownloadSetting(): boolean {
  */
 export function setImageDownloadSetting(val: boolean): void {
     GM_setValue("enable_image_download", val);
+}
+
+/**
+ * 获取 EPUB 标签页设置
+ */
+export function getEpubTagPageSetting(): boolean {
+    return GM_getValue("enable_epub_tag_page", DEFAULT_CONFIG.enableEpubTagPage);
+}
+
+/**
+ * 设置是否生成 EPUB 标签页
+ */
+export function setEpubTagPageSetting(val: boolean): void {
+    GM_setValue("enable_epub_tag_page", val);
 }

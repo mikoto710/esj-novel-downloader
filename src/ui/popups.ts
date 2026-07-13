@@ -5,7 +5,14 @@ import { log, triggerDownload } from "../utils/index";
 import { createMinimizedTray } from "./tray";
 import { buildEpub } from "../core/epub";
 import { CachedData } from "../types";
-import { getConcurrency, setConcurrency, setImageDownloadSetting, getImageDownloadSetting } from "../core/config";
+import {
+    getConcurrency,
+    setConcurrency,
+    setImageDownloadSetting,
+    getImageDownloadSetting,
+    getEpubTagPageSetting,
+    setEpubTagPageSetting
+} from "../core/config";
 import { clearAllCaches } from "../core/storage";
 import { buildHtml } from "../core/html";
 import { createCacheManagerPopup } from "./cache-manager";
@@ -446,7 +453,7 @@ export function showFormatChoice(): void {
             const oldTitle = document.title;
             document.title = "[生成 EPUB] " + oldTitle;
 
-            const blob = await buildEpub(currentData.chapters, currentData.metadata);
+            const blob = await buildEpub(currentData.chapters, currentData.metadata, getEpubTagPageSetting());
             currentData.epubBlob = blob;
 
             const filename = (currentData.metadata.title || "book") + ".epub";
@@ -599,6 +606,28 @@ export function createSettingsPanel(): void {
         el("span", { className: "esj-slider" })
     ]);
 
+    // EPUB 标签页开关
+    const isEpubTagPageEnabled = getEpubTagPageSetting();
+    const checkboxEpubTagPage = el("input", {
+        type: "checkbox",
+        checked: isEpubTagPageEnabled,
+        onchange: (e: Event) => {
+            const checked = (e.target as HTMLInputElement).checked;
+            setEpubTagPageSetting(checked);
+
+            if (state.cachedData) {
+                state.cachedData.epubBlob = null;
+            }
+
+            log(`EPUB 标签页已${checked ? "开启" : "关闭"}`);
+        }
+    });
+
+    const switchToggleEpubTagPage = el("label", { className: "esj-switch" }, [
+        checkboxEpubTagPage,
+        el("span", { className: "esj-slider" })
+    ]);
+
     log(`初始化参数：并发数=${currentConcurrency}，图片下载=${isImageEnabled}`);
 
     // 创建分隔线
@@ -625,11 +654,21 @@ export function createSettingsPanel(): void {
         switchToggleImage
     ]);
 
+    const rowEpubTagPage = el("div", { style: rowStyle }, [
+        el("div", {}, [
+            el("label", { style: "color: #333;" }, ["生成 EPUB 标签页: "]),
+            el("div", { style: "font-size:12px; color:#999; margin-top: 2px;" }, ["(关闭后标签仍会写入 EPUB 元数据)"])
+        ]),
+        switchToggleEpubTagPage
+    ]);
+
     // 组装整体面板
     const body = el("div", { style: "padding: 25px 20px; font-size: 14px;" }, [
         rowConcurrency,
         createDivider(),
         rowImage,
+        createDivider(),
+        rowEpubTagPage,
         createDivider(),
         rowCache
     ]);

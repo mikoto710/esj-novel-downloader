@@ -7,7 +7,7 @@ import type JSZip from "jszip";
 /**
  * 封装数据，生成 EPUB 文件
  */
-export async function buildEpub(chapters: Chapter[], metadata: BookMetadata): Promise<Blob> {
+export async function buildEpub(chapters: Chapter[], metadata: BookMetadata, includeTagPage: boolean): Promise<Blob> {
     let ZipClass: new () => JSZip;
 
     const JSZIP_URLS = [
@@ -56,7 +56,8 @@ export async function buildEpub(chapters: Chapter[], metadata: BookMetadata): Pr
     }
 
     const tags = metadata.tags || [];
-    if (tags.length > 0) {
+    const shouldIncludeTagPage = includeTagPage && tags.length > 0;
+    if (shouldIncludeTagPage) {
         const tagsId = "tags";
         const tagsFilename = "tags.xhtml";
         const tagsList = tags.map((tag) => `<li>${escapeXml(tag)}</li>`).join("\n");
@@ -83,7 +84,7 @@ export async function buildEpub(chapters: Chapter[], metadata: BookMetadata): Pr
               <ol>
         `;
 
-    if (tags.length > 0) {
+    if (shouldIncludeTagPage) {
         navHtml += `<li><a href="tags.xhtml">标签</a></li>`;
     }
 
@@ -128,6 +129,7 @@ export async function buildEpub(chapters: Chapter[], metadata: BookMetadata): Pr
     const uniqueId = metadata.uuid || "id-" + Date.now();
     const title = escapeXml(metadata.title || "未知書名");
     const author = escapeXml(metadata.author || "");
+    const tagMetadata = tags.map((tag) => `<dc:subject>${escapeXml(tag)}</dc:subject>`).join("\n");
     const pubdate = new Date().toISOString();
 
     const contentOpf = `<?xml version="1.0" encoding="utf-8"?>
@@ -138,6 +140,7 @@ export async function buildEpub(chapters: Chapter[], metadata: BookMetadata): Pr
             <dc:identifier id="BookId">${uniqueId}</dc:identifier>
             <dc:creator>${author}</dc:creator>
             <dc:description>${escapeXml(metadata.description || "")}</dc:description>
+            ${tagMetadata}
             <dc:date>${pubdate}</dc:date>
             ${coverMeta}
           </metadata>
