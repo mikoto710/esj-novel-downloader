@@ -49,10 +49,77 @@ function imageStatusText(item: DownloadHistoryItem): string {
         : `${item.imageInfo.successCount} / ${total} 张`;
 }
 
+function showHistoryClearConfirm(): Promise<boolean> {
+    document.querySelector("#esj-download-history-confirm")?.remove();
+
+    return new Promise((resolve) => {
+        const cleanup = (confirmed: boolean) => {
+            popup.remove();
+            resolve(confirmed);
+        };
+        const header = el(
+            "div",
+            {
+                className: "esj-common-header",
+                style: "padding:10px;background:#2b9bd7;color:#fff;display:flex;justify-content:space-between;align-items:center;cursor:move;border-radius:8px 8px 0 0;"
+            },
+            [
+                el("span", { style: "font-weight:bold;" }, ["🗑️ 清空确认"]),
+                el(
+                    "button",
+                    {
+                        title: "关闭",
+                        style: "border:none;background:#ef5350;color:#fff;padding:4px 10px;border-radius:6px;cursor:pointer;font-weight:bold;",
+                        onclick: () => cleanup(false)
+                    },
+                    ["✕"]
+                )
+            ]
+        );
+        const cancelButton = el(
+            "button",
+            {
+                style: "padding:8px 12px;background:#eee;border:1px solid #ccc;border-radius:6px;cursor:pointer;",
+                onclick: () => cleanup(false)
+            },
+            ["取消"]
+        );
+        const confirmButton = el(
+            "button",
+            {
+                style: "padding:8px 12px;background:#d9534f;color:#fff;border:none;border-radius:6px;cursor:pointer;",
+                onclick: () => cleanup(true)
+            },
+            ["清空"]
+        );
+        const popup = el(
+            "div",
+            {
+                id: "esj-download-history-confirm",
+                style: "position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:380px;background:#fff;border:1px solid #aaa;border-radius:8px;box-shadow:0 0 18px rgba(0,0,0,.28);z-index:1000000;display:flex;flex-direction:column;"
+            },
+            [
+                header,
+                el("div", { style: "padding:16px;font-size:14px;line-height:1.7;color:#333;" }, [
+                    "确定清空全部下载记录吗？此操作无法恢复。"
+                ]),
+                el("div", { style: "padding:12px;display:flex;justify-content:flex-end;gap:8px;" }, [
+                    cancelButton,
+                    confirmButton
+                ])
+            ]
+        );
+        document.body.appendChild(popup);
+        enableDrag(popup, ".esj-common-header");
+    });
+}
+
 export function createDownloadHistoryPopup(): void {
     document.querySelector("#esj-download-history")?.remove();
+    document.querySelector("#esj-download-history-confirm")?.remove();
     const close = () => {
         document.querySelector("#esj-download-history")?.remove();
+        document.querySelector("#esj-download-history-confirm")?.remove();
         document.querySelectorAll(".esj-settings-trigger").forEach((button) => {
             (button as HTMLButtonElement).disabled = false;
         });
@@ -221,14 +288,14 @@ export function createDownloadHistoryPopup(): void {
         "button",
         {
             style: "padding:8px 12px;background:#d9534f;color:#fff;border:0;border-radius:6px;cursor:pointer;",
-            onclick: () => {
-                if (!confirm("确定清空全部下载记录吗？此操作无法恢复。")) {
+            onclick: async () => {
+                const confirmed = await showHistoryClearConfirm();
+                if (!confirmed) {
                     return;
                 }
-                void clearDownloadHistory().then(async () => {
-                    items = await listDownloadHistory();
-                    render();
-                });
+                await clearDownloadHistory();
+                items = await listDownloadHistory();
+                render();
             }
         },
         ["清空全部记录"]
