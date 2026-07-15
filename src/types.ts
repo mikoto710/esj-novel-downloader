@@ -31,6 +31,27 @@ export type CacheStatus = "downloading" | "cancelled" | "export-ready" | "persis
 
 export type SourcePageType = "detail" | "forum" | "single" | "unknown";
 
+export type DownloadFormat = "txt" | "epub" | "html";
+
+export interface DownloadHistoryItem {
+    id: string;
+    bookId?: string;
+    bookName: string;
+    author: string;
+    format: DownloadFormat;
+    sourcePageType: Extract<SourcePageType, "detail" | "forum" | "single">;
+    chapterInfo: string;
+    imageInfo?: {
+        enabled: boolean;
+        successCount: number;
+        failureCount: number;
+    };
+    /** 兼容旧版下载记录；新记录改用 imageInfo。 */
+    imageEnabled?: boolean;
+    pageUrl: string;
+    exportedAt: number;
+}
+
 export type BookDownloadLockStatus = "preparing" | "running" | "released";
 
 /** 跨页面的全本下载任务锁；单章导出不使用。 */
@@ -109,6 +130,14 @@ export interface CachedData {
     chapters: Chapter[];
     metadata: BookMetadata;
     epubBlob: Blob | null;
+    exportContext?: {
+        bookId: string;
+        rawBookName?: string;
+        pageUrl: string;
+        sourcePageType: Extract<SourcePageType, "detail" | "forum">;
+        chapterInfo: string;
+        imageEnabled: boolean;
+    };
 }
 
 // 全局状态接口

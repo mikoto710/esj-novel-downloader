@@ -2,6 +2,7 @@ import { log, blobToBase64 } from "../utils/index";
 import { parseChapterHtml, parseBookMetadata } from "../core/parser";
 import { getImageDownloadSetting } from "../core/config";
 import { processHtmlImages } from "../utils/image";
+import { addDownloadHistory } from "../core/download-history";
 
 /**
  * 抓取并下载当前单章节页面
@@ -13,7 +14,7 @@ export async function downloadCurrentPage(format: "txt" | "html" = "txt"): Promi
         const viewAllBtn = document.querySelector(".entry-navigation .view-all") as HTMLAnchorElement;
         let metaHeader = "";
         let bookNamePrefix = "";
-        const htmlMeta = { intro: "", bookName: "" };
+        const htmlMeta = { intro: "", bookName: "", author: "" };
 
         if (viewAllBtn && viewAllBtn.href) {
             try {
@@ -29,6 +30,7 @@ export async function downloadCurrentPage(format: "txt" | "html" = "txt"): Promi
 
                 htmlMeta.intro = meta.baseIntroTxt;
                 htmlMeta.bookName = meta.bookName;
+                htmlMeta.author = meta.author;
             } catch (e) {
                 console.warn("书籍元数据获取失败，仅下载正文");
             }
@@ -40,16 +42,19 @@ export async function downloadCurrentPage(format: "txt" | "html" = "txt"): Promi
         const parsed = parseChapterHtml(html, defaultTitle);
 
         const title = parsed.title;
-        const author = parsed.author;
+        const author = htmlMeta.author || parsed.author;
         const contentText = parsed.contentText;
         let contentHtml = parsed.contentHtml;
+        const imageEnabled = getImageDownloadSetting();
+        let imageSuccessCount = 0;
+        let imageFailureCount = 0;
 
         // 根据格式检查内容
         if (format === "txt" && !contentText) {
             alert("未找到正文内容");
             return;
         } else {
-            if (getImageDownloadSetting()) {
+            if (imageEnabled) {
                 log("正在下载并处理插图...");
                 try {
                     const processed = await processHtmlImages(contentHtml, 0);
@@ -62,8 +67,11 @@ export async function downloadCurrentPage(format: "txt" | "html" = "txt"): Promi
                     }
 
                     contentHtml = tempHtml;
+                    imageSuccessCount = processed.images.length;
+                    imageFailureCount = processed.failCount;
                     log(`已嵌入 ${processed.images.length} 张图片`);
                 } catch (imgErr: any) {
+                    imageFailureCount = (contentHtml.match(/<img\s/gi) || []).length;
                     console.error(imgErr);
                     log(`⚠️ 图片处理失败，将保留原链接`);
                 }
@@ -127,6 +135,25 @@ export async function downloadCurrentPage(format: "txt" | "html" = "txt"): Promi
             a.click();
             document.body.removeChild(a);
             URL.revokeObjectURL(a.href);
+
+            const bookId = viewAllBtn?.href.match(/\/detail\/(\d+)/)?.[1];
+            await addDownloadHistory({
+                bookId,
+                bookName: htmlMeta.bookName || parsed.bookName || "未命名小说",
+                author: htmlMeta.author || author,
+                format,
+                sourcePageType: "single",
+                chapterInfo: title,
+                imageInfo:
+                    format === "html"
+                        ? {
+                              enabled: imageEnabled,
+                              successCount: imageSuccessCount,
+                              failureCount: imageFailureCount
+                          }
+                        : undefined,
+                pageUrl: location.href
+            });
 
             log(`✔ 单章下载完成 (${format.toUpperCase()})`);
         }

@@ -12,11 +12,25 @@ interface StoredCache {
 }
 
 // 下载缓存配置，24h过期
-const CACHE_PREFIX = "esj_down_";
+const CACHE_PREFIX = "esj_down_book_";
+const LEGACY_CACHE_PREFIX = "esj_down_";
+const HISTORY_KEY = "esj_down_history";
 const CACHE_EXPIRE_TIME = 24 * 60 * 60 * 1000;
 
 function getCacheKey(bookId: string): string {
     return CACHE_PREFIX + bookId;
+}
+
+function getLegacyCacheKey(bookId: string): string {
+    return LEGACY_CACHE_PREFIX + bookId;
+}
+
+function isCacheKey(key: string): boolean {
+    return key.startsWith(CACHE_PREFIX) || (key.startsWith(LEGACY_CACHE_PREFIX) && key !== HISTORY_KEY);
+}
+
+function getBookIdFromKey(key: string): string {
+    return key.startsWith(CACHE_PREFIX) ? key.slice(CACHE_PREFIX.length) : key.slice(LEGACY_CACHE_PREFIX.length);
 }
 
 function isExpired(data: StoredCache): boolean {
@@ -41,7 +55,7 @@ function toPersistentEntry(key: string, data: StoredCache): PersistentCacheEntry
     }
 
     const map = new Map<number, Chapter>(data.chapters);
-    const bookId = data.meta?.bookId || key.replace(CACHE_PREFIX, "");
+    const bookId = data.meta?.bookId || getBookIdFromKey(key);
 
     return {
         key,
@@ -63,19 +77,29 @@ function toPersistentEntry(key: string, data: StoredCache): PersistentCacheEntry
 export async function loadBookCache(bookId: string): Promise<{ size: number; map: Map<number, Chapter> | null }> {
     const key = getCacheKey(bookId);
     try {
-        const data = await get<StoredCache>(key);
+        let data = await get<StoredCache>(key);
+        let loadedLegacy = false;
+        const legacyKey = getLegacyCacheKey(bookId);
+        if (!data) {
+            data = await get<StoredCache>(legacyKey);
+            loadedLegacy = Boolean(data);
+        }
         if (!data) {
             return { size: 0, map: null };
         }
 
         if (isExpired(data)) {
             console.warn("⚠ 本地缓存已过期，自动清理");
-            await del(key);
+            await del(loadedLegacy ? legacyKey : key);
             return { size: 0, map: null };
         }
 
         if (Array.isArray(data.chapters)) {
             const map = new Map<number, Chapter>(data.chapters);
+            if (loadedLegacy) {
+                await set(key, data);
+                await del(legacyKey);
+            }
             console.log(`✅ 读取到本地缓存，章节数：${map.size}`);
             return { size: map.size, map };
         }
@@ -113,7 +137,7 @@ export async function saveBookCache(bookId: string, map: Map<number, Chapter>, m
 export async function listBookCaches(): Promise<PersistentCacheEntry[]> {
     try {
         const allKeys = await keys();
-        const targetKeys = allKeys.map((key) => String(key)).filter((key) => key.startsWith(CACHE_PREFIX));
+        const targetKeys = allKeys.map((key) => String(key)).filter(isCacheKey);
 
         const entries = await Promise.all(
             targetKeys.map(async (key) => {
@@ -131,9 +155,17 @@ export async function listBookCaches(): Promise<PersistentCacheEntry[]> {
             })
         );
 
-        return entries
+        const uniqueEntries = entries
             .filter((entry): entry is PersistentCacheEntry => Boolean(entry))
-            .sort((a, b) => b.updatedAt - a.updatedAt);
+            .reduce((result, entry) => {
+                const existing = result.get(entry.bookId);
+                if (!existing || entry.updatedAt > existing.updatedAt) {
+                    result.set(entry.bookId, entry);
+                }
+                return result;
+            }, new Map<string, PersistentCacheEntry>());
+
+        return Array.from(uniqueEntries.values()).sort((a, b) => b.updatedAt - a.updatedAt);
     } catch (e) {
         console.error("读取缓存列表失败", e);
         return [];
@@ -146,7 +178,7 @@ export async function listBookCaches(): Promise<PersistentCacheEntry[]> {
  */
 export async function clearBookCache(bookId: string) {
     try {
-        await del(getCacheKey(bookId));
+        await Promise.all([del(getCacheKey(bookId)), del(getLegacyCacheKey(bookId))]);
         log("🗑️ 已清理本地缓存:" + bookId);
     } catch (e) {
         console.error("清理缓存失败", e);
@@ -161,7 +193,7 @@ export async function clearAllPersistentCaches(protectedBookIds: ReadonlySet<str
         const allKeys = await keys();
         const targetKeys = allKeys.filter((key) => {
             const cacheKey = String(key);
-            return cacheKey.startsWith(CACHE_PREFIX) && !protectedBookIds.has(cacheKey.replace(CACHE_PREFIX, ""));
+            return isCacheKey(cacheKey) && !protectedBookIds.has(getBookIdFromKey(cacheKey));
         });
         await Promise.all(targetKeys.map((k) => del(k)));
         console.log("已清理持久缓存:", targetKeys);

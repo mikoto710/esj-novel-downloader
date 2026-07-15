@@ -51,6 +51,7 @@ export function fullCleanup(originalTitle?: string): void {
         "#esj-format",
         "#esj-settings",
         "#esj-cache-manager",
+        "#esj-download-history",
         "#esj-image-cache-confirm"
     ];
 

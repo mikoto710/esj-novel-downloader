@@ -16,6 +16,8 @@ import {
 import { clearAllCaches } from "../core/storage";
 import { buildHtml } from "../core/html";
 import { createCacheManagerPopup } from "./cache-manager";
+import { createDownloadHistoryPopup } from "./download-history";
+import { addDownloadHistory } from "../core/download-history";
 
 /**
  * 锁定/解锁页面上的设置按钮
@@ -453,6 +455,7 @@ export function showFormatChoice(): void {
                 const filename = (data.metadata.title || "book") + ".txt";
                 const blob = new Blob([data.txt], { type: "text/plain;charset=utf-8" });
                 triggerDownload(blob, filename);
+                void recordBookExport("txt");
             }
         },
         ["⬇ TXT 下载"]
@@ -507,6 +510,7 @@ export function showFormatChoice(): void {
         if (currentData.epubBlob) {
             const filename = (currentData.metadata.title || "book") + ".epub";
             triggerDownload(currentData.epubBlob, filename);
+            void recordBookExport("epub");
             return;
         }
 
@@ -526,6 +530,7 @@ export function showFormatChoice(): void {
 
             const filename = (currentData.metadata.title || "book") + ".epub";
             triggerDownload(blob, filename);
+            void recordBookExport("epub");
         } catch (e: any) {
             console.error(e);
             alert("EPUB 生成失败: " + e.message);
@@ -549,6 +554,7 @@ export function showFormatChoice(): void {
 
             const filename = (data.metadata.title || "book") + ".html";
             triggerDownload(blob, filename);
+            void recordBookExport("html");
         } catch (e: any) {
             console.error(e);
             alert("HTML 生成失败: " + e.message);
@@ -556,6 +562,28 @@ export function showFormatChoice(): void {
             btn.innerText = originalText;
             btn.disabled = false;
         }
+    }
+
+    function recordBookExport(format: "txt" | "epub" | "html"): Promise<void> {
+        const context = data.exportContext;
+        const imageInfo =
+            format === "txt"
+                ? undefined
+                : {
+                      enabled: context?.imageEnabled || false,
+                      successCount: data.chapters.reduce((count, chapter) => count + (chapter.images?.length || 0), 0),
+                      failureCount: data.chapters.reduce((count, chapter) => count + (chapter.imageErrors || 0), 0)
+                  };
+        return addDownloadHistory({
+            bookId: context?.bookId,
+            bookName: context?.rawBookName || data.metadata.title || "未命名小说",
+            author: data.metadata.author || "",
+            format,
+            sourcePageType: context?.sourcePageType || "detail",
+            chapterInfo: context?.chapterInfo || `${data.chapters.length} 章`,
+            imageInfo,
+            pageUrl: context?.pageUrl || location.href
+        });
     }
 }
 
@@ -623,7 +651,20 @@ export function createSettingsPanel(): void {
                 createCacheManagerPopup();
             }
         },
-        [" 缓存管理"]
+        ["缓存管理"]
+    );
+
+    const btnDownloadHistory = el(
+        "button",
+        {
+            className: "btn btn-primary btn-sm",
+            style: "color:white;min-width:110px;",
+            onclick: () => {
+                document.querySelector("#esj-settings")?.remove();
+                createDownloadHistoryPopup();
+            }
+        },
+        ["下载记录"]
     );
 
     // 图片下载开关
@@ -718,6 +759,11 @@ export function createSettingsPanel(): void {
         btnCacheManager
     ]);
 
+    const rowHistory = el("div", { style: rowStyle }, [
+        el("label", { style: "color:#333;" }, ["下载记录:"]),
+        btnDownloadHistory
+    ]);
+
     const rowImage = el("div", { style: rowStyle }, [
         el("div", {}, [
             el("label", { style: "color: #333;" }, ["下载正文插图: "]),
@@ -782,6 +828,8 @@ export function createSettingsPanel(): void {
         rowEpubTagPage,
         createDivider(),
         rowCache,
+        createDivider(),
+        rowHistory,
         createDivider(),
         relatedLinks
     ]);

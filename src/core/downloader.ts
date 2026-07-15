@@ -456,7 +456,15 @@ export async function batchDownload(options: DownloadOptions): Promise<void> {
             coverBlob: coverResult?.blob || null,
             coverExt: coverResult?.ext || "jpg"
         },
-        epubBlob: null
+        epubBlob: null,
+        exportContext: {
+            bookId,
+            rawBookName: rawBookName || bookName,
+            pageUrl: pageUrl || location.href,
+            sourcePageType: sourcePageType === "forum" ? "forum" : "detail",
+            chapterInfo: `共 ${chaptersArr.length} 章`,
+            imageEnabled: getImageDownloadSetting()
+        }
     });
 
     updateRuntimeCacheSession({
