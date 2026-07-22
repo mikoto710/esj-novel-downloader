@@ -17,6 +17,7 @@ export interface CacheClearResult {
 export interface StopAndClearResult {
     requested: boolean;
     cleared: boolean;
+    status: "not-active" | "cleared" | "cleanup-failed" | "replaced" | "stale" | "timeout";
 }
 
 function createPersistentListItem(entry: PersistentCacheEntry): CacheListItem {
@@ -128,7 +129,10 @@ export async function clearManagedCache(bookId: string, scope: CacheClearScope):
     }
 
     if (scope === "indexeddb" || scope === "all") {
-        await clearBookCache(bookId);
+        const cleared = await clearBookCache(bookId);
+        if (!cleared) {
+            return { protectedBookIds: [bookId] };
+        }
     }
 
     if (scope === "runtime" || scope === "all") {
@@ -141,7 +145,8 @@ export async function clearManagedCache(bookId: string, scope: CacheClearScope):
 export async function clearAllManagedCaches(includeRuntime: boolean): Promise<CacheClearResult> {
     const activeLocks = await listActiveBookDownloadLocks();
     const protectedBookIds = new Set(activeLocks.map((lock) => lock.bookId));
-    await clearAllPersistentCaches(protectedBookIds);
+    const newlyProtected = await clearAllPersistentCaches(protectedBookIds);
+    newlyProtected.forEach((bookId) => protectedBookIds.add(bookId));
 
     const runtimeBookId = state.runtimeCacheSession?.bookId;
     if (includeRuntime && (!runtimeBookId || !protectedBookIds.has(runtimeBookId))) {
@@ -152,16 +157,18 @@ export async function clearAllManagedCaches(includeRuntime: boolean): Promise<Ca
 }
 
 export async function stopAndClearManagedCache(bookId: string): Promise<StopAndClearResult> {
-    const requested = await requestBookDownloadCancellation(bookId, true);
-    if (!requested) {
-        return { requested: false, cleared: false };
+    const request = await requestBookDownloadCancellation(bookId, true);
+    if (!request.requested) {
+        return { requested: false, cleared: false, status: "not-active" };
     }
 
-    const stopped = await waitForBookDownloadCancellation(bookId);
-    if (!stopped) {
-        return { requested: true, cleared: false };
+    const result = await waitForBookDownloadCancellation(bookId, request.taskId);
+    if (result.status === "released") {
+        return {
+            requested: true,
+            cleared: result.cacheCleared,
+            status: result.cacheCleared ? "cleared" : "cleanup-failed"
+        };
     }
-
-    await clearBookCache(bookId);
-    return { requested: true, cleared: true };
+    return { requested: true, cleared: false, status: result.status };
 }

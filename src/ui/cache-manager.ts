@@ -344,13 +344,15 @@ function createCacheItem(item: CacheListItem, rerender: () => Promise<void>): HT
                     }
 
                     const result = await stopAndClearManagedCache(item.bookId);
-                    await showCacheProtectionNotice(
-                        result.cleared
-                            ? "下载任务已停止，缓存已清理。"
-                            : result.requested
-                              ? "已请求任务停止，请稍后刷新确认缓存状态。"
-                              : "该下载任务已结束，无需停止。"
-                    );
+                    const resultMessage: Record<typeof result.status, string> = {
+                        "not-active": "该下载任务已结束，无需停止。",
+                        cleared: "下载任务已停止，缓存已清理。",
+                        "cleanup-failed": "下载任务已停止，但缓存清理失败，请刷新后手动清理。",
+                        replaced: "原任务已结束，但检测到新的下载任务，未清理缓存。",
+                        stale: "下载页面已失联，未自动清理缓存，请刷新后手动清理。",
+                        timeout: "已请求任务停止，但任务暂未响应，缓存未清理。"
+                    };
+                    await showCacheProtectionNotice(resultMessage[result.status]);
                     await rerender();
                 },
                 "danger"

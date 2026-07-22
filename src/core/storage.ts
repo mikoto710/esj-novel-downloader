@@ -1,14 +1,16 @@
-import { del, get, keys, set } from "idb-keyval";
+import { del, get, keys, update } from "idb-keyval";
 import { CacheMeta, Chapter, PersistentCacheEntry } from "../types";
 import { log } from "../utils/index";
 import { resetGlobalState, state } from "./state";
-import { listActiveBookDownloadLocks } from "./book-lock";
+import { hasBookDownloadTaskPresence, listActiveBookDownloadLocks } from "./book-lock";
 
 interface StoredCache {
     version?: number;
     ts: number;
     chapters: [number, Chapter][];
     meta?: CacheMeta;
+    writerTaskId?: string;
+    cleared?: boolean;
 }
 
 // 下载缓存配置，24h过期
@@ -50,7 +52,7 @@ function normalizeMeta(bookId: string, meta?: CacheMeta): CacheMeta | undefined 
 }
 
 function toPersistentEntry(key: string, data: StoredCache): PersistentCacheEntry | null {
-    if (!Array.isArray(data.chapters)) {
+    if (data.cleared || !Array.isArray(data.chapters)) {
         return null;
     }
 
@@ -78,28 +80,25 @@ export async function loadBookCache(bookId: string): Promise<{ size: number; map
     const key = getCacheKey(bookId);
     try {
         let data = await get<StoredCache>(key);
-        let loadedLegacy = false;
         const legacyKey = getLegacyCacheKey(bookId);
         if (!data) {
             data = await get<StoredCache>(legacyKey);
-            loadedLegacy = Boolean(data);
         }
         if (!data) {
             return { size: 0, map: null };
         }
 
+        if (data.cleared) {
+            return { size: 0, map: null };
+        }
+
         if (isExpired(data)) {
-            console.warn("⚠ 本地缓存已过期，自动清理");
-            await del(loadedLegacy ? legacyKey : key);
+            console.warn("⚠ 本地缓存已过期，本次不再使用");
             return { size: 0, map: null };
         }
 
         if (Array.isArray(data.chapters)) {
             const map = new Map<number, Chapter>(data.chapters);
-            if (loadedLegacy) {
-                await set(key, data);
-                await del(legacyKey);
-            }
             console.log(`✅ 读取到本地缓存，章节数：${map.size}`);
             return { size: map.size, map };
         }
@@ -111,24 +110,111 @@ export async function loadBookCache(bookId: string): Promise<{ size: number; map
 }
 
 /**
- * 保存章节缓存到 IndexedDB
+ * 由已取得下载锁的任务原子认领缓存写入权。
+ */
+export async function claimBookCache(
+    bookId: string,
+    taskId: string
+): Promise<{ size: number; map: Map<number, Chapter> | null }> {
+    const key = getCacheKey(bookId);
+    const legacyKey = getLegacyCacheKey(bookId);
+    try {
+        const legacyData = await get<StoredCache>(legacyKey);
+        let claimed: StoredCache | null = null;
+
+        await update<StoredCache | undefined>(key, (current) => {
+            const source = current || legacyData;
+            const reusable = Boolean(source && !source.cleared && !isExpired(source) && Array.isArray(source.chapters));
+            claimed = {
+                version: 2,
+                ts: Date.now(),
+                chapters: reusable ? source!.chapters : [],
+                meta: reusable ? source!.meta : undefined,
+                writerTaskId: taskId,
+                cleared: false
+            };
+            return claimed;
+        });
+
+        if (legacyData) {
+            await del(legacyKey);
+        }
+
+        const claimedCache = claimed as StoredCache | null;
+        const chapters = claimedCache?.chapters || [];
+        const map = new Map<number, Chapter>(chapters);
+        return { size: map.size, map: map.size > 0 ? map : null };
+    } catch (error) {
+        console.error("认领缓存失败", error);
+        throw error;
+    }
+}
+
+/**
+ * 仅允许当前缓存写入任务保存章节。
  * @param bookId
  * @param map 章节数据
  */
-export async function saveBookCache(bookId: string, map: Map<number, Chapter>, meta?: CacheMeta) {
+export async function saveBookCacheForTask(
+    bookId: string,
+    taskId: string,
+    map: Map<number, Chapter>,
+    meta?: CacheMeta
+): Promise<boolean> {
     const normalizedMeta = normalizeMeta(bookId, meta);
     const data: StoredCache = {
-        version: normalizedMeta ? 1 : undefined,
+        version: 2,
         ts: normalizedMeta?.updatedAt || Date.now(),
         chapters: Array.from(map.entries()),
-        meta: normalizedMeta
+        meta: normalizedMeta,
+        writerTaskId: taskId,
+        cleared: false
     };
+    let saved = false;
 
     try {
-        await set(getCacheKey(bookId), data);
+        await update<StoredCache | undefined>(getCacheKey(bookId), (current) => {
+            if (!current || current.writerTaskId !== taskId || current.cleared) {
+                return current;
+            }
+            saved = true;
+            return data;
+        });
     } catch (e) {
         console.error("保存缓存失败", e);
     }
+    return saved;
+}
+
+/**
+ * 仅允许当前缓存写入任务清理章节，并保留所有权墓碑阻止旧任务复写。
+ */
+export async function clearBookCacheForTask(bookId: string, taskId: string): Promise<boolean> {
+    let cleared = false;
+    try {
+        await update<StoredCache | undefined>(getCacheKey(bookId), (current) => {
+            if (!current || current.writerTaskId !== taskId) {
+                return current;
+            }
+            cleared = true;
+            return {
+                ...current,
+                version: 2,
+                ts: Date.now(),
+                chapters: [],
+                writerTaskId: taskId,
+                cleared: true
+            };
+        });
+        if (cleared) {
+            await del(getLegacyCacheKey(bookId));
+            log("🗑️ 已清理当前下载任务缓存:" + bookId);
+        }
+    } catch (error) {
+        console.error("清理当前下载任务缓存失败", error);
+        return false;
+    }
+    return cleared;
 }
 
 /**
@@ -147,7 +233,6 @@ export async function listBookCaches(): Promise<PersistentCacheEntry[]> {
                 }
 
                 if (isExpired(data)) {
-                    await del(key);
                     return null;
                 }
 
@@ -176,30 +261,61 @@ export async function listBookCaches(): Promise<PersistentCacheEntry[]> {
  * 清理指定 ID 的缓存
  * @param bookId
  */
-export async function clearBookCache(bookId: string) {
+export async function clearBookCache(bookId: string): Promise<boolean> {
     try {
-        await Promise.all([del(getCacheKey(bookId)), del(getLegacyCacheKey(bookId))]);
+        let protectedByTask = false;
+        await update<StoredCache | undefined>(getCacheKey(bookId), (current) => {
+            if (current?.writerTaskId && hasBookDownloadTaskPresence(current.writerTaskId)) {
+                protectedByTask = true;
+                return current;
+            }
+            return {
+                version: 2,
+                ts: Date.now(),
+                chapters: [],
+                cleared: true
+            };
+        });
+        if (protectedByTask) {
+            return false;
+        }
+        await del(getLegacyCacheKey(bookId));
         log("🗑️ 已清理本地缓存:" + bookId);
+        return true;
     } catch (e) {
         console.error("清理缓存失败", e);
+        return false;
     }
 }
 
 /**
  * 仅清理 IndexedDB 中的全部持久缓存
  */
-export async function clearAllPersistentCaches(protectedBookIds: ReadonlySet<string> = new Set()): Promise<void> {
+export async function clearAllPersistentCaches(protectedBookIds: ReadonlySet<string> = new Set()): Promise<string[]> {
     try {
         const allKeys = await keys();
-        const targetKeys = allKeys.filter((key) => {
-            const cacheKey = String(key);
-            return isCacheKey(cacheKey) && !protectedBookIds.has(getBookIdFromKey(cacheKey));
-        });
-        await Promise.all(targetKeys.map((k) => del(k)));
-        console.log("已清理持久缓存:", targetKeys);
+        const targetBookIds = Array.from(
+            new Set(
+                allKeys
+                    .map((key) => String(key))
+                    .filter(isCacheKey)
+                    .map(getBookIdFromKey)
+                    .filter((bookId) => !protectedBookIds.has(bookId))
+            )
+        );
+        const results = await Promise.all(
+            targetBookIds.map(async (bookId) => ({ bookId, cleared: await clearBookCache(bookId) }))
+        );
+        const newlyProtected = results.filter((result) => !result.cleared).map((result) => result.bookId);
+        console.log(
+            "已清理持久缓存:",
+            results.filter((result) => result.cleared).map((result) => result.bookId)
+        );
+        return newlyProtected;
     } catch (e: any) {
         console.error("清理缓存失败", e);
         alert("清理失败: " + e.message);
+        return [];
     }
 }
 
@@ -209,7 +325,8 @@ export async function clearAllPersistentCaches(protectedBookIds: ReadonlySet<str
 export async function clearAllCaches(): Promise<{ protectedBookIds: string[] }> {
     const activeLocks = await listActiveBookDownloadLocks();
     const protectedBookIds = new Set(activeLocks.map((lock) => lock.bookId));
-    await clearAllPersistentCaches(protectedBookIds);
+    const newlyProtected = await clearAllPersistentCaches(protectedBookIds);
+    newlyProtected.forEach((bookId) => protectedBookIds.add(bookId));
 
     const runtimeBookId = state.runtimeCacheSession?.bookId;
     if (!runtimeBookId || !protectedBookIds.has(runtimeBookId)) {

@@ -1,8 +1,7 @@
 import {
+    abortActiveDownload,
     state,
     setCachedData,
-    setAbortFlag,
-    resetAbortController,
     startRuntimeCacheSession,
     updateRuntimeCacheSession
 } from "./state";
@@ -10,13 +9,13 @@ import { log, sleepWithAbort, sleep, fetchWithTimeout } from "../utils/index";
 import { fullCleanup } from "../utils/dom";
 import { createDownloadPopup, showFormatChoice } from "../ui/popups";
 import { updateTrayText } from "../ui/tray";
-import { loadBookCache, saveBookCache, clearBookCache } from "./storage";
+import { clearBookCacheForTask, saveBookCacheForTask } from "./storage";
 import { CacheMeta, Chapter, SourcePageType } from "../types";
 import { parseChapterHtml } from "./parser";
 import { getConcurrency, getImageDownloadSetting } from "./config";
 import { processHtmlImages } from "../utils/image";
 import { removeImgTags } from "../utils/text";
-import { shouldDiscardBookDownloadCache } from "./book-lock";
+import { ownsActiveBookDownloadLock, shouldDiscardBookDownloadCache } from "./book-lock";
 
 export interface DownloadTask {
     index: number;
@@ -26,6 +25,7 @@ export interface DownloadTask {
 
 export interface DownloadOptions {
     bookId: string;
+    taskId: string;
     bookName: string;
     rawBookName?: string;
     author?: string;
@@ -52,6 +52,20 @@ interface DownloadContext {
         completedCount: number;
     };
     updateProgress: () => void;
+}
+
+async function persistTaskCache(ctx: DownloadContext): Promise<boolean> {
+    const saved = await saveBookCacheForTask(
+        ctx.options.bookId,
+        ctx.options.taskId,
+        state.globalChaptersMap,
+        ctx.cacheMeta
+    );
+    if (!saved) {
+        log("下载任务已失去缓存写入权，正在停止旧任务。");
+        abortActiveDownload();
+    }
+    return saved;
 }
 
 /**
@@ -165,7 +179,7 @@ async function processChapterTask(task: DownloadTask, ctx: DownloadContext, isRe
         return;
     }
     const { index, url, title } = task;
-    const { total, options } = ctx;
+    const { total } = ctx;
 
     // 缓存命中
     if (!isRetry && state.globalChaptersMap.has(index)) {
@@ -189,7 +203,7 @@ async function processChapterTask(task: DownloadTask, ctx: DownloadContext, isRe
         ctx.updateProgress();
 
         if (!state.abortFlag && ctx.runtime.completedCount % 5 === 0) {
-            saveBookCache(options.bookId, state.globalChaptersMap, ctx.cacheMeta);
+            await persistTaskCache(ctx);
         }
 
         log(`⚠️ 跳过 (${ctx.runtime.completedCount}/${total})：${title} (非站内)`);
@@ -214,10 +228,10 @@ async function processChapterTask(task: DownloadTask, ctx: DownloadContext, isRe
     if (!state.abortFlag) {
         if (isRetry) {
             // 补漏每补完一章就存一次
-            saveBookCache(options.bookId, state.globalChaptersMap, ctx.cacheMeta);
+            await persistTaskCache(ctx);
         } else {
             if (ctx.runtime.completedCount % 5 === 0) {
-                saveBookCache(options.bookId, state.globalChaptersMap, ctx.cacheMeta);
+                await persistTaskCache(ctx);
             }
         }
     }
@@ -248,7 +262,7 @@ async function processChapterTask(task: DownloadTask, ctx: DownloadContext, isRe
  * 完整性检查与补漏
  */
 async function checkIntegrityAndRetry(tasks: DownloadTask[], ctx: DownloadContext): Promise<boolean> {
-    const { total, options, enableImage } = ctx;
+    const { total, enableImage } = ctx;
 
     log("正在进行章节完整性检查...");
 
@@ -267,11 +281,14 @@ async function checkIntegrityAndRetry(tasks: DownloadTask[], ctx: DownloadContex
         log(`⚠ 发现 ${missingTasks.length} 个章节不完整 (缺失或含失败图片)，尝试自动补抓...`);
         for (const task of missingTasks) {
             if (state.abortFlag) {
+                const lockOwned = await ownsActiveBookDownloadLock(state.activeBookLock);
                 const discardCache = await shouldDiscardBookDownloadCache(state.activeBookLock);
-                if (discardCache) {
-                    await clearBookCache(options.bookId);
+                if (!lockOwned) {
+                    log("下载任务锁已失效，跳过缓存写入。");
+                } else if (discardCache) {
+                    log("停止请求要求清理缓存，将在释放任务锁前统一处理。");
                 } else {
-                    await saveBookCache(options.bookId, state.globalChaptersMap, ctx.cacheMeta);
+                    await persistTaskCache(ctx);
                 }
                 fullCleanup(state.originalTitle);
                 return false;
@@ -296,6 +313,7 @@ async function checkIntegrityAndRetry(tasks: DownloadTask[], ctx: DownloadContex
 export async function batchDownload(options: DownloadOptions): Promise<void> {
     const {
         bookId,
+        taskId,
         bookName,
         rawBookName,
         author,
@@ -317,16 +335,8 @@ export async function batchDownload(options: DownloadOptions): Promise<void> {
     const progressEl = document.querySelector("#esj-progress") as HTMLElement;
     const titleEl = document.querySelector("#esj-title") as HTMLElement;
 
-    setAbortFlag(false);
-    resetAbortController();
-
     // 读取缓存
-    let cachedCount = 0;
-    const cacheResult = await loadBookCache(bookId);
-    if (cacheResult.map) {
-        state.globalChaptersMap = cacheResult.map;
-        cachedCount = cacheResult.size;
-    }
+    const cachedCount = state.globalChaptersMap.size;
     if (cachedCount > 0) {
         log(`💾 已从 IndexedDB 恢复 ${cachedCount} 章缓存`);
     }
@@ -398,13 +408,15 @@ export async function batchDownload(options: DownloadOptions): Promise<void> {
 
     // 用户取消操作
     if (state.abortFlag) {
+        const lockOwned = await ownsActiveBookDownloadLock(state.activeBookLock);
         const discardCache = await shouldDiscardBookDownloadCache(state.activeBookLock);
-        if (discardCache) {
-            await clearBookCache(bookId);
-            log("已停止任务并清理缓存。");
+        if (!lockOwned) {
+            log("下载任务锁已失效，跳过缓存写入。");
+        } else if (discardCache) {
+            log("停止请求要求清理缓存，将在释放任务锁前统一处理。");
         } else {
             log("正在写入 IndexedDB...");
-            await saveBookCache(bookId, state.globalChaptersMap, cacheMeta);
+            await persistTaskCache(ctx);
         }
         updateRuntimeCacheSession({
             completedCount: ctx.runtime.completedCount,
@@ -412,7 +424,13 @@ export async function batchDownload(options: DownloadOptions): Promise<void> {
             status: "cancelled",
             hasExportData: false
         });
-        log(discardCache ? "任务已停止，缓存已清理。" : "任务已手动取消，进度已保存。");
+        log(
+            !lockOwned
+                ? "任务锁已失效，当前任务已停止。"
+                : discardCache
+                  ? "任务已停止，正在清理缓存。"
+                  : "任务已手动取消，进度已保存。"
+        );
         await sleep(800);
         document.title = state.originalTitle;
         fullCleanup(state.originalTitle);
@@ -445,6 +463,11 @@ export async function batchDownload(options: DownloadOptions): Promise<void> {
         }
     }
 
+    const cacheCleared = await clearBookCacheForTask(bookId, taskId);
+    if (!cacheCleared) {
+        throw new Error("下载任务已失去缓存清理权，已停止导出");
+    }
+
     setCachedData({
         txt: finalTxt,
         chapters: chaptersArr,
@@ -474,7 +497,6 @@ export async function batchDownload(options: DownloadOptions): Promise<void> {
         hasExportData: true
     });
 
-    clearBookCache(bookId);
     fullCleanup(state.originalTitle);
     showFormatChoice();
 }

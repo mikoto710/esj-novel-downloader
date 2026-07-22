@@ -46,7 +46,7 @@ export interface DownloadHistoryItem {
         successCount: number;
         failureCount: number;
     };
-    /** 兼容旧版下载记录；新记录改用 imageInfo。 */
+    // 兼容旧版下载记录；新记录改用 imageInfo。
     imageEnabled?: boolean;
     pageUrl: string;
     exportedAt: number;
@@ -54,12 +54,12 @@ export interface DownloadHistoryItem {
 
 export type BookDownloadLockStatus = "preparing" | "running" | "released";
 
-/** 跨页面的全本下载任务锁；单章导出不使用。 */
+// 跨页面的全本下载任务锁；单章导出不使用。
 export interface BookDownloadLock {
     bookId: string;
     bookName?: string;
     taskId: string;
-    ownerSessionId?: string;
+    presenceKey?: string;
     sourcePageType: Extract<SourcePageType, "detail" | "forum">;
     status: BookDownloadLockStatus;
     startedAt: number;
@@ -67,6 +67,7 @@ export interface BookDownloadLock {
     releasedAt?: number;
     cancelRequestedAt?: number;
     discardCacheOnCancel?: boolean;
+    discardCacheCompletedAt?: number;
 }
 
 // 缓存展示和持久化共用的元信息
