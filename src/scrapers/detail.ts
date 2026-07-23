@@ -39,9 +39,7 @@ export async function scrapeDetail(): Promise<void> {
 
     // 提前加载缓存
     const cacheResult = await loadBookCache(bookId);
-    if (cacheResult.map) {
-        state.globalChaptersMap = cacheResult.map;
-    }
+    state.globalChaptersMap = cacheResult.map || new Map();
 
     const confirmed = await new Promise<boolean>((resolve) => {
         createConfirmPopup(

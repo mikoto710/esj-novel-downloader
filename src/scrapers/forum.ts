@@ -45,9 +45,7 @@ export async function scrapeForum(): Promise<void> {
     }
 
     const cacheResult = await loadBookCache(bid);
-    if (cacheResult.map) {
-        state.globalChaptersMap = cacheResult.map;
-    }
+    state.globalChaptersMap = cacheResult.map || new Map();
 
     const confirmed = await new Promise<boolean>((resolve) => {
         createConfirmPopup(
