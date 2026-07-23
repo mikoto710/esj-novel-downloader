@@ -3,6 +3,7 @@ import { CacheMeta, Chapter, PersistentCacheEntry } from "../types";
 import { log } from "../utils/index";
 import { resetGlobalState, state } from "./state";
 import { hasBookDownloadTaskPresence, listActiveBookDownloadLocks } from "./book-lock";
+import { publishCacheSyncEvent } from "./cache-sync";
 
 interface StoredCache {
     version?: number;
@@ -67,6 +68,7 @@ function toPersistentEntry(key: string, data: StoredCache): PersistentCacheEntry
         totalChapters: data.meta?.totalChapters ?? null,
         map,
         meta: data.meta || null,
+        writerTaskId: data.writerTaskId,
         isLegacy: !data.meta
     };
 }
@@ -140,6 +142,8 @@ export async function claimBookCache(
             await del(legacyKey);
         }
 
+        publishCacheSyncEvent({ type: "cache-claimed", bookId, taskId });
+
         const claimedCache = claimed as StoredCache | null;
         const chapters = claimedCache?.chapters || [];
         const map = new Map<number, Chapter>(chapters);
@@ -183,6 +187,9 @@ export async function saveBookCacheForTask(
     } catch (e) {
         console.error("保存缓存失败", e);
     }
+    if (saved) {
+        publishCacheSyncEvent({ type: "cache-saved", bookId, taskId });
+    }
     return saved;
 }
 
@@ -209,6 +216,7 @@ export async function clearBookCacheForTask(bookId: string, taskId: string): Pro
         if (cleared) {
             await del(getLegacyCacheKey(bookId));
             log("🗑️ 已清理当前下载任务缓存:" + bookId);
+            publishCacheSyncEvent({ type: "cache-cleared", bookId });
         }
     } catch (error) {
         console.error("清理当前下载任务缓存失败", error);
@@ -281,6 +289,7 @@ export async function clearBookCache(bookId: string): Promise<boolean> {
         }
         await del(getLegacyCacheKey(bookId));
         log("🗑️ 已清理本地缓存:" + bookId);
+        publishCacheSyncEvent({ type: "cache-cleared", bookId });
         return true;
     } catch (e) {
         console.error("清理缓存失败", e);

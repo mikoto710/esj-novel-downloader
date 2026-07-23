@@ -85,6 +85,7 @@ export interface CacheMeta {
 
 // 当前页运行中的会话缓存摘要
 export interface RuntimeCacheSession extends CacheMeta {
+    taskId: string;
     completedCount: number;
     cachedChapterCount: number;
     status: CacheStatus;
@@ -100,6 +101,7 @@ export interface PersistentCacheEntry {
     totalChapters: number | null;
     map: Map<number, Chapter>;
     meta: CacheMeta | null;
+    writerTaskId?: string;
     isLegacy: boolean;
 }
 

@@ -1,4 +1,5 @@
 import { AppState, BookDownloadLock, CacheMeta, CachedData, Chapter, RuntimeCacheSession } from "../types";
+import { subscribeCacheSync } from "./cache-sync";
 
 export const state: AppState & { abortController: AbortController | null; activeBookLock: BookDownloadLock | null } = {
     abortFlag: false,
@@ -48,9 +49,10 @@ export function abortActiveDownload(): void {
 /**
  * 启动当前页会话缓存摘要
  */
-export function startRuntimeCacheSession(meta: CacheMeta, initialChapterCount = 0): void {
+export function startRuntimeCacheSession(meta: CacheMeta, taskId: string, initialChapterCount = 0): void {
     state.runtimeCacheSession = {
         ...meta,
+        taskId,
         completedCount: 0,
         cachedChapterCount: initialChapterCount,
         status: "downloading",
@@ -94,3 +96,14 @@ export function resetGlobalState(): void {
     // state.abortFlag = false;
     console.log("内存状态已重置");
 }
+
+subscribeCacheSync((event) => {
+    const runtime = state.runtimeCacheSession;
+    if (!runtime || runtime.bookId !== event.bookId || runtime.hasExportData) {
+        return;
+    }
+
+    if (event.type === "cache-cleared" || (event.type === "cache-claimed" && event.taskId !== runtime.taskId)) {
+        clearRuntimeCacheSession(event.bookId);
+    }
+});

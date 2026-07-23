@@ -5,7 +5,10 @@ import {
     stopAndClearManagedCache
 } from "../core/cache-manager";
 import { CacheListItem } from "../types";
+import { subscribeCacheSync } from "../core/cache-sync";
 import { el, enableDrag } from "../utils/dom";
+
+let disposeActiveCacheManagerSynchronizer: (() => void) | null = null;
 
 function toggleSettingsLock(locked: boolean) {
     const buttons = document.querySelectorAll(".esj-settings-trigger");
@@ -176,11 +179,26 @@ function showCacheProtectionNotice(message: string): Promise<void> {
 }
 
 export function createCacheManagerPopup(): void {
+    disposeActiveCacheManagerSynchronizer?.();
     document.querySelector("#esj-cache-manager")?.remove();
     document.querySelector("#esj-cache-confirm")?.remove();
     toggleSettingsLock(true);
 
+    let stopSynchronizing: () => void = () => {};
+    let refreshTimer: number | null = null;
+    const disposeSynchronizer = () => {
+        stopSynchronizing();
+        if (refreshTimer !== null) {
+            window.clearTimeout(refreshTimer);
+            refreshTimer = null;
+        }
+        if (disposeActiveCacheManagerSynchronizer === disposeSynchronizer) {
+            disposeActiveCacheManagerSynchronizer = null;
+        }
+    };
+
     const closeAction = () => {
+        disposeSynchronizer();
         document.querySelector("#esj-cache-confirm")?.remove();
         document.querySelector("#esj-cache-manager")?.remove();
         toggleSettingsLock(false);
@@ -283,6 +301,21 @@ export function createCacheManagerPopup(): void {
             listBox.appendChild(createCacheItem(item, renderList));
         });
     }
+
+    stopSynchronizing = subscribeCacheSync(() => {
+        if (!popup.isConnected) {
+            disposeSynchronizer();
+            return;
+        }
+        if (refreshTimer !== null) {
+            return;
+        }
+        refreshTimer = window.setTimeout(() => {
+            refreshTimer = null;
+            void renderList();
+        }, 100);
+    });
+    disposeActiveCacheManagerSynchronizer = disposeSynchronizer;
 
     document.body.appendChild(popup);
     enableDrag(popup, ".esj-common-header");

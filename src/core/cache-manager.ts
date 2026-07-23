@@ -55,8 +55,10 @@ function mergeStatus(current: CacheStatus, next: CacheStatus): CacheStatus {
 }
 
 export async function listManagedCaches(): Promise<CacheListItem[]> {
-    const persistentEntries = await listBookCaches();
+    const [persistentEntries, activeLocks] = await Promise.all([listBookCaches(), listActiveBookDownloadLocks()]);
     const result = new Map<string, CacheListItem>();
+    const persistentByBookId = new Map(persistentEntries.map((entry) => [entry.bookId, entry]));
+    const activeLockByBookId = new Map(activeLocks.map((lock) => [lock.bookId, lock]));
 
     persistentEntries.forEach((entry) => {
         result.set(entry.bookId, createPersistentListItem(entry));
@@ -65,37 +67,44 @@ export async function listManagedCaches(): Promise<CacheListItem[]> {
     const runtime = state.runtimeCacheSession;
     if (runtime) {
         const existing = result.get(runtime.bookId);
-        const mergedSources = existing ? [...existing.sources] : [];
-        if (!mergedSources.includes("runtime")) {
-            mergedSources.push("runtime");
+        const persistentTaskId = persistentByBookId.get(runtime.bookId)?.writerTaskId;
+        const activeTaskId = activeLockByBookId.get(runtime.bookId)?.taskId;
+        const isCurrentRuntime =
+            (!persistentTaskId || persistentTaskId === runtime.taskId) &&
+            (!activeTaskId || activeTaskId === runtime.taskId);
+
+        if (isCurrentRuntime) {
+            const mergedSources = existing ? [...existing.sources] : [];
+            if (!mergedSources.includes("runtime")) {
+                mergedSources.push("runtime");
+            }
+
+            const persistentChapterCount = existing?.persistentChapterCount || 0;
+            const progressCount = Math.max(runtime.completedCount, runtime.cachedChapterCount, persistentChapterCount);
+
+            result.set(runtime.bookId, {
+                bookId: runtime.bookId,
+                bookName: runtime.rawBookName || runtime.bookName || existing?.bookName || `Book ${runtime.bookId}`,
+                rawBookName: runtime.rawBookName || existing?.rawBookName,
+                author: runtime.author || existing?.author || "-",
+                pageUrl: runtime.pageUrl || existing?.pageUrl || "",
+                totalChapters: runtime.totalChapters || existing?.totalChapters || null,
+                progressCount,
+                persistentChapterCount,
+                runtimeChapterCount: runtime.cachedChapterCount,
+                runtimeCompletedCount: runtime.completedCount,
+                updatedAt: Math.max(existing?.updatedAt || 0, runtime.updatedAt),
+                sourcePageType: runtime.sourcePageType || existing?.sourcePageType || "unknown",
+                imageEnabled: runtime.imageEnabled,
+                sources: existing ? Array.from(new Set([...existing.sources, "runtime"])) : ["runtime"],
+                status: existing ? mergeStatus(existing.status, runtime.status) : runtime.status,
+                hasExportData: runtime.hasExportData,
+                isLegacy: existing?.isLegacy || false,
+                activeTask: false
+            });
         }
-
-        const persistentChapterCount = existing?.persistentChapterCount || 0;
-        const progressCount = Math.max(runtime.completedCount, runtime.cachedChapterCount, persistentChapterCount);
-
-        result.set(runtime.bookId, {
-            bookId: runtime.bookId,
-            bookName: runtime.rawBookName || runtime.bookName || existing?.bookName || `Book ${runtime.bookId}`,
-            rawBookName: runtime.rawBookName || existing?.rawBookName,
-            author: runtime.author || existing?.author || "-",
-            pageUrl: runtime.pageUrl || existing?.pageUrl || "",
-            totalChapters: runtime.totalChapters || existing?.totalChapters || null,
-            progressCount,
-            persistentChapterCount,
-            runtimeChapterCount: runtime.cachedChapterCount,
-            runtimeCompletedCount: runtime.completedCount,
-            updatedAt: Math.max(existing?.updatedAt || 0, runtime.updatedAt),
-            sourcePageType: runtime.sourcePageType || existing?.sourcePageType || "unknown",
-            imageEnabled: runtime.imageEnabled,
-            sources: existing ? Array.from(new Set([...existing.sources, "runtime"])) : ["runtime"],
-            status: existing ? mergeStatus(existing.status, runtime.status) : runtime.status,
-            hasExportData: runtime.hasExportData,
-            isLegacy: existing?.isLegacy || false,
-            activeTask: false
-        });
     }
 
-    const activeLocks = await listActiveBookDownloadLocks();
     activeLocks.forEach((lock) => {
         const existing = result.get(lock.bookId);
         result.set(lock.bookId, {

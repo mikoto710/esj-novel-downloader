@@ -352,7 +352,7 @@ export async function batchDownload(options: DownloadOptions): Promise<void> {
         imageEnabled: getImageDownloadSetting(),
         updatedAt: Date.now()
     };
-    startRuntimeCacheSession(cacheMeta, state.globalChaptersMap.size);
+    startRuntimeCacheSession(cacheMeta, taskId, state.globalChaptersMap.size);
 
     // 启动封面下载
     const coverTaskPromise = coverUrl ? fetchCoverImage(coverUrl) : Promise.resolve(null);
