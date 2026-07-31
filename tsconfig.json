@@ -2,17 +2,12 @@
     "compilerOptions": {
         "target": "ES2020",
         "module": "ESNext",
-        "lib": [
-            "DOM",
-            "ESNext"
-        ],
+        "lib": ["DOM", "ESNext"],
         "strict": true,
-        "moduleResolution": "node",
+        "moduleResolution": "Bundler",
         "allowSyntheticDefaultImports": true,
         "noImplicitAny": true,
         "outDir": "./dist"
     },
-    "include": [
-        "src/**/*"
-    ]
+    "include": ["src/**/*", "tests/**/*", "vitest.config.ts"]
 }
