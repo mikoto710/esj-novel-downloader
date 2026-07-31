@@ -10,9 +10,9 @@
 - 📚 **多格式导出**: 支持 **TXT**、**EPUB** 和 **HTML**，支持自动内嵌封面。
 - ⚡ **极速下载**: 多线程并发抓取，支持用户配置。
 - 💾 **断点续传与缓存管理**: 使用 IndexedDB 作为缓存，刷新页面或关闭浏览器不丢失进度，并支持在缓存管理中查看和清理缓存。
-- 🛡️ **智能补漏**: 自动检测抓取失败的章节并尝试重试，确保内容完整。
+- 🛡️ **智能补漏**: 自动检测抓取失败的章节、图片及旧缓存中的无效图片，并尝试重新抓取，确保内容完整。
 - 🧩 **多页面适配**: 支持详情页、论坛版块、单章阅读页多种场景。
-- 🖼️ **正文插图下载**: 支持导出 EPUB / HTML 时附带插图。
+- 🖼️ **正文插图下载**: 支持导出 EPUB / HTML 时附带插图，并根据文件内容识别 JPEG / PNG / GIF / WebP 等实际图片格式。
 - 🧾 **下载记录**: 支持查看全本与单章的导出记录，并可按类型、格式和来源筛选。
 - 🏷️ **书籍元数据**: 支持书籍元数据抓取，并可在 EPUB 中写入标准 `dc:subject` 标签，便于书库分类与检索。
 
@@ -64,50 +64,56 @@
 
 ## 开发与构建
 
-本项目基于 **TypeScript** 开发，使用 **Rollup** + **esbuild** 进行构建。
+本项目基于 **TypeScript** 开发，使用 **Rollup** + **esbuild** 进行构建，并使用 **Vitest** + **jsdom** 进行自动化测试。
 
 ### 项目结构
 
 ```
 src
-├── core                 # 核心业务逻辑层
-│   ├── book-lock.ts     # 全本下载任务锁与取消协调
-│   ├── config.ts        # 用户配置管理
-│   ├── downloader.ts    # 通用下载控制器
-│   ├── epub.ts          # EPUB 生成器
-│   ├── html.ts          # 单页 HTML 生成器
-│   ├── cache-manager.ts # 缓存聚合与清理逻辑
-│   ├── download-history.ts # 下载记录存储与管理
-│   ├── parser.ts        # HTML 解析器
-│   ├── state.ts         # 全局状态管理
-│   └── storage.ts       # 持久化存储层
-├── scrapers             # 页面抓取策略层
-│   ├── detail.ts        # 针对 [小说详情页] 的抓取逻辑
-│   ├── forum.ts         # 针对 [论坛列表页] 的抓取逻辑
-│   └── single.ts        # 针对 [单章正文页] 的抓取逻辑
-├── ui                   # 界面交互层
-│   ├── components.ts    # 通用 UI 组件
-│   ├── detail.ts        # 目录页 UI 注入
-│   ├── forum.ts         # 论坛页 UI 注入
-│   ├── single.ts        # 单章页 UI 注入
-│   ├── cache-manager.ts # 缓存管理弹窗
-│   ├── download-history.ts # 下载记录弹窗
-│   ├── popups.ts        # 弹窗组件库
-│   ├── styles.ts        # CSS 样式定义
-│   └── tray.ts          # 最小化悬浮球组件
-├── utils                # 通用工具库
-│   ├── dom.ts           # DOM 操作工具
-│   ├── image.ts         # 图片处理工具
-│   ├── index.ts         # 基础工具
-│   └── text.ts          # 文本处理工具
-├── global.d.ts          # 全局类型声明
-├── index.ts             # 项目总入口
-└── types.ts             # TypeScript 类型定义接口
+├── core                       # 核心业务逻辑层
+│   ├── book-lock.ts           # 全本下载任务锁与取消协调
+│   ├── cache-manager.ts       # 缓存聚合与清理逻辑
+│   ├── cache-sync.ts          # IndexedDB 与会话缓存同步
+│   ├── config.ts              # 用户配置管理
+│   ├── downloader.ts          # 通用下载控制器
+│   ├── download-history.ts    # 下载记录存储与管理
+│   ├── download-integrity.ts  # 章节与图片缓存完整性判定
+│   ├── download-task.ts       # 下载任务状态管理
+│   ├── epub.ts                # EPUB 生成器
+│   ├── html.ts                # 单页 HTML 生成器
+│   ├── parser.ts              # HTML 解析器
+│   ├── state.ts               # 全局状态管理
+│   └── storage.ts             # 持久化存储层
+├── scrapers                   # 页面抓取策略层
+│   ├── detail.ts              # 针对 [小说详情页] 的抓取逻辑
+│   ├── forum.ts               # 针对 [论坛列表页] 的抓取逻辑
+│   └── single.ts              # 针对 [单章正文页] 的抓取逻辑
+├── ui                         # 界面交互层
+│   ├── components.ts          # 通用 UI 组件
+│   ├── detail.ts              # 目录页 UI 注入
+│   ├── forum.ts               # 论坛页 UI 注入
+│   ├── single.ts              # 单章页 UI 注入
+│   ├── cache-manager.ts       # 缓存管理弹窗
+│   ├── download-history.ts    # 下载记录弹窗
+│   ├── popups.ts              # 弹窗组件库
+│   ├── styles.ts              # CSS 样式定义
+│   └── tray.ts                # 最小化悬浮球组件
+├── utils                      # 通用工具库
+│   ├── dom.ts                 # DOM 操作工具
+│   ├── image-format.ts        # 图片 URL、文件特征与 MIME 类型规范化
+│   ├── image.ts               # 正文图片下载与压缩处理
+│   ├── index.ts               # 基础工具
+│   └── text.ts                # 文本处理工具
+├── global.d.ts                # 全局类型声明
+├── index.ts                   # 项目总入口
+└── types.ts                   # TypeScript 类型定义接口
+
+tests                          # 自动化测试
 ```
 
 ### 本地构建
 
-需要 **Node.js 18+** 环境，与 GitHub Actions 最低版本保持一致，推荐使用 **Node.js 22.22.0 LTS**
+需要 **Node.js 20.19+** 环境；推荐使用 **Node.js 22.13+**，与发布工作流使用的 Node.js 22 保持一致。当前已在 **Node.js 22.22.0** 下验证。
 
 ```bash
 # 1. 安装依赖 (推荐使用 npm ci)
@@ -120,8 +126,25 @@ npm run watch
 # 3. 代码格式化 (非必须，建议提交前执行)
 npm run format
 
-# 3. 生产构建 (生成最终 user.js)
+# 4. 类型检查、自动化测试并生成最终 user.js
 npm run build
 ```
 
 构建产物位于: `dist/esj-novel-downloader.user.js`
+
+### 自动化测试
+
+测试文件统一放在 `tests/`，使用 Vitest 运行；需要浏览器 DOM 的测试使用 jsdom 环境。
+
+```bash
+# 单次运行全部测试
+npm test
+
+# 监听文件变化并持续运行测试
+npm run test:watch
+
+# 执行 TypeScript 类型检查和全部测试
+npm run check
+```
+
+`npm run build` 会先执行 `npm run check`，只有类型检查和自动化测试通过后才会生成构建产物。
