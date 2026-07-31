@@ -1,0 +1,145 @@
+name: Bug Report / 错误报告
+description: Report a reproducible problem with ESJZone Novel Downloader
+title: "[Bug]: "
+labels:
+    - bug
+body:
+    - type: markdown
+      attributes:
+          value: |
+              感谢你提交错误报告。请尽量填写完整信息，以便快速复现和定位问题。
+              请勿上传包含完整小说内容的 EPUB、TXT 或 HTML 文件；必要时请提供截图、日志或单个资源 URL。
+
+    - type: input
+      id: userscript_version
+      attributes:
+          label: Userscript version / 脚本版本
+          description: 可在脚本管理器或下载面板中查看。
+          placeholder: e.g. 1.4.6-beta.4
+      validations:
+          required: true
+
+    - type: dropdown
+      id: page_type
+      attributes:
+          label: Page type / 页面类型
+          options:
+              - Novel detail page / 小说详情页
+              - Forum page / 论坛页面
+              - Single chapter export / 单章导出
+              - Other / 其他
+      validations:
+          required: true
+
+    - type: input
+      id: book_url
+      attributes:
+          label: Book URL or ID / 书籍链接或 ID
+          placeholder: https://www.esjzone.cc/detail/1234567890.html
+      validations:
+          required: true
+
+    - type: input
+      id: chapter_url
+      attributes:
+          label: Chapter URL / 章节链接
+          description: 如果问题只发生在特定章节，请提供章节链接。
+          placeholder: https://www.esjzone.cc/forum/123/456.html
+
+    - type: dropdown
+      id: export_format
+      attributes:
+          label: Export format / 导出格式
+          options:
+              - EPUB
+              - HTML
+              - TXT
+              - Not applicable / 不适用
+      validations:
+          required: true
+
+    - type: dropdown
+      id: image_download
+      attributes:
+          label: Chapter image download / 正文图片下载
+          options:
+              - Enabled / 已开启
+              - Disabled / 已关闭
+              - Not sure / 不确定
+      validations:
+          required: true
+
+    - type: textarea
+      id: reproduction_steps
+      attributes:
+          label: Steps to reproduce / 重现步骤
+          description: 请按顺序说明如何触发问题。
+          placeholder: |
+              1. 打开书籍详情页
+              2. 开启正文图片下载
+              3. 下载并导出 EPUB
+              4. 使用阅读器打开 EPUB
+      validations:
+          required: true
+
+    - type: textarea
+      id: actual_behavior
+      attributes:
+          label: Actual behavior / 实际结果
+          description: 请描述实际发生了什么，并附上完整错误信息。
+      validations:
+          required: true
+
+    - type: textarea
+      id: expected_behavior
+      attributes:
+          label: Expected behavior / 预期结果
+          description: 请描述你认为应该发生什么。
+      validations:
+          required: true
+
+    - type: input
+      id: browser
+      attributes:
+          label: Browser / 浏览器
+          placeholder: e.g. Chrome 140, Firefox 142
+      validations:
+          required: true
+
+    - type: input
+      id: userscript_manager
+      attributes:
+          label: Userscript manager / 脚本管理器
+          placeholder: e.g. Tampermonkey 5.x, Violentmonkey 2.x
+      validations:
+          required: true
+
+    - type: input
+      id: epub_reader
+      attributes:
+          label: EPUB reader / EPUB 阅读器
+          description: EPUB 相关问题请提供阅读器名称和版本。
+          placeholder: e.g. Calibre, KOReader, Apple Books
+
+    - type: textarea
+      id: logs
+      attributes:
+          label: Logs / 日志
+          description: 请粘贴下载面板或浏览器控制台中的相关日志，并移除敏感信息。
+          render: shell
+
+    - type: textarea
+      id: screenshots
+      attributes:
+          label: Screenshots or additional context / 截图或补充信息
+          description: 可将截图拖放到此处，或提供单个图片资源 URL。
+
+    - type: checkboxes
+      id: checks
+      attributes:
+          label: Pre-submission checklist / 提交前确认
+          options:
+              - label: I have searched existing issues for the same problem. / 我已搜索过现有 Issue，没有发现相同问题。
+                required: true
+              - label: I have tested with the latest available version. / 我已使用当前可用的最新版本进行测试。
+                required: true
