@@ -1,8 +1,26 @@
 import { loadScript, log } from "../utils/index";
+import { isSupportedImageMediaType } from "../utils/image-format";
 import { escapeXml, convertToXhtml } from "../utils/text";
-import { Chapter, BookMetadata } from "../types";
+import { Chapter, BookMetadata, ChapterImage } from "../types";
 
 import type JSZip from "jszip";
+
+function validateChapterImage(image: ChapterImage, chapterIndex: number): void {
+    const imageLabel = `第 ${chapterIndex + 1} 章图片 ${image.id}`;
+    if (!isSupportedImageMediaType(image.mediaType)) {
+        throw new Error(`${imageLabel} 使用了 EPUB 不支持的 MIME: ${image.mediaType}`);
+    }
+    if (image.blob.size === 0) {
+        throw new Error(`${imageLabel} 内容为空`);
+    }
+
+    const blobType = image.blob.type.split(";", 1)[0].trim().toLowerCase();
+    if (blobType !== image.mediaType) {
+        throw new Error(
+            `${imageLabel} 的 Blob MIME (${blobType || "unknown"}) 与 manifest MIME (${image.mediaType}) 不一致`
+        );
+    }
+}
 
 /**
  * 封装数据，生成 EPUB 文件
@@ -98,6 +116,7 @@ export async function buildEpub(chapters: Chapter[], metadata: BookMetadata, inc
         const chap = chapters[i];
         if (chap.images && chap.images.length > 0) {
             chap.images.forEach((img) => {
+                validateChapterImage(img, i);
                 // 写入文件到 OEBPS 根目录
                 oebps.file(img.id, img.blob);
                 // 添加到 Manifest
