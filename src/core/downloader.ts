@@ -16,6 +16,7 @@ import { getConcurrency, getImageDownloadSetting } from "./config";
 import { processHtmlImages } from "../utils/image";
 import { removeImgTags } from "../utils/text";
 import { ownsActiveBookDownloadLock, shouldDiscardBookDownloadCache } from "./book-lock";
+import { getChapterRetryReason } from "./download-integrity";
 
 export interface DownloadTask {
     index: number;
@@ -144,7 +145,7 @@ async function handleChapterContent(html: string, task: DownloadTask, ctx: Downl
     // 解析 DOM
     const result = parseChapterHtml(html, title);
     let finalHtml = result.contentHtml;
-    let chapterImages: any[] = [];
+    let chapterImages: Chapter["images"] = [];
     let imageErrors = 0;
 
     if (enableImage) {
@@ -268,13 +269,7 @@ async function checkIntegrityAndRetry(tasks: DownloadTask[], ctx: DownloadContex
 
     const missingTasks = tasks.filter((t) => {
         const chap = state.globalChaptersMap.get(t.index);
-        if (!chap) {
-            return true;
-        }
-        if (enableImage && chap.imageErrors && chap.imageErrors > 0) {
-            return true;
-        }
-        return false;
+        return getChapterRetryReason(chap, enableImage) !== null;
     });
 
     if (missingTasks.length > 0) {
@@ -295,7 +290,13 @@ async function checkIntegrityAndRetry(tasks: DownloadTask[], ctx: DownloadContex
             }
 
             const chap = state.globalChaptersMap.get(task.index);
-            const reason = !chap ? "缺失" : `图片失败 ${chap.imageErrors} 张`;
+            const retryReason = getChapterRetryReason(chap, enableImage);
+            const reason =
+                retryReason === "missing"
+                    ? "缺失"
+                    : retryReason === "invalid-image-media-type"
+                      ? "图片格式无效"
+                      : `图片失败 ${chap?.imageErrors ?? 0} 张`;
             log(`补抓 [${task.index + 1}/${total}] (${reason})...`);
 
             await processChapterTask(task, ctx, true);

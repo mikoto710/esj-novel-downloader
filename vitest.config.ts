@@ -6,6 +6,11 @@ export default defineConfig({
         include: ["tests/**/*.test.ts"],
         clearMocks: true,
         restoreMocks: true,
-        unstubGlobals: true
+        unstubGlobals: true,
+        environmentOptions: {
+            jsdom: {
+                url: "https://www.esjzone.cc/forum/1/2.html"
+            }
+        }
     }
 });

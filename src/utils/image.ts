@@ -1,24 +1,8 @@
 import { fetchWithTimeout, log, sleepWithAbort } from "./index";
+import { normalizeImageBlob, resolveImageUrl } from "./image-format";
+import type { ChapterImage } from "../types";
 
-/**
- * 根据 MIME 类型获取文件后缀
- */
-function getExtensionFromMime(mime: string): string {
-    switch (mime.toLowerCase()) {
-        case "image/png":
-            return "png";
-        case "image/gif":
-            return "gif";
-        case "image/webp":
-            return "webp";
-        case "image/bmp":
-            return "bmp";
-        case "image/jpeg":
-        case "image/jpg":
-        default:
-            return "jpg";
-    }
-}
+const IMAGE_FETCH_TIMEOUT = 20_000;
 
 /**
  * 压缩图片 (使用 Canvas)
@@ -26,8 +10,8 @@ function getExtensionFromMime(mime: string): string {
  * @param quality 压缩质量 (0.1 - 1.0)
  * @param maxWidth 最大宽度 (防止过大)
  */
-async function compressImage(blob: Blob, quality = 0.7, maxWidth = 800): Promise<Blob> {
-    return new Promise((resolve, reject) => {
+async function compressImage(blob: Blob, quality = 0.7, maxWidth = 800): Promise<Blob | null> {
+    return new Promise((resolve) => {
         const img = new Image();
         const url = URL.createObjectURL(blob);
 
@@ -47,9 +31,9 @@ async function compressImage(blob: Blob, quality = 0.7, maxWidth = 800): Promise
             canvas.height = height;
 
             const ctx = canvas.getContext("2d");
-            // 降级返回原图
+            // Canvas 不可用时由调用方保留已规范化的原图
             if (!ctx) {
-                return resolve(blob);
+                return resolve(null);
             }
 
             // 填充白色背景 (防止透明 PNG 变黑)
@@ -64,7 +48,7 @@ async function compressImage(blob: Blob, quality = 0.7, maxWidth = 800): Promise
                     if (b) {
                         resolve(b);
                     } else {
-                        resolve(blob);
+                        resolve(null);
                     }
                 },
                 "image/jpeg",
@@ -74,7 +58,7 @@ async function compressImage(blob: Blob, quality = 0.7, maxWidth = 800): Promise
 
         img.onerror = () => {
             URL.revokeObjectURL(url);
-            resolve(blob);
+            resolve(null);
         };
 
         img.src = url;
@@ -93,14 +77,14 @@ export async function processHtmlImages(
     signal?: AbortSignal
 ): Promise<{
     processedHtml: string;
-    images: import("../types").ChapterImage[];
+    images: ChapterImage[];
     failCount: number;
 }> {
     const div = document.createElement("div");
     div.innerHTML = htmlContent;
 
     const imgs = Array.from(div.querySelectorAll("img"));
-    const images: import("../types").ChapterImage[] = [];
+    const images: ChapterImage[] = [];
     let failCount = 0;
 
     if (imgs.length > 0) {
@@ -119,20 +103,16 @@ export async function processHtmlImages(
         let errorMsg = "未知错误";
 
         // URL 预处理
-        try {
-            if (src.startsWith("/")) {
-                src = location.origin + src;
-                img.setAttribute("src", src);
-            } else if (!src.startsWith("http")) {
-                src = new URL(src, location.href).href;
-                img.setAttribute("src", src);
-            }
-        } catch (e: any) {
-            console.warn(`非法 URL: ${src}`, e);
+        const resolvedSrc = resolveImageUrl(src, location.href);
+        if (resolvedSrc) {
+            src = resolvedSrc;
+            img.setAttribute("src", src);
+        } else {
+            console.warn(`非法 URL: ${src}`);
             errorMsg = "URL 格式错误";
         }
 
-        if (src.startsWith("http")) {
+        if (resolvedSrc) {
             const MAX_RETRIES = 3;
 
             for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
@@ -149,18 +129,22 @@ export async function processHtmlImages(
                             referrerPolicy: "no-referrer",
                             credentials: "omit"
                         },
-                        1000,
+                        IMAGE_FETCH_TIMEOUT,
                         signal
                     );
 
-                    let blob = await response.blob();
-                    let mimeType = blob.type;
-                    let extension = getExtensionFromMime(mimeType);
+                    const downloadedBlob = await response.blob();
+                    const normalized = await normalizeImageBlob(downloadedBlob);
+                    if (!normalized) {
+                        throw new Error(`无法识别图片格式 (${downloadedBlob.type || "unknown"})`);
+                    }
+
+                    let { blob, mediaType: mimeType, extension } = normalized;
 
                     // 压缩处理
                     if (blob.size > 100 * 1024) {
                         const compressedBlob = await compressImage(blob);
-                        if (compressedBlob !== blob) {
+                        if (compressedBlob) {
                             blob = compressedBlob;
                             mimeType = "image/jpeg";
                             extension = "jpg";
@@ -171,7 +155,7 @@ export async function processHtmlImages(
 
                     images.push({
                         id: imageFilename,
-                        blob: blob,
+                        blob,
                         mediaType: mimeType
                     });
 

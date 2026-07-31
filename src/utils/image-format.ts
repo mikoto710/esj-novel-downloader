@@ -87,3 +87,7 @@ export function isSupportedImageMediaType(mediaType: string): mediaType is Suppo
         mediaType === "image/webp"
     );
 }
+
+export function hasInvalidImageMediaTypes(images: readonly { mediaType: string }[] | undefined): boolean {
+    return images?.some((image) => !isSupportedImageMediaType(image.mediaType)) ?? false;
+}

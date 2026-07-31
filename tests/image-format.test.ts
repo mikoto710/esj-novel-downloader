@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
     detectImageFormat,
+    hasInvalidImageMediaTypes,
     isSupportedImageMediaType,
     normalizeImageBlob,
     resolveImageUrl
@@ -86,5 +87,16 @@ describe("isSupportedImageMediaType", () => {
 
     it("rejects generic binary media types", () => {
         expect(isSupportedImageMediaType("application/octet-stream")).toBe(false);
+    });
+});
+
+describe("hasInvalidImageMediaTypes", () => {
+    it("flags legacy cached images with a generic binary MIME", () => {
+        expect(hasInvalidImageMediaTypes([{ mediaType: "application/octet-stream" }])).toBe(true);
+    });
+
+    it("accepts an empty or fully normalized image list", () => {
+        expect(hasInvalidImageMediaTypes(undefined)).toBe(false);
+        expect(hasInvalidImageMediaTypes([{ mediaType: "image/jpeg" }])).toBe(false);
     });
 });

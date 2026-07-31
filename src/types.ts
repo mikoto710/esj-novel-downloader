@@ -1,3 +1,5 @@
+import type { SupportedImageMediaType } from "./utils/image-format";
+
 // 章节结构
 export interface Chapter {
     title: string;
@@ -11,7 +13,7 @@ export interface Chapter {
 export interface ChapterImage {
     id: string; // EPUB 内部的文件名 (如 img_0_1.jpg)
     blob: Blob;
-    mediaType: string;
+    mediaType: SupportedImageMediaType;
 }
 
 // 书籍元数据
