@@ -109,6 +109,54 @@ describe("downloader contracts", () => {
         expect(mocks.sleepWithAbort.mock.calls.every((call) => call[1] === state.abortController?.signal)).toBe(true);
     });
 
+    it("applies cache backpressure before a worker claims another chapter", async () => {
+        const writeStarted = createDeferred<void>();
+        const writeFinished = createDeferred<boolean>();
+        mocks.saveCache
+            .mockImplementationOnce(() => {
+                writeStarted.resolve();
+                return writeFinished.promise;
+            })
+            .mockResolvedValue(true);
+
+        const downloadPromise = batchDownload(createOptions(createTasks(26)));
+        await writeStarted.promise;
+
+        expect(mocks.fetchWithTimeout).toHaveBeenCalledTimes(25);
+        writeFinished.resolve(true);
+        await downloadPromise;
+        expect(mocks.fetchWithTimeout).toHaveBeenCalledTimes(26);
+    });
+
+    it("retries a missing chapter through the integrity queue", async () => {
+        mocks.fetchWithTimeout
+            .mockRejectedValueOnce(new Error("first"))
+            .mockRejectedValueOnce(new Error("second"))
+            .mockRejectedValueOnce(new Error("third"))
+            .mockResolvedValue({ text: vi.fn().mockResolvedValue("<html></html>") });
+
+        await batchDownload(createOptions(createTasks(1)));
+
+        expect(mocks.fetchWithTimeout).toHaveBeenCalledTimes(4);
+        expect(mocks.saveCache).toHaveBeenCalledOnce();
+        expect(state.cachedData?.chapters).toHaveLength(1);
+    });
+
+    it("does not fetch another chapter after cancellation reaches the retry queue", async () => {
+        mocks.fetchWithTimeout.mockRejectedValue(new Error("network"));
+        mocks.log.mockImplementation((message: string) => {
+            if (message.startsWith("补抓 [")) {
+                abortActiveDownload();
+            }
+        });
+
+        await batchDownload(createOptions(createTasks(1)));
+
+        expect(mocks.fetchWithTimeout).toHaveBeenCalledTimes(3);
+        expect(mocks.showFormatChoice).not.toHaveBeenCalled();
+        expect(mocks.fullCleanup).toHaveBeenCalledOnce();
+    });
+
     it("does not persist a chapter cancelled during image processing", async () => {
         mocks.getImageDownloadSetting.mockReturnValue(true);
         mocks.processHtmlImages.mockImplementationOnce(async () => {

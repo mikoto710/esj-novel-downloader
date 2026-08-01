@@ -2,6 +2,7 @@
 
 import { IDBFactory } from "fake-indexeddb";
 import { describe, expect, it, vi } from "vitest";
+import { runWorkerPool } from "../../src/core/download/worker-pool";
 import type { Chapter } from "../../src/types";
 import { createChapter } from "../support";
 
@@ -25,6 +26,29 @@ describe("3000 chapter cache complexity", () => {
 
         expect(chapters.serializedChapterCount).toBeLessThanOrEqual(3_000);
         expect((await storage.loadBookCache("3000")).size).toBe(3_000);
+    });
+
+    it("processes 3000 tasks through a bounded cursor-based worker pool", async () => {
+        const processed = new Set<number>();
+        let activeCount = 0;
+        let maxActiveCount = 0;
+
+        const result = await runWorkerPool({
+            items: Array.from({ length: 3_000 }, (_, index) => index),
+            concurrency: 5,
+            isCancellationRequested: () => false,
+            process: async (index) => {
+                activeCount += 1;
+                maxActiveCount = Math.max(maxActiveCount, activeCount);
+                await Promise.resolve();
+                processed.add(index);
+                activeCount -= 1;
+            }
+        });
+
+        expect(result).toEqual({ claimedCount: 3_000, completedCount: 3_000, cancelled: false });
+        expect(processed.size).toBe(3_000);
+        expect(maxActiveCount).toBe(5);
     });
 });
 

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { getChapterRetryReason } from "../src/core/download/integrity";
+import { getChapterRetryReason, scanChapterIntegrity } from "../src/core/download/integrity";
+import { createChapter, createDownloadTask } from "./support";
 
 describe("getChapterRetryReason", () => {
     it("retries a missing chapter", () => {
@@ -44,5 +45,20 @@ describe("getChapterRetryReason", () => {
                 false
             )
         ).toBeNull();
+    });
+
+    it("scans chapter state in task order without copying chapter content", () => {
+        const tasks = [createDownloadTask(0), createDownloadTask(1), createDownloadTask(2)];
+        const completeChapter = createChapter(0);
+        const chapters = new Map([
+            [0, completeChapter],
+            [2, createChapter(2, { imageErrors: 1 })]
+        ]);
+
+        expect(scanChapterIntegrity(tasks, chapters, true)).toEqual([
+            { task: tasks[1], reason: "missing" },
+            { task: tasks[2], reason: "image-errors" }
+        ]);
+        expect(chapters.get(0)).toBe(completeChapter);
     });
 });

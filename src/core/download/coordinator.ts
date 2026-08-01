@@ -7,8 +7,10 @@ import type {
     DownloadSnapshot,
     DownloadTask
 } from "./contracts";
-import { getChapterRetryReason } from "./integrity";
+import { scanChapterIntegrity, type ChapterIntegrityIssue } from "./integrity";
+import { DEFAULT_CHAPTER_RETRY_POLICY, runWithRetry } from "./retry-policy";
 import { DownloadStateMachine } from "./state-machine";
+import { runWorkerPool } from "./worker-pool";
 
 // 单次下载会话共享的依赖、元数据和状态机，不持有任何浏览器全局对象
 interface DownloadContext {
@@ -21,6 +23,8 @@ interface DownloadContext {
     cacheBuffer: ChapterCacheWriteBuffer;
     cancellationPromise: Promise<void> | null;
 }
+
+type ChapterTaskResult = "completed" | "failed" | "cancelled";
 
 function getErrorDetails(error: unknown): { name: string; message: string } {
     return error instanceof Error
@@ -78,34 +82,32 @@ async function persistTaskCacheBatch(
 // 按现有策略重试章节 HTML，请求实现由 ChapterFetcherPort 提供
 async function downloadChapterHtml(task: DownloadTask, ctx: DownloadContext): Promise<string | null> {
     const { dependencies } = ctx;
-    const maxRetries = 3;
-    for (let attempt = 1; attempt <= maxRetries; attempt++) {
-        if (dependencies.runtime.isCancellationRequested()) {
-            return null;
-        }
-        try {
-            return await dependencies.chapterFetcher.fetch(task, dependencies.runtime.signal);
-        } catch (error) {
-            const details = getErrorDetails(error);
-            if (details.name === "AbortError" || dependencies.runtime.isCancellationRequested()) {
-                return null;
-            }
-            if (attempt === maxRetries) {
-                dependencies.log(`❌ 章节获取失败 (${task.title}): ${details.message}`);
-            } else {
-                await dependencies.scheduler.sleepWithAbort(300 * attempt);
-            }
-        }
+    const result = await runWithRetry({
+        policy: DEFAULT_CHAPTER_RETRY_POLICY,
+        operation: () => dependencies.chapterFetcher.fetch(task, dependencies.runtime.signal),
+        sleep: dependencies.scheduler.sleepWithAbort,
+        isCancellationRequested: dependencies.runtime.isCancellationRequested,
+        isCancellationError: (error) => getErrorDetails(error).name === "AbortError"
+    });
+    if (result.status === "success") {
+        return result.value;
+    }
+    if (result.status === "failed") {
+        dependencies.log(`❌ 章节获取失败 (${task.title}): ${getErrorDetails(result.error).message}`);
     }
     return null;
 }
 
 // 处理缓存命中、非站内链接、正常抓取和补抓四类章节路径
-async function processChapterTask(task: DownloadTask, ctx: DownloadContext, isRetry = false): Promise<void> {
+async function processChapterTask(
+    task: DownloadTask,
+    ctx: DownloadContext,
+    isRetry = false
+): Promise<ChapterTaskResult> {
     const { dependencies, imageEnabled, total } = ctx;
     const { runtime } = dependencies;
     if (runtime.isCancellationRequested()) {
-        return;
+        return "cancelled";
     }
 
     // 已恢复章节只推进现有 UI 完成数，不重复网络请求和解析
@@ -116,7 +118,7 @@ async function processChapterTask(task: DownloadTask, ctx: DownloadContext, isRe
         });
         dependencies.events.emit({ type: "chapter-restored", task });
         updateProgress(ctx);
-        return;
+        return "completed";
     }
 
     // 非站内章节保留占位内容，维持原有章节顺序和导出数量
@@ -134,21 +136,31 @@ async function processChapterTask(task: DownloadTask, ctx: DownloadContext, isRe
             cachedChapterCount: runtime.chapters.size
         });
         updateProgress(ctx);
-        await ctx.cacheBuffer.add(task.index, runtime.chapters.get(task.index)!);
+        const saved = await ctx.cacheBuffer.add(task.index, runtime.chapters.get(task.index)!);
+        if (!saved) {
+            return runtime.isCancellationRequested() ? "cancelled" : "failed";
+        }
         dependencies.log(`⚠️ 跳过 (${ctx.machine.snapshot.completedCount}/${total})：${task.title} (非站内)`);
         await dependencies.scheduler.sleepWithAbort(100);
-        return;
+        return runtime.isCancellationRequested() ? "cancelled" : "completed";
     }
 
     const html = await downloadChapterHtml(task, ctx);
     if (!html || runtime.isCancellationRequested()) {
-        return;
+        if (!isRetry && !runtime.isCancellationRequested()) {
+            updateSnapshot(ctx, {
+                completedCount: ctx.machine.snapshot.completedCount + 1,
+                failedCount: ctx.machine.snapshot.failedCount + 1
+            });
+            updateProgress(ctx);
+        }
+        return runtime.isCancellationRequested() ? "cancelled" : "failed";
     }
     updateSnapshot(ctx, { fetchedCount: ctx.machine.snapshot.fetchedCount + 1 });
 
     const chapter = await dependencies.chapterProcessor.process(html, task, imageEnabled, runtime.signal);
     if (runtime.isCancellationRequested()) {
-        return;
+        return "cancelled";
     }
     runtime.chapters.set(task.index, chapter);
     dependencies.events.emit({ type: "chapter-processed", task, retry: isRetry });
@@ -163,12 +175,14 @@ async function processChapterTask(task: DownloadTask, ctx: DownloadContext, isRe
     } else {
         updateSnapshot(ctx, {
             processedCount: ctx.machine.snapshot.processedCount + 1,
-            retryPendingCount: Math.max(0, ctx.machine.snapshot.retryPendingCount - 1),
             cachedChapterCount: runtime.chapters.size
         });
     }
 
-    await ctx.cacheBuffer.add(task.index, chapter);
+    const saved = await ctx.cacheBuffer.add(task.index, chapter);
+    if (!saved) {
+        return runtime.isCancellationRequested() ? "cancelled" : "failed";
+    }
 
     const imageErrors = chapter.imageErrors || 0;
     const imageCount = chapter.images?.length || 0;
@@ -190,6 +204,17 @@ async function processChapterTask(task: DownloadTask, ctx: DownloadContext, isRe
     if (!runtime.isCancellationRequested()) {
         await dependencies.scheduler.sleepWithAbort(dependencies.scheduler.randomDelay(100, 199));
     }
+    return runtime.isCancellationRequested() ? "cancelled" : "completed";
+}
+
+function getRetryReasonText(issue: ChapterIntegrityIssue, ctx: DownloadContext): string {
+    if (issue.reason === "missing") {
+        return "缺失";
+    }
+    if (issue.reason === "invalid-image-media-type") {
+        return "图片格式无效";
+    }
+    return `图片失败 ${ctx.dependencies.runtime.chapters.get(issue.task.index)?.imageErrors ?? 0} 张`;
 }
 
 // 扫描缺失或图片不完整的章节，并按原顺序执行一次补抓
@@ -198,39 +223,43 @@ async function checkIntegrityAndRetry(tasks: DownloadTask[], ctx: DownloadContex
     const { runtime } = dependencies;
     dependencies.log("正在进行章节完整性检查...");
 
-    const missingTasks = tasks.filter(
-        (task) => getChapterRetryReason(runtime.chapters.get(task.index), imageEnabled) !== null
-    );
-    updateSnapshot(ctx, { retryPendingCount: missingTasks.length });
+    const issues = scanChapterIntegrity(tasks, runtime.chapters, imageEnabled);
+    updateSnapshot(ctx, { retryPendingCount: issues.length, failedCount: issues.length });
 
-    if (missingTasks.length === 0) {
+    if (issues.length === 0) {
         dependencies.log("✅ 完整性检查通过，无缺漏。");
         return true;
     }
 
-    dependencies.log(`⚠ 发现 ${missingTasks.length} 个章节不完整 (缺失或含失败图片)，尝试自动补抓...`);
-    for (const task of missingTasks) {
-        if (runtime.isCancellationRequested()) {
-            await finishCancellation(ctx);
-            return false;
+    dependencies.log(`⚠ 发现 ${issues.length} 个章节不完整 (缺失或含失败图片)，尝试自动补抓...`);
+    await runWorkerPool({
+        items: issues,
+        concurrency: 1,
+        isCancellationRequested: runtime.isCancellationRequested,
+        process: async (issue) => {
+            dependencies.log(`补抓 [${issue.task.index + 1}/${total}] (${getRetryReasonText(issue, ctx)})...`);
+            const result = await processChapterTask(issue.task, ctx, true);
+            if (result === "cancelled") {
+                return;
+            }
+            updateSnapshot(ctx, {
+                retryPendingCount: Math.max(0, ctx.machine.snapshot.retryPendingCount - 1),
+                failedCount:
+                    result === "completed"
+                        ? Math.max(0, ctx.machine.snapshot.failedCount - 1)
+                        : ctx.machine.snapshot.failedCount
+            });
+            if (!runtime.isCancellationRequested()) {
+                await dependencies.scheduler.sleepWithAbort(300);
+            }
         }
-
-        const chapter = runtime.chapters.get(task.index);
-        const retryReason = getChapterRetryReason(chapter, imageEnabled);
-        const reason =
-            retryReason === "missing"
-                ? "缺失"
-                : retryReason === "invalid-image-media-type"
-                  ? "图片格式无效"
-                  : `图片失败 ${chapter?.imageErrors ?? 0} 张`;
-        dependencies.log(`补抓 [${task.index + 1}/${total}] (${reason})...`);
-        await processChapterTask(task, ctx, true);
-        await dependencies.scheduler.sleepWithAbort(300);
-    }
+    });
     if (runtime.isCancellationRequested()) {
         await finishCancellation(ctx);
         return false;
     }
+    const remainingIssues = scanChapterIntegrity(tasks, runtime.chapters, imageEnabled);
+    updateSnapshot(ctx, { retryPendingCount: 0, failedCount: remainingIssues.length });
     return true;
 }
 
@@ -357,20 +386,15 @@ export async function runDownload(options: DownloadOptions, dependencies: Downlo
             ? dependencies.coverFetcher.fetch(options.coverUrl, dependencies.runtime.signal)
             : Promise.resolve(null);
 
-        // 当前 worker pool 仍沿用共享队列实现，后续再拆分调度策略
         transition(ctx, "downloading");
-        const queue = [...options.tasks];
-        const worker = async () => {
-            while (queue.length > 0 && !dependencies.runtime.isCancellationRequested()) {
-                const task = queue.shift();
-                if (task) {
-                    await processChapterTask(task, ctx, false);
-                }
-            }
-        };
-        const concurrency = dependencies.settings.getConcurrency();
+        const concurrency = Math.max(1, Math.floor(dependencies.settings.getConcurrency()) || 1);
         dependencies.log(`启动 ${concurrency} 个并发线程...`);
-        await Promise.all(Array.from({ length: concurrency }, () => worker()));
+        await runWorkerPool({
+            items: options.tasks,
+            concurrency,
+            isCancellationRequested: dependencies.runtime.isCancellationRequested,
+            process: (task) => processChapterTask(task, ctx, false).then(() => undefined)
+        });
 
         if (dependencies.runtime.isCancellationRequested()) {
             await finishCancellation(ctx);
