@@ -125,6 +125,37 @@ export function triggerDownload(blob: Blob, filename: string): void {
     setTimeout(() => URL.revokeObjectURL(a.href), 60000);
 }
 
+const UI_LOG_BATCH_DELAY_MS = 50;
+let pendingUiLogLines: string[] = [];
+let uiLogFlushTimer: ReturnType<typeof setTimeout> | null = null;
+
+// 批量追加日志文本，避免章节量较大时反复复制日志框中的全部历史内容
+function flushPendingUiLogs(): void {
+    uiLogFlushTimer = null;
+    const lines = pendingUiLogLines;
+    pendingUiLogLines = [];
+    if (lines.length === 0) {
+        return;
+    }
+
+    const box = document.querySelector("#esj-log");
+    if (!box) {
+        return;
+    }
+    const isAtBottom = box.scrollTop + box.clientHeight >= box.scrollHeight - 10;
+    box.append(document.createTextNode(lines.join("")));
+    if (isAtBottom) {
+        box.scrollTop = box.scrollHeight;
+    }
+}
+
+function scheduleUiLogFlush(): void {
+    if (uiLogFlushTimer !== null) {
+        return;
+    }
+    uiLogFlushTimer = setTimeout(flushPendingUiLogs, UI_LOG_BATCH_DELAY_MS);
+}
+
 /**
  * 输出日志到 UI 面板和控制台
  * @param msg 日志内容
@@ -134,14 +165,8 @@ export function log(msg: string): void {
     const line = `[${prefix}] ${msg}`;
     console.log(line);
 
-    const box = document.querySelector("#esj-log");
-    if (box) {
-        const isAtBottom = box.scrollTop + box.clientHeight >= box.scrollHeight - 10;
-        box.textContent += line + "\n";
-        if (isAtBottom) {
-            box.scrollTop = box.scrollHeight;
-        }
-    }
+    pendingUiLogLines.push(line + "\n");
+    scheduleUiLogFlush();
 }
 
 /**

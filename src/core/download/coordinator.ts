@@ -322,19 +322,19 @@ async function performCancellation(ctx: DownloadContext): Promise<void> {
 
 // 按任务索引组装现有 TXT 和章节导出数据，缺失章节使用兼容占位内容
 function assembleExportChapters(ctx: DownloadContext): { text: string; chapters: Chapter[] } {
-    let text = ctx.options.introTxt;
+    const textSegments = [ctx.options.introTxt];
     const chapters: Chapter[] = [];
     for (let index = 0; index < ctx.total; index++) {
         const chapter = ctx.dependencies.runtime.chapters.get(index);
         if (chapter) {
-            text += chapter.txtSegment;
+            textSegments.push(chapter.txtSegment);
             chapters.push(chapter);
         } else {
-            text += `第 ${index + 1} 章 获取失败\n\n`;
+            textSegments.push(`第 ${index + 1} 章 获取失败\n\n`);
             chapters.push({ title: `第 ${index + 1} 章 (缺失)`, content: "内容抓取失败。", txtSegment: "" });
         }
     }
-    return { text, chapters };
+    return { text: textSegments.join(""), chapters };
 }
 
 /**
@@ -403,6 +403,7 @@ export async function runDownload(options: DownloadOptions, dependencies: Downlo
 
         // 主抓取的脏章节落盘后才能进入完整性扫描和补抓
         transition(ctx, "flushing-cache");
+        dependencies.log("主抓取完成，正在保存下载进度...");
         const initialFlushSaved = await cacheBuffer.flush();
         if (!initialFlushSaved || dependencies.runtime.isCancellationRequested()) {
             await finishCancellation(ctx);
@@ -416,12 +417,14 @@ export async function runDownload(options: DownloadOptions, dependencies: Downlo
 
         // 补抓产生的脏章节落盘后才能清理缓存并发布导出数据
         transition(ctx, "flushing-cache");
+        dependencies.log("完整性检查完成，正在保存下载进度...");
         const finalFlushSaved = await cacheBuffer.flush();
         if (!finalFlushSaved || dependencies.runtime.isCancellationRequested()) {
             await finishCancellation(ctx);
             return;
         }
         transition(ctx, "preparing-export");
+        dependencies.log("正在准备导出...");
         const cover = await coverPromise;
         if (dependencies.runtime.isCancellationRequested()) {
             await finishCancellation(ctx);
@@ -440,8 +443,6 @@ export async function runDownload(options: DownloadOptions, dependencies: Downlo
         if (!cacheCleared) {
             throw new Error("下载任务已失去缓存清理权，已停止导出");
         }
-        dependencies.log("✅ 所有任务处理完毕");
-
         dependencies.runtime.setExportData({
             txt: assembled.text,
             chapters: assembled.chapters,
@@ -475,6 +476,7 @@ export async function runDownload(options: DownloadOptions, dependencies: Downlo
             hasExportData: true
         });
         transition(ctx, "export-ready");
+        dependencies.log("✅ 所有任务处理完毕");
         dependencies.ui.cleanup();
         dependencies.ui.showFormatChoice();
     } catch (error) {

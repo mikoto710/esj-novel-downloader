@@ -6,6 +6,7 @@ import type {
     CoverFetcherPort,
     DownloadDependencies,
     DownloadRuntimePort,
+    DownloadSnapshot,
     DownloadUiPort
 } from "../core/download/contracts";
 import { ownsActiveBookDownloadLock, shouldDiscardBookDownloadCache } from "../core/book-lock";
@@ -56,6 +57,15 @@ const runtime: DownloadRuntimePort = {
     setExportData: setCachedData
 };
 
+function updateDownloadStatus(status: string): void {
+    const titleEl = document.querySelector("#esj-title") as HTMLElement | null;
+    if (titleEl) {
+        titleEl.textContent = "📌 " + status;
+    }
+    document.title = `[${status}] ${state.originalTitle}`;
+    updateTrayText(status);
+}
+
 // 下载核心只发布快照，所有标题、进度条、托盘和弹窗更新在此落到 DOM
 const ui: DownloadUiPort = {
     prepare() {
@@ -84,18 +94,25 @@ const ui: DownloadUiPort = {
             updateTrayText(status);
             return;
         }
+        const phaseStatus: Partial<Record<DownloadSnapshot["phase"], string>> = {
+            "flushing-cache": `正在保存下载进度 (${snapshot.completedCount}/${snapshot.scheduledCount})`,
+            "checking-integrity": `正在检查章节完整性 (${snapshot.completedCount}/${snapshot.scheduledCount})`,
+            "preparing-export": `正在准备导出 (${snapshot.completedCount}/${snapshot.scheduledCount})`,
+            "export-ready": `下载完成 (${snapshot.completedCount}/${snapshot.scheduledCount})`
+        };
+        const status = phaseStatus[snapshot.phase];
+        if (status) {
+            updateDownloadStatus(status);
+            return;
+        }
         if (snapshot.phase !== "downloading" || snapshot.cancellationRequested || snapshot.completedCount === 0) {
             return;
         }
         const { completedCount: count, scheduledCount: total } = snapshot;
-        const status = `全本下载 (${count}/${total}) `;
-        const titleEl = document.querySelector("#esj-title") as HTMLElement | null;
+        const downloadStatus = `全本下载 (${count}/${total}) `;
         const progressEl = document.querySelector("#esj-progress") as HTMLElement | null;
-        if (titleEl) {
-            titleEl.textContent = "📌 " + status;
-        }
+        updateDownloadStatus(downloadStatus);
         document.title = `[${count}/${total}] ${state.originalTitle}`;
-        updateTrayText(status);
         if (progressEl) {
             progressEl.style.width = (count / total) * 100 + "%";
         }

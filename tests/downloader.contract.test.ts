@@ -109,6 +109,16 @@ describe("downloader contracts", () => {
         expect(mocks.sleepWithAbort.mock.calls.every((call) => call[1] === state.abortController?.signal)).toBe(true);
     });
 
+    it("shows saving, integrity, export preparation, and completion stages", async () => {
+        await batchDownload(createOptions(createTasks(1)));
+
+        const trayMessages = mocks.updateTrayText.mock.calls.flat();
+        expect(trayMessages).toContain("正在保存下载进度 (1/1)");
+        expect(trayMessages).toContain("正在检查章节完整性 (1/1)");
+        expect(trayMessages).toContain("正在准备导出 (1/1)");
+        expect(trayMessages).toContain("下载完成 (1/1)");
+    });
+
     it("applies cache backpressure before a worker claims another chapter", async () => {
         const writeStarted = createDeferred<void>();
         const writeFinished = createDeferred<boolean>();
