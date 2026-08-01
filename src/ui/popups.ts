@@ -602,6 +602,10 @@ export function createSettingsPanel(): void {
     };
 
     const header = createCommonHeader("⚙️ 脚本设置", closeAction);
+    const installedVersion =
+        typeof GM_info !== "undefined" && GM_info.script?.version?.trim()
+            ? `v${GM_info.script.version.trim()}`
+            : "版本未知";
 
     // 并发数输入框
     const currentConcurrency = getConcurrency();
@@ -816,7 +820,9 @@ export function createSettingsPanel(): void {
         el("div", { style: "color:#333;font-weight:bold;margin-bottom:8px;" }, ["相关链接"]),
         el("div", { style: "display:flex;gap:8px;" }, [btnGithub, btnGreasyFork]),
         btnIssue,
-        el("div", { style: "margin-top:12px;color:#999;font-size:12px;" }, ["ESJ Novel Downloader"])
+        el("div", { style: "margin-top:12px;color:#999;font-size:12px;" }, [
+            `ESJ Novel Downloader · ${installedVersion}`
+        ])
     ]);
 
     // 组装整体面板

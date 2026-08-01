@@ -47,3 +47,11 @@ interface GM_RequestDetails {
 declare function GM_setValue(key: string, value: any): void;
 declare function GM_getValue<T>(key: string, defaultValue?: T): T;
 declare function GM_xmlhttpRequest(details: GM_RequestDetails): { abort: () => void };
+
+interface GMInfo {
+    script?: {
+        version?: string;
+    };
+}
+
+declare const GM_info: GMInfo;

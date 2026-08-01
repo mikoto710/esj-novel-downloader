@@ -20,7 +20,7 @@ export default function getMeta() {
             "https://www.esjzone.one/forum/*"
         ],
         "run-at": "document-start",
-        grant: ["GM_setValue", "GM_getValue", "GM_xmlhttpRequest", "unsafeWindow"],
+        grant: ["GM_setValue", "GM_getValue", "GM_xmlhttpRequest", "GM_info", "unsafeWindow"],
         connect: [
             "*" // 允许连接所有图床域名
         ]
