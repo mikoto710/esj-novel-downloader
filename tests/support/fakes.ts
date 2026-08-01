@@ -8,6 +8,9 @@ type FetchPlan =
     | { type: "failure"; error: Error }
     | { type: "deferred"; deferred: Deferred<string> };
 
+/**
+ * 按预设结果模拟章节请求，并记录调用顺序
+ */
 export class FakeChapterFetcher {
     readonly calls: DownloadTask[] = [];
     private readonly plans = new Map<string, FetchPlan[]>();
@@ -55,6 +58,9 @@ type ProcessorPlan =
     | { type: "failure"; error: Error }
     | { type: "deferred"; deferred: Deferred<Chapter> };
 
+/**
+ * 按章节索引模拟内容处理，并记录处理输入
+ */
 export class FakeChapterProcessor {
     readonly calls: Array<{ html: string; task: DownloadTask }> = [];
     private readonly plans = new Map<number, ProcessorPlan>();
@@ -91,12 +97,18 @@ export class FakeChapterProcessor {
     }
 }
 
+/**
+ * 内存缓存清单
+ */
 export interface InMemoryCacheManifest {
     bookId: string;
     writerTaskId: string;
     status: CacheStatus | "failed";
 }
 
+/**
+ * 内存缓存操作记录
+ */
 export type CacheOperation =
     | { type: "claim"; bookId: string; taskId: string }
     | { type: "load"; bookId: string }
@@ -104,6 +116,9 @@ export type CacheOperation =
     | { type: "status"; bookId: string; taskId: string; status: InMemoryCacheManifest["status"] }
     | { type: "delete"; bookId: string; taskId: string };
 
+/**
+ * 模拟具有任务所有权约束的缓存仓储
+ */
 export class InMemoryCacheRepository {
     readonly operations: CacheOperation[] = [];
     private readonly manifests = new Map<string, InMemoryCacheManifest>();
@@ -182,6 +197,9 @@ export class InMemoryCacheRepository {
     }
 }
 
+/**
+ * 下载锁操作记录
+ */
 export type LockOperation =
     | { type: "acquire"; bookId: string }
     | { type: "running"; bookId: string; taskId: string }
@@ -189,6 +207,9 @@ export type LockOperation =
     | { type: "cancel"; bookId: string; discard: boolean }
     | { type: "release"; bookId: string; taskId: string };
 
+/**
+ * 模拟下载锁竞争、心跳和取消请求
+ */
 export class FakeBookLockService {
     readonly operations: LockOperation[] = [];
     private readonly locks = new Map<string, BookDownloadLock>();
@@ -268,6 +289,9 @@ export class FakeBookLockService {
     }
 }
 
+/**
+ * 记录下载核心发布的事件
+ */
 export class RecordingDownloadEvents<TEvent = unknown> {
     readonly events: TEvent[] = [];
 
@@ -282,6 +306,9 @@ export class RecordingDownloadEvents<TEvent = unknown> {
     }
 }
 
+/**
+ * 记录下载核心提交的界面快照
+ */
 export class RecordingUiObserver<TSnapshot = unknown> {
     readonly snapshots: TSnapshot[] = [];
 

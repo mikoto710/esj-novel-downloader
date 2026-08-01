@@ -1,6 +1,9 @@
 import { AppState, BookDownloadLock, CacheMeta, CachedData, Chapter, RuntimeCacheSession } from "../types";
 import { subscribeCacheSync } from "./cache-sync";
 
+/**
+ * 当前页面共享的下载和导出状态
+ */
 export const state: AppState & { abortController: AbortController | null; activeBookLock: BookDownloadLock | null } = {
     abortFlag: false,
     originalTitle: document.title || "ESJZone",
@@ -39,7 +42,7 @@ export function resetAbortController() {
 }
 
 /**
- * 中止当前下载任务及其正在进行的网络请求。
+ * 中止当前下载任务及其正在进行的网络请求
  */
 export function abortActiveDownload(): void {
     setAbortFlag(true);
@@ -93,7 +96,6 @@ export function clearRuntimeCacheSession(bookId?: string): void {
  */
 export function resetGlobalState(): void {
     clearRuntimeCacheSession();
-    // state.abortFlag = false;
     console.log("内存状态已重置");
 }
 

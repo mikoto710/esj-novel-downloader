@@ -33,7 +33,6 @@ export async function scrapeForum(): Promise<void> {
         }
     }
 
-    // 提前加载缓存
     if (!bid) {
         log("无法解析书籍 ID，已取消全本下载任务。");
         return;
@@ -45,6 +44,7 @@ export async function scrapeForum(): Promise<void> {
         return;
     }
 
+    // 提前加载缓存，以便确认弹窗显示可恢复进度
     const cacheResult = await loadBookCache(bid);
     state.globalChaptersMap = cacheResult.map || new Map();
 

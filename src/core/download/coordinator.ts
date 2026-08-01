@@ -121,7 +121,7 @@ async function processChapterTask(task: DownloadTask, ctx: DownloadContext, isRe
             cachedChapterCount: runtime.chapters.size
         });
         updateProgress(ctx);
-        // v2 兼容行为：每 5 章覆盖一次整本快照，P4 将替换为可调批次增量写入
+        // v2 兼容行为：每 5 章覆盖一次整本快照，后续替换为可调批次增量写入
         if (!runtime.isCancellationRequested() && ctx.machine.snapshot.completedCount % 5 === 0) {
             await persistTaskCache(ctx);
         }
@@ -234,7 +234,7 @@ async function checkIntegrityAndRetry(tasks: DownloadTask[], ctx: DownloadContex
 }
 
 // 兼容当前取消收尾语义，worker 内已有写入尚未去重或设定超时
-// P5 会将其改为有界且幂等的 flush
+// 后续取消重构会将其改为有界且幂等的 flush
 async function finishCancellation(ctx: DownloadContext): Promise<void> {
     const { dependencies } = ctx;
     const { runtime } = dependencies;
@@ -247,7 +247,7 @@ async function finishCancellation(ctx: DownloadContext): Promise<void> {
         dependencies.log("停止请求要求清理缓存，将在释放任务锁前统一处理。");
     } else {
         dependencies.log("正在写入 IndexedDB...");
-        // 当前可能与 worker 的最后一次保存重复，保留该基线供 P5 目标测试驱动改造
+        // 当前可能与 worker 的最后一次保存重复，保留该基线供取消目标测试驱动改造
         await persistTaskCache(ctx);
     }
     runtime.updateCacheSession({
@@ -321,7 +321,7 @@ export async function runDownload(options: DownloadOptions, dependencies: Downlo
             ? dependencies.coverFetcher.fetch(options.coverUrl, dependencies.runtime.signal)
             : Promise.resolve(null);
 
-        // 当前 worker pool 仍沿用共享队列实现，P6 再拆分调度策略
+        // 当前 worker pool 仍沿用共享队列实现，后续再拆分调度策略
         transition(ctx, "downloading");
         const queue = [...options.tasks];
         const worker = async () => {

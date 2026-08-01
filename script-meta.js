@@ -24,6 +24,5 @@ export default function getMeta() {
         connect: [
             "*" // 允许连接所有图床域名
         ]
-        // icon: 'https://www.esjzone.cc/favicon.ico',
     };
 }

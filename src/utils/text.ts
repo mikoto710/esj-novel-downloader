@@ -1,7 +1,7 @@
 /**
  * XML/HTML 特殊字符转义
  * @param s 输入字符串
- * @return 转义后的字符串
+ * @returns 转义后的字符串
  */
 export function escapeXml(s: string | null | undefined): string {
     if (!s) {
@@ -18,7 +18,7 @@ export function escapeXml(s: string | null | undefined): string {
 /**
  * 转义 HTML 并保留换行符
  * @param s HTML 字符串
- * @return 转义后的字符串
+ * @returns 转义后的字符串
  */
 export function escapeHtmlPreserveLine(s: string | null | undefined): string {
     if (!s) {
@@ -39,7 +39,7 @@ export function escapeHtmlPreserveLine(s: string | null | undefined): string {
 /**
  * 将 HTML 字符串转换为符合 XHTML 标准的字符串 (用于 EPUB)
  * @param htmlString 输入的 HTML 字符串
- * @return 转换后的 XHTML 字符串
+ * @returns 转换后的 XHTML 字符串
  */
 export function convertToXhtml(htmlString: string): string {
     if (!htmlString) {
@@ -64,7 +64,6 @@ export function convertToXhtml(htmlString: string): string {
 
             // 检查语法合法性
             if (!validXmlNameRegex.test(name)) {
-                // console.warn(`[XHTML Fix] 移除非法格式属性: ${name}`);
                 el.removeAttribute(name);
                 continue;
             }
@@ -73,7 +72,6 @@ export function convertToXhtml(htmlString: string): string {
             if (name.includes(":")) {
                 // 只保留标准的 xml/xmlns 命名空间
                 if (!name.startsWith("xmlns") && !name.startsWith("xml")) {
-                    // console.warn(`[XHTML Fix] 移除未知命名空间属性: ${name}`);
                     el.removeAttribute(name);
                 }
             }

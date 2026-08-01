@@ -18,7 +18,7 @@ function registerLockPresence(lock: BookDownloadLock): void {
     try {
         localStorage.setItem(lock.presenceKey, lock.taskId);
     } catch {
-        // localStorage 不可用时继续依靠心跳 TTL。
+        // localStorage 不可用时继续依靠心跳 TTL
     }
 }
 
@@ -31,7 +31,7 @@ function clearLockPresence(lock: BookDownloadLock): void {
             localStorage.removeItem(lock.presenceKey);
         }
     } catch {
-        // localStorage 不可用时继续依靠心跳 TTL。
+        // localStorage 不可用时继续依靠心跳 TTL
     }
 }
 
@@ -46,6 +46,9 @@ function hasLockPresence(lock: BookDownloadLock): boolean {
     }
 }
 
+/**
+ * 判断指定任务是否仍有页面 presence 标记
+ */
 export function hasBookDownloadTaskPresence(taskId: string): boolean {
     try {
         return localStorage.getItem(createPresenceKey(taskId)) === taskId;
@@ -54,24 +57,47 @@ export function hasBookDownloadTaskPresence(taskId: string): boolean {
     }
 }
 
+/**
+ * 支持启动全本下载的页面类型
+ */
 export type FullBookSourcePageType = Extract<SourcePageType, "detail" | "forum">;
+
+/**
+ * 获取任务锁的结果
+ */
 export type AcquireBookLockResult =
     | { acquired: true; lock: BookDownloadLock }
     | { acquired: false; lock: BookDownloadLock };
+/**
+ * 请求取消任务的结果
+ */
 export type RequestBookDownloadCancellationResult = { requested: true; taskId: string } | { requested: false };
+
+/**
+ * 等待远程取消完成的结果
+ */
 export type WaitForBookDownloadCancellationResult =
     | { status: "released"; cacheCleared: boolean }
     | { status: "replaced" | "stale" | "timeout" };
 
+/**
+ * 获取指定书籍仍有效的下载任务锁
+ */
 export async function getActiveBookDownloadLock(bookId: string): Promise<BookDownloadLock | null> {
     const lock = await get<BookDownloadLock>(bookId, lockStore);
     return isLockActive(lock) ? lock : null;
 }
 
+/**
+ * 获取会阻止当前页面启动下载的冲突任务锁
+ */
 export async function getConflictingBookDownloadLock(bookId: string): Promise<BookDownloadLock | null> {
     return getActiveBookDownloadLock(bookId);
 }
 
+/**
+ * 判断任务是否仍拥有对应书籍的有效锁
+ */
 export async function ownsActiveBookDownloadLock(lock: BookDownloadLock | null): Promise<boolean> {
     if (!lock) {
         return false;
@@ -80,11 +106,17 @@ export async function ownsActiveBookDownloadLock(lock: BookDownloadLock | null):
     return Boolean(current && current.taskId === lock.taskId && isLockActive(current));
 }
 
+/**
+ * 列出全部仍有效的全本下载任务锁
+ */
 export async function listActiveBookDownloadLocks(): Promise<BookDownloadLock[]> {
     const allEntries = await entries<string, BookDownloadLock>(lockStore);
     return allEntries.map(([, lock]) => lock).filter((lock): lock is BookDownloadLock => isLockActive(lock));
 }
 
+/**
+ * 向指定书籍的活动任务写入取消请求
+ */
 export async function requestBookDownloadCancellation(
     bookId: string,
     discardCache: boolean
@@ -121,6 +153,9 @@ export async function requestBookDownloadCancellation(
     return result;
 }
 
+/**
+ * 等待指定任务释放锁，并区分任务被替换、失效和超时
+ */
 export async function waitForBookDownloadCancellation(
     bookId: string,
     taskId: string
@@ -145,6 +180,9 @@ export async function waitForBookDownloadCancellation(
     return { status: "timeout" };
 }
 
+/**
+ * 判断当前任务是否收到取消并清理缓存的请求
+ */
 export async function shouldDiscardBookDownloadCache(lock: BookDownloadLock | null): Promise<boolean> {
     if (!lock) {
         return false;
@@ -161,6 +199,9 @@ async function isBookDownloadCancellationRequested(lock: BookDownloadLock): Prom
     return Boolean(current && current.taskId === lock.taskId && current.cancelRequestedAt);
 }
 
+/**
+ * 更新当前任务锁中的书名和心跳时间
+ */
 export async function updateBookDownloadLockTitle(lock: BookDownloadLock, bookName: string): Promise<void> {
     await update<BookDownloadLock>(
         lock.bookId,
@@ -190,6 +231,10 @@ function createReleasedLock(lock: BookDownloadLock): BookDownloadLock {
     return { ...lock, status: "released", releasedAt, heartbeatAt: releasedAt };
 }
 
+/**
+ * 原子获取指定书籍的全本下载任务锁
+ * 已存在有效任务时返回冲突锁，不覆盖现有所有者
+ */
 export async function acquireBookDownloadLock(
     bookId: string,
     sourcePageType: FullBookSourcePageType
@@ -241,6 +286,9 @@ export async function acquireBookDownloadLock(
     return finalResult;
 }
 
+/**
+ * 将已取得的任务锁标记为运行中
+ */
 export async function markBookDownloadRunning(lock: BookDownloadLock): Promise<boolean> {
     let updated = false;
     await update<BookDownloadLock>(
@@ -262,6 +310,9 @@ export async function markBookDownloadRunning(lock: BookDownloadLock): Promise<b
     return updated;
 }
 
+/**
+ * 刷新当前任务锁的心跳时间
+ */
 export async function heartbeatBookDownloadLock(lock: BookDownloadLock): Promise<boolean> {
     let updated = false;
     await update<BookDownloadLock>(
@@ -278,6 +329,10 @@ export async function heartbeatBookDownloadLock(lock: BookDownloadLock): Promise
     return updated;
 }
 
+/**
+ * 启动任务锁心跳和页面关闭监听
+ * 返回函数用于停止定时器和移除监听器
+ */
 export function startBookDownloadLockHeartbeat(
     lock: BookDownloadLock,
     onCancellationRequested?: () => void
@@ -318,6 +373,9 @@ export function startBookDownloadLockHeartbeat(
     };
 }
 
+/**
+ * 释放当前任务锁并保留 released 状态供远程页面观察
+ */
 export async function releaseBookDownloadLock(
     lock: BookDownloadLock,
     options: { cacheDiscarded?: boolean } = {}

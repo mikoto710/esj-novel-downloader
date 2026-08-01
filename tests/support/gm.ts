@@ -7,6 +7,9 @@ interface PendingGmRequest {
     abort: ReturnType<typeof vi.fn>;
 }
 
+/**
+ * 用户脚本 API 测试替身及其可控请求队列
+ */
 export interface UserscriptApiMocks {
     readonly values: Map<string, unknown>;
     readonly requests: PendingGmRequest[];
@@ -20,6 +23,9 @@ export interface UserscriptApiMocks {
 
 let installedMocks: UserscriptApiMocks | null = null;
 
+/**
+ * 安装用户脚本 API 测试替身
+ */
 export function installUserscriptApiMocks(initialValues: Record<string, unknown> = {}): UserscriptApiMocks {
     const values = new Map<string, unknown>(Object.entries(initialValues));
     const requests: PendingGmRequest[] = [];
@@ -85,6 +91,9 @@ function markRequestSettled(pending: PendingGmRequest, index: number): void {
     pending.settled = true;
 }
 
+/**
+ * 获取当前安装的用户脚本 API 测试替身
+ */
 export function getUserscriptApiMocks(): UserscriptApiMocks {
     if (!installedMocks) {
         throw new Error("Userscript API mocks are not installed");
@@ -92,6 +101,9 @@ export function getUserscriptApiMocks(): UserscriptApiMocks {
     return installedMocks;
 }
 
+/**
+ * 清除用户脚本 API 测试替身引用
+ */
 export function resetUserscriptApiMocks(): void {
     installedMocks = null;
 }

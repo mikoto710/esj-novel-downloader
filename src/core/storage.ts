@@ -75,7 +75,7 @@ function toPersistentEntry(key: string, data: StoredCache): PersistentCacheEntry
 
 /**
  * 读取 IndexedDB 中的小说缓存
- * @param bookId
+ * @param bookId 书籍 ID
  * @returns 缓存数据和章节数量
  */
 export async function loadBookCache(bookId: string): Promise<{ size: number; map: Map<number, Chapter> | null }> {
@@ -112,7 +112,7 @@ export async function loadBookCache(bookId: string): Promise<{ size: number; map
 }
 
 /**
- * 由已取得下载锁的任务原子认领缓存写入权。
+ * 由已取得下载锁的任务原子认领缓存写入权
  */
 export async function claimBookCache(
     bookId: string,
@@ -155,9 +155,11 @@ export async function claimBookCache(
 }
 
 /**
- * 仅允许当前缓存写入任务保存章节。
- * @param bookId
+ * 仅允许当前缓存写入任务保存章节
+ * @param bookId 书籍 ID
+ * @param taskId 下载任务 ID
  * @param map 章节数据
+ * @param meta 缓存元信息
  */
 export async function saveBookCacheForTask(
     bookId: string,
@@ -194,7 +196,7 @@ export async function saveBookCacheForTask(
 }
 
 /**
- * 仅允许当前缓存写入任务清理章节，并保留所有权墓碑阻止旧任务复写。
+ * 仅允许当前缓存写入任务清理章节，并保留所有权墓碑阻止旧任务复写
  */
 export async function clearBookCacheForTask(bookId: string, taskId: string): Promise<boolean> {
     let cleared = false;
@@ -267,7 +269,7 @@ export async function listBookCaches(): Promise<PersistentCacheEntry[]> {
 
 /**
  * 清理指定 ID 的缓存
- * @param bookId
+ * @param bookId 书籍 ID
  */
 export async function clearBookCache(bookId: string): Promise<boolean> {
     try {

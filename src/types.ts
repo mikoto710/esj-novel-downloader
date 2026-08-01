@@ -27,14 +27,19 @@ export interface BookMetadata {
     uuid?: string;
 }
 
+// 缓存条目的数据来源
 export type CacheSource = "indexeddb" | "runtime";
 
+// 缓存条目的业务状态
 export type CacheStatus = "downloading" | "cancelled" | "export-ready" | "persisted";
 
+// 下载功能所在的页面类型
 export type SourcePageType = "detail" | "forum" | "single" | "unknown";
 
+// 支持的导出格式
 export type DownloadFormat = "txt" | "epub" | "html";
 
+// 已完成导出的下载记录
 export interface DownloadHistoryItem {
     id: string;
     bookId?: string;
@@ -48,15 +53,16 @@ export interface DownloadHistoryItem {
         successCount: number;
         failureCount: number;
     };
-    // 兼容旧版下载记录；新记录改用 imageInfo。
+    // 兼容旧版下载记录，新记录改用 imageInfo
     imageEnabled?: boolean;
     pageUrl: string;
     exportedAt: number;
 }
 
+// 全本下载任务锁状态
 export type BookDownloadLockStatus = "preparing" | "running" | "released";
 
-// 跨页面的全本下载任务锁；单章导出不使用。
+// 跨页面的全本下载任务锁，单章导出不使用
 export interface BookDownloadLock {
     bookId: string;
     bookName?: string;

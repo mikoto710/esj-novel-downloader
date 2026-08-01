@@ -2,6 +2,9 @@ import { vi } from "vitest";
 import { installUserscriptApiMocks, resetUserscriptApiMocks } from "./gm";
 import { FakeBroadcastChannel, testResources } from "./resources";
 
+/**
+ * 重置 DOM、存储和用户脚本 API 测试环境
+ */
 export function resetTestEnvironment(): void {
     if (typeof document !== "undefined") {
         installInnerTextShim();
@@ -18,6 +21,7 @@ export function resetTestEnvironment(): void {
     installUserscriptApiMocks();
 }
 
+// 补齐 jsdom 缺失的 innerText 行为
 function installInnerTextShim(): void {
     if (typeof HTMLElement === "undefined" || "innerText" in HTMLElement.prototype) {
         return;
@@ -33,6 +37,9 @@ function installInnerTextShim(): void {
     });
 }
 
+/**
+ * 回收测试资源，并在发现泄漏时使测试失败
+ */
 export async function cleanupTestEnvironment(): Promise<void> {
     const pendingTimers = vi.isFakeTimers() ? vi.getTimerCount() : 0;
     if (vi.isFakeTimers()) {

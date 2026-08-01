@@ -1,5 +1,8 @@
 import { vi } from "vitest";
 
+/**
+ * 可由测试代码主动完成或拒绝的 Promise
+ */
 export interface Deferred<T> {
     promise: Promise<T>;
     resolve: (value: T | PromiseLike<T>) => void;
@@ -7,6 +10,9 @@ export interface Deferred<T> {
     readonly settled: boolean;
 }
 
+/**
+ * 创建可控的异步结果
+ */
 export function createDeferred<T>(): Deferred<T> {
     let resolvePromise!: (value: T | PromiseLike<T>) => void;
     let rejectPromise!: (reason?: unknown) => void;
@@ -33,6 +39,9 @@ export function createDeferred<T>(): Deferred<T> {
     };
 }
 
+/**
+ * 测试时钟控制接口
+ */
 export interface FakeClock {
     now(): number;
     advanceBy(milliseconds: number): Promise<void>;
@@ -40,6 +49,9 @@ export interface FakeClock {
     restore(): void;
 }
 
+/**
+ * 启用并封装 Vitest 假时钟
+ */
 export function useFakeClock(now: string | number | Date = "2026-01-01T00:00:00.000Z"): FakeClock {
     vi.useFakeTimers();
     vi.setSystemTime(now);
@@ -64,6 +76,9 @@ export function useFakeClock(now: string | number | Date = "2026-01-01T00:00:00.
     };
 }
 
+/**
+ * 创建与浏览器请求中止语义一致的异常
+ */
 export function createAbortError(message = "Aborted"): DOMException {
     return new DOMException(message, "AbortError");
 }

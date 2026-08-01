@@ -56,7 +56,8 @@ vi.mock("../src/core/book-lock", () => ({
 import { batchDownload } from "../src/core/download/batch-download";
 import { abortActiveDownload, resetAbortController, setAbortFlag, state } from "../src/core/state";
 
-// 下面的 it.fails 用例是已确认缺陷的可执行目标契约。Phase 4/5 修复后移除 .fails，转为普通回归测试。
+// 下面的 it.fails 用例是已确认缺陷的可执行目标契约
+// 对应行为修复后移除 .fails，转为普通回归测试
 describe("downloader contracts", () => {
     beforeEach(() => {
         vi.clearAllMocks();

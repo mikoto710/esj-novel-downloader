@@ -1,5 +1,8 @@
 import { vi } from "vitest";
 
+/**
+ * 测试资源类型
+ */
 export type TestResourceKind = "timer" | "listener" | "channel" | "database" | "custom";
 
 interface TrackedResource {
@@ -8,6 +11,9 @@ interface TrackedResource {
     cleanup: () => void | Promise<void>;
 }
 
+/**
+ * 跟踪测试创建的外部资源，并在用例结束后统一回收
+ */
 export class TestResourceTracker {
     private readonly resources = new Map<symbol, TrackedResource>();
 
@@ -38,8 +44,14 @@ export class TestResourceTracker {
     }
 }
 
+/**
+ * 当前测试环境共享的资源跟踪器
+ */
 export const testResources = new TestResourceTracker();
 
+/**
+ * 注册受资源跟踪器管理的事件监听器
+ */
 export function trackEventListener(
     target: EventTarget,
     type: string,
@@ -62,6 +74,9 @@ interface TrackedTestDatabase {
 
 const testDatabases = new Map<string, TrackedTestDatabase>();
 
+/**
+ * 创建并跟踪测试用 IndexedDB 数据库
+ */
 export async function openTestDatabase(name = `esj-test-${crypto.randomUUID()}`): Promise<IDBDatabase> {
     if (testDatabases.has(name)) {
         throw new Error(`Test database is already open: ${name}`);
@@ -80,10 +95,16 @@ export async function openTestDatabase(name = `esj-test-${crypto.randomUUID()}`)
     return database;
 }
 
+/**
+ * 关闭测试数据库连接
+ */
 export function closeTestDatabase(database: IDBDatabase): void {
     database.close();
 }
 
+/**
+ * 关闭并删除指定测试数据库
+ */
 export async function deleteTestDatabase(name: string): Promise<void> {
     const tracked = testDatabases.get(name);
     if (tracked) {
@@ -103,6 +124,9 @@ function requestToPromise<T>(request: IDBRequest<T>): Promise<T> {
 
 type MessageListener = (event: MessageEvent<unknown>) => void;
 
+/**
+ * 在同一进程内模拟 BroadcastChannel 的消息广播行为
+ */
 export class FakeBroadcastChannel {
     private static readonly groups = new Map<string, Set<FakeBroadcastChannel>>();
 
@@ -204,6 +228,9 @@ function toMessageListener(listener: EventListenerOrEventListenerObject): Messag
     return wrapper;
 }
 
+/**
+ * 将全局 BroadcastChannel 替换为测试实现
+ */
 export function installFakeBroadcastChannel(): typeof FakeBroadcastChannel {
     vi.stubGlobal("BroadcastChannel", FakeBroadcastChannel as unknown as typeof BroadcastChannel);
     return FakeBroadcastChannel;

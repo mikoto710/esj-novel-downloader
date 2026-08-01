@@ -55,7 +55,7 @@ export type DownloadPhase =
     | "released";
 
 /**
- * 下载核心对外发布的只读进度视图
+ * 下载核心对外发布的进度快照
  * restored/fetched/processed/persisted 分别表示恢复、网络获取、内容处理和持久化进度，
  * completedCount 暂时兼容现有 UI 的章节完成数
  */
@@ -136,7 +136,7 @@ export interface CoverFetcherPort {
 
 /**
  * 下载核心所需的缓存操作
- * v2 暂时保存全量快照，P4 将在保持接口边界的基础上替换为增量 repository
+ * 当前 v2 实现暂时保存全量快照，后续可在保持接口边界的基础上替换为增量 repository
  */
 export interface ChapterCacheRepository {
     saveSnapshot(bookId: string, taskId: string, chapters: Map<number, Chapter>, meta: CacheMeta): Promise<boolean>;

@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { Chapter } from "../../src/types";
 import { createChapter } from "../support";
 
-// 当前 v2 整本快照会让断言失败；Phase 4 v3 增量缓存落地后移除 .fails。
+// 当前 v2 整本快照会让断言失败，增量缓存落地后移除 .fails
 describe("3000 chapter cache complexity", () => {
     it.fails("serializes only dirty chapters instead of repeated whole-book snapshots", async () => {
         vi.resetModules();

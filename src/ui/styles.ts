@@ -137,7 +137,7 @@ const STYLES = `
         background: #c54541;
     }
 
-    /* 开关样式 (Toggle Switch) */
+    /* 开关样式 */
     .esj-switch {
         position: relative;
         display: inline-block;
@@ -188,6 +188,9 @@ const STYLES = `
 
 `;
 
+/**
+ * 注入脚本界面样式
+ */
 export function injectStyles(): void {
     const styleEl = document.createElement("style");
     styleEl.textContent = STYLES;

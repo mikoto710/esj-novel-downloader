@@ -49,6 +49,7 @@ function imageStatusText(item: DownloadHistoryItem): string {
         : `${item.imageInfo.successCount} / ${total} 张`;
 }
 
+// 显示清空下载记录确认弹窗
 function showHistoryClearConfirm(): Promise<boolean> {
     document.querySelector("#esj-download-history-confirm")?.remove();
 
@@ -114,6 +115,9 @@ function showHistoryClearConfirm(): Promise<boolean> {
     });
 }
 
+/**
+ * 创建下载记录弹窗
+ */
 export function createDownloadHistoryPopup(): void {
     document.querySelector("#esj-download-history")?.remove();
     document.querySelector("#esj-download-history-confirm")?.remove();
@@ -206,6 +210,7 @@ export function createDownloadHistoryPopup(): void {
     const listBox = el("div", { style: "flex:1;min-height:0;overflow:auto;padding:0 16px 16px;" }, [table]);
     let items: DownloadHistoryItem[] = [];
 
+    // 按导出范围、格式和来源筛选并重建记录列表
     const render = () => {
         const scope = (scopeSelect as HTMLSelectElement).value;
         const format = (formatSelect as HTMLSelectElement).value as "all" | DownloadFormat;

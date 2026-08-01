@@ -23,10 +23,16 @@ async function writeHistory(items: DownloadHistoryItem[]): Promise<void> {
     await set(HISTORY_KEY, { version: 1, items } satisfies StoredHistory);
 }
 
+/**
+ * 按导出时间倒序列出下载记录
+ */
 export async function listDownloadHistory(): Promise<DownloadHistoryItem[]> {
     return (await readHistory()).sort((a, b) => b.exportedAt - a.exportedAt);
 }
 
+/**
+ * 保存下载记录并裁剪到数量上限
+ */
 export async function addDownloadHistory(item: Omit<DownloadHistoryItem, "id" | "exportedAt">): Promise<void> {
     try {
         const items = await readHistory();
@@ -41,13 +47,22 @@ export async function addDownloadHistory(item: Omit<DownloadHistoryItem, "id" | 
     }
 }
 
+/**
+ * 删除指定下载记录
+ */
 export async function removeDownloadHistory(id: string): Promise<void> {
     const items = await readHistory();
     await writeHistory(items.filter((item) => item.id !== id));
 }
 
+/**
+ * 清空全部下载记录
+ */
 export async function clearDownloadHistory(): Promise<void> {
     await del(HISTORY_KEY);
 }
 
+/**
+ * 最多保留的下载记录数量
+ */
 export const DOWNLOAD_HISTORY_LIMIT = HISTORY_LIMIT;

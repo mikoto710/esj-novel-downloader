@@ -12,6 +12,9 @@ import type {
 
 const BASE_TIME = Date.parse("2026-01-01T00:00:00.000Z");
 
+/**
+ * 创建章节测试数据
+ */
 export function createChapter(index = 0, overrides: Partial<Chapter> = {}): Chapter {
     const chapterNumber = index + 1;
     return {
@@ -24,6 +27,9 @@ export function createChapter(index = 0, overrides: Partial<Chapter> = {}): Chap
     };
 }
 
+/**
+ * 创建章节图片测试数据
+ */
 export function createChapterImage(index = 0, overrides: Partial<ChapterImage> = {}): ChapterImage {
     return {
         id: `img_0_${index}.jpg`,
@@ -33,6 +39,9 @@ export function createChapterImage(index = 0, overrides: Partial<ChapterImage> =
     };
 }
 
+/**
+ * 创建下载任务测试数据
+ */
 export function createDownloadTask(index = 0, overrides: Partial<DownloadTask> = {}): DownloadTask {
     const chapterNumber = index + 1;
     return {
@@ -43,6 +52,9 @@ export function createDownloadTask(index = 0, overrides: Partial<DownloadTask> =
     };
 }
 
+/**
+ * 创建缓存元信息测试数据
+ */
 export function createCacheMeta(overrides: Partial<CacheMeta> = {}): CacheMeta {
     return {
         bookId: "100",
@@ -58,6 +70,9 @@ export function createCacheMeta(overrides: Partial<CacheMeta> = {}): CacheMeta {
     };
 }
 
+/**
+ * 创建书籍元数据测试数据
+ */
 export function createBookMetadata(overrides: Partial<BookMetadata> = {}): BookMetadata {
     return {
         title: "测试小说",
@@ -70,6 +85,9 @@ export function createBookMetadata(overrides: Partial<BookMetadata> = {}): BookM
     };
 }
 
+/**
+ * 创建下载锁测试数据
+ */
 export function createBookLock(overrides: Partial<BookDownloadLock> = {}): BookDownloadLock {
     return {
         bookId: "100",
@@ -84,6 +102,9 @@ export function createBookLock(overrides: Partial<BookDownloadLock> = {}): BookD
     };
 }
 
+/**
+ * 创建当前页缓存会话测试数据
+ */
 export function createRuntimeCacheSession(overrides: Partial<RuntimeCacheSession> = {}): RuntimeCacheSession {
     const meta = createCacheMeta(overrides);
     return {
@@ -97,6 +118,9 @@ export function createRuntimeCacheSession(overrides: Partial<RuntimeCacheSession
     };
 }
 
+/**
+ * 创建可导出缓存测试数据
+ */
 export function createCachedData(overrides: Partial<CachedData> = {}): CachedData {
     const chapters = overrides.chapters ?? [createChapter()];
     return {
@@ -116,11 +140,17 @@ export function createCachedData(overrides: Partial<CachedData> = {}): CachedDat
     };
 }
 
+/**
+ * 测试使用的可实例化应用状态
+ */
 export interface TestAppState extends AppState {
     abortController: AbortController | null;
     activeBookLock: BookDownloadLock | null;
 }
 
+/**
+ * 创建隔离的应用状态测试数据
+ */
 export function createTestState(overrides: Partial<TestAppState> = {}): TestAppState {
     return {
         abortFlag: false,

@@ -151,13 +151,13 @@ const coverFetcher: CoverFetcherPort = {
     }
 };
 
-// P4 替换为增量 repository 前，继续适配现有 v2 全量快照接口
+// 增量 repository 落地前，继续适配现有 v2 全量快照接口
 const cache: ChapterCacheRepository = {
     saveSnapshot: saveBookCacheForTask,
     clearForTask: clearBookCacheForTask
 };
 
-// Phase 3 核心只查询锁状态，获取、心跳和释放仍由页面任务生命周期管理
+// 下载核心只查询锁状态，获取、心跳和释放仍由页面任务生命周期管理
 const lock: BookLockService = {
     owns: ownsActiveBookDownloadLock,
     shouldDiscardCache: shouldDiscardBookDownloadCache

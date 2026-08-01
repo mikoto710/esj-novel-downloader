@@ -8,12 +8,21 @@ import {
     waitForBookDownloadCancellation
 } from "./book-lock";
 
+/**
+ * 缓存管理器支持的清理范围
+ */
 export type CacheClearScope = "indexeddb" | "runtime" | "all";
 
+/**
+ * 缓存清理结果
+ */
 export interface CacheClearResult {
     protectedBookIds: string[];
 }
 
+/**
+ * 停止活动任务并清理缓存的结果
+ */
 export interface StopAndClearResult {
     requested: boolean;
     cleared: boolean;
@@ -44,6 +53,7 @@ function createPersistentListItem(entry: PersistentCacheEntry): CacheListItem {
 }
 
 function mergeStatus(current: CacheStatus, next: CacheStatus): CacheStatus {
+    // 多来源条目合并时优先展示更接近运行中的状态
     const priority: Record<CacheStatus, number> = {
         downloading: 4,
         "export-ready": 3,
@@ -54,16 +64,21 @@ function mergeStatus(current: CacheStatus, next: CacheStatus): CacheStatus {
     return priority[next] > priority[current] ? next : current;
 }
 
+/**
+ * 合并持久缓存、当前页会话和活动任务锁
+ */
 export async function listManagedCaches(): Promise<CacheListItem[]> {
     const [persistentEntries, activeLocks] = await Promise.all([listBookCaches(), listActiveBookDownloadLocks()]);
     const result = new Map<string, CacheListItem>();
     const persistentByBookId = new Map(persistentEntries.map((entry) => [entry.bookId, entry]));
     const activeLockByBookId = new Map(activeLocks.map((lock) => [lock.bookId, lock]));
 
+    // 持久缓存作为列表基础数据
     persistentEntries.forEach((entry) => {
         result.set(entry.bookId, createPersistentListItem(entry));
     });
 
+    // 当前页会话必须仍对应同一 writer 和活动锁才能参与合并
     const runtime = state.runtimeCacheSession;
     if (runtime) {
         const existing = result.get(runtime.bookId);
@@ -105,6 +120,7 @@ export async function listManagedCaches(): Promise<CacheListItem[]> {
         }
     }
 
+    // 活动锁最终覆盖任务状态，避免把下载中的条目标记为普通缓存
     activeLocks.forEach((lock) => {
         const existing = result.get(lock.bookId);
         result.set(lock.bookId, {
@@ -132,6 +148,10 @@ export async function listManagedCaches(): Promise<CacheListItem[]> {
     return Array.from(result.values()).sort((a, b) => b.updatedAt - a.updatedAt);
 }
 
+/**
+ * 按范围清理指定书籍缓存
+ * 活动任务保护中的书籍不会被清理
+ */
 export async function clearManagedCache(bookId: string, scope: CacheClearScope): Promise<CacheClearResult> {
     if (await getActiveBookDownloadLock(bookId)) {
         return { protectedBookIds: [bookId] };
@@ -151,6 +171,9 @@ export async function clearManagedCache(bookId: string, scope: CacheClearScope):
     return { protectedBookIds: [] };
 }
 
+/**
+ * 清理全部未受活动任务保护的缓存
+ */
 export async function clearAllManagedCaches(includeRuntime: boolean): Promise<CacheClearResult> {
     const activeLocks = await listActiveBookDownloadLocks();
     const protectedBookIds = new Set(activeLocks.map((lock) => lock.bookId));
@@ -165,6 +188,9 @@ export async function clearAllManagedCaches(includeRuntime: boolean): Promise<Ca
     return { protectedBookIds: Array.from(protectedBookIds) };
 }
 
+/**
+ * 请求活动任务停止并清理其缓存
+ */
 export async function stopAndClearManagedCache(bookId: string): Promise<StopAndClearResult> {
     const request = await requestBookDownloadCancellation(bookId, true);
     if (!request.requested) {

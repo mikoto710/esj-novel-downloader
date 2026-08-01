@@ -84,7 +84,7 @@ function createCommonHeader(title: string, onClose: () => void, onMinimize?: () 
 }
 
 /**
- * 提示同一本书已有跨页面全本下载任务。单章导出不使用此弹窗。
+ * 提示同一本书已有跨页面全本下载任务，单章导出不使用此弹窗
  */
 export function showBookDownloadInProgressPopup(lock: BookDownloadLock): void {
     document.querySelector("#esj-book-lock")?.remove();
@@ -286,8 +286,7 @@ export function createConfirmPopup(onOk: () => void, onCancel?: () => void): voi
 }
 
 /**
- * 显示格式选择弹窗 (TXT / EPUB)
- * 在所有章节抓取完成后调用
+ * 创建图片设置变更前的缓存清理确认弹窗
  */
 function createImageCacheConfirmPopup(onOk: () => void, onCancel: () => void): void {
     document.querySelector("#esj-image-cache-confirm")?.remove();
@@ -377,6 +376,9 @@ function showImageSettingProtectionNotice(protectedCount: number): void {
     enableDrag(popup, ".esj-common-header");
 }
 
+/**
+ * 显示 TXT、EPUB 和 HTML 格式选择弹窗
+ */
 export function showFormatChoice(): void {
     if (!state.cachedData) {
         alert("暂无数据");
@@ -673,18 +675,6 @@ export function createSettingsPanel(): void {
 
     // 图片下载开关
     const isImageEnabled = getImageDownloadSetting();
-
-    // 旧版代码，使用 checkbox
-    // const checkboxImage = el('input', {
-    //     type: 'checkbox',
-    //     checked: isImageEnabled,
-    //     style: 'transform: scale(1.3); cursor: pointer;',
-    //     onchange: (e: Event) => {
-    //         const checked = (e.target as HTMLInputElement).checked;
-    //         setImageDownloadSetting(checked);
-    //         log(`正文图片下载已${checked ? '开启' : '关闭'}`);
-    //     }
-    // });
 
     const checkboxInput = el("input", {
         type: "checkbox",

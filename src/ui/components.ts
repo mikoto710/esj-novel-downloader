@@ -31,7 +31,7 @@ export function createSettingButton(customClass: string = ""): HTMLElement {
 
 /**
  * 创建通用的下载按钮
- * @param id DOM ID
+ * @param id 元素的 DOM ID
  * @param text 按钮显示的文字
  * @param scrapeFn 点击后执行的抓取函数 (async)
  * @param customClass 额外的 CSS 类 (如 "m-b-10")

@@ -1,10 +1,19 @@
+/**
+ * 支持写入导出文件的图片媒体类型
+ */
 export type SupportedImageMediaType = "image/jpeg" | "image/png" | "image/gif" | "image/webp";
 
+/**
+ * 根据文件签名识别出的图片格式
+ */
 export interface DetectedImageFormat {
     extension: "jpg" | "png" | "gif" | "webp";
     mediaType: SupportedImageMediaType;
 }
 
+/**
+ * 媒体类型与文件内容一致的图片数据
+ */
 export interface NormalizedImage {
     blob: Blob;
     extension: DetectedImageFormat["extension"];
@@ -23,8 +32,8 @@ function matches(bytes: Uint8Array, signature: number[], offset = 0): boolean {
 }
 
 /**
- * Resolve an image source against the chapter page URL.
- * Protocol-relative URLs are resolved to the image host instead of the ESJZone origin.
+ * 根据章节页面 URL 解析图片地址
+ * 协议相对地址使用图片自身域名，不回退到 ESJZone 域名
  */
 export function resolveImageUrl(src: string, baseUrl: string): string | null {
     try {
@@ -39,7 +48,7 @@ export function resolveImageUrl(src: string, baseUrl: string): string | null {
 }
 
 /**
- * Detect the actual image format from its file signature instead of trusting HTTP Content-Type.
+ * 根据文件签名检测真实图片格式，不直接信任 HTTP Content-Type
  */
 export async function detectImageFormat(blob: Blob): Promise<DetectedImageFormat | null> {
     const bytes = new Uint8Array(await blob.slice(0, 16).arrayBuffer());
@@ -61,7 +70,7 @@ export async function detectImageFormat(blob: Blob): Promise<DetectedImageFormat
 }
 
 /**
- * Return a Blob whose MIME matches its detected image bytes.
+ * 返回 MIME 与实际图片内容一致的 Blob
  */
 export async function normalizeImageBlob(blob: Blob): Promise<NormalizedImage | null> {
     const format = await detectImageFormat(blob);
@@ -79,6 +88,9 @@ export async function normalizeImageBlob(blob: Blob): Promise<NormalizedImage | 
     };
 }
 
+/**
+ * 判断媒体类型是否支持写入导出文件
+ */
 export function isSupportedImageMediaType(mediaType: string): mediaType is SupportedImageMediaType {
     return (
         mediaType === "image/jpeg" ||
@@ -88,6 +100,9 @@ export function isSupportedImageMediaType(mediaType: string): mediaType is Suppo
     );
 }
 
+/**
+ * 判断图片列表中是否存在不支持的媒体类型
+ */
 export function hasInvalidImageMediaTypes(images: readonly { mediaType: string }[] | undefined): boolean {
     return images?.some((image) => !isSupportedImageMediaType(image.mediaType)) ?? false;
 }

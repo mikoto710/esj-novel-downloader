@@ -1,3 +1,6 @@
+/**
+ * 跨页面同步的缓存变更事件
+ */
 export type CacheSyncEvent =
     | { type: "cache-claimed"; bookId: string; taskId: string }
     | { type: "cache-cleared"; bookId: string }
@@ -32,6 +35,7 @@ function getChannel(): BroadcastChannel | null {
     }
 
     try {
+        // BroadcastChannel 不可用时禁用跨标签页同步，不阻塞当前页面流程
         channel = new BroadcastChannel(CHANNEL_NAME);
         channel.addEventListener("message", (message: MessageEvent<unknown>) => {
             const event = message.data;
@@ -47,10 +51,16 @@ function getChannel(): BroadcastChannel | null {
     return channel;
 }
 
+/**
+ * 向其他标签页发布缓存变更事件
+ */
 export function publishCacheSyncEvent(event: CacheSyncEvent): void {
     getChannel()?.postMessage(event);
 }
 
+/**
+ * 订阅其他标签页发送的缓存变更事件
+ */
 export function subscribeCacheSync(listener: CacheSyncListener): () => void {
     getChannel();
     listeners.add(listener);

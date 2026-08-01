@@ -85,6 +85,7 @@ function createActionButton(
     );
 }
 
+// 显示缓存清理确认弹窗
 function showCacheConfirm(options: { title?: string; message: string; danger?: boolean }): Promise<boolean> {
     document.querySelector("#esj-cache-confirm")?.remove();
 
@@ -142,6 +143,7 @@ function showCacheConfirm(options: { title?: string; message: string; danger?: b
     });
 }
 
+// 显示活动任务保护或清理结果
 function showCacheProtectionNotice(message: string): Promise<void> {
     document.querySelector("#esj-cache-protection-notice")?.remove();
 
@@ -178,6 +180,9 @@ function showCacheProtectionNotice(message: string): Promise<void> {
     });
 }
 
+/**
+ * 创建缓存管理弹窗
+ */
 export function createCacheManagerPopup(): void {
     disposeActiveCacheManagerSynchronizer?.();
     document.querySelector("#esj-cache-manager")?.remove();
@@ -222,6 +227,7 @@ export function createCacheManagerPopup(): void {
         [createHeader("🗂️ 缓存管理", closeAction), listBox, footer]
     );
 
+    // 重新读取合并后的缓存列表并重建操作区域
     async function renderList() {
         const items = await listManagedCaches();
         listBox.replaceChildren();
@@ -302,6 +308,7 @@ export function createCacheManagerPopup(): void {
         });
     }
 
+    // 合并短时间内的跨页面事件，避免重复渲染
     stopSynchronizing = subscribeCacheSync(() => {
         if (!popup.isConnected) {
             disposeSynchronizer();
@@ -322,6 +329,7 @@ export function createCacheManagerPopup(): void {
     void renderList();
 }
 
+// 根据活动任务和缓存来源生成可用操作
 function createCacheItem(item: CacheListItem, rerender: () => Promise<void>): HTMLElement {
     const badges = el("div", {
         className: "esj-cache-badges",

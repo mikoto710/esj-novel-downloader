@@ -1,3 +1,6 @@
+/**
+ * 详情页测试夹具选项
+ */
 export interface DetailPageFixtureOptions {
     bookId?: string;
     bookName?: string;
@@ -8,12 +11,18 @@ export interface DetailPageFixtureOptions {
     chapterCount?: number;
 }
 
+/**
+ * 章节页测试夹具选项
+ */
 export interface ChapterFixtureOptions {
     title?: string;
     author?: string;
     contentHtml?: string;
 }
 
+/**
+ * 创建小说详情页 DOM 夹具
+ */
 export function createDetailPageFixture(options: DetailPageFixtureOptions = {}): Document {
     const bookId = options.bookId ?? "100";
     const bookName = options.bookName ?? "测试小说";
@@ -44,6 +53,9 @@ export function createDetailPageFixture(options: DetailPageFixtureOptions = {}):
         </html>`);
 }
 
+/**
+ * 创建论坛列表页 DOM 夹具
+ */
 export function createForumPageFixture(bookId = "100"): Document {
     return parseHtmlFixture(`<!doctype html>
         <html>
@@ -52,6 +64,9 @@ export function createForumPageFixture(bookId = "100"): Document {
         </html>`);
 }
 
+/**
+ * 创建章节页 HTML 夹具
+ */
 export function createChapterFixture(options: ChapterFixtureOptions = {}): string {
     const title = options.title ?? "第 1 章";
     const author = options.author ?? "章节作者";
@@ -68,6 +83,9 @@ export function createChapterFixture(options: ChapterFixtureOptions = {}): strin
         </html>`;
 }
 
+/**
+ * 将 DOM 夹具安装到当前 jsdom 文档
+ */
 export function installDocumentFixture(fixture: Document): void {
     document.title = fixture.title;
     document.head.innerHTML = fixture.head.innerHTML;

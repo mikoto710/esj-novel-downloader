@@ -1,5 +1,8 @@
 import { hasInvalidImageMediaTypes } from "../../utils/image-format";
 
+/**
+ * 章节需要补抓的原因
+ */
 export type ChapterRetryReason = "missing" | "image-errors" | "invalid-image-media-type";
 
 // 只依赖完整性检查所需字段，避免把 Chapter 的存储结构固化到判定函数中
