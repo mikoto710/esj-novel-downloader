@@ -26,8 +26,8 @@ vi.mock("../src/core/cache-sync", () => ({
     publishCacheSyncEvent: vi.fn()
 }));
 
-vi.mock("../src/core/downloader", () => ({ batchDownload: mocks.batchDownload }));
-vi.mock("../src/core/download-task", () => ({ finalizeBookDownloadTask: mocks.finalize }));
+vi.mock("../src/core/download/batch-download", () => ({ batchDownload: mocks.batchDownload }));
+vi.mock("../src/core/download/task-finalizer", () => ({ finalizeBookDownloadTask: mocks.finalize }));
 vi.mock("../src/core/book-lock", () => ({
     getConflictingBookDownloadLock: mocks.getConflict,
     acquireBookDownloadLock: mocks.acquire,

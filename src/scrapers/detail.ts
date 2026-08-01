@@ -9,10 +9,11 @@ import {
 import { log } from "../utils/index";
 import { fullCleanup } from "../utils/dom";
 import { createConfirmPopup, createDownloadPopup, showBookDownloadInProgressPopup } from "../ui/popups";
-import { batchDownload, DownloadTask } from "../core/downloader";
+import { batchDownload } from "../core/download/batch-download";
+import type { DownloadTask } from "../core/download/contracts";
 import { parseBookMetadata } from "../core/parser";
 import { claimBookCache, loadBookCache } from "../core/storage";
-import { finalizeBookDownloadTask } from "../core/download-task";
+import { finalizeBookDownloadTask } from "../core/download/task-finalizer";
 
 function getBookId(): string {
     const match = location.href.match(/\/detail\/(\d+)/);

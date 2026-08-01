@@ -1,4 +1,4 @@
-import type { DownloadTask } from "../../src/core/downloader";
+import type { DownloadTask } from "../../src/core/download/contracts";
 import type { BookDownloadLock, CacheStatus, Chapter } from "../../src/types";
 import { createAbortError, createDeferred, type Deferred } from "./async";
 import { createBookLock, createChapter } from "./factories";

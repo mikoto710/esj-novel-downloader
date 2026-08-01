@@ -1,5 +1,6 @@
 import { log } from "../utils/index";
-import { batchDownload, DownloadTask } from "../core/downloader";
+import { batchDownload } from "../core/download/batch-download";
+import type { DownloadTask } from "../core/download/contracts";
 import { parseBookMetadata } from "../core/parser";
 import { createConfirmPopup, createDownloadPopup, showBookDownloadInProgressPopup } from "../ui/popups";
 import { abortActiveDownload, setAbortFlag, state, resetAbortController } from "../core/state";
@@ -12,7 +13,7 @@ import {
 } from "../core/book-lock";
 import { claimBookCache, loadBookCache } from "../core/storage";
 import { fullCleanup } from "../utils/dom";
-import { finalizeBookDownloadTask } from "../core/download-task";
+import { finalizeBookDownloadTask } from "../core/download/task-finalizer";
 
 /**
  * 抓取论坛页面的章节列表并启动下载

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getChapterRetryReason } from "../src/core/download-integrity";
+import { getChapterRetryReason } from "../src/core/download/integrity";
 
 describe("getChapterRetryReason", () => {
     it("retries a missing chapter", () => {

@@ -1,4 +1,4 @@
-import type { DownloadTask } from "../../src/core/downloader";
+import type { DownloadTask } from "../../src/core/download/contracts";
 import type {
     AppState,
     BookDownloadLock,
