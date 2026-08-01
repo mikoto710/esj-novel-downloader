@@ -21,6 +21,7 @@
         "esbuild": "^0.27.0",
         "eslint": "^9.39.2",
         "eslint-config-prettier": "^10.1.8",
+        "fake-indexeddb": "^6.2.5",
         "globals": "^17.0.0",
         "jsdom": "^29.1.1",
         "jszip": "^3.10.1",
