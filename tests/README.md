@@ -11,6 +11,8 @@
 - 需要控制 Promise 完成顺序时使用 `createDeferred()`，不要依赖真实网络或不确定的微任务顺序。
 - 心跳、重试、退避和超时测试使用 `useFakeClock()`；测试中不得用真实秒级等待。
 - 测试结束前应消费或清除所有 fake timers。全局 teardown 会把未清理 timer 作为失败报告。
+- 普通 `npm run test` 不运行 `tests/stress/`；完整规模测试通过 `npm run test:stress` 单独执行。
+- Phase 2 中用于刻画现存缺陷的测试可以暂时使用 `it.fails`。目标实现完成后必须移除 `.fails`；如果缺陷提前消失，Vitest 会将 unexpected pass 视为失败，提醒维护者更新测试状态。
 
 ## 外部边界
 

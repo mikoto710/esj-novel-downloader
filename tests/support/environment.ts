@@ -4,6 +4,7 @@ import { FakeBroadcastChannel, testResources } from "./resources";
 
 export function resetTestEnvironment(): void {
     if (typeof document !== "undefined") {
+        installInnerTextShim();
         document.head.innerHTML = "";
         document.body.innerHTML = "";
         document.title = "ESJZone Test";
@@ -15,6 +16,21 @@ export function resetTestEnvironment(): void {
         sessionStorage.clear();
     }
     installUserscriptApiMocks();
+}
+
+function installInnerTextShim(): void {
+    if (typeof HTMLElement === "undefined" || "innerText" in HTMLElement.prototype) {
+        return;
+    }
+    Object.defineProperty(HTMLElement.prototype, "innerText", {
+        configurable: true,
+        get(this: HTMLElement) {
+            return this.textContent ?? "";
+        },
+        set(this: HTMLElement, value: string) {
+            this.textContent = value;
+        }
+    });
 }
 
 export async function cleanupTestEnvironment(): Promise<void> {

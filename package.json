@@ -6,6 +6,7 @@
         "check": "tsc --noEmit && vitest run",
         "build": "npm run check && rollup -c",
         "test": "vitest run",
+        "test:stress": "vitest run --config vitest.stress.config.ts",
         "test:watch": "vitest",
         "watch": "rollup -c -w",
         "format": "prettier --write \"src/**/*.{ts,js,json,md}\" && eslint \"src/**/*.{ts,js}\" --fix"
