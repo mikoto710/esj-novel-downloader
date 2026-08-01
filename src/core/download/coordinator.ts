@@ -379,7 +379,7 @@ export async function runDownload(options: DownloadOptions, dependencies: Downlo
         dependencies.runtime.startCacheSession(cacheMeta, options.taskId, dependencies.runtime.chapters.size);
         transition(ctx, "restoring-cache");
         if (dependencies.runtime.chapters.size > 0) {
-            dependencies.log(`💑 已从 IndexedDB 恢复 ${dependencies.runtime.chapters.size} 章缓存`);
+            dependencies.log(`💾 已从 IndexedDB 恢复 ${dependencies.runtime.chapters.size} 章缓存`);
         }
 
         const coverPromise = options.coverUrl

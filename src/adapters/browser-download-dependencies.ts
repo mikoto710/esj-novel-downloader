@@ -60,7 +60,7 @@ const runtime: DownloadRuntimePort = {
 function updateDownloadStatus(status: string): void {
     const titleEl = document.querySelector("#esj-title") as HTMLElement | null;
     if (titleEl) {
-        titleEl.textContent = "📌 " + status;
+        titleEl.textContent = "📘 " + status;
     }
     document.title = `[${status}] ${state.originalTitle}`;
     updateTrayText(status);
@@ -80,7 +80,7 @@ const ui: DownloadUiPort = {
             const titleEl = document.querySelector("#esj-title") as HTMLElement | null;
             const cancelButton = document.querySelector("#esj-cancel") as HTMLButtonElement | null;
             if (titleEl) {
-                titleEl.textContent = "📌 " + status;
+                titleEl.textContent = "📘 " + status;
             }
             if (cancelButton) {
                 cancelButton.disabled = true;

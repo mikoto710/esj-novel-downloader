@@ -271,7 +271,7 @@ describe("downloader contracts", () => {
 
         expect(mocks.saveCache).toHaveBeenCalledOnce();
         expect(mocks.log.mock.calls.flat().join("\n")).toContain("正在清理缓存");
-        expect(document.querySelector("#esj-title")?.textContent).toBe("📌 任务已停止");
+        expect(document.querySelector("#esj-title")?.textContent).toBe("📘 任务已停止");
         expect(document.querySelector("#esj-cancel")?.textContent).toBe("已停止");
     });
 
