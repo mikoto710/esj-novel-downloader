@@ -16,7 +16,9 @@ describe("DownloadStateMachine", () => {
             "preparing",
             "restoring-cache",
             "downloading",
+            "flushing-cache",
             "checking-integrity",
+            "flushing-cache",
             "preparing-export",
             "export-ready"
         ] as const) {
@@ -24,7 +26,7 @@ describe("DownloadStateMachine", () => {
         }
 
         expect(machine.snapshot.phase).toBe("export-ready");
-        expect(events.ofType("phase-changed")).toHaveLength(6);
+        expect(events.ofType("phase-changed")).toHaveLength(8);
     });
 
     it("allows cancellation and failure only from running states", () => {

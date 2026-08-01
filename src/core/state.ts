@@ -1,5 +1,5 @@
 import { AppState, BookDownloadLock, CacheMeta, CachedData, Chapter, RuntimeCacheSession } from "../types";
-import { subscribeCacheSync } from "./cache-sync";
+import { subscribeCacheSync } from "./cache/sync";
 
 /**
  * 当前页面共享的下载和导出状态

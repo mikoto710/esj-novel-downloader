@@ -1,5 +1,5 @@
 /**
- * 跨页面同步的缓存变更事件
+ * 缓存跨页面同步的变更事件
  */
 export type CacheSyncEvent =
     | { type: "cache-claimed"; bookId: string; taskId: string }

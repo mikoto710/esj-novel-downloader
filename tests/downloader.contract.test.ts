@@ -22,7 +22,7 @@ const mocks = vi.hoisted(() => ({
     shouldDiscard: vi.fn()
 }));
 
-vi.mock("../src/core/cache-sync", () => ({
+vi.mock("../src/core/cache/sync", () => ({
     subscribeCacheSync: vi.fn(() => vi.fn()),
     publishCacheSyncEvent: vi.fn()
 }));
@@ -38,8 +38,8 @@ vi.mock("../src/ui/popups", () => ({
     showFormatChoice: mocks.showFormatChoice
 }));
 vi.mock("../src/ui/tray", () => ({ updateTrayText: mocks.updateTrayText }));
-vi.mock("../src/core/storage", () => ({
-    saveBookCacheForTask: mocks.saveCache,
+vi.mock("../src/core/cache/book-cache", () => ({
+    putBookCacheBatchForTask: mocks.saveCache,
     clearBookCacheForTask: mocks.clearCache
 }));
 vi.mock("../src/core/config", () => ({
@@ -132,7 +132,7 @@ describe("downloader contracts", () => {
         }
     });
 
-    it.fails("does not repeat a whole-book save after cancellation", async () => {
+    it("does not repeat a whole-book save after cancellation", async () => {
         mocks.saveCache.mockImplementationOnce(async () => {
             abortActiveDownload();
             return true;
@@ -143,7 +143,7 @@ describe("downloader contracts", () => {
         expect(mocks.saveCache).toHaveBeenCalledTimes(1);
     });
 
-    it.fails("does not claim that progress was saved after storage rejected the write", async () => {
+    it("does not claim that progress was saved after storage rejected the write", async () => {
         mocks.saveCache.mockResolvedValue(false);
 
         await batchDownload(createOptions(createTasks(5)));

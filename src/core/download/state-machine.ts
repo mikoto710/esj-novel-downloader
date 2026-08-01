@@ -25,7 +25,7 @@ const FORWARD_TRANSITIONS: Readonly<Record<DownloadPhase, ReadonlySet<DownloadPh
     idle: new Set(["preparing"]),
     preparing: new Set(["restoring-cache"]),
     "restoring-cache": new Set(["downloading"]),
-    downloading: new Set(["checking-integrity"]),
+    downloading: new Set(["flushing-cache"]),
     "checking-integrity": new Set(["flushing-cache", "preparing-export"]),
     "flushing-cache": new Set(["checking-integrity", "preparing-export"]),
     "preparing-export": new Set(["export-ready"]),

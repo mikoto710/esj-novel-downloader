@@ -3,9 +3,9 @@ import {
     clearManagedCache,
     listManagedCaches,
     stopAndClearManagedCache
-} from "../core/cache-manager";
+} from "../core/cache/manager";
 import { CacheListItem } from "../types";
-import { subscribeCacheSync } from "../core/cache-sync";
+import { subscribeCacheSync } from "../core/cache/sync";
 import { el, enableDrag } from "../utils/dom";
 
 let disposeActiveCacheManagerSynchronizer: (() => void) | null = null;

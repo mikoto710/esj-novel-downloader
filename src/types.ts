@@ -107,7 +107,6 @@ export interface PersistentCacheEntry {
     updatedAt: number;
     chapterCount: number;
     totalChapters: number | null;
-    map: Map<number, Chapter>;
     meta: CacheMeta | null;
     writerTaskId?: string;
     isLegacy: boolean;

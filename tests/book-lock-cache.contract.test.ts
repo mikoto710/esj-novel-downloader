@@ -35,7 +35,7 @@ describe("book lock contracts", () => {
     it("does not let a stale task save or clear a replacement task cache", async () => {
         vi.stubGlobal("BroadcastChannel", undefined);
         const locks = await import("../src/core/book-lock");
-        const storage = await import("../src/core/storage");
+        const storage = await import("../src/core/cache/book-cache");
 
         const first = await locks.acquireBookDownloadLock("100", "detail");
         if (!first.acquired) {
@@ -43,7 +43,7 @@ describe("book lock contracts", () => {
         }
         await storage.claimBookCache("100", first.lock.taskId);
         const original = new Map([[0, createChapter(0, { content: "original" })]]);
-        expect(await storage.saveBookCacheForTask("100", first.lock.taskId, original)).toBe(true);
+        expect(await storage.putBookCacheBatchForTask("100", first.lock.taskId, original)).toBe(true);
         await locks.releaseBookDownloadLock(first.lock);
 
         const replacement = await locks.acquireBookDownloadLock("100", "detail");
@@ -53,14 +53,54 @@ describe("book lock contracts", () => {
         await storage.claimBookCache("100", replacement.lock.taskId);
 
         const staleOverwrite = new Map([[0, createChapter(0, { content: "stale overwrite" })]]);
-        expect(await storage.saveBookCacheForTask("100", first.lock.taskId, staleOverwrite)).toBe(false);
+        expect(await storage.putBookCacheBatchForTask("100", first.lock.taskId, staleOverwrite)).toBe(false);
         expect(await storage.clearBookCacheForTask("100", first.lock.taskId)).toBe(false);
 
         const restored = await storage.loadBookCache("100");
         expect(restored.map?.get(0)?.content).toBe("original");
-        expect(await storage.saveBookCacheForTask("100", replacement.lock.taskId, restored.map ?? new Map())).toBe(
+        expect(await storage.putBookCacheBatchForTask("100", replacement.lock.taskId, restored.map ?? new Map())).toBe(
             true
         );
         await locks.releaseBookDownloadLock(replacement.lock);
+    });
+
+    it("lazily migrates v2 chapters after the v3 writer is claimed", async () => {
+        vi.stubGlobal("BroadcastChannel", undefined);
+        const { get, set } = await import("idb-keyval");
+        const storage = await import("../src/core/cache/book-cache");
+        const legacyChapter = createChapter(0, { content: "legacy chapter" });
+        await set("esj_down_book_200", {
+            version: 2,
+            ts: Date.now(),
+            chapters: [[0, legacyChapter]]
+        });
+
+        expect((await storage.loadBookCache("200")).map?.get(0)?.content).toBe("legacy chapter");
+        expect(await get("esj_down_book_200")).toBeDefined();
+
+        const claimed = await storage.claimBookCache("200", "task-200");
+        expect(claimed.map?.get(0)?.content).toBe("legacy chapter");
+        expect(await get("esj_down_book_200")).toBeUndefined();
+
+        expect(await storage.putBookCacheBatchForTask("200", "task-200", new Map([[1, createChapter(1)]]))).toBe(true);
+        expect((await storage.loadBookCache("200")).size).toBe(2);
+    });
+
+    it("keeps cleared v3 cache from falling back to residual v2 data", async () => {
+        vi.stubGlobal("BroadcastChannel", undefined);
+        const { set } = await import("idb-keyval");
+        const storage = await import("../src/core/cache/book-cache");
+        await storage.claimBookCache("300", "task-300");
+        await storage.putBookCacheBatchForTask("300", "task-300", new Map([[0, createChapter(0)]]));
+        expect(await storage.clearBookCacheForTask("300", "task-300")).toBe(true);
+
+        await set("esj_down_book_300", {
+            version: 2,
+            ts: Date.now(),
+            chapters: [[0, createChapter(0, { content: "residual legacy chapter" })]]
+        });
+
+        expect(await storage.loadBookCache("300")).toEqual({ size: 0, map: null });
+        expect(await storage.listBookCaches()).toEqual([]);
     });
 });

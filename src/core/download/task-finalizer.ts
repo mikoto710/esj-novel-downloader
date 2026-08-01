@@ -1,6 +1,6 @@
 import { BookDownloadLock } from "../../types";
 import { releaseBookDownloadLock, shouldDiscardBookDownloadCache } from "../book-lock";
-import { clearBookCacheForTask } from "../storage";
+import { clearBookCacheForTask } from "../cache/book-cache";
 import { clearRuntimeCacheSession, state } from "../state";
 
 /**

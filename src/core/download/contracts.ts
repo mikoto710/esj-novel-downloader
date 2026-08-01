@@ -136,10 +136,10 @@ export interface CoverFetcherPort {
 
 /**
  * 下载核心所需的缓存操作
- * 当前 v2 实现暂时保存全量快照，后续可在保持接口边界的基础上替换为增量 repository
+ * 写入接口只接收本批发生变化的章节
  */
 export interface ChapterCacheRepository {
-    saveSnapshot(bookId: string, taskId: string, chapters: Map<number, Chapter>, meta: CacheMeta): Promise<boolean>;
+    putBatch(bookId: string, taskId: string, entries: ReadonlyMap<number, Chapter>, meta: CacheMeta): Promise<boolean>;
     clearForTask(bookId: string, taskId: string): Promise<boolean>;
 }
 
@@ -165,6 +165,7 @@ export interface DownloadSchedulerPort {
     sleep(ms: number): Promise<void>;
     sleepWithAbort(ms: number): Promise<void>;
     randomDelay(minInclusive: number, maxInclusive: number): number;
+    schedule(delayMs: number, callback: () => void): () => void;
 }
 
 /**

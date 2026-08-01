@@ -21,7 +21,7 @@ const mocks = vi.hoisted(() => ({
     log: vi.fn()
 }));
 
-vi.mock("../src/core/cache-sync", () => ({
+vi.mock("../src/core/cache/sync", () => ({
     subscribeCacheSync: vi.fn(() => vi.fn()),
     publishCacheSyncEvent: vi.fn()
 }));
@@ -35,7 +35,10 @@ vi.mock("../src/core/book-lock", () => ({
     startBookDownloadLockHeartbeat: mocks.startHeartbeat,
     updateBookDownloadLockTitle: mocks.updateTitle
 }));
-vi.mock("../src/core/storage", () => ({ loadBookCache: mocks.loadCache, claimBookCache: mocks.claimCache }));
+vi.mock("../src/core/cache/book-cache", () => ({
+    loadBookCache: mocks.loadCache,
+    claimBookCache: mocks.claimCache
+}));
 vi.mock("../src/core/parser", () => ({
     parseBookMetadata: vi.fn(() => ({
         bookName: "测试小说",

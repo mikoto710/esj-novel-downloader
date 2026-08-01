@@ -1,5 +1,5 @@
 import { abortActiveDownload, state } from "../core/state";
-import { listManagedCaches } from "../core/cache-manager";
+import { listManagedCaches } from "../core/cache/manager";
 import { fullCleanup, enableDrag, el } from "../utils/dom";
 import { log, triggerDownload } from "../utils/index";
 import { createMinimizedTray } from "./tray";
@@ -13,7 +13,7 @@ import {
     getEpubTagPageSetting,
     setEpubTagPageSetting
 } from "../core/config";
-import { clearAllCaches } from "../core/storage";
+import { clearAllCaches } from "../core/cache/book-cache";
 import { buildHtml } from "../core/html";
 import { createCacheManagerPopup } from "./cache-manager";
 import { createDownloadHistoryPopup } from "./download-history";

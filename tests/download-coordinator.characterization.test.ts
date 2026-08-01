@@ -38,7 +38,9 @@ describe("runDownload characterization", () => {
             "preparing",
             "restoring-cache",
             "downloading",
+            "flushing-cache",
             "checking-integrity",
+            "flushing-cache",
             "preparing-export",
             "export-ready"
         ]);
@@ -112,7 +114,7 @@ function createHarness(tasks: DownloadTask[], chapters = new Map<number, Chapter
         },
         coverFetcher: { fetch: async () => null },
         cache: {
-            saveSnapshot: async () => true,
+            putBatch: async () => true,
             async clearForTask(bookId, taskId) {
                 cacheClears.push({ bookId, taskId });
                 return true;
@@ -126,7 +128,8 @@ function createHarness(tasks: DownloadTask[], chapters = new Map<number, Chapter
         scheduler: {
             sleep: async () => undefined,
             sleepWithAbort: async () => undefined,
-            randomDelay: () => 0
+            randomDelay: () => 0,
+            schedule: () => () => undefined
         },
         settings: {
             getConcurrency: () => 1,

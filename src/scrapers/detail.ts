@@ -12,7 +12,7 @@ import { createConfirmPopup, createDownloadPopup, showBookDownloadInProgressPopu
 import { batchDownload } from "../core/download/batch-download";
 import type { DownloadTask } from "../core/download/contracts";
 import { parseBookMetadata } from "../core/parser";
-import { claimBookCache, loadBookCache } from "../core/storage";
+import { claimBookCache, loadBookCache } from "../core/cache/book-cache";
 import { finalizeBookDownloadTask } from "../core/download/task-finalizer";
 
 function getBookId(): string {

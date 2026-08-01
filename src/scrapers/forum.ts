@@ -11,7 +11,7 @@ import {
     startBookDownloadLockHeartbeat,
     updateBookDownloadLockTitle
 } from "../core/book-lock";
-import { claimBookCache, loadBookCache } from "../core/storage";
+import { claimBookCache, loadBookCache } from "../core/cache/book-cache";
 import { fullCleanup } from "../utils/dom";
 import { finalizeBookDownloadTask } from "../core/download/task-finalizer";
 

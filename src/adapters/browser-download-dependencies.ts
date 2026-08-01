@@ -18,7 +18,7 @@ import {
     state,
     updateRuntimeCacheSession
 } from "../core/state";
-import { clearBookCacheForTask, saveBookCacheForTask } from "../core/storage";
+import { clearBookCacheForTask, putBookCacheBatchForTask } from "../core/cache/book-cache";
 import type { Chapter } from "../types";
 import { createDownloadPopup, showFormatChoice } from "../ui/popups";
 import { updateTrayText } from "../ui/tray";
@@ -151,9 +151,9 @@ const coverFetcher: CoverFetcherPort = {
     }
 };
 
-// 增量 repository 落地前，继续适配现有 v2 全量快照接口
+// IndexedDB 适配层只接收本批发生变化的章节
 const cache: ChapterCacheRepository = {
-    saveSnapshot: saveBookCacheForTask,
+    putBatch: putBookCacheBatchForTask,
     clearForTask: clearBookCacheForTask
 };
 
@@ -180,7 +180,11 @@ export function createBrowserDownloadDependencies(): DownloadDependencies {
             sleep,
             sleepWithAbort,
             randomDelay: (minInclusive, maxInclusive) =>
-                Math.floor(Math.random() * (maxInclusive - minInclusive + 1)) + minInclusive
+                Math.floor(Math.random() * (maxInclusive - minInclusive + 1)) + minInclusive,
+            schedule: (delayMs, callback) => {
+                const timer = window.setTimeout(callback, delayMs);
+                return () => window.clearTimeout(timer);
+            }
         },
         settings: {
             getConcurrency,
