@@ -1,5 +1,5 @@
-name: Bug Report / 错误报告
-description: Report a reproducible problem with ESJZone Novel Downloader
+name: Bug 反馈
+description: 反馈 ESJ Novel Downloader 中可复现的 Bug
 title: "[Bug]: "
 labels:
     - bug
@@ -7,212 +7,123 @@ body:
     - type: markdown
       attributes:
           value: |
-              感谢你提交错误报告。请尽量填写完整信息，以便快速复现和定位问题。
-              请勿上传包含完整小说内容的 EPUB、TXT 或 HTML 文件；必要时请提供截图、日志或单个资源 URL。
+              感谢你提交 Bug 反馈。请尽量提供完整信息，以便快速复现和定位问题。
+              请勿上传完整小说内容、登录信息、Cookie、访问令牌或其他敏感数据。
 
-    - type: input
-      id: userscript_version
+    - type: checkboxes
+      id: checks
       attributes:
-          label: Userscript version / 脚本版本
-          description: 可在脚本管理器或下载面板中查看。
-          placeholder: e.g. 1.4.6-beta.4
-      validations:
-          required: true
-
-    - type: dropdown
-      id: issue_category
-      attributes:
-          label: Issue category / 问题类型
-          description: 请选择问题主要属于哪一类。
+          label: 提交前确认
           options:
-              - Download-related issue / 下载相关问题
-              - Other feature issue / 其他功能问题
-      validations:
-          required: true
-
-    - type: dropdown
-      id: affected_feature
-      attributes:
-          label: Affected feature / 涉及功能
-          options:
-              - Full-book download / 全本下载
-              - Single-chapter export / 单章导出
-              - Exported files / 导出文件
-              - Chapter images / 正文图片
-              - Settings / 设置
-              - Cache and recovery / 缓存与恢复
-              - Download history / 下载记录
-              - Page buttons or interface / 页面按钮或界面
-              - Installation or update / 安装或更新
-              - Other / 其他
-      validations:
-          required: true
-
-    - type: dropdown
-      id: page_type
-      attributes:
-          label: Page type / 页面类型
-          options:
-              - Novel detail page / 小说详情页
-              - Forum page / 论坛页面
-              - Single chapter page / 单章阅读页
-              - Not applicable / 不适用
-              - Other / 其他
-      validations:
-          required: true
+              - label: 我已搜索现有 Issue，并使用当前可用的最新版本进行测试。
+                required: true
+              - label: 我确认这是 Bug 反馈，而不是使用问题或功能需求。
+                required: true
+              - label: 我已移除敏感信息和受版权保护的完整内容。
+                required: true
 
     - type: markdown
       attributes:
           value: |
-              ### Download-related details / 下载问题补充信息
-
-              以下内容仅用于下载、导出、正文图片或缓存恢复相关问题；不适用时可留空。
-
-    - type: input
-      id: book_url
-      attributes:
-          label: Book URL or ID / 书籍链接或 ID
-          description: 如果问题与特定书籍有关，请提供公开链接或 ID。
-          placeholder: e.g. https://www.esjzone.cc/detail/1234567890.html
-
-    - type: input
-      id: chapter_url
-      attributes:
-          label: Chapter URL / 章节链接
-          description: 如果问题只发生在特定章节，请提供章节链接。
-          placeholder: e.g. https://www.esjzone.cc/forum/123/456.html
-
-    - type: dropdown
-      id: download_scope
-      attributes:
-          label: Download scope / 下载范围
-          options:
-              - Full-book download / 全本下载
-              - Single-chapter export / 单章导出
-              - Other / 其他
-
-    - type: dropdown
-      id: export_format
-      attributes:
-          label: Export format / 导出格式
-          options:
-              - EPUB
-              - HTML
-              - TXT
-              - Other / 其他
-
-    - type: dropdown
-      id: image_download
-      attributes:
-          label: Chapter image download / 正文图片下载
-          options:
-              - Enabled / 已开启
-              - Disabled / 已关闭
-              - Not sure / 不确定
-
-    - type: dropdown
-      id: cache_state
-      attributes:
-          label: Cache or resume state / 缓存或恢复状态
-          description: 出现问题时是否正在使用已有缓存或恢复未完成的任务？
-          options:
-              - Fresh download without existing cache / 无已有缓存的新下载
-              - Resuming with existing cache / 使用已有缓存恢复任务
-              - Not sure / 不确定
-
-    - type: input
-      id: epub_reader
-      attributes:
-          label: EPUB reader / EPUB 阅读器
-          description: EPUB 相关问题请提供阅读器名称和版本。
-          placeholder: e.g. Calibre, KOReader, Apple Books
-
-    - type: markdown
-      attributes:
-          value: |
-              ### Other feature details / 其他功能问题补充信息
-
-              如果问题与下载无关，请补充涉及的功能、相关设置和触发问题前的操作。
+              ## 问题详情
 
     - type: textarea
-      id: other_feature_context
+      id: problem_description
       attributes:
-          label: Other feature context / 其他功能场景
-          description: 可说明涉及的设置、界面状态、安装或更新方式，以及问题是否在所有页面出现。
-          placeholder: e.g. 打开下载记录后，切换筛选条件时……
-
-    - type: markdown
-      attributes:
-          value: |
-              ### Problem details / 问题详情
+          label: 问题描述
+          description: 请只报告一个问题，并说明实际行为、预期行为和出现频率。
+          placeholder: |
+              实际发生：
+              预期行为：
+              出现频率：
+      validations:
+          required: true
 
     - type: textarea
       id: reproduction_steps
       attributes:
-          label: Steps to reproduce / 重现步骤
-          description: 请按顺序说明如何触发问题。如果问题偶发，请说明出现频率以及发生前的操作。
+          label: 复现步骤
+          description: 如果可以稳定复现，请按顺序提供操作步骤；如果无法稳定复现，可以留空，并在问题描述中说明出现频率。
           placeholder: |
-              e.g.
               1. 打开……页面
               2. 将……设置为……
               3. 点击……
               4. 观察到……
+
+    - type: markdown
+      attributes:
+          value: |
+              ## 分类与环境
+
+    - type: dropdown
+      id: affected_feature
+      attributes:
+          label: 涉及功能
+          description: 请选择最接近的问题范围。
+          options:
+              - 全本下载
+              - 单章导出
+              - 导出文件（EPUB、HTML 或 TXT）
+              - 正文图片
+              - 缓存或任务恢复
+              - 下载记录
+              - 设置或页面界面
+              - 安装或更新
+              - 其他
       validations:
           required: true
 
-    - type: textarea
-      id: actual_behavior
+    - type: input
+      id: userscript_version
       attributes:
-          label: Actual behavior / 实际结果
-          description: 请描述实际发生了什么，并附上完整错误信息。
-      validations:
-          required: true
-
-    - type: textarea
-      id: expected_behavior
-      attributes:
-          label: Expected behavior / 预期结果
-          description: 请描述你认为应该发生什么。
+          label: 脚本版本
+          description: 可在脚本管理器或下载面板中查看。
+          placeholder: 例如：1.4.6-beta.4
       validations:
           required: true
 
     - type: input
       id: browser
       attributes:
-          label: Browser / 浏览器
-          placeholder: e.g. Chrome 140, Firefox 142
+          label: 浏览器
+          placeholder: 例如：Chrome 140、Firefox 142
       validations:
           required: true
 
     - type: input
       id: userscript_manager
       attributes:
-          label: Userscript manager / 脚本管理器
-          placeholder: e.g. Tampermonkey 5.x, Violentmonkey 2.x
+          label: 脚本管理器
+          placeholder: 例如：Tampermonkey 5.x、Violentmonkey 2.x
       validations:
           required: true
+
+    - type: markdown
+      attributes:
+          value: |
+              ## 场景补充
+
+    - type: textarea
+      id: related_context
+      attributes:
+          label: 相关页面与场景
+          description: 下载问题请补充书籍或章节链接、下载范围、导出格式、正文图片设置、缓存状态及阅读器；其他功能问题请补充相关设置、界面状态和问题发生前的操作。
+          placeholder: 例如：相关页面链接、导出格式、设置状态或问题发生前的操作
+
+    - type: markdown
+      attributes:
+          value: |
+              ## 日志与附件
 
     - type: textarea
       id: logs
       attributes:
-          label: Logs / 日志
-          description: 请粘贴下载面板或浏览器控制台中的相关日志，并移除敏感信息。
+          label: 相关日志
+          description: 请粘贴下载面板或浏览器控制台中的相关日志，并移除敏感信息。内容会自动格式化为代码，无需添加反引号。
           render: shell
 
     - type: textarea
       id: screenshots
       attributes:
-          label: Screenshots or additional context / 截图或补充信息
-          description: 可将截图拖放到此处，或提供单个图片资源 URL。
-
-    - type: checkboxes
-      id: checks
-      attributes:
-          label: Pre-submission checklist / 提交前确认
-          options:
-              - label: I have searched existing issues for the same problem. / 我已搜索过现有 Issue，没有发现相同问题。
-                required: true
-              - label: I have tested with the latest available version. / 我已使用当前可用的最新版本进行测试。
-                required: true
-              - label: I have removed sensitive information and full copyrighted content. / 我已移除敏感信息和受版权保护的完整内容。
-                required: true
+          label: 截图或补充信息
+          description: 可将截图或录屏拖放到此处，或提供单个图片资源 URL。

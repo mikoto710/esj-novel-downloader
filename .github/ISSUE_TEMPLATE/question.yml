@@ -1,5 +1,5 @@
-name: Question / 使用问题
-description: Ask for help using ESJZone Novel Downloader
+name: 使用问题
+description: 获取 ESJ Novel Downloader 的使用帮助
 title: "[Question]: "
 labels:
     - question
@@ -8,83 +8,60 @@ body:
       attributes:
           value: |
               感谢你提出问题。请说明你想完成什么以及目前遇到的疑问，以便其他人快速理解你的使用场景。
-              如果现有功能没有按预期工作，请改用 Bug Report / 错误报告模板；如果希望增加或改进功能，请改用 Feature Request / 功能建议模板。
+              如果现有功能没有按预期工作，请改用 Bug 反馈模板；如果希望增加或改进功能，请改用功能建议模板。
               请勿上传完整小说内容、登录信息、Cookie、访问令牌或其他敏感数据。
-
-    - type: input
-      id: userscript_version
-      attributes:
-          label: Userscript version / 脚本版本
-          description: 可在脚本管理器或下载面板中查看。
-          placeholder: e.g. 1.4.6-beta.4
-      validations:
-          required: true
-
-    - type: dropdown
-      id: question_area
-      attributes:
-          label: Question area / 问题范围
-          description: 请选择最接近的问题范围。
-          options:
-              - Installation or update / 安装或更新
-              - Download workflow / 下载流程
-              - Exported file / 导出文件
-              - Chapter images / 正文图片
-              - Settings, cache, or history / 设置、缓存或下载记录
-              - Page or site compatibility / 页面或站点兼容
-              - Other / 其他
-      validations:
-          required: true
-
-    - type: textarea
-      id: goal
-      attributes:
-          label: What are you trying to do? / 你想完成什么？
-          description: 请描述你的使用场景和期望完成的目标。
-          placeholder: 我希望使用脚本来……
-      validations:
-          required: true
-
-    - type: textarea
-      id: question
-      attributes:
-          label: Question / 具体问题
-          description: 请清楚说明你不确定或需要帮助的地方。
-      validations:
-          required: true
-
-    - type: textarea
-      id: attempts
-      attributes:
-          label: What have you tried? / 已尝试的方法
-          description: 请列出你已经查看的文档、设置或尝试过的操作，以及对应结果。
-
-    - type: input
-      id: browser
-      attributes:
-          label: Browser / 浏览器
-          placeholder: e.g. Chrome 140, Firefox 142
-
-    - type: input
-      id: userscript_manager
-      attributes:
-          label: Userscript manager / 脚本管理器
-          placeholder: e.g. Tampermonkey 5.x, Violentmonkey 2.x
-
-    - type: textarea
-      id: additional_context
-      attributes:
-          label: Screenshots or additional context / 截图或补充信息
-          description: 可将截图拖放到此处，或补充相关页面、导出格式和设置。请移除敏感信息和受版权保护的完整内容。
 
     - type: checkboxes
       id: checks
       attributes:
-          label: Pre-submission checklist / 提交前确认
+          label: 提交前确认
           options:
-              - label: I have checked the README and searched existing issues. / 我已查看 README 并搜索过现有 Issue。
+              - label: 我已查看 README 并搜索过现有 Issue。
                 required: true
-              - label: This is a usage question, not a reproducible bug or feature request. / 这是使用问题，而不是可复现的错误或功能需求。
+              - label: 这是使用问题，而不是可复现的 Bug 或功能需求。
                 required: true
-              - label: I have removed sensitive information and full copyrighted content. / 我已移除敏感信息和受版权保护的完整内容。
+              - label: 我已移除敏感信息和受版权保护的完整内容。
                 required: true
+
+    - type: dropdown
+      id: question_area
+      attributes:
+          label: 问题范围
+          description: 请选择最接近的问题范围。
+          options:
+              - 安装或更新
+              - 下载流程
+              - 导出文件
+              - 正文图片
+              - 设置、缓存或下载记录
+              - 页面或站点兼容
+              - 其他
+      validations:
+          required: true
+
+    - type: textarea
+      id: question_details
+      attributes:
+          label: 具体问题
+          description: 请说明你想完成什么、目前不清楚或卡住的地方，以及已经尝试过的方法。
+          placeholder: |
+              我想完成：
+              目前不清楚或卡住的地方：
+              已经尝试：
+      validations:
+          required: true
+
+    - type: input
+      id: userscript_version
+      attributes:
+          label: 脚本版本
+          description: 可在脚本管理器或下载面板中查看。
+          placeholder: 例如：1.4.6-beta.4
+      validations:
+          required: true
+
+    - type: textarea
+      id: additional_context
+      attributes:
+          label: 环境与补充信息
+          description: 如有需要，可补充浏览器、脚本管理器、相关页面或设置，并将截图拖放到此处。请移除敏感信息和受版权保护的完整内容。
