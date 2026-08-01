@@ -1,0 +1,94 @@
+name: Feature Request / 功能建议
+description: Suggest a new feature or improvement for ESJZone Novel Downloader
+title: "[Feature]: "
+labels:
+    - enhancement
+body:
+    - type: markdown
+      attributes:
+          value: |
+              感谢你提出功能建议。请重点说明要解决的问题和使用场景，具体实现方式可以在 Issue 中继续讨论。
+              如果现有功能没有按预期工作，请改用 Bug Report / 错误报告模板。
+              请勿上传完整小说内容、登录信息、Cookie、访问令牌或其他敏感数据。
+
+    - type: dropdown
+      id: feature_area
+      attributes:
+          label: Feature area / 功能范围
+          description: 请选择最接近的功能范围。
+          options:
+              - Download workflow / 下载流程
+              - Export formats / 导出格式
+              - Chapter images / 正文图片
+              - Cache and recovery / 缓存与恢复
+              - Download history / 下载记录
+              - Settings and interface / 设置与界面
+              - Page or site compatibility / 页面或站点兼容
+              - Other / 其他
+      validations:
+          required: true
+
+    - type: textarea
+      id: problem
+      attributes:
+          label: Problem or use case / 问题与使用场景
+          description: 请说明目前遇到的限制、使用场景，以及这个需求会帮助哪些用户。尽量描述问题本身，而不只是功能名称。
+          placeholder: |
+              当我……时，目前只能……
+              这会导致……
+              我通常每次/每天需要……
+      validations:
+          required: true
+
+    - type: textarea
+      id: proposed_solution
+      attributes:
+          label: Proposed solution / 建议方案
+          description: 请描述你期望的行为或交互方式；不确定实现细节也没关系。
+          placeholder: |
+              我希望可以……
+              例如，在……位置增加……，并在……情况下……
+      validations:
+          required: true
+
+    - type: textarea
+      id: alternatives
+      attributes:
+          label: Alternatives considered / 已尝试的替代方案
+          description: 如果目前有临时解决办法，或你考虑过其他方案，请在这里说明。
+
+    - type: textarea
+      id: examples
+      attributes:
+          label: Examples or references / 示例与参考
+          description: 可提供界面草图、截图、类似工具或相关 Issue。请移除敏感信息和受版权保护的完整内容。
+
+    - type: dropdown
+      id: compatibility
+      attributes:
+          label: Compatibility impact / 兼容性影响
+          description: 这个建议是否可能改变现有下载、缓存、配置或导出结果？
+          options:
+              - No expected impact / 预计没有影响
+              - May change existing behavior / 可能改变现有行为
+              - Not sure / 不确定
+      validations:
+          required: true
+
+    - type: textarea
+      id: additional_context
+      attributes:
+          label: Additional context / 补充信息
+          description: 如需求只适用于特定页面、导出格式、浏览器或脚本管理器，请在这里说明。
+
+    - type: checkboxes
+      id: checks
+      attributes:
+          label: Pre-submission checklist / 提交前确认
+          options:
+              - label: I have searched existing issues and found no duplicate request. / 我已搜索过现有 Issue，没有发现重复需求。
+                required: true
+              - label: This is a feature or improvement request, not a bug report or support question. / 这是功能或改进建议，而不是错误报告或使用求助。
+                required: true
+              - label: I have removed sensitive information and full copyrighted content. / 我已移除敏感信息和受版权保护的完整内容。
+                required: true
