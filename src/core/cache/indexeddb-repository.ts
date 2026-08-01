@@ -58,8 +58,13 @@ function normalizeMeta(bookId: string, meta?: CacheMeta): CacheMeta | undefined 
     return { ...meta, bookId, updatedAt: Date.now() };
 }
 
+function createCacheAbortError(): DOMException {
+    return new DOMException("缓存事务已中止", "AbortError");
+}
+
 function runWriteTransaction<T>(
-    operation: (store: IDBObjectStore, setResult: CacheTransactionResult<T>) => void
+    operation: (store: IDBObjectStore, setResult: CacheTransactionResult<T>) => void,
+    signal?: AbortSignal
 ): Promise<T> {
     return cacheV3Store(
         "readwrite",
@@ -68,16 +73,41 @@ function runWriteTransaction<T>(
                 let result: T;
                 let hasResult = false;
                 const transaction = store.transaction;
+                const cleanupAbortListener = () => signal?.removeEventListener("abort", onSignalAbort);
+                const onSignalAbort = () => {
+                    try {
+                        transaction.abort();
+                    } catch {
+                        // 事务已经完成时无需重复中止
+                    }
+                    cleanupAbortListener();
+                    reject(createCacheAbortError());
+                };
 
                 transaction.oncomplete = () => {
+                    cleanupAbortListener();
                     if (!hasResult) {
                         reject(new Error("缓存事务未返回结果"));
                         return;
                     }
                     resolve(result);
                 };
-                transaction.onabort = () => reject(transaction.error || new Error("缓存事务已中止"));
-                transaction.onerror = () => reject(transaction.error || new Error("缓存事务失败"));
+                transaction.onabort = () => {
+                    cleanupAbortListener();
+                    reject(
+                        signal?.aborted ? createCacheAbortError() : transaction.error || new Error("缓存事务已中止")
+                    );
+                };
+                transaction.onerror = () => {
+                    cleanupAbortListener();
+                    reject(signal?.aborted ? createCacheAbortError() : transaction.error || new Error("缓存事务失败"));
+                };
+
+                if (signal?.aborted) {
+                    onSignalAbort();
+                    return;
+                }
+                signal?.addEventListener("abort", onSignalAbort, { once: true });
 
                 try {
                     operation(store, (value) => {
@@ -85,7 +115,12 @@ function runWriteTransaction<T>(
                         hasResult = true;
                     });
                 } catch (error) {
-                    transaction.abort();
+                    try {
+                        transaction.abort();
+                    } catch {
+                        // 同步异常发生在事务完成边界时无需重复中止
+                    }
+                    cleanupAbortListener();
                     reject(error);
                 }
             })
@@ -126,7 +161,8 @@ export async function claimCacheV3(
     bookId: string,
     taskId: string,
     migrationSource: CacheMigrationSource | null,
-    maxAgeMs: number
+    maxAgeMs: number,
+    signal?: AbortSignal
 ): Promise<void> {
     await runWriteTransaction<void>((store, setResult) => {
         const request = store.get(getManifestKey(bookId));
@@ -171,7 +207,7 @@ export async function claimCacheV3(
             );
             setResult();
         };
-    });
+    }, signal);
 }
 
 /**
@@ -181,7 +217,8 @@ export async function putCacheBatchV3(
     bookId: string,
     taskId: string,
     entries: ReadonlyMap<number, Chapter>,
-    meta?: CacheMeta
+    meta?: CacheMeta,
+    signal?: AbortSignal
 ): Promise<boolean> {
     return runWriteTransaction<boolean>((store, setResult) => {
         const request = store.get(getManifestKey(bookId));
@@ -214,13 +251,13 @@ export async function putCacheBatchV3(
                 setResult(true);
             };
         };
-    });
+    }, signal);
 }
 
 /**
  * 仅允许当前 writer 清理章节并写入 v3 墓碑
  */
-export async function clearCacheV3ForTask(bookId: string, taskId: string): Promise<boolean> {
+export async function clearCacheV3ForTask(bookId: string, taskId: string, signal?: AbortSignal): Promise<boolean> {
     return runWriteTransaction<boolean>((store, setResult) => {
         const request = store.get(getManifestKey(bookId));
         request.onsuccess = () => {
@@ -243,7 +280,7 @@ export async function clearCacheV3ForTask(bookId: string, taskId: string): Promi
             );
             setResult(true);
         };
-    });
+    }, signal);
 }
 
 /**

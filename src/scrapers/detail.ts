@@ -70,8 +70,13 @@ export async function scrapeDetail(): Promise<void> {
     createDownloadPopup();
 
     try {
-        const claimedCache = await claimBookCache(bookId, lock.taskId);
+        log("正在准备本地缓存...");
+        const claimedCache = await claimBookCache(bookId, lock.taskId, state.abortController?.signal);
         state.globalChaptersMap = claimedCache.map || new Map();
+        if (state.abortFlag) {
+            fullCleanup(state.originalTitle);
+            return;
+        }
 
         const chaptersNodes = Array.from(document.querySelectorAll("#chapterList a")) as HTMLAnchorElement[];
 
@@ -111,6 +116,10 @@ export async function scrapeDetail(): Promise<void> {
             tasks
         });
     } catch (e: any) {
+        if (state.abortFlag || e.name === "AbortError" || e.message === "User Aborted") {
+            fullCleanup(state.originalTitle);
+            return;
+        }
         console.error(e);
         log("❌ 抓取流程异常: " + e.message);
         fullCleanup(state.originalTitle);

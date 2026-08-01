@@ -141,8 +141,14 @@ export interface CoverFetcherPort {
  * 写入接口只接收本批发生变化的章节
  */
 export interface ChapterCacheRepository {
-    putBatch(bookId: string, taskId: string, entries: ReadonlyMap<number, Chapter>, meta: CacheMeta): Promise<boolean>;
-    clearForTask(bookId: string, taskId: string): Promise<boolean>;
+    putBatch(
+        bookId: string,
+        taskId: string,
+        entries: ReadonlyMap<number, Chapter>,
+        meta: CacheMeta,
+        signal?: AbortSignal
+    ): Promise<boolean>;
+    clearForTask(bookId: string, taskId: string, signal?: AbortSignal): Promise<boolean>;
 }
 
 /**

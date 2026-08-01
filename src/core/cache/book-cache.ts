@@ -36,6 +36,10 @@ function isReusableV3Cache(data: CacheManifestV3 | undefined): data is CacheMani
     return Boolean(data && data.version === 3 && !data.cleared && !isExpired(data));
 }
 
+function isAbortError(error: unknown): boolean {
+    return Boolean(error && typeof error === "object" && "name" in error && error.name === "AbortError");
+}
+
 async function deleteLegacyCacheAfterMigration(bookId: string): Promise<void> {
     try {
         await deleteLegacyCache(bookId);
@@ -117,21 +121,24 @@ export async function loadBookCache(bookId: string): Promise<{ size: number; map
  */
 export async function claimBookCache(
     bookId: string,
-    taskId: string
+    taskId: string,
+    signal?: AbortSignal
 ): Promise<{ size: number; map: Map<number, Chapter> | null }> {
     try {
         const legacy = await readLegacyCache(bookId);
         const migrationSource = isReusableLegacyCache(legacy?.data)
             ? { chapters: legacy.data.chapters, meta: legacy.data.meta }
             : null;
-        await claimCacheV3(bookId, taskId, migrationSource, CACHE_EXPIRE_TIME);
+        await claimCacheV3(bookId, taskId, migrationSource, CACHE_EXPIRE_TIME, signal);
         await deleteLegacyCacheAfterMigration(bookId);
         publishCacheSyncEvent({ type: "cache-claimed", bookId, taskId });
 
         const map = await readCacheChaptersV3(bookId);
         return { size: map.size, map: map.size > 0 ? map : null };
     } catch (error) {
-        console.error("认领缓存失败", error);
+        if (!isAbortError(error)) {
+            console.error("认领缓存失败", error);
+        }
         throw error;
     }
 }
@@ -143,20 +150,23 @@ export async function putBookCacheBatchForTask(
     bookId: string,
     taskId: string,
     entries: ReadonlyMap<number, Chapter>,
-    meta?: CacheMeta
+    meta?: CacheMeta,
+    signal?: AbortSignal
 ): Promise<boolean> {
     if (entries.size === 0) {
         return false;
     }
 
     try {
-        const saved = await putCacheBatchV3(bookId, taskId, entries, meta);
+        const saved = await putCacheBatchV3(bookId, taskId, entries, meta, signal);
         if (saved) {
             publishCacheSyncEvent({ type: "cache-saved", bookId, taskId });
         }
         return saved;
     } catch (error) {
-        console.error("保存缓存失败", error);
+        if (!isAbortError(error)) {
+            console.error("保存缓存失败", error);
+        }
         return false;
     }
 }
@@ -164,9 +174,9 @@ export async function putBookCacheBatchForTask(
 /**
  * 仅允许当前缓存写入任务清理 v3 章节
  */
-export async function clearBookCacheForTask(bookId: string, taskId: string): Promise<boolean> {
+export async function clearBookCacheForTask(bookId: string, taskId: string, signal?: AbortSignal): Promise<boolean> {
     try {
-        const cleared = await clearCacheV3ForTask(bookId, taskId);
+        const cleared = await clearCacheV3ForTask(bookId, taskId, signal);
         if (cleared) {
             await deleteLegacyCacheAfterMigration(bookId);
             log("🗑️ 已清理当前下载任务缓存:" + bookId);
@@ -174,7 +184,9 @@ export async function clearBookCacheForTask(bookId: string, taskId: string): Pro
         }
         return cleared;
     } catch (error) {
-        console.error("清理当前下载任务缓存失败", error);
+        if (!isAbortError(error)) {
+            console.error("清理当前下载任务缓存失败", error);
+        }
         return false;
     }
 }

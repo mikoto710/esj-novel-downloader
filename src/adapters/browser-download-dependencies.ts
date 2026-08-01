@@ -29,7 +29,7 @@ import { fetchWithTimeout, log, sleep, sleepWithAbort } from "../utils/index";
 import { removeImgTags } from "../utils/text";
 
 // 下载核心的浏览器实现边界
-// DOM、全局 state、网络、解析、图片、v2 缓存和锁实现均限制在本模块中
+// DOM、全局 state、网络、解析、图片、缓存和锁实现均限制在本模块中
 function getErrorMessage(error: unknown): string {
     return error instanceof Error ? error.message : String(error);
 }

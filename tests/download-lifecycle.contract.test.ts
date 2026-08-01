@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { createBookLock, createDetailPageFixture, installDocumentFixture } from "./support";
+import { createBookLock, createDeferred, createDetailPageFixture, installDocumentFixture } from "./support";
 
 const mocks = vi.hoisted(() => ({
     batchDownload: vi.fn(),
@@ -99,5 +99,46 @@ describe("download lifecycle contracts", () => {
 
         expect(mocks.finalize).toHaveBeenCalledOnce();
         expect(mocks.finalize).toHaveBeenCalledWith(lock, mocks.stopHeartbeat);
+    });
+
+    it("shows cache preparation before claiming the writer", async () => {
+        await scrapeDetail();
+
+        expect(mocks.log).toHaveBeenCalledWith("正在准备本地缓存...");
+        expect(mocks.claimCache).toHaveBeenCalledWith("100", lock.taskId, expect.any(AbortSignal));
+        expect(mocks.log.mock.invocationCallOrder[0]).toBeLessThan(mocks.claimCache.mock.invocationCallOrder[0]);
+    });
+
+    it("cancels an in-progress cache claim before starting the download", async () => {
+        const claimStarted = createDeferred<void>();
+        const claimAborted = createDeferred<void>();
+        let requestCancellation: ((mode: "flush" | "discard") => void) | undefined;
+        mocks.startHeartbeat.mockImplementationOnce((_lock, onCancellationRequested) => {
+            requestCancellation = onCancellationRequested;
+            return mocks.stopHeartbeat;
+        });
+        mocks.claimCache.mockImplementationOnce((_bookId, _taskId, signal?: AbortSignal) => {
+            claimStarted.resolve();
+            return new Promise((_resolve, reject) => {
+                signal?.addEventListener(
+                    "abort",
+                    () => {
+                        claimAborted.resolve();
+                        reject(new DOMException("缓存事务已中止", "AbortError"));
+                    },
+                    { once: true }
+                );
+            });
+        });
+
+        const scrapePromise = scrapeDetail();
+        await claimStarted.promise;
+        requestCancellation?.("discard");
+        await claimAborted.promise;
+        await scrapePromise;
+
+        expect(mocks.batchDownload).not.toHaveBeenCalled();
+        expect(mocks.finalize).toHaveBeenCalledOnce();
+        expect(mocks.log.mock.calls.flat().join("\n")).not.toContain("抓取流程异常");
     });
 });

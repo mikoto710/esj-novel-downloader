@@ -126,4 +126,38 @@ describe("book lock contracts", () => {
         expect(await storage.loadBookCache("300")).toEqual({ size: 0, map: null });
         expect(await storage.listBookCaches()).toEqual([]);
     });
+
+    it("rejects an aborted v3 batch without changing persisted chapters", async () => {
+        vi.stubGlobal("BroadcastChannel", undefined);
+        const locks = await import("../src/core/book-lock");
+        const storage = await import("../src/core/cache/book-cache");
+        const acquired = await locks.acquireBookDownloadLock("103", "detail");
+        if (!acquired.acquired) {
+            throw new Error("expected lock");
+        }
+        await storage.claimBookCache("103", acquired.lock.taskId);
+        expect(
+            await storage.putBookCacheBatchForTask(
+                "103",
+                acquired.lock.taskId,
+                new Map([[0, createChapter(0, { content: "persisted" })]])
+            )
+        ).toBe(true);
+
+        const controller = new AbortController();
+        controller.abort();
+        expect(
+            await storage.putBookCacheBatchForTask(
+                "103",
+                acquired.lock.taskId,
+                new Map([[0, createChapter(0, { content: "aborted" })]]),
+                undefined,
+                controller.signal
+            )
+        ).toBe(false);
+
+        const restored = await storage.loadBookCache("103");
+        expect(restored.map?.get(0)?.content).toBe("persisted");
+        await locks.releaseBookDownloadLock(acquired.lock);
+    });
 });
