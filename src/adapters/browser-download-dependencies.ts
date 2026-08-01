@@ -64,6 +64,26 @@ const ui: DownloadUiPort = {
         }
     },
     update(snapshot) {
+        if (snapshot.phase === "cancelling" || snapshot.phase === "cancelled") {
+            const cancelled = snapshot.phase === "cancelled";
+            const status = cancelled ? "任务已停止" : "正在停止任务...";
+            const titleEl = document.querySelector("#esj-title") as HTMLElement | null;
+            const cancelButton = document.querySelector("#esj-cancel") as HTMLButtonElement | null;
+            if (titleEl) {
+                titleEl.textContent = "📌 " + status;
+            }
+            if (cancelButton) {
+                cancelButton.disabled = true;
+                cancelButton.textContent = cancelled
+                    ? "已停止"
+                    : state.cancellationMode === "discard"
+                      ? "正在停止..."
+                      : "正在保存...";
+                cancelButton.style.backgroundColor = "#999";
+            }
+            updateTrayText(status);
+            return;
+        }
         if (snapshot.phase !== "downloading" || snapshot.cancellationRequested || snapshot.completedCount === 0) {
             return;
         }
@@ -180,7 +200,7 @@ export function createBrowserDownloadDependencies(): DownloadDependencies {
         events: { emit: () => undefined },
         scheduler: {
             sleep,
-            sleepWithAbort,
+            sleepWithAbort: (ms) => sleepWithAbort(ms, state.abortController?.signal),
             randomDelay: (minInclusive, maxInclusive) =>
                 Math.floor(Math.random() * (maxInclusive - minInclusive + 1)) + minInclusive,
             schedule: (delayMs, callback) => {

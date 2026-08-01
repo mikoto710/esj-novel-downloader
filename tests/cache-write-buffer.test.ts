@@ -5,7 +5,8 @@ import {
     type CacheWritePolicy
 } from "../src/core/download/cache-write-buffer";
 import type { Chapter } from "../src/types";
-import { createChapter, createDeferred } from "./support";
+import type { DownloadCancellationMode } from "../src/types";
+import { createChapter, createDeferred, useFakeClock } from "./support";
 
 describe("ChapterCacheWriteBuffer", () => {
     it("uses the configurable 25 chapter, 4 MiB, and 3 second defaults", () => {
@@ -99,6 +100,75 @@ describe("ChapterCacheWriteBuffer", () => {
 
         await expect(Promise.all([firstAdd, secondAdd])).resolves.toEqual([true, true]);
         expect(writes).toEqual([[0], [1]]);
+    });
+
+    it("aborts an active write after the cancellation flush deadline", async () => {
+        const clock = useFakeClock();
+        const writeStarted = createDeferred<void>();
+        let cancellationListener: (mode: DownloadCancellationMode) => void = () => undefined;
+        let writeSignal: AbortSignal | undefined;
+        const buffer = new ChapterCacheWriteBuffer({
+            policy: { maxChapterCount: 1, maxBytes: Number.MAX_SAFE_INTEGER, maxDelayMs: 60_000 },
+            write: async (_entries, signal) => {
+                writeSignal = signal;
+                writeStarted.resolve();
+                return new Promise<boolean>(() => undefined);
+            },
+            schedule: (delayMs, callback) => {
+                const timer = setTimeout(callback, delayMs);
+                return () => clearTimeout(timer);
+            },
+            subscribeCancellation: (listener) => {
+                cancellationListener = listener;
+                return () => undefined;
+            },
+            cancellationTimeoutMs: 5_000
+        });
+
+        try {
+            const addPromise = buffer.add(0, createChapter(0));
+            await writeStarted.promise;
+            cancellationListener("flush");
+
+            await clock.advanceBy(4_999);
+            expect(writeSignal?.aborted).toBe(false);
+            await clock.advanceBy(1);
+
+            expect(writeSignal?.aborted).toBe(true);
+            await expect(addPromise).resolves.toBe(false);
+            await expect(buffer.flushForCancellation()).resolves.toBe("timed-out");
+        } finally {
+            buffer.dispose();
+            clock.restore();
+        }
+    });
+
+    it("aborts an active write immediately when cancellation discards progress", async () => {
+        const writeStarted = createDeferred<void>();
+        let cancellationListener: (mode: DownloadCancellationMode) => void = () => undefined;
+        let writeSignal: AbortSignal | undefined;
+        const buffer = new ChapterCacheWriteBuffer({
+            policy: { maxChapterCount: 1, maxBytes: Number.MAX_SAFE_INTEGER, maxDelayMs: 60_000 },
+            write: async (_entries, signal) => {
+                writeSignal = signal;
+                writeStarted.resolve();
+                return new Promise<boolean>(() => undefined);
+            },
+            schedule: () => () => undefined,
+            subscribeCancellation: (listener) => {
+                cancellationListener = listener;
+                return () => undefined;
+            }
+        });
+
+        const addPromise = buffer.add(0, createChapter(0));
+        await writeStarted.promise;
+        cancellationListener("discard");
+
+        expect(writeSignal?.aborted).toBe(true);
+        await expect(addPromise).resolves.toBe(false);
+        await expect(buffer.flushForCancellation()).resolves.toBe("discarded");
+        buffer.dispose();
     });
 });
 

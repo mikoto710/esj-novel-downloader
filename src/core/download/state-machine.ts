@@ -74,6 +74,7 @@ export function createInitialDownloadSnapshot(scheduledCount: number, restoredCo
         completedCount: 0,
         cachedChapterCount: restoredCount,
         cancellationRequested: false,
+        cancellationOutcome: null,
         hasExportData: false
     };
 }

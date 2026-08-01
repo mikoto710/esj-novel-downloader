@@ -1,6 +1,12 @@
 import type { CacheMeta, Chapter } from "../../types";
-import { ChapterCacheWriteBuffer } from "./cache-write-buffer";
-import type { DownloadDependencies, DownloadOptions, DownloadSnapshot, DownloadTask } from "./contracts";
+import { ChapterCacheWriteBuffer, type CancellationCacheFlushResult } from "./cache-write-buffer";
+import type {
+    DownloadCancellationOutcome,
+    DownloadDependencies,
+    DownloadOptions,
+    DownloadSnapshot,
+    DownloadTask
+} from "./contracts";
 import { getChapterRetryReason } from "./integrity";
 import { DownloadStateMachine } from "./state-machine";
 
@@ -13,6 +19,7 @@ interface DownloadContext {
     total: number;
     imageEnabled: boolean;
     cacheBuffer: ChapterCacheWriteBuffer;
+    cancellationPromise: Promise<void> | null;
 }
 
 function getErrorDetails(error: unknown): { name: string; message: string } {
@@ -49,16 +56,20 @@ function updateProgress(ctx: DownloadContext): void {
 }
 
 // 增量保存本批脏章节，并在 writer 所有权丢失时停止旧任务
-async function persistTaskCacheBatch(ctx: DownloadContext, entries: ReadonlyMap<number, Chapter>): Promise<boolean> {
+async function persistTaskCacheBatch(
+    ctx: DownloadContext,
+    entries: ReadonlyMap<number, Chapter>,
+    signal: AbortSignal
+): Promise<boolean> {
     const { dependencies, options, cacheMeta } = ctx;
     dependencies.events.emit({ type: "cache-write-started", chapterCount: entries.size });
-    const saved = await dependencies.cache.putBatch(options.bookId, options.taskId, entries, cacheMeta);
+    const saved = await dependencies.cache.putBatch(options.bookId, options.taskId, entries, cacheMeta, signal);
     dependencies.events.emit({ type: "cache-write-finished", chapterCount: entries.size, saved });
     if (saved) {
         const chapterCount = dependencies.runtime.chapters.size;
         updateSnapshot(ctx, { persistedCount: chapterCount, cachedChapterCount: chapterCount });
     } else {
-        dependencies.log("下载任务已失去缓存写入权，正在停止旧任务。");
+        dependencies.log("缓存写入失败或写入权已失效，正在停止任务。");
         dependencies.runtime.requestCancellation();
     }
     return saved;
@@ -136,6 +147,9 @@ async function processChapterTask(task: DownloadTask, ctx: DownloadContext, isRe
     updateSnapshot(ctx, { fetchedCount: ctx.machine.snapshot.fetchedCount + 1 });
 
     const chapter = await dependencies.chapterProcessor.process(html, task, imageEnabled, runtime.signal);
+    if (runtime.isCancellationRequested()) {
+        return;
+    }
     runtime.chapters.set(task.index, chapter);
     dependencies.events.emit({ type: "chapter-processed", task, retry: isRetry });
 
@@ -213,17 +227,29 @@ async function checkIntegrityAndRetry(tasks: DownloadTask[], ctx: DownloadContex
         await processChapterTask(task, ctx, true);
         await dependencies.scheduler.sleepWithAbort(300);
     }
-    return !runtime.isCancellationRequested();
+    if (runtime.isCancellationRequested()) {
+        await finishCancellation(ctx);
+        return false;
+    }
+    return true;
 }
 
-// 当前取消仍等待已开始的 IndexedDB 事务，后续取消重构会增加有界等待
-async function finishCancellation(ctx: DownloadContext): Promise<void> {
+// 多个退出分支共享同一次取消收尾，避免重复 flush、清理 UI 或更新终态
+function finishCancellation(ctx: DownloadContext): Promise<void> {
+    if (!ctx.cancellationPromise) {
+        ctx.cancellationPromise = performCancellation(ctx);
+    }
+    return ctx.cancellationPromise;
+}
+
+async function performCancellation(ctx: DownloadContext): Promise<void> {
     const { dependencies } = ctx;
     const { runtime } = dependencies;
+    updateSnapshot(ctx, { cancellationRequested: true, hasExportData: false });
     transition(ctx, "cancelling");
     const lockOwned = await dependencies.lock.owns(runtime.activeBookLock);
     const discardCache = await dependencies.lock.shouldDiscardCache(runtime.activeBookLock);
-    let cacheFlushed = false;
+    let cacheResult: CancellationCacheFlushResult = "discarded";
     if (!lockOwned) {
         ctx.cacheBuffer.discard();
         dependencies.log("下载任务锁已失效，跳过缓存写入。");
@@ -232,7 +258,7 @@ async function finishCancellation(ctx: DownloadContext): Promise<void> {
         dependencies.log("停止请求要求清理缓存，将在释放任务锁前统一处理。");
     } else {
         dependencies.log("正在写入 IndexedDB...");
-        cacheFlushed = await ctx.cacheBuffer.flush();
+        cacheResult = await ctx.cacheBuffer.flushForCancellation();
     }
     runtime.updateCacheSession({
         completedCount: ctx.machine.snapshot.completedCount,
@@ -240,17 +266,27 @@ async function finishCancellation(ctx: DownloadContext): Promise<void> {
         status: "cancelled",
         hasExportData: false
     });
-    updateSnapshot(ctx, { cancellationRequested: true, hasExportData: false });
+    const cancellationOutcome: DownloadCancellationOutcome = !lockOwned
+        ? "ownership-lost"
+        : discardCache
+          ? "discarded"
+          : cacheResult === "saved"
+            ? "saved"
+            : cacheResult === "timed-out"
+              ? "save-timed-out"
+              : "save-failed";
+    updateSnapshot(ctx, { cancellationOutcome });
     transition(ctx, "cancelled");
-    dependencies.log(
-        !lockOwned
-            ? "任务锁已失效，当前任务已停止。"
-            : discardCache
-              ? "任务已停止，正在清理缓存。"
-              : cacheFlushed
-                ? "任务已手动取消，进度已保存。"
-                : "任务已手动取消，但缓存写入失败。"
-    );
+    const resultMessage = !lockOwned
+        ? "任务锁已失效，当前任务已停止。"
+        : discardCache
+          ? "任务已停止，正在清理缓存。"
+          : cacheResult === "saved"
+            ? "任务已手动取消，进度已保存。"
+            : cacheResult === "timed-out"
+              ? "任务已停止，但进度保存超时，部分最新进度可能未保存。"
+              : "任务已手动取消，但缓存写入失败。";
+    dependencies.log(resultMessage);
     await dependencies.scheduler.sleep(800);
     dependencies.ui.cleanup();
 }
@@ -292,10 +328,20 @@ export async function runDownload(options: DownloadOptions, dependencies: Downlo
     };
     const machine = new DownloadStateMachine(total, dependencies.runtime.chapters.size, dependencies.events);
     const cacheBuffer = new ChapterCacheWriteBuffer({
-        write: (entries) => persistTaskCacheBatch(ctx, entries),
-        schedule: dependencies.scheduler.schedule
+        write: (entries, signal) => persistTaskCacheBatch(ctx, entries, signal),
+        schedule: dependencies.scheduler.schedule,
+        subscribeCancellation: dependencies.runtime.subscribeCancellation
     });
-    const ctx: DownloadContext = { options, dependencies, machine, cacheMeta, total, imageEnabled, cacheBuffer };
+    const ctx: DownloadContext = {
+        options,
+        dependencies,
+        machine,
+        cacheMeta,
+        total,
+        imageEnabled,
+        cacheBuffer,
+        cancellationPromise: null
+    };
 
     try {
         // 初始化 UI 和当前页会话摘要
@@ -353,12 +399,24 @@ export async function runDownload(options: DownloadOptions, dependencies: Downlo
         }
         transition(ctx, "preparing-export");
         const cover = await coverPromise;
-        dependencies.log("✅ 所有任务处理完毕");
+        if (dependencies.runtime.isCancellationRequested()) {
+            await finishCancellation(ctx);
+            return;
+        }
         const assembled = assembleExportChapters(ctx);
-        const cacheCleared = await dependencies.cache.clearForTask(options.bookId, options.taskId);
+        const cacheCleared = await dependencies.cache.clearForTask(
+            options.bookId,
+            options.taskId,
+            dependencies.runtime.signal
+        );
+        if (dependencies.runtime.isCancellationRequested()) {
+            await finishCancellation(ctx);
+            return;
+        }
         if (!cacheCleared) {
             throw new Error("下载任务已失去缓存清理权，已停止导出");
         }
+        dependencies.log("✅ 所有任务处理完毕");
 
         dependencies.runtime.setExportData({
             txt: assembled.text,
@@ -402,5 +460,7 @@ export async function runDownload(options: DownloadOptions, dependencies: Downlo
         }
         dependencies.events.emit({ type: "download-failed", error, snapshot: ctx.machine.snapshot });
         throw error;
+    } finally {
+        cacheBuffer.dispose();
     }
 }

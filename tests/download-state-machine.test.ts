@@ -55,4 +55,20 @@ describe("DownloadStateMachine", () => {
         expect(machine.snapshot.completedCount).toBe(1);
         expect(events.ofType("snapshot-updated")).toHaveLength(1);
     });
+
+    it("preserves the cancellation outcome in the terminal snapshot", () => {
+        const machine = new DownloadStateMachine(1, 0, { emit: () => undefined });
+        machine.transition("preparing");
+        machine.transition("restoring-cache");
+        machine.transition("downloading");
+        machine.update({ cancellationRequested: true, cancellationOutcome: "save-timed-out" });
+        machine.transition("cancelling");
+        machine.transition("cancelled");
+
+        expect(machine.snapshot).toMatchObject({
+            phase: "cancelled",
+            cancellationRequested: true,
+            cancellationOutcome: "save-timed-out"
+        });
+    });
 });

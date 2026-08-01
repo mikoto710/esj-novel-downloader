@@ -56,6 +56,11 @@ export type DownloadPhase =
     | "released";
 
 /**
+ * 取消终态对应的缓存处理结果
+ */
+export type DownloadCancellationOutcome = "saved" | "save-failed" | "save-timed-out" | "discarded" | "ownership-lost";
+
+/**
  * 下载核心对外发布的进度快照
  * restored/fetched/processed/persisted 分别表示恢复、网络获取、内容处理和持久化进度，
  * completedCount 暂时兼容现有 UI 的章节完成数
@@ -72,6 +77,7 @@ export interface DownloadSnapshot {
     completedCount: number;
     cachedChapterCount: number;
     cancellationRequested: boolean;
+    cancellationOutcome: DownloadCancellationOutcome | null;
     hasExportData: boolean;
 }
 
