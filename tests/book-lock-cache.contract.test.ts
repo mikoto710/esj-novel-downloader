@@ -2,7 +2,7 @@
 
 import { IDBFactory } from "fake-indexeddb";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { createChapter } from "./support";
+import { createChapter, createDeferred } from "./support";
 
 describe("book lock contracts", () => {
     beforeEach(() => {
@@ -30,6 +30,29 @@ describe("book lock contracts", () => {
 
         await locks.releaseBookDownloadLock(first.lock);
         expect(await locks.getActiveBookDownloadLock("100")).toBeNull();
+    });
+
+    it("forwards remote discard intent through the heartbeat", async () => {
+        const locks = await import("../src/core/book-lock");
+        const acquired = await locks.acquireBookDownloadLock("104", "detail");
+        if (!acquired.acquired) {
+            throw new Error("expected lock");
+        }
+        const cancellationReported = createDeferred<string>();
+        const onCancellationRequested = vi.fn((mode: string) => cancellationReported.resolve(mode));
+        const stopHeartbeat = locks.startBookDownloadLockHeartbeat(acquired.lock, onCancellationRequested, 1);
+
+        try {
+            expect(await locks.requestBookDownloadCancellation("104", true)).toEqual({
+                requested: true,
+                taskId: acquired.lock.taskId
+            });
+            await expect(cancellationReported.promise).resolves.toBe("discard");
+            expect(onCancellationRequested).toHaveBeenCalledOnce();
+        } finally {
+            stopHeartbeat();
+            await locks.releaseBookDownloadLock(acquired.lock);
+        }
     });
 
     it("does not let a stale task save or clear a replacement task cache", async () => {

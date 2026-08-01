@@ -85,6 +85,7 @@ function createHarness(tasks: DownloadTask[], chapters = new Map<number, Chapter
             originalTitle: "Test",
             isCancellationRequested: () => false,
             requestCancellation: vi.fn(),
+            subscribeCancellation: () => () => undefined,
             startCacheSession(meta, taskId, initialChapterCount) {
                 runtimeSession = {
                     ...meta,

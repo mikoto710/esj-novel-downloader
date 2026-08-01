@@ -62,6 +62,9 @@ export interface DownloadHistoryItem {
 // 全本下载任务锁状态
 export type BookDownloadLockStatus = "preparing" | "running" | "released";
 
+// 当前任务收到取消请求后，对尚未落盘缓存的处理方式
+export type DownloadCancellationMode = "flush" | "discard";
+
 // 跨页面的全本下载任务锁，单章导出不使用
 export interface BookDownloadLock {
     bookId: string;
@@ -153,6 +156,7 @@ export interface CachedData {
 // 全局状态接口
 export interface AppState {
     abortFlag: boolean;
+    cancellationMode: DownloadCancellationMode;
     originalTitle: string;
     cachedData: CachedData | null;
     globalChaptersMap: Map<number, Chapter>;

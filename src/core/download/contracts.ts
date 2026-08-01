@@ -3,6 +3,7 @@ import type {
     CacheMeta,
     CachedData,
     Chapter,
+    DownloadCancellationMode,
     RuntimeCacheSession,
     SourcePageType
 } from "../../types";
@@ -97,7 +98,8 @@ export interface DownloadRuntimePort {
     readonly activeBookLock: BookDownloadLock | null;
     readonly originalTitle: string;
     isCancellationRequested(): boolean;
-    requestCancellation(): void;
+    requestCancellation(mode?: DownloadCancellationMode): void;
+    subscribeCancellation(listener: (mode: DownloadCancellationMode) => void): () => void;
     startCacheSession(meta: CacheMeta, taskId: string, initialChapterCount: number): void;
     updateCacheSession(progress: Partial<RuntimeCacheSession>): void;
     setExportData(data: CachedData): void;

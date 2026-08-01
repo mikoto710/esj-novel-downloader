@@ -154,6 +154,7 @@ export interface TestAppState extends AppState {
 export function createTestState(overrides: Partial<TestAppState> = {}): TestAppState {
     return {
         abortFlag: false,
+        cancellationMode: "flush",
         originalTitle: "ESJZone Test",
         cachedData: null,
         globalChaptersMap: new Map<number, Chapter>(),

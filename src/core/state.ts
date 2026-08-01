@@ -1,11 +1,24 @@
-import { AppState, BookDownloadLock, CacheMeta, CachedData, Chapter, RuntimeCacheSession } from "../types";
+import {
+    AppState,
+    BookDownloadLock,
+    CacheMeta,
+    CachedData,
+    Chapter,
+    DownloadCancellationMode,
+    RuntimeCacheSession
+} from "../types";
 import { subscribeCacheSync } from "./cache/sync";
+
+type DownloadCancellationListener = (mode: DownloadCancellationMode) => void;
+
+const cancellationListeners = new Set<DownloadCancellationListener>();
 
 /**
  * 当前页面共享的下载和导出状态
  */
 export const state: AppState & { abortController: AbortController | null; activeBookLock: BookDownloadLock | null } = {
     abortFlag: false,
+    cancellationMode: "flush",
     originalTitle: document.title || "ESJZone",
     cachedData: null,
     globalChaptersMap: new Map<number, Chapter>(),
@@ -38,15 +51,36 @@ export function setCachedData(data: CachedData): void {
  * 重置控制器，用于中止 fetch 请求
  */
 export function resetAbortController() {
+    state.cancellationMode = "flush";
     state.abortController = new AbortController();
 }
 
 /**
  * 中止当前下载任务及其正在进行的网络请求
+ * @param mode 尚未落盘缓存的处理方式
  */
-export function abortActiveDownload(): void {
+export function abortActiveDownload(mode: DownloadCancellationMode = "flush"): void {
+    const firstRequest = !state.abortFlag;
+    const escalatedToDiscard = state.cancellationMode !== "discard" && mode === "discard";
+    if (!firstRequest && !escalatedToDiscard) {
+        return;
+    }
+    // discard 可以覆盖已经发出的普通取消，普通取消不能降级远程清理请求
+    state.cancellationMode = mode;
     setAbortFlag(true);
     state.abortController?.abort();
+    for (const listener of cancellationListeners) {
+        listener(state.cancellationMode);
+    }
+}
+
+/**
+ * 订阅当前页下载任务的取消请求
+ * @param listener 取消请求监听器
+ */
+export function subscribeDownloadCancellation(listener: DownloadCancellationListener): () => void {
+    cancellationListeners.add(listener);
+    return () => cancellationListeners.delete(listener);
 }
 
 /**

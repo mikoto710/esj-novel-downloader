@@ -1,5 +1,5 @@
 import { createStore, entries, get, update } from "idb-keyval";
-import { BookDownloadLock, SourcePageType } from "../types";
+import { BookDownloadLock, DownloadCancellationMode, SourcePageType } from "../types";
 
 const LOCK_TTL_MS = 60 * 1000;
 const HEARTBEAT_INTERVAL_MS = 3 * 1000;
@@ -194,9 +194,12 @@ export async function shouldDiscardBookDownloadCache(lock: BookDownloadLock | nu
     );
 }
 
-async function isBookDownloadCancellationRequested(lock: BookDownloadLock): Promise<boolean> {
+async function getBookDownloadCancellationMode(lock: BookDownloadLock): Promise<DownloadCancellationMode | null> {
     const current = await get<BookDownloadLock>(lock.bookId, lockStore);
-    return Boolean(current && current.taskId === lock.taskId && current.cancelRequestedAt);
+    if (!current || current.taskId !== lock.taskId || !current.cancelRequestedAt) {
+        return null;
+    }
+    return current.discardCacheOnCancel ? "discard" : "flush";
 }
 
 /**
@@ -335,12 +338,13 @@ export async function heartbeatBookDownloadLock(lock: BookDownloadLock): Promise
  */
 export function startBookDownloadLockHeartbeat(
     lock: BookDownloadLock,
-    onCancellationRequested?: () => void
+    onCancellationRequested?: (mode: DownloadCancellationMode) => void,
+    intervalMs = HEARTBEAT_INTERVAL_MS
 ): () => void {
     let stopped = false;
     let refreshing = false;
     const releaseOnPageHide = () => {
-        onCancellationRequested?.();
+        onCancellationRequested?.("flush");
         clearLockPresence(lock);
         void releaseBookDownloadLock(lock).catch((error) => {
             console.error("页面关闭时释放下载任务锁失败", error);
@@ -354,8 +358,13 @@ export function startBookDownloadLockHeartbeat(
         refreshing = true;
         void heartbeatBookDownloadLock(lock)
             .then(async (owned) => {
-                if (!owned || (await isBookDownloadCancellationRequested(lock))) {
-                    onCancellationRequested?.();
+                if (!owned) {
+                    onCancellationRequested?.("discard");
+                    return;
+                }
+                const cancellationMode = await getBookDownloadCancellationMode(lock);
+                if (cancellationMode) {
+                    onCancellationRequested?.(cancellationMode);
                 }
             })
             .catch((error) => {
@@ -364,7 +373,7 @@ export function startBookDownloadLockHeartbeat(
             .finally(() => {
                 refreshing = false;
             });
-    }, HEARTBEAT_INTERVAL_MS);
+    }, intervalMs);
 
     return () => {
         stopped = true;

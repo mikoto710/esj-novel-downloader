@@ -16,6 +16,7 @@ import {
     setCachedData,
     startRuntimeCacheSession,
     state,
+    subscribeDownloadCancellation,
     updateRuntimeCacheSession
 } from "../core/state";
 import { clearBookCacheForTask, putBookCacheBatchForTask } from "../core/cache/book-cache";
@@ -49,6 +50,7 @@ const runtime: DownloadRuntimePort = {
     },
     isCancellationRequested: () => state.abortFlag,
     requestCancellation: abortActiveDownload,
+    subscribeCancellation: subscribeDownloadCancellation,
     startCacheSession: startRuntimeCacheSession,
     updateCacheSession: updateRuntimeCacheSession,
     setExportData: setCachedData
