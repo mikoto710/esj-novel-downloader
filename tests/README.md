@@ -2,7 +2,8 @@
 
 ## 目录职责
 
-- `tests/*.test.ts`：当前单元测试与测试基础设施自测；后续按规模再拆分 `unit/`、`integration/` 和 `stress/`，不为目录形式提前搬动现有测试。
+- `tests/*.test.ts`：单元测试、契约测试、流程特征测试与测试基础设施自测；文件名优先表达被验证的业务边界，不按实现目录机械映射。
+- `tests/stress/`：3000 章规模下的缓存复杂度与主流程压力测试，不纳入普通测试命令。
 - `tests/support/`：所有测试共享的 mocks、fixtures、fakes、factories 和资源追踪工具。
 - `tests/setup.ts`：每个用例统一安装/恢复 userscript API、fake IndexedDB、DOM 状态和资源泄漏检查。
 
@@ -12,7 +13,6 @@
 - 心跳、重试、退避和超时测试使用 `useFakeClock()`；测试中不得用真实秒级等待。
 - 测试结束前应消费或清除所有 fake timers。全局 teardown 会把未清理 timer 作为失败报告。
 - 普通 `npm run test` 不运行 `tests/stress/`；完整规模测试通过 `npm run test:stress` 单独执行。
-- Phase 2 中用于刻画现存缺陷的测试可以暂时使用 `it.fails`。目标实现完成后必须移除 `.fails`；如果缺陷提前消失，Vitest 会将 unexpected pass 视为失败，提醒维护者更新测试状态。
 
 ## 外部边界
 
@@ -21,6 +21,14 @@
 - 下载核心测试使用 `FakeChapterFetcher`、`FakeChapterProcessor`、`InMemoryCacheRepository` 和 `FakeBookLockService`，不得访问真实网络或 IndexedDB。
 - IndexedDB adapter 测试使用 `openTestDatabase()` 创建唯一数据库，并在结束前执行 `closeTestDatabase()` 与 `deleteTestDatabase()`。
 - BroadcastChannel 测试使用 `installFakeBroadcastChannel()`，并显式关闭所有 channel。
+
+## 下载流程覆盖
+
+- `*.test.ts`：验证纯函数、状态机、重试策略、worker pool 和缓存写入策略。
+- `*.contract.test.ts`：验证页面适配层、下载核心、任务锁、缓存与导出之间的稳定业务契约。
+- `*.characterization.test.ts`：保留复杂流程已经确认的行为，重构时应先判断行为是否仍然有效，再更新断言。
+- 下载流程变更至少覆盖成功、失败、普通停止、停止并清除、缓存恢复和重复取消；涉及任务生命周期时还需断言锁、timer、listener、channel 与数据库资源均已释放。
+- 修改下载调度、增量缓存、锁或取消机制后，除相关测试外还必须运行 `npm run test:stress`。
 
 ## 隔离与命名
 

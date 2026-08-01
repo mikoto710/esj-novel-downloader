@@ -7,14 +7,11 @@
 
 ## 功能特性
 
-- 📚 **多格式导出**: 支持 **TXT**、**EPUB** 和 **HTML**，支持自动内嵌封面。
-- ⚡ **极速下载**: 多线程并发抓取，支持用户配置。
-- 💾 **断点续传与缓存管理**: 使用 IndexedDB 作为缓存，刷新页面或关闭浏览器不丢失进度，并支持在缓存管理中查看和清理缓存。
-- 🛡️ **智能补漏**: 自动检测抓取失败的章节、图片及旧缓存中的无效图片，并尝试重新抓取，确保内容完整。
-- 🧩 **多页面适配**: 支持详情页、论坛版块、单章阅读页多种场景。
-- 🖼️ **正文插图下载**: 支持导出 EPUB / HTML 时附带插图，并根据文件内容识别 JPEG / PNG / GIF / WebP 等实际图片格式。
-- 🧾 **下载记录**: 支持查看全本与单章的导出记录，并可按类型、格式和来源筛选。
-- 🏷️ **书籍元数据**: 支持书籍元数据抓取，并可在 EPUB 中写入标准 `dc:subject` 标签，便于书库分类与检索。
+- 📚 **多格式导出**: 全本支持 TXT、EPUB 和 HTML，单章支持 TXT 和 HTML。
+- ⚡ **并发抓取与断点续传**: 支持配置并发数，并通过 IndexedDB 保存全本下载进度。
+- 🛡️ **完整性检查与重试**: 下载后检查缺失章节和异常图片，并自动重试可恢复的问题。
+- 🖼️ **导出内容增强**: 全本 EPUB / HTML 支持封面与正文插图，EPUB 支持书籍元数据和标签。
+- 🧾 **下载管理**: 提供缓存管理和全本、单章下载记录。
 
 > 💡 抓取逻辑部分参考自 [ESJ-novel-backup](https://github.com/ZALin/ESJ-novel-backup)，感谢原项目作者提供的抓取思路
 
@@ -41,79 +38,106 @@
 
 ## 使用方法
 
-脚本会自动检测当前页面类型并注入按钮:
+脚本会自动检测当前页面类型并提供相应的下载入口。
 
-1.  **小说详情页 / 论坛版块页**:
-    - 点击注入的 **“全本下载”** 按钮。
-    - 确认下载后，会出现进度弹窗 (支持最小化)。
-    - 完成后选择导出格式即可，若开启插图下载，会显示图片的拉取情况。
+### 全本下载
 
-2.  **单章阅读页**:
-    - 在顶部导航栏中间 "≡" 旁会出现两个下载按钮 (从左到右，`icon-download` -> TXT， `icon-code` -> HTML)。
-    - 点击直接下载当前章节的 TXT / HTML 文件。
+1. 在小说详情页或论坛列表页点击“全本下载”。
+2. 如果检测到未完成的本地缓存，确认窗口会显示已缓存章节数；继续下载时会跳过已有章节。
+3. 下载过程中可以最小化进度窗口。点击“取消任务”会停止抓取并尝试保存当前进度。
+4. 主抓取完成后，脚本会检查缺失章节；开启正文插图时，也会检查失败图片并尝试自动补抓。
+5. 处理完成后选择 TXT、EPUB 或 HTML 导出；开启正文插图时，窗口会显示图片处理结果。
 
-在**小说详情页 / 论坛版块页**的 **"全本下载"** 按钮旁边，提供了 **"设置" (⚙️)** 按钮，点击可进行配置:
+### 单章导出
 
-- **下载线程数**: 调整并发请求数量 (默认为 5，建议 1-5)，平衡速度与稳定性。
-- **下载正文插图**: 默认关闭。开启后可在生成的 EPUB / HTML 小说文件中加入对应的插图，若抓取失败会插入对应的 img 标签。切换该设置时，正在下载任务的缓存会被保留，当前任务继续使用原设置，新设置仅应用于后续全本下载。
-- **生成 EPUB 标签页**: 默认关闭。开启后会在 EPUB 目录和首章之前生成“标签”页；无论是否开启，标签都会写入 EPUB 元数据，供书库分类与检索。
-- **缓存管理**: 查看当前缓存列表，支持清理 IndexedDB 持久缓存或当前页会话缓存，也可执行单个/全部清理。下载中的书籍缓存受到保护；如需移除，可先停止对应下载任务。
-- **下载记录**: 查看已导出的全本/单章记录，支持筛选、打开来源页、单条删除或清空全部记录。
+在单章阅读页顶部会显示 TXT 和 HTML 两个下载按钮：
 
-> **Note**: 开启下载正文插图功能后脚本管理器会请求跨域访问权限，请允许，否则无法正常拉取某些图床图片。若当前存在缓存，切换该选项时会先弹出确认提示，并在确认后清理相关缓存。
+- **TXT**: 导出当前章节的纯文本内容。
+- **HTML**: 导出带排版的单页文件；开启正文插图后，会尝试将图片写入文件。
+
+### 设置
+
+小说详情页和论坛列表页的“全本下载”按钮旁提供“设置”入口：
+
+- **下载线程数**: 设置并发章节请求数量，默认为 5。更高的并发数不一定更快，可能受到网络或站点限制。
+- **下载正文插图**: 抓取章节正文中的图片并写入 EPUB / HTML。开启后会增加下载时间、缓存占用和导出体积。
+- **生成 EPUB 标签页**: 在 EPUB 中生成独立标签页；关闭后标签仍会写入 EPUB 元数据。
+- **缓存管理**: 查看和清理持久缓存、当前页会话缓存，以及停止正在运行的下载任务。
+- **下载记录**: 查看、筛选和清理全本及单章导出记录。
+
+> **正文插图说明**: 插图开关不影响封面。开启后，脚本会在章节抓取阶段下载并处理正文图片；成功的图片会写入 EPUB / HTML，失败的图片会保留原始链接并计入结果统计。TXT 不包含图片；当前版本开启该选项后，TXT 下载也可能执行图片处理，因此仅需要 TXT 时建议关闭。部分图片需要脚本管理器授予跨域访问权限。
+>
+> 切换插图设置时，脚本会请求清理已有缓存，避免混用不同设置下的章节数据。正在下载的任务及其缓存不会被清理，任务会继续使用启动时的设置。
 
 ## 开发与构建
 
-本项目基于 **TypeScript** 开发，使用 **Rollup** + **esbuild** 进行构建，并使用 **Vitest** + **jsdom** 进行自动化测试。
+本项目基于 **TypeScript** 开发，使用 **Rollup** + **esbuild** 构建 userscript，并使用 **Vitest** + **jsdom** 运行自动化测试。全本下载已按页面接入、浏览器适配、核心流程和持久化边界拆分，修改时应保持各层职责独立。
+
+### 下载架构
+
+```text
+scrapers / ui
+    └─> core/download/batch-download.ts
+            ├─> core/download/coordinator.ts
+            └─> adapters/browser-download-dependencies.ts
+                    ├─> core/cache
+                    ├─> core/book-lock.ts / core/state.ts
+                    └─> ui / GM API / DOM
+```
+
+- `batch-download.ts` 是页面层启动全本下载的组合入口，只负责创建浏览器依赖并调用核心流程。
+- `coordinator.ts` 负责下载状态流转、缓存恢复、章节调度、完整性检查、取消和导出准备，不直接访问 DOM、GM API 或浏览器全局状态。
+- `contracts.ts` 定义下载核心所需的端口和数据结构；浏览器实现集中在 `adapters/browser-download-dependencies.ts`。
+- `core/cache/` 负责 v3 增量缓存、旧缓存惰性迁移、缓存列表与跨页面同步。
+- 下载任务的锁、缓存写入者和取消模式必须保持一致；成功、失败和取消路径都应进入统一收尾流程。
+- 新增下载流程行为时，优先通过依赖端口扩展核心，不要把页面对象重新引入 `core/download/`。
 
 ### 项目结构
 
 ```
 src
-├── core                       # 核心业务逻辑层
-│   ├── book-lock.ts           # 全本下载任务锁与取消协调
-│   ├── cache-manager.ts       # 缓存聚合与清理逻辑
-│   ├── cache-sync.ts          # IndexedDB 与会话缓存同步
-│   ├── config.ts              # 用户配置管理
-│   ├── downloader.ts          # 通用下载控制器
-│   ├── download-history.ts    # 下载记录存储与管理
-│   ├── download-integrity.ts  # 章节与图片缓存完整性判定
-│   ├── download-task.ts       # 下载任务状态管理
-│   ├── epub.ts                # EPUB 生成器
-│   ├── html.ts                # 单页 HTML 生成器
-│   ├── parser.ts              # HTML 解析器
-│   ├── state.ts               # 全局状态管理
-│   └── storage.ts             # 持久化存储层
-├── scrapers                   # 页面抓取策略层
-│   ├── detail.ts              # 针对 [小说详情页] 的抓取逻辑
-│   ├── forum.ts               # 针对 [论坛列表页] 的抓取逻辑
-│   └── single.ts              # 针对 [单章正文页] 的抓取逻辑
-├── ui                         # 界面交互层
-│   ├── components.ts          # 通用 UI 组件
-│   ├── detail.ts              # 目录页 UI 注入
-│   ├── forum.ts               # 论坛页 UI 注入
-│   ├── single.ts              # 单章页 UI 注入
-│   ├── cache-manager.ts       # 缓存管理弹窗
-│   ├── download-history.ts    # 下载记录弹窗
-│   ├── popups.ts              # 弹窗组件库
-│   ├── styles.ts              # CSS 样式定义
-│   └── tray.ts                # 最小化悬浮球组件
-├── utils                      # 通用工具库
-│   ├── dom.ts                 # DOM 操作工具
-│   ├── image-format.ts        # 图片 URL、文件特征与 MIME 类型规范化
-│   ├── image.ts               # 正文图片下载与压缩处理
-│   ├── index.ts               # 基础工具
-│   └── text.ts                # 文本处理工具
-├── global.d.ts                # 全局类型声明
-├── index.ts                   # 项目总入口
-└── types.ts                   # TypeScript 类型定义接口
+├── adapters
+│   └── browser-download-dependencies.ts  # 下载端口的浏览器实现与装配
+├── core
+│   ├── cache
+│   │   ├── book-cache.ts                 # 书籍缓存聚合与惰性迁移
+│   │   ├── indexeddb-repository.ts       # v3 IndexedDB 持久化
+│   │   ├── legacy-cache.ts               # v2 及更早缓存读取
+│   │   ├── manager.ts                    # 缓存查看、停止与清理
+│   │   └── sync.ts                       # 缓存跨页面同步
+│   ├── download
+│   │   ├── batch-download.ts             # 全本下载的浏览器组合入口
+│   │   ├── coordinator.ts                # 可注入依赖的下载主流程
+│   │   ├── contracts.ts                  # 核心端口与流程类型
+│   │   ├── cache-write-buffer.ts         # 增量缓存批量写入
+│   │   ├── integrity.ts                  # 章节与图片完整性检查
+│   │   ├── retry-policy.ts               # 可取消的重试策略
+│   │   ├── state-machine.ts              # 下载阶段状态机
+│   │   ├── task-finalizer.ts             # 锁与缓存统一收尾
+│   │   └── worker-pool.ts                # 有界并发任务调度
+│   ├── book-lock.ts                      # 跨页面任务锁与取消协调
+│   ├── config.ts                         # 用户配置管理
+│   ├── download-history.ts               # 下载记录存储
+│   ├── epub.ts / html.ts                 # 导出文件生成
+│   ├── parser.ts                         # 章节 HTML 解析
+│   └── state.ts                          # 浏览器运行时状态
+├── scrapers                              # 不同 ESJZone 页面接入
+├── ui                                    # 页面组件、弹窗与样式
+├── utils                                 # DOM、图片与文本工具
+├── global.d.ts                           # userscript 全局类型
+├── index.ts                              # 项目入口
+└── types.ts                              # 公共业务类型
 
-tests                          # 自动化测试
+tests
+├── support                               # mocks、fixtures、fakes 与资源追踪
+├── stress                                # 大章节量专项压力测试
+├── setup.ts                              # 测试环境与泄漏检查
+└── *.test.ts                             # 单元、契约及流程测试
 ```
 
 ### 本地构建
 
-需要 **Node.js 20.19+** 环境；推荐使用 **Node.js 22.13+**，与发布工作流使用的 Node.js 22 保持一致。当前已在 **Node.js 22.22.0** 下验证。
+需要 **Node.js 20.19+** 环境；推荐使用 **Node.js 22**，与 CI 和发布工作流保持一致。
 
 ```bash
 # 1. 安装依赖 (推荐使用 npm ci)
@@ -123,18 +147,18 @@ npm ci
 # 2. 开发模式 (监听文件变更自动构建)
 npm run watch
 
-# 3. 代码格式化 (非必须，建议提交前执行)
+# 3. 格式化 src 并运行可自动修复的 ESLint 规则
 npm run format
 
-# 4. 类型检查、自动化测试并生成最终 user.js
+# 4. 类型检查、自动化测试并生成最终 userscript
 npm run build
 ```
 
-构建产物位于: `dist/esj-novel-downloader.user.js`
+`npm run format` 会直接修改文件，执行后应检查差异。构建产物位于 `dist/esj-novel-downloader.user.js`。
 
 ### 自动化测试
 
-测试文件统一放在 `tests/`，使用 Vitest 运行；需要浏览器 DOM 的测试使用 jsdom 环境。
+普通测试覆盖纯函数、下载核心、缓存、锁、取消、UI 契约和导出隔离；需要浏览器 DOM 的测试使用 jsdom。测试不得依赖实时 ESJZone 页面或真实网络，详细约定见 [`tests/README.md`](tests/README.md)。
 
 ```bash
 # 单次运行全部测试
@@ -145,6 +169,24 @@ npm run test:watch
 
 # 执行 TypeScript 类型检查和全部测试
 npm run check
+
+# 执行 3000 章缓存复杂度与下载流程压力测试
+npm run test:stress
 ```
 
-`npm run build` 会先执行 `npm run check`，只有类型检查和自动化测试通过后才会生成构建产物。
+普通 `npm test` 和 `npm run check` 不包含 `tests/stress/`。修改下载调度、增量缓存、锁或取消机制时，应额外运行 `npm run test:stress`。
+
+### 提交与发布前检查
+
+```bash
+# 1. 检查格式；若失败，按提示格式化并审查修改
+npx prettier --check "src/**/*.{ts,js,json,md}" "tests/**/*.{ts,md}" README.md package.json package-lock.json
+
+# 2. 类型检查、普通测试和正式构建
+npm run build
+
+# 3. 大章节量压力测试
+npm run test:stress
+```
+
+发布提交仅更新版本与发布相关文档。发布标签必须与 `package.json` 完全一致，例如版本 `1.5.0-beta.1` 对应标签 `v1.5.0-beta.1`。

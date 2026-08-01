@@ -1,6 +1,6 @@
 {
     "name": "esj-novel-downloader",
-    "version": "1.4.6-beta.4",
+    "version": "1.5.0-beta.1",
     "type": "module",
     "scripts": {
         "check": "tsc --noEmit && vitest run",
