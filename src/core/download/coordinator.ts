@@ -11,6 +11,7 @@ import { scanChapterIntegrity, type ChapterIntegrityIssue } from "./integrity";
 import { DEFAULT_CHAPTER_RETRY_POLICY, runWithRetry } from "./retry-policy";
 import { DownloadStateMachine } from "./state-machine";
 import { runWorkerPool } from "./worker-pool";
+import { MappingFontError, normalizeChapterMappingFont } from "../mapping-font";
 
 // 单次下载会话共享的依赖、元数据和状态机，不持有任何浏览器全局对象
 interface DownloadContext {
@@ -20,8 +21,14 @@ interface DownloadContext {
     cacheMeta: CacheMeta;
     total: number;
     imageEnabled: boolean;
+    concurrency: number;
     cacheBuffer: ChapterCacheWriteBuffer;
     cancellationPromise: Promise<void> | null;
+    mappingConsentGranted: boolean;
+    mappingConsentPromise: Promise<boolean> | null;
+    mappedChapterIndexes: Set<number>;
+    mappedFontBytes: number;
+    mappingFailures: Map<number, { task: DownloadTask; message: string }>;
 }
 
 type ChapterTaskResult = "completed" | "failed" | "cancelled";
@@ -57,6 +64,123 @@ function updateProgress(ctx: DownloadContext): void {
         cachedChapterCount: ctx.dependencies.runtime.chapters.size,
         status: "downloading"
     });
+}
+
+function getMappingFontSummary(ctx: DownloadContext) {
+    return {
+        chapterCount: ctx.mappedChapterIndexes.size,
+        fontBytes: ctx.mappedFontBytes
+    };
+}
+
+function recordMappedChapter(ctx: DownloadContext, task: DownloadTask, chapter: Chapter): boolean {
+    const font = chapter.mappingFont;
+    if (!font || ctx.mappedChapterIndexes.has(task.index)) {
+        return false;
+    }
+    ctx.mappedChapterIndexes.add(task.index);
+    ctx.mappedFontBytes += font.blob.size;
+    return true;
+}
+
+// 同一任务只确认一次；并发 worker 共享该 Promise，确认期间不会继续领取新章节
+function ensureMappingConsent(ctx: DownloadContext, task: DownloadTask, inFlightLimit: number): Promise<boolean> {
+    if (ctx.mappingConsentGranted) {
+        return Promise.resolve(true);
+    }
+    if (!ctx.mappingConsentPromise) {
+        ctx.mappingConsentPromise = ctx.dependencies.ui
+            .confirmMappingFontDownload({ task, ...getMappingFontSummary(ctx), inFlightLimit })
+            .then((confirmed) => {
+                if (confirmed) {
+                    ctx.mappingConsentGranted = true;
+                } else {
+                    ctx.dependencies.runtime.requestCancellation();
+                }
+                return confirmed;
+            });
+    }
+    return ctx.mappingConsentPromise;
+}
+
+function registerMappedChapter(ctx: DownloadContext, task: DownloadTask, chapter: Chapter): Promise<boolean> {
+    if (!chapter.mappingFont) {
+        return Promise.resolve(true);
+    }
+    if (recordMappedChapter(ctx, task, chapter)) {
+        ctx.dependencies.ui.updateMappingFontWarning(getMappingFontSummary(ctx));
+    }
+    return ensureMappingConsent(ctx, task, ctx.concurrency);
+}
+
+async function waitForMappingConsentBeforeClaim(ctx: DownloadContext): Promise<boolean> {
+    if (ctx.mappingConsentPromise && !ctx.mappingConsentGranted) {
+        return ctx.mappingConsentPromise;
+    }
+    return !ctx.dependencies.runtime.isCancellationRequested();
+}
+
+// 旧缓存中的 data CSS 已包含与正文配对的完整字体，认领缓存后原位规范化并增量回存
+async function normalizeRestoredChapters(ctx: DownloadContext): Promise<boolean> {
+    const { dependencies, options } = ctx;
+    const taskByIndex = new Map(options.tasks.map((task) => [task.index, task]));
+    const entries = Array.from(dependencies.runtime.chapters.entries()).sort(([left], [right]) => left - right);
+    const changedEntries = new Map<number, Chapter>();
+    let firstMappedTask: DownloadTask | null = null;
+    for (const [index, chapter] of entries) {
+        if (dependencies.runtime.isCancellationRequested()) {
+            return false;
+        }
+        try {
+            const normalized = await normalizeChapterMappingFont(chapter, dependencies.runtime.signal);
+            if (normalized.kind === "mapped") {
+                const task = taskByIndex.get(index) || {
+                    index,
+                    url: options.pageUrl || dependencies.environment.currentUrl(),
+                    title: chapter.title
+                };
+                if (recordMappedChapter(ctx, task, normalized.chapter) && !firstMappedTask) {
+                    firstMappedTask = task;
+                }
+            }
+            if (normalized.changed) {
+                dependencies.runtime.chapters.set(index, normalized.chapter);
+                changedEntries.set(index, normalized.chapter);
+            }
+        } catch (error) {
+            if (error instanceof MappingFontError) {
+                // 旧记录无法规范化时仅使该章失效，后续 worker 会重新抓取并重新验证
+                dependencies.runtime.chapters.delete(index);
+                dependencies.log(`⚠️ 旧缓存映射字体无效，将重新抓取 (${chapter.title}): ${error.message}`);
+                continue;
+            }
+            throw error;
+        }
+    }
+
+    const restoredTasks = options.tasks.filter((task) => dependencies.runtime.chapters.has(task.index));
+    updateSnapshot(ctx, {
+        restoredCount: restoredTasks.length,
+        completedCount: restoredTasks.length,
+        cachedChapterCount: dependencies.runtime.chapters.size
+    });
+    for (const task of restoredTasks) {
+        dependencies.events.emit({ type: "chapter-restored", task });
+    }
+
+    if (firstMappedTask) {
+        dependencies.ui.updateMappingFontWarning(getMappingFontSummary(ctx));
+        if (!(await ensureMappingConsent(ctx, firstMappedTask, 0))) {
+            return false;
+        }
+    }
+
+    for (const [index, chapter] of changedEntries) {
+        if (!(await ctx.cacheBuffer.add(index, chapter))) {
+            return false;
+        }
+    }
+    return !dependencies.runtime.isCancellationRequested();
 }
 
 // 增量保存本批脏章节，并在 writer 所有权丢失时停止旧任务
@@ -158,10 +282,30 @@ async function processChapterTask(
     }
     updateSnapshot(ctx, { fetchedCount: ctx.machine.snapshot.fetchedCount + 1 });
 
-    const chapter = await dependencies.chapterProcessor.process(html, task, imageEnabled, runtime.signal);
+    let chapter: Chapter;
+    try {
+        chapter = await dependencies.chapterProcessor.process(html, task, imageEnabled, runtime.signal);
+        ctx.mappingFailures.delete(task.index);
+    } catch (error) {
+        if (!(error instanceof MappingFontError)) {
+            throw error;
+        }
+        const message = `映射字体解析失败: ${error.message}`;
+        ctx.mappingFailures.set(task.index, { task, message });
+        dependencies.log(`❌ ${message} (${task.title})`);
+        if (!isRetry) {
+            updateSnapshot(ctx, {
+                completedCount: ctx.machine.snapshot.completedCount + 1,
+                failedCount: ctx.machine.snapshot.failedCount + 1
+            });
+            updateProgress(ctx);
+        }
+        return "failed";
+    }
     if (runtime.isCancellationRequested()) {
         return "cancelled";
     }
+    const mappingConsent = registerMappedChapter(ctx, task, chapter);
     runtime.chapters.set(task.index, chapter);
     dependencies.events.emit({ type: "chapter-processed", task, retry: isRetry });
 
@@ -182,6 +326,9 @@ async function processChapterTask(
     const saved = await ctx.cacheBuffer.add(task.index, chapter);
     if (!saved) {
         return runtime.isCancellationRequested() ? "cancelled" : "failed";
+    }
+    if (!(await mappingConsent)) {
+        return "cancelled";
     }
 
     const imageErrors = chapter.imageErrors || 0;
@@ -236,6 +383,7 @@ async function checkIntegrityAndRetry(tasks: DownloadTask[], ctx: DownloadContex
         items: issues,
         concurrency: 1,
         isCancellationRequested: runtime.isCancellationRequested,
+        beforeClaim: () => waitForMappingConsentBeforeClaim(ctx),
         process: async (issue) => {
             dependencies.log(`补抓 [${issue.task.index + 1}/${total}] (${getRetryReasonText(issue, ctx)})...`);
             const result = await processChapterTask(issue.task, ctx, true);
@@ -260,6 +408,11 @@ async function checkIntegrityAndRetry(tasks: DownloadTask[], ctx: DownloadContex
     }
     const remainingIssues = scanChapterIntegrity(tasks, runtime.chapters, imageEnabled);
     updateSnapshot(ctx, { retryPendingCount: 0, failedCount: remainingIssues.length });
+    if (ctx.mappingFailures.size > 0) {
+        const failures = Array.from(ctx.mappingFailures.values());
+        dependencies.ui.showMappingFontFailure(failures);
+        throw new MappingFontError("font-source-invalid", `${failures.length} 个章节的映射字体无法解析`);
+    }
     return true;
 }
 
@@ -344,6 +497,7 @@ function assembleExportChapters(ctx: DownloadContext): { text: string; chapters:
 export async function runDownload(options: DownloadOptions, dependencies: DownloadDependencies): Promise<void> {
     const total = options.tasks.length;
     const imageEnabled = dependencies.settings.isImageDownloadEnabled();
+    const concurrency = Math.max(1, Math.floor(dependencies.settings.getConcurrency()) || 1);
     const cacheMeta: CacheMeta = {
         bookId: options.bookId,
         bookName: options.bookName,
@@ -368,8 +522,14 @@ export async function runDownload(options: DownloadOptions, dependencies: Downlo
         cacheMeta,
         total,
         imageEnabled,
+        concurrency,
         cacheBuffer,
-        cancellationPromise: null
+        cancellationPromise: null,
+        mappingConsentGranted: false,
+        mappingConsentPromise: null,
+        mappedChapterIndexes: new Set(),
+        mappedFontBytes: 0,
+        mappingFailures: new Map()
     };
 
     try {
@@ -381,18 +541,24 @@ export async function runDownload(options: DownloadOptions, dependencies: Downlo
         if (dependencies.runtime.chapters.size > 0) {
             dependencies.log(`💾 已从 IndexedDB 恢复 ${dependencies.runtime.chapters.size} 章缓存`);
         }
+        if (!(await normalizeRestoredChapters(ctx))) {
+            await finishCancellation(ctx);
+            return;
+        }
 
         const coverPromise = options.coverUrl
             ? dependencies.coverFetcher.fetch(options.coverUrl, dependencies.runtime.signal)
             : Promise.resolve(null);
 
         transition(ctx, "downloading");
-        const concurrency = Math.max(1, Math.floor(dependencies.settings.getConcurrency()) || 1);
-        dependencies.log(`启动 ${concurrency} 个并发线程...`);
+        updateProgress(ctx);
+        const remainingTasks = options.tasks.filter((task) => !dependencies.runtime.chapters.has(task.index));
+        dependencies.log(`启动 ${ctx.concurrency} 个并发线程...`);
         await runWorkerPool({
-            items: options.tasks,
-            concurrency,
+            items: remainingTasks,
+            concurrency: ctx.concurrency,
             isCancellationRequested: dependencies.runtime.isCancellationRequested,
+            beforeClaim: () => waitForMappingConsentBeforeClaim(ctx),
             process: (task) => processChapterTask(task, ctx, false).then(() => undefined)
         });
 

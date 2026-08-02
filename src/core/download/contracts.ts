@@ -82,6 +82,23 @@ export interface DownloadSnapshot {
 }
 
 /**
+ * 当前任务已经确认的映射字体章节摘要
+ */
+export interface MappingFontSummary {
+    chapterCount: number;
+    fontBytes: number;
+}
+
+/**
+ * 首次发现映射正文时提供给 UI 的确认信息
+ */
+export interface MappingFontDetection extends MappingFontSummary {
+    task: DownloadTask;
+    // 弹窗出现后仍可能完成的最大在途章节数；缓存恢复阶段尚未发出请求，因此为 0
+    inFlightLimit: number;
+}
+
+/**
  * 核心流程产生的结构化事件
  * 观察者不得通过事件直接修改下载状态
  */
@@ -117,6 +134,9 @@ export interface DownloadRuntimePort {
 export interface DownloadUiPort {
     prepare(): void;
     update(snapshot: DownloadSnapshot): void;
+    confirmMappingFontDownload(detection: MappingFontDetection): Promise<boolean>;
+    updateMappingFontWarning(summary: MappingFontSummary): void;
+    showMappingFontFailure(failures: ReadonlyArray<{ task: DownloadTask; message: string }>): void;
     cleanup(): void;
     showFormatChoice(): void;
 }

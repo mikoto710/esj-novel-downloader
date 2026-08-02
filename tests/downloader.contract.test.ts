@@ -11,6 +11,9 @@ const mocks = vi.hoisted(() => ({
     fullCleanup: vi.fn(),
     createDownloadPopup: vi.fn(),
     showFormatChoice: vi.fn(),
+    confirmMappingFontDownload: vi.fn(async () => true),
+    updateMappingFontWarning: vi.fn(),
+    showMappingFontFailure: vi.fn(),
     updateTrayText: vi.fn(),
     saveCache: vi.fn(),
     clearCache: vi.fn(),
@@ -35,7 +38,10 @@ vi.mock("../src/utils/index", () => ({
 vi.mock("../src/utils/dom", () => ({ fullCleanup: mocks.fullCleanup }));
 vi.mock("../src/ui/popups", () => ({
     createDownloadPopup: mocks.createDownloadPopup,
-    showFormatChoice: mocks.showFormatChoice
+    showFormatChoice: mocks.showFormatChoice,
+    confirmMappingFontDownload: mocks.confirmMappingFontDownload,
+    updateMappingFontWarning: mocks.updateMappingFontWarning,
+    showMappingFontFailure: mocks.showMappingFontFailure
 }));
 vi.mock("../src/ui/tray", () => ({ updateTrayText: mocks.updateTrayText }));
 vi.mock("../src/core/cache/book-cache", () => ({
@@ -100,6 +106,30 @@ describe("downloader contracts", () => {
         expect(mocks.clearCache).toHaveBeenCalledOnce();
         expect(state.cachedData?.chapters).toHaveLength(3);
         expect(mocks.showFormatChoice).toHaveBeenCalledOnce();
+    });
+
+    it("keeps mapped chapter content normalized when image downloads are disabled", async () => {
+        const bytes = new Uint8Array(64);
+        const view = new DataView(bytes.buffer);
+        view.setUint32(0, 0x774f4632, false);
+        view.setUint32(8, bytes.byteLength, false);
+        const fontDataUrl = `data:font/woff2;base64,${Buffer.from(bytes).toString("base64")}`;
+        const css = `@font-face { font-family: '1'; src: url('${fontDataUrl}') format('woff2'); font-display: swap; }`;
+        mocks.parseChapterHtml.mockReturnValue({
+            title: "Mapped chapter",
+            author: "",
+            contentHtml: `<link rel="stylesheet" href="data:text/css,${encodeURIComponent(css)}"><section style="font-family: '1', sans-serif;"><p>Mapped body</p><img src="cover.jpg"></section>`,
+            contentText: "Mapped body",
+            bookName: "Test book"
+        });
+
+        await batchDownload(createOptions([createDownloadTask()]));
+
+        const chapter = state.cachedData?.chapters[0];
+        expect(chapter?.mappingFont?.family).toBe("1");
+        expect(chapter?.content).not.toContain("data:text/css");
+        expect(chapter?.content).not.toContain("<img");
+        expect(chapter?.content).toContain("font-family: '1', sans-serif");
     });
 
     it("passes the active abort signal to coordinator delays", async () => {

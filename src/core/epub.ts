@@ -2,6 +2,7 @@ import { loadScript, log } from "../utils/index";
 import { isSupportedImageMediaType } from "../utils/image-format";
 import { escapeXml, convertToXhtml } from "../utils/text";
 import { Chapter, BookMetadata, ChapterImage } from "../types";
+import { prepareChapterMappingExport } from "./mapping-font";
 
 import type JSZip from "jszip";
 
@@ -110,7 +111,16 @@ export async function buildEpub(chapters: Chapter[], metadata: BookMetadata, inc
         const id = `chap_${i + 1}`;
         const filename = `${id}.xhtml`;
         const title = chapters[i].title || `第${i + 1}章`;
-        const body = convertToXhtml(chapters[i].content || "");
+        const mappingExport = prepareChapterMappingExport(chapters[i], i);
+        const body = convertToXhtml(mappingExport?.contentHtml || chapters[i].content || "");
+        let mappingFontStyle = "";
+        if (mappingExport) {
+            const fontId = `font_${i + 1}`;
+            const fontFilename = `fonts/${fontId}_${mappingExport.font.sha256.slice(0, 12)}.woff2`;
+            oebps.file(fontFilename, mappingExport.font.blob);
+            manifestItems.push(`<item id="${fontId}" href="${fontFilename}" media-type="font/woff2"/>`);
+            mappingFontStyle = `<style>@font-face { font-family: '${mappingExport.fontFamily}'; src: url('${fontFilename}') format('woff2'); font-display: swap; }</style>`;
+        }
 
         // 处理章节中的图片
         const chap = chapters[i];
@@ -128,7 +138,7 @@ export async function buildEpub(chapters: Chapter[], metadata: BookMetadata, inc
 
         const xhtml = `<?xml version="1.0" encoding="utf-8"?>
             <html xmlns="http://www.w3.org/1999/xhtml">
-              <head><title>${escapeXml(title)}</title></head>
+              <head><title>${escapeXml(title)}</title>${mappingFontStyle}</head>
               <body>
                 <h2>${escapeXml(title)}</h2>
                 <div>${body}</div>

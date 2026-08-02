@@ -8,6 +8,7 @@ import type {
 } from "../src/core/download/contracts";
 import type { CachedData, Chapter, RuntimeCacheSession } from "../src/types";
 import { createChapter, createDownloadTask, FakeChapterFetcher, RecordingDownloadEvents } from "./support";
+import { MappingFontError } from "../src/core/mapping-font";
 
 describe("runDownload characterization", () => {
     it("runs without DOM, IndexedDB, GM APIs, or global application state", async () => {
@@ -22,6 +23,27 @@ describe("runDownload characterization", () => {
         expect(harness.cacheClears).toEqual([{ bookId: "100", taskId: "task-100" }]);
         expect(harness.ui.showFormatChoice).toHaveBeenCalledOnce();
         expect(harness.ui.cleanup).toHaveBeenCalledOnce();
+    });
+
+    it("starts resumed progress from valid cached chapters and only schedules missing chapters", async () => {
+        const tasks = [createDownloadTask(0), createDownloadTask(1), createDownloadTask(2)];
+        const harness = createHarness(
+            tasks,
+            new Map([
+                [0, createChapter(0)],
+                [1, createChapter(1)]
+            ])
+        );
+
+        await runDownload(createOptions(tasks), harness.dependencies);
+
+        expect(harness.fetcher.calls.map((task) => task.index)).toEqual([2]);
+        expect(harness.processedIndexes).toEqual([2]);
+        expect(harness.events.ofType("chapter-restored")).toHaveLength(2);
+        expect(
+            harness.ui.snapshots.find((snapshot) => snapshot.phase === "downloading" && snapshot.completedCount === 2)
+        ).toMatchObject({ restoredCount: 2, cachedChapterCount: 2 });
+        expect(harness.dependencies.log).not.toHaveBeenCalledWith(expect.stringContaining("正在预检"));
     });
 
     it("publishes structured phases and progress while preserving small-download results", async () => {
@@ -55,7 +77,68 @@ describe("runDownload characterization", () => {
         expect(harness.exportData?.txt).toContain("第 1 章正文");
         expect(harness.exportData?.txt).toContain("第 2 章正文");
     });
+
+    it("asks for consent once and publishes a persistent summary for mapped chapters", async () => {
+        const tasks = [createDownloadTask(0), createDownloadTask(1)];
+        const harness = createHarness(tasks);
+        harness.dependencies.chapterProcessor.process = async (_html, task) =>
+            createMappedChapter(task.index, String(task.index + 1));
+
+        await runDownload(createOptions(tasks), harness.dependencies);
+
+        expect(harness.ui.confirmMappingFontDownload).toHaveBeenCalledOnce();
+        expect(harness.ui.confirmMappingFontDownload).toHaveBeenCalledWith(
+            expect.objectContaining({ task: tasks[0], chapterCount: 1, fontBytes: 64, inFlightLimit: 1 })
+        );
+        expect(harness.ui.updateMappingFontWarning).toHaveBeenLastCalledWith({ chapterCount: 2, fontBytes: 128 });
+        expect(harness.ui.showFormatChoice).toHaveBeenCalledOnce();
+    });
+
+    it("stops without publishing export data when mapped chapter consent is rejected", async () => {
+        const tasks = [createDownloadTask(0), createDownloadTask(1)];
+        const harness = createHarness(tasks);
+        harness.dependencies.chapterProcessor.process = async (_html, task) =>
+            createMappedChapter(task.index, String(task.index + 1));
+        harness.ui.confirmMappingFontDownload.mockResolvedValue(false);
+
+        await runDownload(createOptions(tasks), harness.dependencies);
+
+        expect(harness.fetcher.calls.map((task) => task.index)).toEqual([0]);
+        expect(harness.ui.showFormatChoice).not.toHaveBeenCalled();
+        expect(harness.exportData).toBeNull();
+        expect(harness.ui.cleanup).toHaveBeenCalledOnce();
+    });
+
+    it("blocks export and reports chapters whose mapped font remains invalid after retry", async () => {
+        const tasks = [createDownloadTask(0)];
+        const harness = createHarness(tasks);
+        harness.dependencies.chapterProcessor.process = async () => {
+            throw new MappingFontError("woff2-invalid", "invalid test font");
+        };
+
+        await expect(runDownload(createOptions(tasks), harness.dependencies)).rejects.toThrow(
+            "1 个章节的映射字体无法解析"
+        );
+
+        expect(harness.ui.showMappingFontFailure).toHaveBeenCalledOnce();
+        expect(harness.ui.showMappingFontFailure).toHaveBeenCalledWith([
+            expect.objectContaining({ task: tasks[0], message: expect.stringContaining("invalid test font") })
+        ]);
+        expect(harness.ui.showFormatChoice).not.toHaveBeenCalled();
+    });
 });
+
+function createMappedChapter(index: number, family: string): Chapter {
+    return createChapter(index, {
+        content: `<section style="font-family: '${family}', sans-serif;"><p>Mapped body</p></section>`,
+        mappingFont: {
+            family,
+            blob: new Blob([new Uint8Array(64)], { type: "font/woff2" }),
+            mediaType: "font/woff2",
+            sha256: family.padStart(64, "a")
+        }
+    });
+}
 
 function createHarness(tasks: DownloadTask[], chapters = new Map<number, Chapter>()) {
     const fetcher = new FakeChapterFetcher();
@@ -71,11 +154,15 @@ function createHarness(tasks: DownloadTask[], chapters = new Map<number, Chapter
         update(snapshot: DownloadSnapshot) {
             this.snapshots.push(snapshot);
         },
+        confirmMappingFontDownload: vi.fn(async () => true),
+        updateMappingFontWarning: vi.fn(),
+        showMappingFontFailure: vi.fn(),
         cleanup: vi.fn(),
         showFormatChoice: vi.fn()
     };
     let exportData: CachedData | null = null;
     let runtimeSession: RuntimeCacheSession | null = null;
+    let cancellationRequested = false;
 
     const dependencies: DownloadDependencies = {
         runtime: {
@@ -83,8 +170,10 @@ function createHarness(tasks: DownloadTask[], chapters = new Map<number, Chapter
             signal: new AbortController().signal,
             activeBookLock: null,
             originalTitle: "Test",
-            isCancellationRequested: () => false,
-            requestCancellation: vi.fn(),
+            isCancellationRequested: () => cancellationRequested,
+            requestCancellation: vi.fn(() => {
+                cancellationRequested = true;
+            }),
             subscribeCancellation: () => () => undefined,
             startCacheSession(meta, taskId, initialChapterCount) {
                 runtimeSession = {

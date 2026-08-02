@@ -97,4 +97,33 @@ describe("buildEpub image resources", () => {
             "图片 img_0_0.jpg 内容为空"
         );
     });
+
+    it("embeds a mapped font as an independent manifest resource", async () => {
+        const fontBytes = new Uint8Array([0x77, 0x4f, 0x46, 0x32]);
+        const chapter: Chapter = {
+            title: "Mapped chapter",
+            content: "<section style=\"font-family: '1', sans-serif;\"><p>Mapped body</p></section>",
+            txtSegment: "Mapped chapter\n\nMapped body\n\n",
+            mappingFont: {
+                family: "1",
+                blob: new Blob([fontBytes], { type: "font/woff2" }),
+                mediaType: "font/woff2",
+                sha256: "a".repeat(64)
+            }
+        };
+
+        const epub = await buildEpub([chapter], metadata, false);
+        const zip = await JSZip.loadAsync(await epub.arrayBuffer());
+        const manifest = await zip.file("OEBPS/content.opf")?.async("string");
+        const chapterXhtml = await zip.file("OEBPS/chap_1.xhtml")?.async("string");
+        const embeddedFont = await zip.file("OEBPS/fonts/font_1_aaaaaaaaaaaa.woff2")?.async("uint8array");
+
+        expect(manifest).toContain('href="fonts/font_1_aaaaaaaaaaaa.woff2" media-type="font/woff2"');
+        expect(chapterXhtml).toContain("font-family: 'esj-mapped-1-aaaaaaaaaaaa'");
+        expect(chapterXhtml).toContain("url('fonts/font_1_aaaaaaaaaaaa.woff2')");
+        expect(chapterXhtml).toContain("font-display: swap");
+        expect(chapterXhtml).toContain('lang="en"');
+        expect(chapterXhtml).toContain("font-feature-settings: &quot;locl&quot; 0");
+        expect(embeddedFont).toEqual(fontBytes);
+    });
 });

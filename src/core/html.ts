@@ -1,5 +1,6 @@
 import { Chapter, BookMetadata } from "../types";
 import { blobToBase64, log } from "../utils/index";
+import { prepareChapterMappingExport } from "./mapping-font";
 
 /**
  * 构建单文件 HTML
@@ -8,6 +9,8 @@ export async function buildHtml(chapters: Chapter[], metadata: BookMetadata): Pr
     log("正在构建 HTML 文件...");
 
     const imgMap = new Map<string, string>();
+    const mappingExports = chapters.map((chapter, index) => prepareChapterMappingExport(chapter, index));
+    const mappingFontStyles: string[] = [];
 
     // 处理封面
     if (metadata.coverBlob) {
@@ -25,9 +28,20 @@ export async function buildHtml(chapters: Chapter[], metadata: BookMetadata): Pr
         }
     }
 
+    for (const mappingExport of mappingExports) {
+        if (!mappingExport) {
+            continue;
+        }
+        const dataUrl = await blobToBase64(mappingExport.font.blob);
+        mappingFontStyles.push(
+            `@font-face { font-family: '${mappingExport.fontFamily}'; src: url('${dataUrl}') format('woff2'); font-display: swap; }`
+        );
+    }
+
     // 简单的阅读样式
     const style = `
         <style>
+            ${mappingFontStyles.join("\n")}
             body { font-family: sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; line-height: 1.6; color: #333; background: #f9f9f9; }
             img { max-width: 100%; height: auto; display: block; margin: 10px auto; }
             h1, h2, h3 { color: #2c3e50; }
@@ -73,7 +87,7 @@ export async function buildHtml(chapters: Chapter[], metadata: BookMetadata): Pr
     let contentHtml = "";
     for (let i = 0; i < chapters.length; i++) {
         const chap = chapters[i];
-        let body = chap.content;
+        let body = mappingExports[i]?.contentHtml || chap.content;
 
         if (chap.images && chap.images.length > 0) {
             chap.images.forEach((img) => {

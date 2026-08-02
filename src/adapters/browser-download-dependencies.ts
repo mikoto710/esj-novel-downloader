@@ -22,12 +22,19 @@ import {
 } from "../core/state";
 import { clearBookCacheForTask, putBookCacheBatchForTask } from "../core/cache/book-cache";
 import type { Chapter } from "../types";
-import { createDownloadPopup, showFormatChoice } from "../ui/popups";
+import {
+    confirmMappingFontDownload,
+    createDownloadPopup,
+    showFormatChoice,
+    showMappingFontFailure,
+    updateMappingFontWarning
+} from "../ui/popups";
 import { updateTrayText } from "../ui/tray";
 import { fullCleanup } from "../utils/dom";
 import { processHtmlImages } from "../utils/image";
 import { fetchWithTimeout, log, sleep, sleepWithAbort } from "../utils/index";
 import { removeImgTags } from "../utils/text";
+import { normalizeChapterMappingFont } from "../core/mapping-font";
 
 // 下载核心的浏览器实现边界
 // DOM、全局 state、网络、解析、图片、缓存和锁实现均限制在本模块中
@@ -117,6 +124,9 @@ const ui: DownloadUiPort = {
             progressEl.style.width = (count / total) * 100 + "%";
         }
     },
+    confirmMappingFontDownload,
+    updateMappingFontWarning,
+    showMappingFontFailure,
     cleanup: () => fullCleanup(state.originalTitle),
     showFormatChoice
 };
@@ -133,31 +143,39 @@ const chapterFetcher: ChapterFetcherPort = {
 const chapterProcessor: ChapterProcessorPort = {
     async process(html, task, imageEnabled, signal) {
         const result = parseChapterHtml(html, task.title);
-        let finalHtml = result.contentHtml;
+        const normalized = await normalizeChapterMappingFont(
+            {
+                title: result.title,
+                content: result.contentHtml,
+                txtSegment: `${result.title}\n\n${result.author}\n\n${result.contentText}\n\n`
+            },
+            signal
+        );
+        let finalHtml = normalized.chapter.content;
         let images: Chapter["images"] = [];
         let imageErrors = 0;
 
         if (imageEnabled) {
             try {
-                const processed = await processHtmlImages(result.contentHtml, task.index, signal);
+                const processed = await processHtmlImages(finalHtml, task.index, signal);
                 finalHtml = processed.processedHtml;
                 images = processed.images;
                 imageErrors = processed.failCount;
             } catch (error) {
-                const matches = result.contentHtml.match(/<img\s/gi);
+                const matches = finalHtml.match(/<img\s/gi);
                 imageErrors = matches ? matches.length : 0;
                 log(
                     `⚠️ 图片处理异常，跳过 ${imageErrors} 张图片。第 ${task.index + 1} 章 标题：${task.title}，原因：${getErrorMessage(error)}`
                 );
             }
         } else {
-            finalHtml = removeImgTags(result.contentHtml);
+            // 必须基于字体规范化后的正文去图，不能把已移除的页面 data CSS 再写回缓存
+            finalHtml = removeImgTags(finalHtml);
         }
 
         return {
-            title: result.title,
+            ...normalized.chapter,
             content: finalHtml,
-            txtSegment: `${result.title}\n\n${result.author}\n\n${result.contentText}\n\n`,
             images,
             imageErrors
         };

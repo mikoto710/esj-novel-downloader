@@ -18,6 +18,7 @@ import { buildHtml } from "../core/html";
 import { createCacheManagerPopup } from "./cache-manager";
 import { createDownloadHistoryPopup } from "./download-history";
 import { addDownloadHistory } from "../core/download-history";
+import type { MappingFontDetection, MappingFontSummary } from "../core/download/contracts";
 
 /**
  * 锁定/解锁页面上的设置按钮
@@ -35,6 +36,167 @@ function toggleSettingsLock(locked: boolean) {
 function toggleDownloadLock(locked: boolean) {
     const btns = document.querySelectorAll(".esj-download-trigger");
     btns.forEach((b) => ((b as HTMLButtonElement).disabled = locked));
+}
+
+function formatMappingFontBytes(bytes: number): string {
+    if (bytes < 1024 * 1024) {
+        return `${(bytes / 1024).toFixed(1)} KiB`;
+    }
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MiB`;
+}
+
+/**
+ * 在下载进度弹窗中持续显示映射字体限制
+ */
+export function updateMappingFontWarning(summary: MappingFontSummary): void {
+    const popup = document.querySelector("#esj-popup");
+    if (!popup) {
+        return;
+    }
+    let warning = popup.querySelector("#esj-mapping-warning") as HTMLElement | null;
+    if (!warning) {
+        warning = el("div", {
+            id: "esj-mapping-warning",
+            style: "margin:0 12px 8px;padding:10px 12px;border:1px solid #e6a23c;background:#fff7e6;color:#8a5a00;border-radius:6px;font-size:13px;line-height:1.6;"
+        });
+        popup.querySelector("#esj-log")?.before(warning);
+    }
+    warning.textContent = `⚠ 已检测到 ${summary.chapterCount} 个映射章节，字体共 ${formatMappingFontBytes(summary.fontBytes)}。TXT 导出已禁用，HTML/EPUB 仅保证视觉显示。`;
+}
+
+/**
+ * 首次检测到映射正文后要求用户明确同意，关闭弹窗等同停止下载
+ */
+export function confirmMappingFontDownload(detection: MappingFontDetection): Promise<boolean> {
+    document.querySelector("#esj-mapping-confirm")?.remove();
+    return new Promise<boolean>((resolve) => {
+        let settled = false;
+        const finish = (confirmed: boolean) => {
+            if (settled) {
+                return;
+            }
+            settled = true;
+            popup.remove();
+            resolve(confirmed);
+        };
+        const header = createCommonHeader("⚠️ 检测到自定义映射字体", () => finish(false));
+        const body = el("div", { style: "padding:16px;font-size:14px;line-height:1.7;color:#333;" }, [
+            el("div", { style: "font-weight:bold;margin-bottom:8px;" }, [detection.task.title]),
+            "该章节使用专属映射字体。继续下载后只能导出 HTML 或 EPUB；复制、搜索和朗读可能不正确，缓存及导出文件也会明显增大。",
+            el("div", { style: "margin-top:8px;color:#8a5a00;font-size:13px;" }, [
+                `当前检测到 ${detection.chapterCount} 章，字体 ${formatMappingFontBytes(detection.fontBytes)}。`
+            ]),
+            el(
+                "div",
+                {
+                    id: "esj-mapping-inflight-warning",
+                    style: "margin-top:10px;padding:8px 10px;border:1px solid #f0c36d;background:#fff8e5;color:#7a5200;border-radius:5px;font-size:13px;"
+                },
+                [
+                    detection.inFlightLimit > 0
+                        ? `已停止领取新章节。已经发出的请求仍会收尾，进度最多还可能增加 ${detection.inFlightLimit} 章；这不表示任务仍在继续领取章节。`
+                        : "尚未发出新的章节请求；确认期间不会继续下载。"
+                ]
+            )
+        ]);
+        const footer = el("div", { style: "padding:12px;display:flex;justify-content:flex-end;gap:8px;" }, [
+            el(
+                "button",
+                {
+                    id: "esj-mapping-stop",
+                    style: "padding:8px 12px;background:#eee;border:1px solid #ccc;border-radius:6px;cursor:pointer;",
+                    onclick: () => finish(false)
+                },
+                ["停止下载"]
+            ),
+            el(
+                "button",
+                {
+                    id: "esj-mapping-continue",
+                    style: "padding:8px 12px;background:#2b9bd7;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:bold;",
+                    onclick: () => finish(true)
+                },
+                ["继续下载（仅 HTML/EPUB）"]
+            )
+        ]);
+        const popup = el(
+            "div",
+            {
+                id: "esj-mapping-confirm",
+                role: "dialog",
+                "aria-modal": "true",
+                style: "position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:440px;max-width:calc(100vw - 32px);background:#fff;border:1px solid #aaa;border-radius:8px;box-shadow:0 0 18px rgba(0,0,0,.28);z-index:1000001;display:flex;flex-direction:column;"
+            },
+            [header, body, footer]
+        );
+        document.body.appendChild(popup);
+        enableDrag(popup, ".esj-common-header");
+        (popup.querySelector("#esj-mapping-continue") as HTMLButtonElement | null)?.focus();
+    });
+}
+
+/**
+ * 映射字体补抓后仍失败时给出明确摘要，禁止静默进入导出
+ */
+export function showMappingFontFailure(failures: ReadonlyArray<{ task: { title: string }; message: string }>): void {
+    const preview = failures
+        .slice(0, 5)
+        .map((failure) => `• ${failure.task.title}: ${failure.message}`)
+        .join("\n");
+    const remaining = failures.length > 5 ? `\n另有 ${failures.length - 5} 章未列出。` : "";
+    alert(`有 ${failures.length} 个章节的映射字体无法解析，已阻止导出：\n${preview}${remaining}`);
+}
+
+export function confirmMappingFontExport(format: "EPUB" | "HTML", summary: MappingFontSummary): Promise<boolean> {
+    document.querySelector("#esj-mapping-export-confirm")?.remove();
+    return new Promise<boolean>((resolve) => {
+        let settled = false;
+        const finish = (confirmed: boolean) => {
+            if (settled) {
+                return;
+            }
+            settled = true;
+            popup.remove();
+            resolve(confirmed);
+        };
+        const popup = el(
+            "div",
+            {
+                id: "esj-mapping-export-confirm",
+                role: "dialog",
+                "aria-modal": "true",
+                style: "position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:440px;max-width:calc(100vw - 32px);background:#fff;border:1px solid #aaa;border-radius:8px;box-shadow:0 0 18px rgba(0,0,0,.28);z-index:1000001;display:flex;flex-direction:column;"
+            },
+            [
+                createCommonHeader(`⚠️ 确认生成 ${format}`, () => finish(false)),
+                el("div", { style: "padding:16px;font-size:14px;line-height:1.7;color:#333;" }, [
+                    `将嵌入 ${summary.chapterCount} 个章节字体，共 ${formatMappingFontBytes(summary.fontBytes)}。${format} 只能保证视觉显示，复制、搜索和朗读可能不正确。`
+                ]),
+                el("div", { style: "padding:12px;display:flex;justify-content:flex-end;gap:8px;" }, [
+                    el(
+                        "button",
+                        {
+                            style: "padding:8px 12px;background:#eee;border:1px solid #ccc;border-radius:6px;cursor:pointer;",
+                            onclick: () => finish(false)
+                        },
+                        ["返回"]
+                    ),
+                    el(
+                        "button",
+                        {
+                            id: "esj-mapping-export-continue",
+                            style: "padding:8px 12px;background:#2b9bd7;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:bold;",
+                            onclick: () => finish(true)
+                        },
+                        [`继续生成 ${format}`]
+                    )
+                ])
+            ]
+        );
+        document.body.appendChild(popup);
+        enableDrag(popup, ".esj-common-header");
+        (popup.querySelector("#esj-mapping-export-continue") as HTMLButtonElement | null)?.focus();
+    });
 }
 
 /**
@@ -392,6 +554,12 @@ export function showFormatChoice(): void {
     toggleDownloadLock(true);
 
     const data = state.cachedData as CachedData;
+    const mappedChapters = data.chapters.filter((chapter) => Boolean(chapter.mappingFont));
+    const mappingSummary: MappingFontSummary = {
+        chapterCount: mappedChapters.length,
+        fontBytes: mappedChapters.reduce((total, chapter) => total + (chapter.mappingFont?.blob.size || 0), 0)
+    };
+    const hasMappedChapters = mappingSummary.chapterCount > 0;
 
     const closeAction = () => {
         document.querySelector("#esj-format")?.remove();
@@ -445,22 +613,39 @@ export function showFormatChoice(): void {
         el("div", {}, [`《${data.metadata.title}》内容已就绪。`]),
         el("div", { style: "color:#666;font-size:12px;margin-top:4px;" }, [`共 ${data.chapters.length} 章`]),
         coverStatus,
-        imageStatus
+        imageStatus,
+        hasMappedChapters
+            ? el(
+                  "div",
+                  {
+                      id: "esj-format-mapping-warning",
+                      style: "margin-top:10px;padding:10px;border:1px solid #e6a23c;background:#fff7e6;color:#8a5a00;border-radius:6px;font-size:12px;line-height:1.6;"
+                  },
+                  [
+                      `⚠ 检测到 ${mappingSummary.chapterCount} 个映射章节，字体共 ${formatMappingFontBytes(mappingSummary.fontBytes)}。TXT 已禁用；HTML/EPUB 仅保证视觉显示，复制、搜索和朗读可能不正确。`
+                  ]
+              )
+            : ""
     ]);
 
     const btnTxt = el(
         "button",
         {
             id: "esj-txt",
-            style: "flex:1;padding:10px 0;border:1px solid #ccc;background:#f0f0f0;border-radius:6px;cursor:pointer;font-weight:bold;color:#333;",
-            onclick: () => {
-                const filename = (data.metadata.title || "book") + ".txt";
-                const blob = new Blob([data.txt], { type: "text/plain;charset=utf-8" });
-                triggerDownload(blob, filename);
-                void recordBookExport("txt");
-            }
+            disabled: hasMappedChapters,
+            "aria-disabled": hasMappedChapters ? "true" : "false",
+            title: hasMappedChapters ? "映射正文尚未恢复为真实 Unicode，无法生成正确 TXT" : "下载 TXT",
+            style: `flex:1;padding:10px 0;border:1px solid #ccc;background:#f0f0f0;border-radius:6px;cursor:${hasMappedChapters ? "not-allowed" : "pointer"};font-weight:bold;color:${hasMappedChapters ? "#999" : "#333"};`,
+            onclick: hasMappedChapters
+                ? undefined
+                : () => {
+                      const filename = (data.metadata.title || "book") + ".txt";
+                      const blob = new Blob([data.txt], { type: "text/plain;charset=utf-8" });
+                      triggerDownload(blob, filename);
+                      void recordBookExport("txt");
+                  }
         },
-        ["⬇ TXT 下载"]
+        [hasMappedChapters ? "TXT 不可用" : "⬇ TXT 下载"]
     );
 
     const btnEpub = el(
@@ -486,10 +671,15 @@ export function showFormatChoice(): void {
     const footer = el(
         "div",
         {
-            style: "display:flex;gap:15px;justify-content:center;padding:0 20px 20px 20px;"
+            style: "display:flex;gap:15px;justify-content:center;padding:0 20px 8px 20px;"
         },
         [btnTxt, btnEpub, btnHtml]
     );
+    const txtDisabledReason = hasMappedChapters
+        ? el("div", { style: "padding:0 20px 16px;color:#a45b00;font-size:12px;line-height:1.5;" }, [
+              "TXT 已禁用：映射正文尚未恢复为真实 Unicode。"
+          ])
+        : "";
 
     const popup = el(
         "div",
@@ -497,7 +687,7 @@ export function showFormatChoice(): void {
             id: "esj-format",
             style: "position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:420px;background:#fff;border:1px solid #aaa;border-radius:8px;box-shadow:0 0 18px rgba(0,0,0,.28);z-index:999999;padding:0;display:flex;flex-direction:column;"
         },
-        [header, infoBody, footer]
+        [header, infoBody, footer, txtDisabledReason]
     );
 
     document.body.appendChild(popup);
@@ -507,6 +697,9 @@ export function showFormatChoice(): void {
     async function handleEpubDownload() {
         const btn = document.querySelector("#esj-epub") as HTMLButtonElement;
         const currentData = state.cachedData as CachedData;
+        if (hasMappedChapters && !(await confirmMappingFontExport("EPUB", mappingSummary))) {
+            return;
+        }
 
         // 如果已经生成过，直接下载缓存的 blob
         if (currentData.epubBlob) {
@@ -547,6 +740,9 @@ export function showFormatChoice(): void {
     // 下载 HTML
     async function handleHtmlDownload() {
         const btn = document.querySelector("#esj-html") as HTMLButtonElement;
+        if (hasMappedChapters && !(await confirmMappingFontExport("HTML", mappingSummary))) {
+            return;
+        }
         const originalText = btn.innerText;
         try {
             btn.innerText = "生成中...";

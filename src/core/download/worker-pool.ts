@@ -5,6 +5,7 @@ export interface WorkerPoolOptions<T> {
     items: readonly T[];
     concurrency: number;
     isCancellationRequested(): boolean;
+    beforeClaim?(): Promise<boolean>;
     process(item: T, index: number): Promise<void>;
 }
 
@@ -29,6 +30,12 @@ export async function runWorkerPool<T>(options: WorkerPoolOptions<T>): Promise<W
 
     const worker = async () => {
         while (!isCancellationRequested()) {
+            if (options.beforeClaim && !(await options.beforeClaim())) {
+                return;
+            }
+            if (isCancellationRequested()) {
+                return;
+            }
             const index = cursor;
             if (index >= items.length) {
                 return;

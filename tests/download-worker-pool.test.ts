@@ -65,4 +65,32 @@ describe("runWorkerPool", () => {
         expect(processed).toEqual([0]);
         expect(result).toEqual({ claimedCount: 1, completedCount: 1, cancelled: true });
     });
+
+    it("waits for a shared consent gate before claiming another item", async () => {
+        const consent = createDeferred<boolean>();
+        const processed: number[] = [];
+        let claimCheckCount = 0;
+        const poolPromise = runWorkerPool({
+            items: [0, 1],
+            concurrency: 1,
+            isCancellationRequested: () => false,
+            beforeClaim: () => {
+                claimCheckCount += 1;
+                return claimCheckCount === 1 ? Promise.resolve(true) : consent.promise;
+            },
+            process: async (item) => {
+                processed.push(item);
+            }
+        });
+
+        await Promise.resolve();
+        await Promise.resolve();
+        expect(processed).toEqual([0]);
+
+        consent.resolve(false);
+        const result = await poolPromise;
+
+        expect(processed).toEqual([0]);
+        expect(result.claimedCount).toBe(1);
+    });
 });
