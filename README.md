@@ -180,7 +180,7 @@ npm run test:stress
 
 ```bash
 # 1. 检查格式；若失败，按提示格式化并审查修改
-npx prettier --check "src/**/*.{ts,js,json,md}" "tests/**/*.{ts,md}" README.md package.json package-lock.json
+npm run format:check
 
 # 2. 类型检查、普通测试和正式构建
 npm run build
