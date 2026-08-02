@@ -76,7 +76,12 @@ describe("download lifecycle contracts", () => {
 
         mocks.getConflict.mockResolvedValue(null);
         mocks.loadCache.mockResolvedValue({ size: 0, map: null });
-        mocks.claimCache.mockResolvedValue({ size: 0, map: null });
+        mocks.claimCache.mockResolvedValue({
+            size: 0,
+            map: null,
+            compatibility: "compatible",
+            invalidatedCount: 0
+        });
         mocks.acquire.mockResolvedValue({ acquired: true, lock });
         mocks.markRunning.mockResolvedValue(true);
         mocks.startHeartbeat.mockReturnValue(mocks.stopHeartbeat);
@@ -105,7 +110,7 @@ describe("download lifecycle contracts", () => {
         await scrapeDetail();
 
         expect(mocks.log).toHaveBeenCalledWith("正在准备本地缓存...");
-        expect(mocks.claimCache).toHaveBeenCalledWith("100", lock.taskId, expect.any(AbortSignal));
+        expect(mocks.claimCache).toHaveBeenCalledWith("100", lock.taskId, false, expect.any(AbortSignal));
         expect(mocks.log.mock.invocationCallOrder[0]).toBeLessThan(mocks.claimCache.mock.invocationCallOrder[0]);
     });
 
@@ -117,7 +122,7 @@ describe("download lifecycle contracts", () => {
             requestCancellation = onCancellationRequested;
             return mocks.stopHeartbeat;
         });
-        mocks.claimCache.mockImplementationOnce((_bookId, _taskId, signal?: AbortSignal) => {
+        mocks.claimCache.mockImplementationOnce((_bookId, _taskId, _imageEnabled, signal?: AbortSignal) => {
             claimStarted.resolve();
             return new Promise((_resolve, reject) => {
                 signal?.addEventListener(
@@ -140,5 +145,14 @@ describe("download lifecycle contracts", () => {
         expect(mocks.batchDownload).not.toHaveBeenCalled();
         expect(mocks.finalize).toHaveBeenCalledOnce();
         expect(mocks.log.mock.calls.flat().join("\n")).not.toContain("抓取流程异常");
+    });
+
+    it("passes the confirmed image setting snapshot through cache claim and download", async () => {
+        GM_setValue("enable_image_download", true);
+
+        await scrapeDetail();
+
+        expect(mocks.claimCache).toHaveBeenCalledWith("100", lock.taskId, true, expect.any(AbortSignal));
+        expect(mocks.batchDownload).toHaveBeenCalledWith(expect.objectContaining({ imageEnabled: true }));
     });
 });

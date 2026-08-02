@@ -34,6 +34,7 @@ export interface DownloadOptions {
     coverUrl?: string;
     pageUrl?: string;
     sourcePageType?: SourcePageType;
+    imageEnabled: boolean;
     tasks: DownloadTask[];
 }
 
@@ -218,7 +219,6 @@ export interface DownloadSchedulerPort {
  */
 export interface DownloadSettingsPort {
     getConcurrency(): number;
-    isImageDownloadEnabled(): boolean;
 }
 
 /**

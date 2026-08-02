@@ -27,7 +27,7 @@ describe("independent cover cache contracts", () => {
     it("stores a cover outside the manifest and reuses the exact URL", async () => {
         const storage = await import("../../src/core/cache/book-cache");
         const cover = createCover("png");
-        await storage.claimBookCache("400", "task-400");
+        await storage.claimBookCache("400", "task-400", false);
 
         await expect(
             storage.putBookCoverForTask("400", "task-400", "https://img.example/cover.png", cover)
@@ -42,7 +42,7 @@ describe("independent cover cache contracts", () => {
 
     it("atomically replaces an old URL without reusing its Blob", async () => {
         const storage = await import("../../src/core/cache/book-cache");
-        await storage.claimBookCache("401", "task-401");
+        await storage.claimBookCache("401", "task-401", false);
         await storage.putBookCoverForTask("401", "task-401", "https://img.example/old.jpg", createCover("jpg"));
         await storage.putBookCoverForTask("401", "task-401", "https://img.example/new.png", createCover("png"));
 
@@ -54,9 +54,9 @@ describe("independent cover cache contracts", () => {
 
     it("prevents a stale writer from replacing a newer task cover", async () => {
         const storage = await import("../../src/core/cache/book-cache");
-        await storage.claimBookCache("402", "task-old");
+        await storage.claimBookCache("402", "task-old", false);
         await storage.putBookCoverForTask("402", "task-old", "https://img.example/current.jpg", createCover("jpg"));
-        await storage.claimBookCache("402", "task-new");
+        await storage.claimBookCache("402", "task-new", false);
 
         await expect(
             storage.putBookCoverForTask("402", "task-old", "https://img.example/stale.png", createCover("png"))
@@ -67,7 +67,7 @@ describe("independent cover cache contracts", () => {
 
     it("clears the cover in the same task-owned book cleanup", async () => {
         const storage = await import("../../src/core/cache/book-cache");
-        await storage.claimBookCache("403", "task-403");
+        await storage.claimBookCache("403", "task-403", false);
         await storage.putBookCoverForTask("403", "task-403", "https://img.example/cover.jpg", createCover("jpg"));
 
         await expect(storage.clearBookCacheForTask("403", "task-403")).resolves.toBe(true);
@@ -76,7 +76,7 @@ describe("independent cover cache contracts", () => {
 
     it("clears the cover through the cache manager book cleanup", async () => {
         const storage = await import("../../src/core/cache/book-cache");
-        await storage.claimBookCache("405", "task-405");
+        await storage.claimBookCache("405", "task-405", false);
         await storage.putBookCoverForTask("405", "task-405", "https://img.example/cover.jpg", createCover("jpg"));
 
         await expect(storage.clearBookCache("405")).resolves.toBe(true);
@@ -85,7 +85,7 @@ describe("independent cover cache contracts", () => {
 
     it("does not write a cover after its transaction signal is cancelled", async () => {
         const storage = await import("../../src/core/cache/book-cache");
-        await storage.claimBookCache("404", "task-404");
+        await storage.claimBookCache("404", "task-404", false);
         const controller = new AbortController();
         controller.abort();
 

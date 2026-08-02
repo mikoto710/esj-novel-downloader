@@ -24,8 +24,20 @@ import {
 } from "./legacy-cache";
 import { publishCacheSyncEvent } from "./sync";
 import { isExpectedStorageCancellation, normalizeStorageError } from "./storage-error";
+import type { ImageCacheCompatibility } from "./image-cache-compatibility";
 
 const CACHE_EXPIRE_TIME = 24 * 60 * 60 * 1000;
+
+export interface BookCacheLoadResult {
+    size: number;
+    map: Map<number, Chapter> | null;
+    meta?: CacheMeta;
+}
+
+export interface BookCacheClaimResult extends BookCacheLoadResult {
+    compatibility: ImageCacheCompatibility;
+    invalidatedCount: number;
+}
 
 function isExpired(data: { ts: number }): boolean {
     return Date.now() - data.ts > CACHE_EXPIRE_TIME;
@@ -84,7 +96,7 @@ function toLegacyPersistentEntry(record: LegacyCacheRecord): PersistentCacheEntr
  * 读取 IndexedDB 中的小说缓存
  * v3 缓存优先，未迁移时只读 v2 缓存
  */
-export async function loadBookCache(bookId: string): Promise<{ size: number; map: Map<number, Chapter> | null }> {
+export async function loadBookCache(bookId: string): Promise<BookCacheLoadResult> {
     try {
         const manifest = await readCacheManifestV3(bookId);
         if (manifest) {
@@ -93,7 +105,7 @@ export async function loadBookCache(bookId: string): Promise<{ size: number; map
             }
             const map = await readCacheChaptersV3(bookId);
             console.log(`✅ 读取到本地缓存，章节数：${map.size}`);
-            return { size: map.size, map: map.size > 0 ? map : null };
+            return { size: map.size, map: map.size > 0 ? map : null, meta: manifest.meta };
         }
 
         const legacy = await readLegacyCache(bookId);
@@ -107,7 +119,7 @@ export async function loadBookCache(bookId: string): Promise<{ size: number; map
 
         const map = new Map<number, Chapter>(legacy.data.chapters);
         console.log(`✅ 读取到本地缓存，章节数：${map.size}`);
-        return { size: map.size, map: map.size > 0 ? map : null };
+        return { size: map.size, map: map.size > 0 ? map : null, meta: legacy.data.meta };
     } catch (error) {
         console.error("读取缓存失败", error);
         throw normalizeStorageError(error, "read");
@@ -121,17 +133,26 @@ export async function loadBookCache(bookId: string): Promise<{ size: number; map
 export async function claimBookCache(
     bookId: string,
     taskId: string,
+    requestedImageEnabled: boolean,
     signal?: AbortSignal
-): Promise<{ size: number; map: Map<number, Chapter> | null }> {
+): Promise<BookCacheClaimResult> {
     try {
         const legacy = await readLegacyCache(bookId);
         const migrationSource = isReusableLegacyCache(legacy?.data)
             ? { chapters: legacy.data.chapters, meta: legacy.data.meta }
             : null;
         const attemptCount = migrationSource ? 2 : 1;
+        let claimResult: Awaited<ReturnType<typeof claimCacheV3>> | null = null;
         for (let attempt = 1; attempt <= attemptCount; attempt++) {
             try {
-                await claimCacheV3(bookId, taskId, migrationSource, CACHE_EXPIRE_TIME, signal);
+                claimResult = await claimCacheV3(
+                    bookId,
+                    taskId,
+                    migrationSource,
+                    CACHE_EXPIRE_TIME,
+                    requestedImageEnabled,
+                    signal
+                );
                 break;
             } catch (error) {
                 if (isExpectedStorageCancellation(error, signal)) {
@@ -146,11 +167,19 @@ export async function claimBookCache(
                 });
             }
         }
+        if (!claimResult) {
+            throw new Error("缓存认领未返回兼容性结果");
+        }
         await deleteLegacyCacheAfterMigration(bookId);
         publishCacheSyncEvent({ type: "cache-claimed", bookId, taskId });
 
         const map = await readCacheChaptersV3(bookId);
-        return { size: map.size, map: map.size > 0 ? map : null };
+        return {
+            size: map.size,
+            map: map.size > 0 ? map : null,
+            compatibility: claimResult.compatibility,
+            invalidatedCount: claimResult.invalidatedCount
+        };
     } catch (error) {
         if (isExpectedStorageCancellation(error, signal)) {
             throw error;
@@ -302,7 +331,8 @@ async function listStoredBookIds(): Promise<string[]> {
     const [manifests, legacyRecords] = await Promise.all([listCacheManifestsV3(), listLegacyCacheRecords()]);
     return Array.from(
         new Set([
-            ...manifests.map((manifest) => manifest.bookId),
+            // cleared manifest 是阻止旧 v2 缓存回流的墓碑，不应重复作为可清理书籍列举
+            ...manifests.filter((manifest) => !manifest.cleared).map((manifest) => manifest.bookId),
             ...legacyRecords.map((record) => getLegacyCacheBookId(record.key))
         ])
     );

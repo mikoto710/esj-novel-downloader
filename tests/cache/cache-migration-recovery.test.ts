@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { createChapter } from "../support";
+import { createCacheMeta, createChapter } from "../support";
 
 const mocks = vi.hoisted(() => ({
     readManifest: vi.fn(),
@@ -49,13 +49,19 @@ describe("v2 cache migration recovery", () => {
     const chapter = createChapter(0, { content: "legacy chapter" });
     const legacyRecord = {
         key: "esj_down_book_200",
-        data: { version: 2, ts: Date.now(), chapters: [[0, chapter] as [number, typeof chapter]] }
+        data: {
+            version: 2,
+            ts: Date.now(),
+            chapters: [[0, chapter] as [number, typeof chapter]],
+            meta: createCacheMeta({ bookId: "200", imageEnabled: false })
+        }
     };
 
     beforeEach(() => {
         vi.clearAllMocks();
         mocks.readManifest.mockResolvedValue(undefined);
         mocks.readChapters.mockResolvedValue(new Map([[0, chapter]]));
+        mocks.claim.mockResolvedValue({ compatibility: "compatible", invalidatedCount: 0 });
         mocks.readLegacy.mockResolvedValue(legacyRecord);
         mocks.deleteLegacy.mockResolvedValue(undefined);
         mocks.listManifests.mockResolvedValue([]);
@@ -70,10 +76,10 @@ describe("v2 cache migration recovery", () => {
     it("retries an interrupted migration once before deleting v2", async () => {
         mocks.claim
             .mockRejectedValueOnce(new DOMException("transaction aborted", "AbortError"))
-            .mockResolvedValueOnce(undefined);
+            .mockResolvedValueOnce({ compatibility: "compatible", invalidatedCount: 0 });
         const storage = await import("../../src/core/cache/book-cache");
 
-        await expect(storage.claimBookCache("200", "task-200")).resolves.toMatchObject({ size: 1 });
+        await expect(storage.claimBookCache("200", "task-200", false)).resolves.toMatchObject({ size: 1 });
 
         expect(mocks.claim).toHaveBeenCalledTimes(2);
         expect(mocks.deleteLegacy).toHaveBeenCalledOnce();
@@ -84,7 +90,7 @@ describe("v2 cache migration recovery", () => {
         mocks.claim.mockRejectedValue(new DOMException("storage full", "QuotaExceededError"));
         const storage = await import("../../src/core/cache/book-cache");
 
-        await expect(storage.claimBookCache("200", "task-200")).rejects.toMatchObject({
+        await expect(storage.claimBookCache("200", "task-200", false)).rejects.toMatchObject({
             reason: "migration-failed",
             operation: "migrate",
             causeReason: "quota-exceeded"
@@ -93,8 +99,8 @@ describe("v2 cache migration recovery", () => {
         expect(mocks.deleteLegacy).not.toHaveBeenCalled();
         await expect(storage.loadBookCache("200")).resolves.toMatchObject({ size: 1 });
 
-        mocks.claim.mockReset().mockResolvedValue(undefined);
-        await expect(storage.claimBookCache("200", "task-200")).resolves.toMatchObject({ size: 1 });
+        mocks.claim.mockReset().mockResolvedValue({ compatibility: "compatible", invalidatedCount: 0 });
+        await expect(storage.claimBookCache("200", "task-200", false)).resolves.toMatchObject({ size: 1 });
         expect(mocks.deleteLegacy).toHaveBeenCalledOnce();
     });
 

@@ -14,7 +14,7 @@ describe("3000 chapter cache complexity", () => {
         const storage = await import("../../src/core/cache/book-cache");
         const taskId = "stress-task-3000";
         const chapters = new CountingChapterMap();
-        await storage.claimBookCache("3000", taskId);
+        await storage.claimBookCache("3000", taskId, false);
 
         for (let index = 0; index < 3_000; index++) {
             chapters.set(index, createChapter(index));

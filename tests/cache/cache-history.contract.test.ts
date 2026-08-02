@@ -21,7 +21,7 @@ describe("cache and history isolation contract", () => {
             throw new Error("expected lock");
         }
 
-        await storage.claimBookCache("100", acquired.lock.taskId);
+        await storage.claimBookCache("100", acquired.lock.taskId, false);
         await storage.putBookCacheBatchForTask("100", acquired.lock.taskId, new Map([[0, createChapter(0)]]));
         await history.addDownloadHistory({
             bookId: "100",

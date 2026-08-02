@@ -11,7 +11,7 @@ import type {
     DownloadUiPort
 } from "../core/download/contracts";
 import { ownsActiveBookDownloadLock, shouldDiscardBookDownloadCache } from "../core/book-lock";
-import { getConcurrency, getImageDownloadSetting } from "../core/config";
+import { getConcurrency } from "../core/config";
 import { parseChapterHtml } from "../core/parser";
 import {
     abortActiveDownload,
@@ -265,8 +265,7 @@ export function createBrowserDownloadDependencies(): DownloadDependencies {
             }
         },
         settings: {
-            getConcurrency,
-            isImageDownloadEnabled: getImageDownloadSetting
+            getConcurrency
         },
         environment: {
             currentUrl: () => location.href,

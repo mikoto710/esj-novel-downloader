@@ -1,5 +1,6 @@
 import { createStore, get, promisifyRequest } from "idb-keyval";
 import type { BookCover, CacheMeta, Chapter } from "../../types";
+import { evaluateImageCacheCompatibility, type ImageCacheCompatibility } from "./image-cache-compatibility";
 
 /**
  * v3 书籍缓存清单
@@ -20,6 +21,11 @@ export interface CacheManifestV3 {
 export interface CacheMigrationSource {
     chapters: ReadonlyArray<readonly [number, Chapter]>;
     meta?: CacheMeta;
+}
+
+export interface CacheClaimV3Result {
+    compatibility: ImageCacheCompatibility;
+    invalidatedCount: number;
 }
 
 interface StoredChapterV3 {
@@ -219,9 +225,10 @@ export async function claimCacheV3(
     taskId: string,
     migrationSource: CacheMigrationSource | null,
     maxAgeMs: number,
+    requestedImageEnabled: boolean,
     signal?: AbortSignal
-): Promise<void> {
-    await runWriteTransaction<void>((store, setResult) => {
+): Promise<CacheClaimV3Result> {
+    return runWriteTransaction<CacheClaimV3Result>((store, setResult) => {
         const request = store.get(getManifestKey(bookId));
         request.onsuccess = () => {
             const current = request.result as CacheManifestV3 | undefined;
@@ -229,21 +236,39 @@ export async function claimCacheV3(
                 current && !current.cleared && current.version === 3 && Date.now() - current.ts <= maxAgeMs
             );
             if (current && reusable) {
+                const compatibility = evaluateImageCacheCompatibility(
+                    current.meta?.imageEnabled,
+                    requestedImageEnabled
+                );
+                if (compatibility !== "compatible") {
+                    store.delete(getChapterRange(bookId));
+                }
                 store.put(
                     {
                         ...current,
                         ts: Date.now(),
+                        chapterCount: compatibility === "compatible" ? current.chapterCount : 0,
+                        meta: current.meta
+                            ? { ...current.meta, imageEnabled: requestedImageEnabled, updatedAt: Date.now() }
+                            : undefined,
                         writerTaskId: taskId,
                         cleared: false
                     } satisfies CacheManifestV3,
                     getManifestKey(bookId)
                 );
-                setResult();
+                setResult({
+                    compatibility,
+                    invalidatedCount: compatibility === "compatible" ? 0 : current.chapterCount
+                });
                 return;
             }
 
             store.delete(getChapterRange(bookId));
-            const migratedEntries = !current && migrationSource ? migrationSource.chapters : [];
+            const migrationCompatibility = migrationSource
+                ? evaluateImageCacheCompatibility(migrationSource.meta?.imageEnabled, requestedImageEnabled)
+                : "compatible";
+            const migratedEntries =
+                !current && migrationSource && migrationCompatibility === "compatible" ? migrationSource.chapters : [];
             for (const [index, chapter] of migratedEntries) {
                 store.put(
                     { version: 3, bookId, index, chapter } satisfies StoredChapterV3,
@@ -262,7 +287,11 @@ export async function claimCacheV3(
                 } satisfies CacheManifestV3,
                 getManifestKey(bookId)
             );
-            setResult();
+            setResult({
+                compatibility: migrationCompatibility,
+                invalidatedCount:
+                    migrationSource && migrationCompatibility !== "compatible" ? migrationSource.chapters.length : 0
+            });
         };
     }, signal);
 }

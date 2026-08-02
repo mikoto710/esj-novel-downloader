@@ -1,5 +1,4 @@
 import { abortActiveDownload, state } from "../core/state";
-import { listManagedCaches } from "../core/cache/manager";
 import { fullCleanup, enableDrag, el } from "../utils/dom";
 import { log, triggerDownload } from "../utils/index";
 import { createMinimizedTray } from "./tray";
@@ -13,7 +12,6 @@ import {
     getEpubTagPageSetting,
     setEpubTagPageSetting
 } from "../core/config";
-import { clearAllCaches } from "../core/cache/book-cache";
 import { buildHtml } from "../core/html";
 import { createCacheManagerPopup } from "./cache-manager";
 import { createDownloadHistoryPopup } from "./download-history";
@@ -374,16 +372,17 @@ export function createDownloadPopup(): HTMLElement {
  * 创建确认下载的对话框
  * 根据是否有缓存显示不同的提示语
  */
-export function createConfirmPopup(onOk: () => void, onCancel?: () => void): void {
+export function createConfirmPopup(onOk: () => void, onCancel?: () => void, cacheHint?: string): void {
     fullCleanup(state.originalTitle);
 
     toggleSettingsLock(true);
 
     const cachedCount = state.globalChaptersMap.size;
     const hintText =
-        cachedCount > 0
+        cacheHint ||
+        (cachedCount > 0
             ? `检测到已有 ${cachedCount} 章缓存，点击确定将跳过已下载章节继续下载。`
-            : "是否开始抓取该小说全部章节？";
+            : "是否开始抓取该小说全部章节？");
 
     const closeAction = () => {
         document.querySelector("#esj-confirm")?.remove();
@@ -448,97 +447,6 @@ export function createConfirmPopup(onOk: () => void, onCancel?: () => void): voi
 }
 
 /**
- * 创建图片设置变更前的缓存清理确认弹窗
- */
-function createImageCacheConfirmPopup(onOk: () => void, onCancel: () => void): void {
-    document.querySelector("#esj-image-cache-confirm")?.remove();
-
-    const closeAction = () => {
-        document.querySelector("#esj-image-cache-confirm")?.remove();
-        onCancel();
-    };
-
-    const header = createCommonHeader("🗑️ 清理确认", closeAction);
-
-    const body = el("div", { style: "padding:16px;font-size:14px;" }, [
-        "检测到当前存在缓存，切换“下载正文插图”会清理这些缓存后再生效，是否继续？"
-    ]);
-
-    const btnCancel = el(
-        "button",
-        {
-            style: "padding:8px 12px;background:#eee;border:1px solid #ccc;border-radius:6px;cursor:pointer;",
-            onclick: closeAction
-        },
-        ["取消"]
-    );
-
-    const btnOk = el(
-        "button",
-        {
-            style: "padding:8px 12px;background:#d9534f;color:#fff;border:none;border-radius:6px;cursor:pointer;",
-            onclick: () => {
-                popup.remove();
-                onOk();
-            }
-        },
-        ["清理"]
-    );
-
-    const footer = el(
-        "div",
-        {
-            style: "padding:12px;display:flex;justify-content:flex-end;gap:8px;"
-        },
-        [btnCancel, btnOk]
-    );
-
-    const popup = el(
-        "div",
-        {
-            id: "esj-image-cache-confirm",
-            style: "position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%); width: 380px; background:#fff;border:1px solid #aaa;border-radius:8px;box-shadow:0 4px 20px rgba(0,0,0,0.15);z-index:1000000;padding:0;display:flex;flex-direction:column;"
-        },
-        [header, body, footer]
-    );
-
-    document.body.appendChild(popup);
-    enableDrag(popup, ".esj-common-header");
-}
-
-function showImageSettingProtectionNotice(protectedCount: number): void {
-    document.querySelector("#esj-image-setting-protection")?.remove();
-
-    const closeAction = () => document.querySelector("#esj-image-setting-protection")?.remove();
-    const popup = el(
-        "div",
-        {
-            id: "esj-image-setting-protection",
-            style: "position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:380px;background:#fff;border:1px solid #aaa;border-radius:8px;box-shadow:0 0 18px rgba(0,0,0,0.28);z-index:1000000;display:flex;flex-direction:column;"
-        },
-        [
-            createCommonHeader("🛡️ 下载任务保护", closeAction),
-            el("div", { style: "padding:16px;font-size:14px;line-height:1.7;color:#333;" }, [
-                `插图下载设置已保存。为保护 ${protectedCount} 个下载中的任务，相关缓存未被清理；当前任务将继续使用原设置，新设置仅应用于后续全本下载。`
-            ]),
-            el("div", { style: "padding:12px;display:flex;justify-content:flex-end;" }, [
-                el(
-                    "button",
-                    {
-                        style: "padding:8px 12px;background:#eee;border:1px solid #ccc;border-radius:6px;cursor:pointer;",
-                        onclick: closeAction
-                    },
-                    ["关闭"]
-                )
-            ])
-        ]
-    );
-
-    document.body.appendChild(popup);
-    enableDrag(popup, ".esj-common-header");
-}
-
-/**
  * 显示 TXT、EPUB 和 HTML 格式选择弹窗
  */
 export function showFormatChoice(): void {
@@ -575,7 +483,7 @@ export function showFormatChoice(): void {
 
     // 正文插图统计
     let imageStatus: HTMLElement | string = "";
-    const isImageDownloadEnabled = getImageDownloadSetting();
+    const isImageDownloadEnabled = data.exportContext?.imageEnabled ?? getImageDownloadSetting();
 
     if (isImageDownloadEnabled) {
         let successCount = 0;
@@ -875,31 +783,10 @@ export function createSettingsPanel(): void {
     const checkboxInput = el("input", {
         type: "checkbox",
         checked: isImageEnabled,
-        onchange: async (e: Event) => {
-            const target = e.target as HTMLInputElement;
-            const checked = target.checked;
-            const previousChecked = !checked;
-            const managedCaches = await listManagedCaches();
-
-            if (managedCaches.length > 0) {
-                const confirmed = await new Promise<boolean>((resolve) => {
-                    createImageCacheConfirmPopup(
-                        () => resolve(true),
-                        () => resolve(false)
-                    );
-                });
-
-                if (!confirmed) {
-                    target.checked = previousChecked;
-                    return;
-                }
-            }
+        onchange: (e: Event) => {
+            const checked = (e.target as HTMLInputElement).checked;
             setImageDownloadSetting(checked);
-            const clearResult = await clearAllCaches();
-            if (clearResult.protectedBookIds.length > 0) {
-                log(`已保留 ${clearResult.protectedBookIds.length} 本下载中的书籍缓存。`);
-                showImageSettingProtectionNotice(clearResult.protectedBookIds.length);
-            }
+            // 已有章节由后续任务按 imageEnabled 逐书判断，不在设置变更时全局清理
             log(`正文图片下载已${checked ? "开启" : "关闭"}`);
         }
     });

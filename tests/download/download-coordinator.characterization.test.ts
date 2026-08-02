@@ -261,8 +261,7 @@ function createHarness(tasks: DownloadTask[], chapters = new Map<number, Chapter
             schedule: () => () => undefined
         },
         settings: {
-            getConcurrency: () => 1,
-            isImageDownloadEnabled: () => false
+            getConcurrency: () => 1
         },
         environment: {
             currentUrl: () => "https://www.esjzone.cc/detail/100.html",
@@ -296,6 +295,7 @@ function createOptions(tasks: DownloadTask[]) {
         tags: [],
         pageUrl: "https://www.esjzone.cc/detail/100.html",
         sourcePageType: "detail" as const,
+        imageEnabled: false,
         tasks
     };
 }

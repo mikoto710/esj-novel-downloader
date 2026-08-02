@@ -70,7 +70,7 @@ describe("mapped font cache normalization", () => {
                 randomDelay: () => 0,
                 schedule: () => () => undefined
             },
-            settings: { getConcurrency: () => 1, isImageDownloadEnabled: () => false },
+            settings: { getConcurrency: () => 1 },
             environment: {
                 currentUrl: () => "https://www.esjzone.cc/detail/100.html",
                 now: () => Date.parse("2026-01-01T00:00:00.000Z")
@@ -87,6 +87,7 @@ describe("mapped font cache normalization", () => {
                 description: "Description",
                 tags: [],
                 sourcePageType: "detail",
+                imageEnabled: false,
                 tasks: [task]
             },
             dependencies
@@ -150,7 +151,7 @@ describe("mapped font cache normalization", () => {
                 randomDelay: () => 0,
                 schedule: () => () => undefined
             },
-            settings: { getConcurrency: () => 5, isImageDownloadEnabled: () => false },
+            settings: { getConcurrency: () => 5 },
             environment: {
                 currentUrl: () => "https://www.esjzone.cc/detail/100.html",
                 now: () => Date.parse("2026-01-01T00:00:00.000Z")
@@ -167,6 +168,7 @@ describe("mapped font cache normalization", () => {
                 description: "Description",
                 tags: [],
                 sourcePageType: "detail",
+                imageEnabled: false,
                 tasks
             },
             dependencies

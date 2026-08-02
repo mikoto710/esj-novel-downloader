@@ -582,7 +582,7 @@ function assembleExportChapters(ctx: DownloadContext): { text: string; chapters:
  */
 export async function runDownload(options: DownloadOptions, dependencies: DownloadDependencies): Promise<void> {
     const total = options.tasks.length;
-    const imageEnabled = dependencies.settings.isImageDownloadEnabled();
+    const imageEnabled = options.imageEnabled;
     const concurrency = Math.max(1, Math.floor(dependencies.settings.getConcurrency()) || 1);
     const cacheMeta: CacheMeta = {
         bookId: options.bookId,

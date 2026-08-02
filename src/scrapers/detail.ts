@@ -15,6 +15,8 @@ import { parseBookMetadata } from "../core/parser";
 import { claimBookCache, loadBookCache } from "../core/cache/book-cache";
 import { finalizeBookDownloadTask } from "../core/download/task-finalizer";
 import { normalizeStorageError, StorageError } from "../core/cache/storage-error";
+import { getImageDownloadSetting } from "../core/config";
+import { getImageCacheConfirmHint } from "../ui/image-cache-compatibility";
 
 function getBookId(): string {
     const match = location.href.match(/\/detail\/(\d+)/);
@@ -51,6 +53,9 @@ export async function scrapeDetail(): Promise<void> {
         return;
     }
     state.globalChaptersMap = cacheResult.map || new Map();
+    // 从确认弹窗开始固定任务设置，后续其他页面修改全局设置不会影响本任务
+    const imageEnabled = getImageDownloadSetting();
+    const cacheHint = getImageCacheConfirmHint(cacheResult.size, cacheResult.meta?.imageEnabled, imageEnabled);
 
     const confirmed = await new Promise<boolean>((resolve) => {
         createConfirmPopup(
@@ -58,7 +63,8 @@ export async function scrapeDetail(): Promise<void> {
             () => {
                 log("用户取消确认");
                 resolve(false);
-            }
+            },
+            cacheHint
         );
     });
     if (!confirmed) {
@@ -81,8 +87,15 @@ export async function scrapeDetail(): Promise<void> {
 
     try {
         log("正在准备本地缓存...");
-        const claimedCache = await claimBookCache(bookId, lock.taskId, state.abortController?.signal);
+        const claimedCache = await claimBookCache(bookId, lock.taskId, imageEnabled, state.abortController?.signal);
         state.globalChaptersMap = claimedCache.map || new Map();
+        if (claimedCache.invalidatedCount > 0) {
+            log(
+                claimedCache.compatibility === "unknown"
+                    ? `⚠️ 旧缓存缺少插图设置信息，已安全失效 ${claimedCache.invalidatedCount} 章并重新抓取`
+                    : `⚠️ 缓存插图设置与本次任务不同，已安全失效 ${claimedCache.invalidatedCount} 章并重新抓取`
+            );
+        }
         if (state.abortFlag) {
             fullCleanup(state.originalTitle);
             return;
@@ -123,6 +136,7 @@ export async function scrapeDetail(): Promise<void> {
             coverUrl: meta.coverUrl,
             pageUrl: location.href,
             sourcePageType: "detail",
+            imageEnabled,
             tasks
         });
     } catch (e: any) {

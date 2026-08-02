@@ -2,7 +2,7 @@
 
 import { IDBFactory } from "fake-indexeddb";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { createChapter, createDeferred } from "../support";
+import { createCacheMeta, createChapter, createDeferred } from "../support";
 
 describe("book lock contracts", () => {
     beforeEach(() => {
@@ -64,16 +64,23 @@ describe("book lock contracts", () => {
         if (!first.acquired) {
             throw new Error("expected first lock");
         }
-        await storage.claimBookCache("100", first.lock.taskId);
+        await storage.claimBookCache("100", first.lock.taskId, false);
         const original = new Map([[0, createChapter(0, { content: "original" })]]);
-        expect(await storage.putBookCacheBatchForTask("100", first.lock.taskId, original)).toBe(true);
+        expect(
+            await storage.putBookCacheBatchForTask(
+                "100",
+                first.lock.taskId,
+                original,
+                createCacheMeta({ imageEnabled: false, updatedAt: Date.now() })
+            )
+        ).toBe(true);
         await locks.releaseBookDownloadLock(first.lock);
 
         const replacement = await locks.acquireBookDownloadLock("100", "detail");
         if (!replacement.acquired) {
             throw new Error("expected replacement lock");
         }
-        await storage.claimBookCache("100", replacement.lock.taskId);
+        await storage.claimBookCache("100", replacement.lock.taskId, false);
 
         const staleOverwrite = new Map([[0, createChapter(0, { content: "stale overwrite" })]]);
         expect(await storage.putBookCacheBatchForTask("100", first.lock.taskId, staleOverwrite)).toBe(false);
@@ -95,14 +102,16 @@ describe("book lock contracts", () => {
         await set("esj_down_book_200", {
             version: 2,
             ts: Date.now(),
-            chapters: [[0, legacyChapter]]
+            chapters: [[0, legacyChapter]],
+            meta: createCacheMeta({ bookId: "200", imageEnabled: false, updatedAt: Date.now() })
         });
 
         expect((await storage.loadBookCache("200")).map?.get(0)?.content).toBe("legacy chapter");
         expect(await get("esj_down_book_200")).toBeDefined();
 
-        const claimed = await storage.claimBookCache("200", "task-200");
+        const claimed = await storage.claimBookCache("200", "task-200", false);
         expect(claimed.map?.get(0)?.content).toBe("legacy chapter");
+        expect(claimed.compatibility).toBe("compatible");
         expect(await get("esj_down_book_200")).toBeUndefined();
 
         expect(await storage.putBookCacheBatchForTask("200", "task-200", new Map([[1, createChapter(1)]]))).toBe(true);
@@ -113,7 +122,7 @@ describe("book lock contracts", () => {
         vi.stubGlobal("BroadcastChannel", undefined);
         const { set } = await import("idb-keyval");
         const storage = await import("../../src/core/cache/book-cache");
-        await storage.claimBookCache("300", "task-300");
+        await storage.claimBookCache("300", "task-300", false);
         await storage.putBookCacheBatchForTask("300", "task-300", new Map([[0, createChapter(0)]]));
         expect(await storage.clearBookCacheForTask("300", "task-300")).toBe(true);
 
@@ -135,7 +144,7 @@ describe("book lock contracts", () => {
         if (!acquired.acquired) {
             throw new Error("expected lock");
         }
-        await storage.claimBookCache("103", acquired.lock.taskId);
+        await storage.claimBookCache("103", acquired.lock.taskId, false);
         expect(
             await storage.putBookCacheBatchForTask(
                 "103",
