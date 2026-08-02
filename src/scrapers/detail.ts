@@ -14,6 +14,7 @@ import type { DownloadTask } from "../core/download/contracts";
 import { parseBookMetadata } from "../core/parser";
 import { claimBookCache, loadBookCache } from "../core/cache/book-cache";
 import { finalizeBookDownloadTask } from "../core/download/task-finalizer";
+import { normalizeStorageError, StorageError } from "../core/cache/storage-error";
 
 function getBookId(): string {
     const match = location.href.match(/\/detail\/(\d+)/);
@@ -39,7 +40,16 @@ export async function scrapeDetail(): Promise<void> {
     }
 
     // 提前加载缓存
-    const cacheResult = await loadBookCache(bookId);
+    let cacheResult;
+    try {
+        cacheResult = await loadBookCache(bookId);
+    } catch (error) {
+        const failure = normalizeStorageError(error, "read");
+        console.error(failure);
+        log(`❌ 无法读取本地缓存：${failure.message}`);
+        alert("本地缓存不可用，本次任务尚未开始。请检查浏览器存储权限或空间后重试。");
+        return;
+    }
     state.globalChaptersMap = cacheResult.map || new Map();
 
     const confirmed = await new Promise<boolean>((resolve) => {
@@ -121,7 +131,7 @@ export async function scrapeDetail(): Promise<void> {
             return;
         }
         console.error(e);
-        log("❌ 抓取流程异常: " + e.message);
+        log(e instanceof StorageError ? `❌ 下载进度未保存：${e.message}` : "❌ 抓取流程异常: " + e.message);
         fullCleanup(state.originalTitle);
     } finally {
         await finalizeBookDownloadTask(lock, stopHeartbeat);

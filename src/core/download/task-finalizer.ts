@@ -2,6 +2,8 @@ import { BookDownloadLock } from "../../types";
 import { releaseBookDownloadLock, shouldDiscardBookDownloadCache } from "../book-lock";
 import { clearBookCacheForTask } from "../cache/book-cache";
 import { clearRuntimeCacheSession, state } from "../state";
+import { normalizeStorageError } from "../cache/storage-error";
+import { log } from "../../utils/index";
 
 /**
  * 收尾已取得锁的全本下载任务
@@ -12,7 +14,13 @@ export async function finalizeBookDownloadTask(lock: BookDownloadLock, stopHeart
     try {
         // 远程“停止并清除”由锁携带意图，只有当前 writer 可以清除对应缓存
         if (await shouldDiscardBookDownloadCache(lock)) {
-            cacheDiscarded = await clearBookCacheForTask(lock.bookId, lock.taskId);
+            try {
+                cacheDiscarded = await clearBookCacheForTask(lock.bookId, lock.taskId);
+            } catch (error) {
+                const failure = normalizeStorageError(error, "clear");
+                console.error("停止任务时清理缓存失败", failure);
+                log(`❌ 任务已停止，但缓存清理失败：${failure.message}`);
+            }
             if (cacheDiscarded) {
                 clearRuntimeCacheSession(lock.bookId);
             }

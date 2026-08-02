@@ -126,6 +126,44 @@ describe("runDownload characterization", () => {
         ]);
         expect(harness.ui.showFormatChoice).not.toHaveBeenCalled();
     });
+
+    it("retries an unexpected storage abort once and still completes", async () => {
+        const tasks = [createDownloadTask(0)];
+        const harness = createHarness(tasks);
+        const putBatch = vi
+            .fn()
+            .mockRejectedValueOnce(new DOMException("transaction aborted", "AbortError"))
+            .mockResolvedValueOnce(true);
+        harness.dependencies.cache.putBatch = putBatch;
+
+        await runDownload(createOptions(tasks), harness.dependencies);
+
+        expect(putBatch).toHaveBeenCalledTimes(2);
+        expect(harness.dependencies.log).toHaveBeenCalledWith(expect.stringContaining("正在进行一次安全重试"));
+        expect(harness.ui.showFormatChoice).toHaveBeenCalledOnce();
+    });
+
+    it("propagates a classified storage failure without turning it into user cancellation", async () => {
+        const tasks = [createDownloadTask(0)];
+        const harness = createHarness(tasks);
+        harness.dependencies.cache.putBatch = vi.fn(async () => false);
+
+        await expect(runDownload(createOptions(tasks), harness.dependencies)).rejects.toMatchObject({
+            reason: "ownership-lost",
+            operation: "write"
+        });
+
+        expect(harness.dependencies.runtime.requestCancellation).not.toHaveBeenCalled();
+        expect(harness.ui.showFormatChoice).not.toHaveBeenCalled();
+        expect(harness.ui.snapshots.at(-1)).toMatchObject({
+            phase: "failed",
+            storageFailure: { reason: "ownership-lost", operation: "write" }
+        });
+        expect(harness.events.ofType("cache-write-finished").at(-1)).toMatchObject({
+            saved: false,
+            failure: { reason: "ownership-lost", operation: "write" }
+        });
+    });
 });
 
 function createMappedChapter(index: number, family: string): Chapter {

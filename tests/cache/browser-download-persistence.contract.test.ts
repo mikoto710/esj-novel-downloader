@@ -64,9 +64,50 @@ describe("browser download persistence contracts", () => {
     it("does not claim that progress was saved after storage rejected the write", async () => {
         mocks.saveCache.mockResolvedValue(false);
 
-        await runtime.batchDownload(createBrowserDownloadOptions(createBrowserDownloadTasks(5)));
+        await expect(
+            runtime.batchDownload(createBrowserDownloadOptions(createBrowserDownloadTasks(5)))
+        ).rejects.toMatchObject({ reason: "ownership-lost", operation: "write" });
 
         const messages = mocks.log.mock.calls.flat().join("\n");
         expect(messages).not.toContain("进度已保存");
+        expect(messages).toContain("下载进度未保存");
+        expect(runtime.state.abortFlag).toBe(false);
+        expect(mocks.saveCache).toHaveBeenCalledOnce();
+    });
+
+    it("retries an idempotent storage failure once and exposes the final reason", async () => {
+        mocks.saveCache.mockRejectedValue(new DOMException("storage full", "QuotaExceededError"));
+
+        await expect(
+            runtime.batchDownload(createBrowserDownloadOptions(createBrowserDownloadTasks(5)))
+        ).rejects.toMatchObject({ reason: "quota-exceeded", operation: "write" });
+
+        expect(mocks.saveCache).toHaveBeenCalledTimes(2);
+        expect(mocks.log).toHaveBeenCalledWith(expect.stringContaining("正在进行一次安全重试"));
+        expect(mocks.log).toHaveBeenCalledWith(expect.stringContaining("浏览器存储空间不足"));
+        expect(runtime.state.abortFlag).toBe(false);
+    });
+
+    it.each([
+        {
+            name: "transaction abort",
+            error: new DOMException("transaction aborted", "AbortError"),
+            reason: "transaction-aborted"
+        },
+        {
+            name: "unavailable database",
+            error: new DOMException("database disabled", "InvalidStateError"),
+            reason: "database-unavailable"
+        },
+        { name: "unknown storage error", error: new Error("unexpected failure"), reason: "unknown-storage-error" }
+    ])("propagates $name after one safe retry", async ({ error, reason }) => {
+        mocks.saveCache.mockRejectedValue(error);
+
+        await expect(
+            runtime.batchDownload(createBrowserDownloadOptions(createBrowserDownloadTasks(5)))
+        ).rejects.toMatchObject({ reason, operation: "write" });
+
+        expect(mocks.saveCache).toHaveBeenCalledTimes(2);
+        expect(runtime.state.abortFlag).toBe(false);
     });
 });

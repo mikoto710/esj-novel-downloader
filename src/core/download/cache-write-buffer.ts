@@ -1,4 +1,10 @@
 import type { Chapter, DownloadCancellationMode } from "../../types";
+import {
+    createStorageError,
+    normalizeStorageError,
+    toStorageFailure,
+    type StorageFailure
+} from "../cache/storage-error";
 
 /**
  * 普通取消等待缓存落盘的最长时间
@@ -61,6 +67,7 @@ export class ChapterCacheWriteBuffer {
     private rejected = false;
     private cancellationTimedOut = false;
     private discarded = false;
+    private storageFailure: StorageFailure | null = null;
 
     constructor(options: CacheWriteBufferOptions) {
         this.policy = options.policy || DEFAULT_CACHE_WRITE_POLICY;
@@ -78,6 +85,10 @@ export class ChapterCacheWriteBuffer {
 
     get dirtyBytes(): number {
         return this.pendingBytes;
+    }
+
+    get failure(): StorageFailure | null {
+        return this.storageFailure ? { ...this.storageFailure } : null;
     }
 
     async add(index: number, chapter: Chapter): Promise<boolean> {
@@ -139,13 +150,20 @@ export class ChapterCacheWriteBuffer {
             let saved = false;
             try {
                 saved = await Promise.race([this.write(batch, controller.signal), aborted]);
-            } catch {
+            } catch (error) {
+                if (!this.discarded && !this.cancellationTimedOut) {
+                    const normalized = normalizeStorageError(error, "write");
+                    this.storageFailure = toStorageFailure(normalized);
+                }
                 saved = false;
             } finally {
                 writeSettled = true;
                 if (this.activeWrite === activeWrite) {
                     this.activeWrite = null;
                 }
+            }
+            if (!saved && !this.discarded && !this.cancellationTimedOut && !this.storageFailure) {
+                this.storageFailure = toStorageFailure(createStorageError("ownership-lost", "write"));
             }
             if (!saved) {
                 this.rejected = true;
@@ -221,6 +239,7 @@ export class ChapterCacheWriteBuffer {
             this.cancelCancellationDeadline = null;
             this.cancellationTimedOut = true;
             this.rejected = true;
+            this.storageFailure = toStorageFailure(createStorageError("flush-timeout", "flush"));
             this.cancelTimer();
             this.clearPending();
             this.abortActiveWrite();

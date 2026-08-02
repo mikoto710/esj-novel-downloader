@@ -12,6 +12,13 @@ import { DEFAULT_CHAPTER_RETRY_POLICY, runWithRetry } from "./retry-policy";
 import { DownloadStateMachine } from "./state-machine";
 import { runWorkerPool } from "./worker-pool";
 import { MappingFontError, normalizeChapterMappingFont } from "../mapping-font";
+import {
+    createStorageError,
+    normalizeStorageError,
+    StorageError,
+    toStorageFailure,
+    type StorageFailure
+} from "../cache/storage-error";
 
 // 单次下载会话共享的依赖、元数据和状态机，不持有任何浏览器全局对象
 interface DownloadContext {
@@ -64,6 +71,21 @@ function updateProgress(ctx: DownloadContext): void {
         cachedChapterCount: ctx.dependencies.runtime.chapters.size,
         status: "downloading"
     });
+}
+
+function getStorageFailure(ctx: DownloadContext): StorageFailure | null {
+    return ctx.cacheBuffer.failure;
+}
+
+function throwIfStorageFailed(ctx: DownloadContext): void {
+    const failure = getStorageFailure(ctx);
+    if (failure) {
+        throw new StorageError(failure);
+    }
+}
+
+function shouldStopWorkers(ctx: DownloadContext): boolean {
+    return ctx.dependencies.runtime.isCancellationRequested() || Boolean(getStorageFailure(ctx));
 }
 
 function getMappingFontSummary(ctx: DownloadContext) {
@@ -191,16 +213,37 @@ async function persistTaskCacheBatch(
 ): Promise<boolean> {
     const { dependencies, options, cacheMeta } = ctx;
     dependencies.events.emit({ type: "cache-write-started", chapterCount: entries.size });
-    const saved = await dependencies.cache.putBatch(options.bookId, options.taskId, entries, cacheMeta, signal);
-    dependencies.events.emit({ type: "cache-write-finished", chapterCount: entries.size, saved });
-    if (saved) {
-        const chapterCount = dependencies.runtime.chapters.size;
-        updateSnapshot(ctx, { persistedCount: chapterCount, cachedChapterCount: chapterCount });
-    } else {
-        dependencies.log("缓存写入失败或写入权已失效，正在停止任务。");
-        dependencies.runtime.requestCancellation();
+    for (let attempt = 1; attempt <= 2; attempt++) {
+        try {
+            const saved = await dependencies.cache.putBatch(options.bookId, options.taskId, entries, cacheMeta, signal);
+            if (!saved) {
+                throw createStorageError("ownership-lost", "write");
+            }
+            dependencies.events.emit({
+                type: "cache-write-finished",
+                chapterCount: entries.size,
+                saved: true,
+                failure: null
+            });
+            const chapterCount = dependencies.runtime.chapters.size;
+            updateSnapshot(ctx, { persistedCount: chapterCount, cachedChapterCount: chapterCount });
+            return true;
+        } catch (error) {
+            const normalized = normalizeStorageError(error, "write");
+            if (attempt === 1 && normalized.reason !== "ownership-lost" && !signal.aborted) {
+                dependencies.log(`⚠️ 缓存写入失败，正在进行一次安全重试：${normalized.message}`);
+                continue;
+            }
+            dependencies.events.emit({
+                type: "cache-write-finished",
+                chapterCount: entries.size,
+                saved: false,
+                failure: toStorageFailure(normalized)
+            });
+            throw normalized;
+        }
     }
-    return saved;
+    return false;
 }
 
 // 按现有策略重试章节 HTML，请求实现由 ChapterFetcherPort 提供
@@ -382,7 +425,7 @@ async function checkIntegrityAndRetry(tasks: DownloadTask[], ctx: DownloadContex
     await runWorkerPool({
         items: issues,
         concurrency: 1,
-        isCancellationRequested: runtime.isCancellationRequested,
+        isCancellationRequested: () => shouldStopWorkers(ctx),
         beforeClaim: () => waitForMappingConsentBeforeClaim(ctx),
         process: async (issue) => {
             dependencies.log(`补抓 [${issue.task.index + 1}/${total}] (${getRetryReasonText(issue, ctx)})...`);
@@ -457,7 +500,8 @@ async function performCancellation(ctx: DownloadContext): Promise<void> {
             : cacheResult === "timed-out"
               ? "save-timed-out"
               : "save-failed";
-    updateSnapshot(ctx, { cancellationOutcome });
+    const storageFailure = getStorageFailure(ctx);
+    updateSnapshot(ctx, { cancellationOutcome, storageFailure });
     transition(ctx, "cancelled");
     const resultMessage = !lockOwned
         ? "任务锁已失效，当前任务已停止。"
@@ -467,7 +511,9 @@ async function performCancellation(ctx: DownloadContext): Promise<void> {
             ? "任务已手动取消，进度已保存。"
             : cacheResult === "timed-out"
               ? "任务已停止，但进度保存超时，部分最新进度可能未保存。"
-              : "任务已手动取消，但缓存写入失败。";
+              : storageFailure
+                ? `任务已手动取消，但缓存写入失败：${storageFailure.message}`
+                : "任务已手动取消，但缓存写入失败。";
     dependencies.log(resultMessage);
     await dependencies.scheduler.sleep(800);
     dependencies.ui.cleanup();
@@ -542,7 +588,11 @@ export async function runDownload(options: DownloadOptions, dependencies: Downlo
             dependencies.log(`💾 已从 IndexedDB 恢复 ${dependencies.runtime.chapters.size} 章缓存`);
         }
         if (!(await normalizeRestoredChapters(ctx))) {
-            await finishCancellation(ctx);
+            if (dependencies.runtime.isCancellationRequested()) {
+                await finishCancellation(ctx);
+                return;
+            }
+            throwIfStorageFailed(ctx);
             return;
         }
 
@@ -557,7 +607,7 @@ export async function runDownload(options: DownloadOptions, dependencies: Downlo
         await runWorkerPool({
             items: remainingTasks,
             concurrency: ctx.concurrency,
-            isCancellationRequested: dependencies.runtime.isCancellationRequested,
+            isCancellationRequested: () => shouldStopWorkers(ctx),
             beforeClaim: () => waitForMappingConsentBeforeClaim(ctx),
             process: (task) => processChapterTask(task, ctx, false).then(() => undefined)
         });
@@ -566,13 +616,18 @@ export async function runDownload(options: DownloadOptions, dependencies: Downlo
             await finishCancellation(ctx);
             return;
         }
+        throwIfStorageFailed(ctx);
 
         // 主抓取的脏章节落盘后才能进入完整性扫描和补抓
         transition(ctx, "flushing-cache");
         dependencies.log("主抓取完成，正在保存下载进度...");
         const initialFlushSaved = await cacheBuffer.flush();
-        if (!initialFlushSaved || dependencies.runtime.isCancellationRequested()) {
+        if (dependencies.runtime.isCancellationRequested()) {
             await finishCancellation(ctx);
+            return;
+        }
+        throwIfStorageFailed(ctx);
+        if (!initialFlushSaved) {
             return;
         }
         transition(ctx, "checking-integrity");
@@ -585,8 +640,12 @@ export async function runDownload(options: DownloadOptions, dependencies: Downlo
         transition(ctx, "flushing-cache");
         dependencies.log("完整性检查完成，正在保存下载进度...");
         const finalFlushSaved = await cacheBuffer.flush();
-        if (!finalFlushSaved || dependencies.runtime.isCancellationRequested()) {
+        if (dependencies.runtime.isCancellationRequested()) {
             await finishCancellation(ctx);
+            return;
+        }
+        throwIfStorageFailed(ctx);
+        if (!finalFlushSaved) {
             return;
         }
         transition(ctx, "preparing-export");
@@ -597,17 +656,22 @@ export async function runDownload(options: DownloadOptions, dependencies: Downlo
             return;
         }
         const assembled = assembleExportChapters(ctx);
-        const cacheCleared = await dependencies.cache.clearForTask(
-            options.bookId,
-            options.taskId,
-            dependencies.runtime.signal
-        );
+        let cacheCleared = false;
+        try {
+            cacheCleared = await dependencies.cache.clearForTask(
+                options.bookId,
+                options.taskId,
+                dependencies.runtime.signal
+            );
+        } catch (error) {
+            throw normalizeStorageError(error, "clear");
+        }
         if (dependencies.runtime.isCancellationRequested()) {
             await finishCancellation(ctx);
             return;
         }
         if (!cacheCleared) {
-            throw new Error("下载任务已失去缓存清理权，已停止导出");
+            throw createStorageError("ownership-lost", "clear");
         }
         dependencies.runtime.setExportData({
             txt: assembled.text,
@@ -646,12 +710,24 @@ export async function runDownload(options: DownloadOptions, dependencies: Downlo
         dependencies.ui.cleanup();
         dependencies.ui.showFormatChoice();
     } catch (error) {
+        const bufferedFailure = getStorageFailure(ctx);
+        const reportedError =
+            error instanceof StorageError
+                ? error
+                : bufferedFailure
+                  ? new StorageError(bufferedFailure, { cause: error })
+                  : error;
+        if (reportedError instanceof StorageError) {
+            const storageFailure = toStorageFailure(reportedError);
+            updateSnapshot(ctx, { storageFailure });
+            dependencies.log(`❌ 下载进度未保存：${storageFailure.message}`);
+        }
         cacheBuffer.discard();
         if (ctx.machine.snapshot.phase !== "failed" && ctx.machine.snapshot.phase !== "cancelled") {
             transition(ctx, "failed");
         }
-        dependencies.events.emit({ type: "download-failed", error, snapshot: ctx.machine.snapshot });
-        throw error;
+        dependencies.events.emit({ type: "download-failed", error: reportedError, snapshot: ctx.machine.snapshot });
+        throw reportedError;
     } finally {
         cacheBuffer.dispose();
     }

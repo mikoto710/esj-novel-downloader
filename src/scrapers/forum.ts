@@ -14,6 +14,7 @@ import {
 import { claimBookCache, loadBookCache } from "../core/cache/book-cache";
 import { fullCleanup } from "../utils/dom";
 import { finalizeBookDownloadTask } from "../core/download/task-finalizer";
+import { normalizeStorageError, StorageError } from "../core/cache/storage-error";
 
 /**
  * 抓取论坛页面的章节列表并启动下载
@@ -45,7 +46,16 @@ export async function scrapeForum(): Promise<void> {
     }
 
     // 提前加载缓存，以便确认弹窗显示可恢复进度
-    const cacheResult = await loadBookCache(bid);
+    let cacheResult;
+    try {
+        cacheResult = await loadBookCache(bid);
+    } catch (error) {
+        const failure = normalizeStorageError(error, "read");
+        console.error(failure);
+        log(`❌ 无法读取本地缓存：${failure.message}`);
+        alert("本地缓存不可用，本次任务尚未开始。请检查浏览器存储权限或空间后重试。");
+        return;
+    }
     state.globalChaptersMap = cacheResult.map || new Map();
 
     const confirmed = await new Promise<boolean>((resolve) => {
@@ -167,7 +177,7 @@ export async function scrapeForum(): Promise<void> {
             return;
         }
         console.error(e);
-        log("❌ 抓取流程异常: " + e.message);
+        log(e instanceof StorageError ? `❌ 下载进度未保存：${e.message}` : "❌ 抓取流程异常: " + e.message);
         fullCleanup(state.originalTitle);
     } finally {
         await finalizeBookDownloadTask(lock, stopHeartbeat);

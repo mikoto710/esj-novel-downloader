@@ -21,6 +21,7 @@ import {
     type LegacyStoredCache
 } from "./legacy-cache";
 import { publishCacheSyncEvent } from "./sync";
+import { isExpectedStorageCancellation, normalizeStorageError } from "./storage-error";
 
 const CACHE_EXPIRE_TIME = 24 * 60 * 60 * 1000;
 
@@ -34,10 +35,6 @@ function isReusableLegacyCache(data: LegacyStoredCache | undefined): data is Leg
 
 function isReusableV3Cache(data: CacheManifestV3 | undefined): data is CacheManifestV3 {
     return Boolean(data && data.version === 3 && !data.cleared && !isExpired(data));
-}
-
-function isAbortError(error: unknown): boolean {
-    return Boolean(error && typeof error === "object" && "name" in error && error.name === "AbortError");
 }
 
 async function deleteLegacyCacheAfterMigration(bookId: string): Promise<void> {
@@ -111,7 +108,7 @@ export async function loadBookCache(bookId: string): Promise<{ size: number; map
         return { size: map.size, map: map.size > 0 ? map : null };
     } catch (error) {
         console.error("读取缓存失败", error);
-        return { size: 0, map: null };
+        throw normalizeStorageError(error, "read");
     }
 }
 
@@ -136,10 +133,12 @@ export async function claimBookCache(
         const map = await readCacheChaptersV3(bookId);
         return { size: map.size, map: map.size > 0 ? map : null };
     } catch (error) {
-        if (!isAbortError(error)) {
-            console.error("认领缓存失败", error);
+        if (isExpectedStorageCancellation(error, signal)) {
+            throw error;
         }
-        throw error;
+        const normalized = normalizeStorageError(error, "claim");
+        console.error("认领缓存失败", normalized);
+        throw normalized;
     }
 }
 
@@ -164,10 +163,12 @@ export async function putBookCacheBatchForTask(
         }
         return saved;
     } catch (error) {
-        if (!isAbortError(error)) {
-            console.error("保存缓存失败", error);
+        if (isExpectedStorageCancellation(error, signal)) {
+            return false;
         }
-        return false;
+        const normalized = normalizeStorageError(error, "write");
+        console.error("保存缓存失败", normalized);
+        throw normalized;
     }
 }
 
@@ -184,10 +185,12 @@ export async function clearBookCacheForTask(bookId: string, taskId: string, sign
         }
         return cleared;
     } catch (error) {
-        if (!isAbortError(error)) {
-            console.error("清理当前下载任务缓存失败", error);
+        if (isExpectedStorageCancellation(error, signal)) {
+            return false;
         }
-        return false;
+        const normalized = normalizeStorageError(error, "clear");
+        console.error("清理当前下载任务缓存失败", normalized);
+        throw normalized;
     }
 }
 

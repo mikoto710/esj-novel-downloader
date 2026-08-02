@@ -7,6 +7,7 @@ import type {
     RuntimeCacheSession,
     SourcePageType
 } from "../../types";
+import type { StorageFailure } from "../cache/storage-error";
 
 /**
  * 下载核心接收的单章任务
@@ -78,6 +79,7 @@ export interface DownloadSnapshot {
     cachedChapterCount: number;
     cancellationRequested: boolean;
     cancellationOutcome: DownloadCancellationOutcome | null;
+    storageFailure: StorageFailure | null;
     hasExportData: boolean;
 }
 
@@ -106,7 +108,7 @@ export type DownloadEvent =
     | { type: "phase-changed"; previous: DownloadPhase; current: DownloadPhase; snapshot: DownloadSnapshot }
     | { type: "snapshot-updated"; snapshot: DownloadSnapshot }
     | { type: "cache-write-started"; chapterCount: number }
-    | { type: "cache-write-finished"; chapterCount: number; saved: boolean }
+    | { type: "cache-write-finished"; chapterCount: number; saved: boolean; failure: StorageFailure | null }
     | { type: "chapter-restored"; task: DownloadTask }
     | { type: "chapter-processed"; task: DownloadTask; retry: boolean }
     | { type: "download-failed"; error: unknown; snapshot: DownloadSnapshot };

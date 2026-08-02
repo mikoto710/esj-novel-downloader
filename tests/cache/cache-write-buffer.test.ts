@@ -153,6 +153,7 @@ describe("ChapterCacheWriteBuffer", () => {
             expect(writeSignal?.aborted).toBe(true);
             await expect(addPromise).resolves.toBe(false);
             await expect(buffer.flushForCancellation()).resolves.toBe("timed-out");
+            expect(buffer.failure).toMatchObject({ reason: "flush-timeout", operation: "flush" });
         } finally {
             buffer.dispose();
             clock.restore();
@@ -185,6 +186,18 @@ describe("ChapterCacheWriteBuffer", () => {
         await expect(addPromise).resolves.toBe(false);
         await expect(buffer.flushForCancellation()).resolves.toBe("discarded");
         buffer.dispose();
+    });
+
+    it("preserves the classified reason after a write rejects", async () => {
+        const buffer = createBuffer(
+            { maxChapterCount: 1, maxBytes: Number.MAX_SAFE_INTEGER, maxDelayMs: 60_000 },
+            async () => {
+                throw new DOMException("storage full", "QuotaExceededError");
+            }
+        );
+
+        await expect(buffer.add(0, createChapter(0))).resolves.toBe(false);
+        expect(buffer.failure).toMatchObject({ reason: "quota-exceeded", operation: "write" });
     });
 });
 
