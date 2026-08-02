@@ -126,7 +126,24 @@ export async function claimBookCache(
         const migrationSource = isReusableLegacyCache(legacy?.data)
             ? { chapters: legacy.data.chapters, meta: legacy.data.meta }
             : null;
-        await claimCacheV3(bookId, taskId, migrationSource, CACHE_EXPIRE_TIME, signal);
+        const attemptCount = migrationSource ? 2 : 1;
+        for (let attempt = 1; attempt <= attemptCount; attempt++) {
+            try {
+                await claimCacheV3(bookId, taskId, migrationSource, CACHE_EXPIRE_TIME, signal);
+                break;
+            } catch (error) {
+                if (isExpectedStorageCancellation(error, signal)) {
+                    throw error;
+                }
+                if (attempt < attemptCount) {
+                    console.warn("旧版缓存迁移失败，正在进行一次安全重试", error);
+                    continue;
+                }
+                throw normalizeStorageError(error, migrationSource ? "migrate" : "claim", {
+                    migration: Boolean(migrationSource)
+                });
+            }
+        }
         await deleteLegacyCacheAfterMigration(bookId);
         publishCacheSyncEvent({ type: "cache-claimed", bookId, taskId });
 
