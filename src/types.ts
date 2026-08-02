@@ -26,6 +26,13 @@ export interface ChapterImage {
     mediaType: SupportedImageMediaType;
 }
 
+// 全本下载封面仅保留当前导出链路稳定支持的 JPEG 与 PNG
+export interface BookCover {
+    blob: Blob;
+    ext: "jpg" | "png";
+    mediaType: "image/jpeg" | "image/png";
+}
+
 // 书籍元数据
 export interface BookMetadata {
     title: string;

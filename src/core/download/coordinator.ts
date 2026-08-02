@@ -1,4 +1,4 @@
-import type { CacheMeta, Chapter } from "../../types";
+import type { BookCover, CacheMeta, Chapter } from "../../types";
 import { ChapterCacheWriteBuffer, type CancellationCacheFlushResult } from "./cache-write-buffer";
 import type {
     DownloadCancellationOutcome,
@@ -86,6 +86,46 @@ function throwIfStorageFailed(ctx: DownloadContext): void {
 
 function shouldStopWorkers(ctx: DownloadContext): boolean {
     return ctx.dependencies.runtime.isCancellationRequested() || Boolean(getStorageFailure(ctx));
+}
+
+async function prepareCover(ctx: DownloadContext): Promise<BookCover | null> {
+    const { dependencies, options } = ctx;
+    const coverUrl = options.coverUrl;
+    if (!coverUrl) {
+        return null;
+    }
+
+    try {
+        const cached = await dependencies.coverCache.load(options.bookId, coverUrl);
+        if (cached) {
+            dependencies.log("💾 已读取本地封面缓存");
+            return cached;
+        }
+    } catch (error) {
+        dependencies.log(`⚠ 封面缓存读取失败，将重新下载：${getErrorDetails(error).message}`);
+    }
+
+    if (dependencies.runtime.isCancellationRequested()) {
+        return null;
+    }
+    const cover = await dependencies.coverFetcher.fetch(coverUrl, dependencies.runtime.signal);
+    if (!cover || dependencies.runtime.isCancellationRequested()) {
+        return null;
+    }
+
+    try {
+        const saved = await dependencies.coverCache.put(
+            options.bookId,
+            options.taskId,
+            coverUrl,
+            cover,
+            dependencies.runtime.signal
+        );
+        dependencies.log(saved ? "💾 封面已写入本地缓存" : "⚠ 封面缓存写入权已失效，本次继续使用内存封面");
+    } catch (error) {
+        dependencies.log(`⚠ 封面缓存写入失败，本次继续使用内存封面：${getErrorDetails(error).message}`);
+    }
+    return cover;
 }
 
 function getMappingFontSummary(ctx: DownloadContext) {
@@ -596,9 +636,7 @@ export async function runDownload(options: DownloadOptions, dependencies: Downlo
             return;
         }
 
-        const coverPromise = options.coverUrl
-            ? dependencies.coverFetcher.fetch(options.coverUrl, dependencies.runtime.signal)
-            : Promise.resolve(null);
+        const coverPromise = prepareCover(ctx);
 
         transition(ctx, "downloading");
         updateProgress(ctx);

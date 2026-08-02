@@ -1,5 +1,6 @@
 import type {
     BookDownloadLock,
+    BookCover,
     CacheMeta,
     CachedData,
     Chapter,
@@ -161,7 +162,15 @@ export interface ChapterProcessorPort {
  * 封面获取接口，封面失败不应中断章节下载
  */
 export interface CoverFetcherPort {
-    fetch(url: string, signal?: AbortSignal): Promise<{ blob: Blob; ext: "jpg" | "png" } | null>;
+    fetch(url: string, signal?: AbortSignal): Promise<BookCover | null>;
+}
+
+/**
+ * 独立封面缓存接口；失败只影响封面复用，不改变正文缓存状态
+ */
+export interface CoverCacheRepository {
+    load(bookId: string, coverUrl: string): Promise<BookCover | null>;
+    put(bookId: string, taskId: string, coverUrl: string, cover: BookCover, signal?: AbortSignal): Promise<boolean>;
 }
 
 /**
@@ -229,6 +238,7 @@ export interface DownloadPorts {
     chapterFetcher: ChapterFetcherPort;
     chapterProcessor: ChapterProcessorPort;
     coverFetcher: CoverFetcherPort;
+    coverCache: CoverCacheRepository;
     cache: ChapterCacheRepository;
     lock: BookLockService;
     events: DownloadEventSink;

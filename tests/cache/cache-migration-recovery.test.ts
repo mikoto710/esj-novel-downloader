@@ -11,6 +11,8 @@ const mocks = vi.hoisted(() => ({
     clearForTask: vi.fn(),
     listManifests: vi.fn(),
     putBatch: vi.fn(),
+    readCover: vi.fn(),
+    putCover: vi.fn(),
     readLegacy: vi.fn(),
     deleteLegacy: vi.fn(),
     listLegacy: vi.fn(),
@@ -24,7 +26,9 @@ vi.mock("../../src/core/cache/indexeddb-repository", () => ({
     clearCacheV3: mocks.clear,
     clearCacheV3ForTask: mocks.clearForTask,
     listCacheManifestsV3: mocks.listManifests,
-    putCacheBatchV3: mocks.putBatch
+    putCacheBatchV3: mocks.putBatch,
+    readCacheCoverV3: mocks.readCover,
+    putCacheCoverV3ForTask: mocks.putCover
 }));
 vi.mock("../../src/core/cache/legacy-cache", () => ({
     readLegacyCache: mocks.readLegacy,
@@ -59,6 +63,8 @@ describe("v2 cache migration recovery", () => {
         mocks.clear.mockResolvedValue(true);
         mocks.clearForTask.mockResolvedValue(true);
         mocks.putBatch.mockResolvedValue(true);
+        mocks.readCover.mockResolvedValue(null);
+        mocks.putCover.mockResolvedValue(true);
     });
 
     it("retries an interrupted migration once before deleting v2", async () => {

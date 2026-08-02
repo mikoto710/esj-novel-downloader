@@ -3,6 +3,7 @@ import type {
     ChapterCacheRepository,
     ChapterFetcherPort,
     ChapterProcessorPort,
+    CoverCacheRepository,
     CoverFetcherPort,
     DownloadDependencies,
     DownloadRuntimePort,
@@ -20,7 +21,12 @@ import {
     subscribeDownloadCancellation,
     updateRuntimeCacheSession
 } from "../core/state";
-import { clearBookCacheForTask, putBookCacheBatchForTask } from "../core/cache/book-cache";
+import {
+    clearBookCacheForTask,
+    loadBookCover,
+    putBookCacheBatchForTask,
+    putBookCoverForTask
+} from "../core/cache/book-cache";
 import type { Chapter } from "../types";
 import {
     confirmMappingFontDownload,
@@ -35,6 +41,7 @@ import { processHtmlImages } from "../utils/image";
 import { fetchWithTimeout, log, sleep, sleepWithAbort } from "../utils/index";
 import { removeImgTags } from "../utils/text";
 import { normalizeChapterMappingFont } from "../core/mapping-font";
+import { normalizeImageBlob } from "../utils/image-format";
 
 // 下载核心的浏览器实现边界
 // DOM、全局 state、网络、解析、图片、缓存和锁实现均限制在本模块中
@@ -198,14 +205,27 @@ const coverFetcher: CoverFetcherPort = {
                 log("⚠ 封面文件过小，已忽略");
                 return null;
             }
-            const ext = blob.type.includes("png") ? "png" : "jpg";
+            const normalized = await normalizeImageBlob(blob);
+            if (!normalized || (normalized.extension !== "jpg" && normalized.extension !== "png")) {
+                log("⚠ 无法识别封面的实际 JPEG/PNG 格式，已忽略");
+                return null;
+            }
             log("✅ 封面下载完成");
-            return { blob, ext };
+            return {
+                blob: normalized.blob,
+                ext: normalized.extension,
+                mediaType: normalized.extension === "png" ? "image/png" : "image/jpeg"
+            };
         } catch (error) {
             log(`⚠ 封面下载跳过: ${getErrorMessage(error)}`);
             return null;
         }
     }
+};
+
+const coverCache: CoverCacheRepository = {
+    load: loadBookCover,
+    put: putBookCoverForTask
 };
 
 // IndexedDB 适配层只接收本批发生变化的章节
@@ -230,6 +250,7 @@ export function createBrowserDownloadDependencies(): DownloadDependencies {
         chapterFetcher,
         chapterProcessor,
         coverFetcher,
+        coverCache,
         cache,
         lock,
         events: { emit: () => undefined },

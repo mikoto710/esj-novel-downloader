@@ -1,4 +1,4 @@
-import type { CacheMeta, Chapter, PersistentCacheEntry } from "../../types";
+import type { BookCover, CacheMeta, Chapter, PersistentCacheEntry } from "../../types";
 import { log } from "../../utils/index";
 import { hasBookDownloadTaskPresence, listActiveBookDownloadLocks } from "../book-lock";
 import { resetGlobalState, state } from "../state";
@@ -8,7 +8,9 @@ import {
     clearCacheV3ForTask,
     listCacheManifestsV3,
     putCacheBatchV3,
+    putCacheCoverV3ForTask,
     readCacheChaptersV3,
+    readCacheCoverV3,
     readCacheManifestV3,
     type CacheManifestV3
 } from "./indexeddb-repository";
@@ -185,6 +187,41 @@ export async function putBookCacheBatchForTask(
         }
         const normalized = normalizeStorageError(error, "write");
         console.error("保存缓存失败", normalized);
+        throw normalized;
+    }
+}
+
+/**
+ * 读取与当前 URL 精确匹配的独立封面记录
+ */
+export async function loadBookCover(bookId: string, coverUrl: string): Promise<BookCover | null> {
+    try {
+        return await readCacheCoverV3(bookId, coverUrl);
+    } catch (error) {
+        const normalized = normalizeStorageError(error, "read");
+        console.error("读取封面缓存失败", normalized);
+        throw normalized;
+    }
+}
+
+/**
+ * 仅允许当前缓存 writer 原子替换该书的封面记录
+ */
+export async function putBookCoverForTask(
+    bookId: string,
+    taskId: string,
+    coverUrl: string,
+    cover: BookCover,
+    signal?: AbortSignal
+): Promise<boolean> {
+    try {
+        return await putCacheCoverV3ForTask(bookId, taskId, coverUrl, cover, signal);
+    } catch (error) {
+        if (isExpectedStorageCancellation(error, signal)) {
+            return false;
+        }
+        const normalized = normalizeStorageError(error, "write");
+        console.error("保存封面缓存失败", normalized);
         throw normalized;
     }
 }

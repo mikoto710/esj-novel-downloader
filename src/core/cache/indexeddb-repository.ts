@@ -1,5 +1,5 @@
 import { createStore, get, promisifyRequest } from "idb-keyval";
-import type { CacheMeta, Chapter } from "../../types";
+import type { BookCover, CacheMeta, Chapter } from "../../types";
 
 /**
  * v3 书籍缓存清单
@@ -29,6 +29,13 @@ interface StoredChapterV3 {
     chapter: Chapter;
 }
 
+interface StoredCoverV3 extends BookCover {
+    version: 3;
+    bookId: string;
+    coverUrl: string;
+    updatedAt: number;
+}
+
 type CacheTransactionResult<T> = (value: T) => void;
 
 const CACHE_V3_DATABASE = "esj-novel-downloader-cache-v3";
@@ -43,12 +50,51 @@ function getChapterKey(bookId: string, index: number): IDBValidKey {
     return ["chapter", bookId, index];
 }
 
+function getCoverKey(bookId: string, coverUrl: string): IDBValidKey {
+    return ["cover", bookId, coverUrl];
+}
+
 function getManifestRange(): IDBKeyRange {
     return IDBKeyRange.bound(["manifest", ""], ["manifest", "\uffff"]);
 }
 
 function getChapterRange(bookId: string): IDBKeyRange {
     return IDBKeyRange.bound(["chapter", bookId, 0], ["chapter", bookId, Number.MAX_SAFE_INTEGER]);
+}
+
+function getCoverRange(bookId: string): IDBKeyRange {
+    return IDBKeyRange.bound(["cover", bookId, ""], ["cover", bookId, "\uffff"]);
+}
+
+function isBlobLike(value: unknown): value is Blob {
+    if (!value || typeof value !== "object") {
+        return false;
+    }
+    const candidate = value as Partial<Blob>;
+    return (
+        typeof candidate.size === "number" &&
+        typeof candidate.type === "string" &&
+        typeof candidate.slice === "function" &&
+        typeof candidate.arrayBuffer === "function"
+    );
+}
+
+function isStoredCoverV3(record: unknown, bookId: string, coverUrl: string): record is StoredCoverV3 {
+    if (!record || typeof record !== "object") {
+        return false;
+    }
+    const candidate = record as Partial<StoredCoverV3>;
+    const formatMatches =
+        (candidate.ext === "jpg" && candidate.mediaType === "image/jpeg") ||
+        (candidate.ext === "png" && candidate.mediaType === "image/png");
+    return Boolean(
+        candidate.version === 3 &&
+        candidate.bookId === bookId &&
+        candidate.coverUrl === coverUrl &&
+        isBlobLike(candidate.blob) &&
+        candidate.blob.type === candidate.mediaType &&
+        formatMatches
+    );
 }
 
 function normalizeMeta(bookId: string, meta?: CacheMeta): CacheMeta | undefined {
@@ -144,6 +190,17 @@ export async function readCacheChaptersV3(bookId: string): Promise<Map<number, C
             .filter((record) => record.version === 3 && record.bookId === bookId)
             .map((record) => [record.index, record.chapter])
     );
+}
+
+/**
+ * 按书籍和封面 URL 读取独立封面记录
+ */
+export async function readCacheCoverV3(bookId: string, coverUrl: string): Promise<BookCover | null> {
+    const record = await get<StoredCoverV3>(getCoverKey(bookId, coverUrl), cacheV3Store);
+    if (!isStoredCoverV3(record, bookId, coverUrl)) {
+        return null;
+    }
+    return { blob: record.blob, ext: record.ext, mediaType: record.mediaType };
 }
 
 /**
@@ -255,6 +312,42 @@ export async function putCacheBatchV3(
 }
 
 /**
+ * 当前 writer 原子替换指定书籍的封面记录；URL 变化时不会残留旧 Blob
+ */
+export async function putCacheCoverV3ForTask(
+    bookId: string,
+    taskId: string,
+    coverUrl: string,
+    cover: BookCover,
+    signal?: AbortSignal
+): Promise<boolean> {
+    return runWriteTransaction<boolean>((store, setResult) => {
+        const request = store.get(getManifestKey(bookId));
+        request.onsuccess = () => {
+            const current = request.result as CacheManifestV3 | undefined;
+            if (!current || current.writerTaskId !== taskId || current.cleared) {
+                setResult(false);
+                return;
+            }
+            store.delete(getCoverRange(bookId));
+            store.put(
+                {
+                    version: 3,
+                    bookId,
+                    coverUrl,
+                    blob: cover.blob,
+                    ext: cover.ext,
+                    mediaType: cover.mediaType,
+                    updatedAt: Date.now()
+                } satisfies StoredCoverV3,
+                getCoverKey(bookId, coverUrl)
+            );
+            setResult(true);
+        };
+    }, signal);
+}
+
+/**
  * 仅允许当前 writer 清理章节并写入 v3 墓碑
  */
 export async function clearCacheV3ForTask(bookId: string, taskId: string, signal?: AbortSignal): Promise<boolean> {
@@ -267,6 +360,7 @@ export async function clearCacheV3ForTask(bookId: string, taskId: string, signal
                 return;
             }
             store.delete(getChapterRange(bookId));
+            store.delete(getCoverRange(bookId));
             store.put(
                 {
                     version: 3,
@@ -296,6 +390,7 @@ export async function clearCacheV3(bookId: string, isWriterActive: (taskId: stri
                 return;
             }
             store.delete(getChapterRange(bookId));
+            store.delete(getCoverRange(bookId));
             store.put(
                 {
                     version: 3,

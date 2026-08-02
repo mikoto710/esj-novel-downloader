@@ -241,6 +241,7 @@ function createHarness(tasks: DownloadTask[], chapters = new Map<number, Chapter
             }
         },
         coverFetcher: { fetch: async () => null },
+        coverCache: { load: async () => null, put: async () => true },
         cache: {
             putBatch: async () => true,
             async clearForTask(bookId, taskId) {

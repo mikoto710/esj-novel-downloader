@@ -15,6 +15,8 @@ const hoistedBrowserDownloadMocks = vi.hoisted(() => ({
     updateTrayText: vi.fn(),
     saveCache: vi.fn(),
     clearCache: vi.fn(),
+    loadCoverCache: vi.fn(),
+    saveCoverCache: vi.fn(),
     getConcurrency: vi.fn(),
     getImageDownloadSetting: vi.fn(),
     processHtmlImages: vi.fn(),
@@ -48,7 +50,9 @@ vi.mock("../../src/ui/popups", () => ({
 vi.mock("../../src/ui/tray", () => ({ updateTrayText: hoistedBrowserDownloadMocks.updateTrayText }));
 vi.mock("../../src/core/cache/book-cache", () => ({
     putBookCacheBatchForTask: hoistedBrowserDownloadMocks.saveCache,
-    clearBookCacheForTask: hoistedBrowserDownloadMocks.clearCache
+    clearBookCacheForTask: hoistedBrowserDownloadMocks.clearCache,
+    loadBookCover: hoistedBrowserDownloadMocks.loadCoverCache,
+    putBookCoverForTask: hoistedBrowserDownloadMocks.saveCoverCache
 }));
 vi.mock("../../src/core/config", () => ({
     getConcurrency: hoistedBrowserDownloadMocks.getConcurrency,
@@ -93,6 +97,8 @@ export async function resetBrowserDownloadHarness(): Promise<BrowserDownloadRunt
     hoistedBrowserDownloadMocks.createDownloadPopup.mockImplementation(() => document.createElement("div"));
     hoistedBrowserDownloadMocks.saveCache.mockResolvedValue(true);
     hoistedBrowserDownloadMocks.clearCache.mockResolvedValue(true);
+    hoistedBrowserDownloadMocks.loadCoverCache.mockResolvedValue(null);
+    hoistedBrowserDownloadMocks.saveCoverCache.mockResolvedValue(true);
     hoistedBrowserDownloadMocks.getConcurrency.mockReturnValue(1);
     hoistedBrowserDownloadMocks.getImageDownloadSetting.mockReturnValue(false);
     hoistedBrowserDownloadMocks.parseChapterHtml.mockImplementation((_html: string, title: string) => ({

@@ -54,6 +54,7 @@ describe("mapped font cache normalization", () => {
             chapterFetcher: { fetch: vi.fn(async () => "") },
             chapterProcessor: { process: vi.fn(async () => createChapter()) },
             coverFetcher: { fetch: async () => null },
+            coverCache: { load: async () => null, put: async () => true },
             cache: {
                 async putBatch(_bookId, _taskId, entries) {
                     writes.push(new Map(entries));
@@ -139,6 +140,7 @@ describe("mapped font cache normalization", () => {
                 process: vi.fn(async (_html, task) => createChapter(task.index))
             },
             coverFetcher: { fetch: async () => null },
+            coverCache: { load: async () => null, put: async () => true },
             cache: { putBatch: async () => true, clearForTask: async () => true },
             lock: { owns: async () => true, shouldDiscardCache: async () => false },
             events: { emit: () => undefined },
