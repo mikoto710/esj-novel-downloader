@@ -19,6 +19,8 @@ import { addDownloadHistory } from "../core/download-history";
 import type { MappingFontDetection, MappingFontSummary } from "../core/download/contracts";
 import { showMessagePopup } from "./message-popup";
 import { createCommonHeader } from "./popup-components";
+import { recordBrowserDiagnosticExport, recordBrowserDiagnosticFailure } from "../adapters/browser-diagnostics";
+import { createDiagnosticPopup } from "./diagnostics";
 
 /**
  * 锁定/解锁页面上的设置按钮
@@ -46,6 +48,7 @@ function formatMappingFontBytes(bytes: number): string {
 }
 
 const MAX_EXPORT_ERROR_DETAIL_LENGTH = 2_000;
+const diagnosticExportFormat = { TXT: "txt", EPUB: "epub", HTML: "html" } as const;
 
 function getExportErrorDetails(error: unknown): string {
     const details = error instanceof Error ? error.message : String(error);
@@ -56,11 +59,26 @@ function getExportErrorDetails(error: unknown): string {
 }
 
 function showExportFailure(format: "TXT" | "EPUB" | "HTML", stage: "生成" | "下载", error: unknown): void {
+    const details = getExportErrorDetails(error);
+    recordBrowserDiagnosticExport({
+        scope: "full",
+        format: diagnosticExportFormat[format],
+        outcome: "failed",
+        generated: stage === "下载",
+        downloadTriggered: false,
+        failureStage: stage === "生成" ? "generate" : "download"
+    });
+    recordBrowserDiagnosticFailure({
+        scope: "export",
+        stage: `${format.toLowerCase()}-${stage === "生成" ? "generate" : "download"}`,
+        code: error instanceof Error ? error.name || "export-failed" : "export-failed",
+        message: details
+    });
     showMessagePopup({
         tone: "error",
         title: `${format} ${stage}失败`,
         message: `无法${stage}${format}文件。`,
-        details: getExportErrorDetails(error)
+        details
     });
 }
 
@@ -540,6 +558,7 @@ export function showFormatChoice(): void {
                       }
                       try {
                           triggerDownload(blob, filename);
+                          recordSuccessfulExport("txt");
                           void recordBookExport("txt");
                       } catch (error) {
                           console.error(error);
@@ -609,6 +628,7 @@ export function showFormatChoice(): void {
         try {
             btn.disabled = true;
             if (hasMappedChapters && !(await confirmMappingFontExport("EPUB", mappingSummary))) {
+                recordCancelledExport("epub");
                 return;
             }
 
@@ -617,6 +637,7 @@ export function showFormatChoice(): void {
                 const filename = (currentData.metadata.title || "book") + ".epub";
                 try {
                     triggerDownload(currentData.epubBlob, filename);
+                    recordSuccessfulExport("epub");
                     void recordBookExport("epub");
                 } catch (error) {
                     console.error(error);
@@ -643,6 +664,7 @@ export function showFormatChoice(): void {
             const filename = (currentData.metadata.title || "book") + ".epub";
             try {
                 triggerDownload(blob, filename);
+                recordSuccessfulExport("epub");
                 void recordBookExport("epub");
             } catch (error) {
                 console.error(error);
@@ -668,6 +690,7 @@ export function showFormatChoice(): void {
         try {
             btn.disabled = true;
             if (hasMappedChapters && !(await confirmMappingFontExport("HTML", mappingSummary))) {
+                recordCancelledExport("html");
                 return;
             }
             btn.innerText = "生成中...";
@@ -684,6 +707,7 @@ export function showFormatChoice(): void {
             const filename = (data.metadata.title || "book") + ".html";
             try {
                 triggerDownload(blob, filename);
+                recordSuccessfulExport("html");
                 void recordBookExport("html");
             } catch (error) {
                 console.error(error);
@@ -694,6 +718,28 @@ export function showFormatChoice(): void {
             btn.innerText = originalText;
             btn.disabled = false;
         }
+    }
+
+    function recordSuccessfulExport(format: "txt" | "epub" | "html"): void {
+        recordBrowserDiagnosticExport({
+            scope: "full",
+            format,
+            outcome: "success",
+            generated: true,
+            downloadTriggered: true,
+            failureStage: null
+        });
+    }
+
+    function recordCancelledExport(format: "epub" | "html"): void {
+        recordBrowserDiagnosticExport({
+            scope: "full",
+            format,
+            outcome: "cancelled",
+            generated: false,
+            downloadTriggered: false,
+            failureStage: null
+        });
     }
 
     function recordBookExport(format: "txt" | "epub" | "html"): Promise<void> {
@@ -803,6 +849,16 @@ export function createSettingsPanel(): void {
         ["下载记录"]
     );
 
+    const btnDiagnostics = el(
+        "button",
+        {
+            className: "btn btn-primary btn-sm",
+            style: "color:white;min-width:110px;",
+            onclick: () => createDiagnosticPopup()
+        },
+        ["诊断日志"]
+    );
+
     // 图片下载开关
     const isImageEnabled = getImageDownloadSetting();
 
@@ -867,6 +923,14 @@ export function createSettingsPanel(): void {
         btnDownloadHistory
     ]);
 
+    const rowDiagnostics = el("div", { style: rowStyle }, [
+        el("div", {}, [
+            el("label", { style: "color:#333;" }, ["诊断与反馈:"]),
+            el("div", { style: "font-size:12px;color:#999;margin-top:2px;" }, ["(用于导出问题排查信息)"])
+        ]),
+        btnDiagnostics
+    ]);
+
     const rowImage = el("div", { style: rowStyle }, [
         el("div", {}, [
             el("label", { style: "color: #333;" }, ["下载正文插图: "]),
@@ -925,7 +989,7 @@ export function createSettingsPanel(): void {
     ]);
 
     // 组装整体面板
-    const body = el("div", { style: "padding: 25px 20px; font-size: 14px;" }, [
+    const body = el("div", { style: "padding:25px 20px;font-size:14px;overflow:auto;min-height:0;" }, [
         rowConcurrency,
         createDivider(),
         rowImage,
@@ -936,6 +1000,8 @@ export function createSettingsPanel(): void {
         createDivider(),
         rowHistory,
         createDivider(),
+        rowDiagnostics,
+        createDivider(),
         relatedLinks
     ]);
 
@@ -943,7 +1009,7 @@ export function createSettingsPanel(): void {
         "div",
         {
             id: "esj-settings",
-            style: "position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:320px;background:#fff;border:1px solid #ccc;border-radius:8px;box-shadow:0 4px 20px rgba(0,0,0,0.15);z-index:999999;display:flex;flex-direction:column;"
+            style: "position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:320px;max-height:calc(100vh - 32px);background:#fff;border:1px solid #ccc;border-radius:8px;box-shadow:0 4px 20px rgba(0,0,0,0.15);z-index:999999;display:flex;flex-direction:column;"
         },
         [header, body]
     );

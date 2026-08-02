@@ -34,10 +34,27 @@ describe("full-book and single-chapter export isolation", () => {
 
         await downloadCurrentPage("txt");
 
+        const { listBrowserDiagnosticSessions } = await import("../../src/adapters/browser-diagnostics");
+        const diagnostic = listBrowserDiagnosticSessions().history[0];
+
         expect(state.cachedData).toBe(fullBookData);
         expect(state.cachedData?.metadata.title).toBe("测试小说");
         expect(clickMock).toHaveBeenCalledOnce();
         expect(alertMock).not.toHaveBeenCalled();
+        expect(diagnostic).toMatchObject({
+            result: "success",
+            book: { sourcePageType: "single" },
+            task: { phase: "export-ready", totalChapters: 1, completedChapters: 1 },
+            exports: [
+                expect.objectContaining({
+                    scope: "single",
+                    format: "txt",
+                    outcome: "success",
+                    generated: true,
+                    downloadTriggered: true
+                })
+            ]
+        });
     });
 
     it("preserves the source shaping environment in mapped single-chapter HTML", async () => {
@@ -73,5 +90,36 @@ describe("full-book and single-chapter export isolation", () => {
         expect(exportedHtml).toContain("font-display: swap");
         expect(exportedHtml).toContain('lang="en"');
         expect(exportedHtml).toContain("font-feature-settings: &quot;locl&quot; 0");
+    });
+
+    it("records a failed single-chapter export in diagnostics", async () => {
+        createObjectUrlMock.mockImplementationOnce(() => {
+            throw new Error("object URL failed");
+        });
+
+        const { downloadCurrentPage } = await import("../../src/scrapers/single");
+        await downloadCurrentPage("txt");
+        const { listBrowserDiagnosticSessions } = await import("../../src/adapters/browser-diagnostics");
+        const diagnostic = listBrowserDiagnosticSessions().history[0];
+
+        expect(diagnostic).toMatchObject({
+            result: "failed",
+            book: { sourcePageType: "single" },
+            task: { phase: "failed", failedChapters: 1 }
+        });
+        expect(diagnostic.failures).toEqual([
+            expect.objectContaining({ scope: "export", stage: "single-txt", message: "object URL failed" })
+        ]);
+        expect(diagnostic.exports).toEqual([
+            expect.objectContaining({
+                scope: "single",
+                format: "txt",
+                outcome: "failed",
+                generated: true,
+                downloadTriggered: false,
+                failureStage: "download"
+            })
+        ]);
+        expect(document.querySelector("#esj-message-diagnostic")).not.toBeNull();
     });
 });

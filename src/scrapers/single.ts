@@ -1,4 +1,4 @@
-import { log, blobToBase64 } from "../utils/index";
+import { blobToBase64 } from "../utils/index";
 import { parseChapterHtml, parseBookMetadata } from "../core/parser";
 import { getImageDownloadSetting } from "../core/config";
 import { processHtmlImages } from "../utils/image";
@@ -6,15 +6,44 @@ import { addDownloadHistory } from "../core/download-history";
 import { MappingFontError, normalizeChapterMappingFont, prepareChapterMappingExport } from "../core/mapping-font";
 import { confirmMappingFontExport } from "../ui/popups";
 import { showMessagePopup } from "../ui/message-popup";
+import {
+    browserDiagnosticLog as log,
+    finishBrowserSingleChapterDiagnosticSession,
+    recordBrowserDiagnosticExport,
+    recordBrowserDiagnosticFailure,
+    startBrowserDiagnosticSession,
+    updateBrowserDiagnosticSessionMetadata
+} from "../adapters/browser-diagnostics";
 
 /**
  * 抓取并下载当前单章节页面
  */
 export async function downloadCurrentPage(format: "txt" | "html" = "txt"): Promise<void> {
+    const viewAllBtn = document.querySelector(".entry-navigation .view-all") as HTMLAnchorElement | null;
+    const bookId =
+        viewAllBtn?.href.match(/\/detail\/(\d+)/)?.[1] || location.pathname.match(/\/forum\/(\d+)\//)?.[1] || "unknown";
+    const diagnosticTaskId = `single-${bookId}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    let diagnosticResult: "success" | "cancelled" | "failed" = "failed";
+    let generated = false;
+    let downloadTriggered = false;
+
+    startBrowserDiagnosticSession(
+        {
+            taskId: diagnosticTaskId,
+            bookId,
+            bookTitle: document.title.split(" - ")[0] || "未命名小说",
+            pageUrl: location.href,
+            sourcePageType: "single",
+            totalChapters: 1,
+            imageEnabled: getImageDownloadSetting()
+        },
+        // 单章导出不应覆盖全本任务留给后续导出失败使用的会话指针。
+        { rememberForLaterFailures: false }
+    );
+
     try {
         log(`开始抓取当前单章 (${format.toUpperCase()})...`);
 
-        const viewAllBtn = document.querySelector(".entry-navigation .view-all") as HTMLAnchorElement;
         let metaHeader = "";
         let bookNamePrefix = "";
         const htmlMeta = { intro: "", bookName: "", author: "" };
@@ -27,6 +56,12 @@ export async function downloadCurrentPage(format: "txt" | "html" = "txt"): Promi
                 const doc = new DOMParser().parseFromString(html, "text/html");
 
                 const meta = parseBookMetadata(doc, viewAllBtn.href);
+
+                updateBrowserDiagnosticSessionMetadata(diagnosticTaskId, {
+                    bookName: meta.rawBookName || meta.bookName,
+                    pageUrl: location.href,
+                    sourcePageType: "single"
+                });
 
                 metaHeader = meta.introTxt + "====================================\n\n";
                 bookNamePrefix = `[${meta.bookName}] `;
@@ -53,6 +88,16 @@ export async function downloadCurrentPage(format: "txt" | "html" = "txt"): Promi
             });
         } catch (error) {
             if (error instanceof MappingFontError) {
+                recordBrowserDiagnosticFailure(
+                    {
+                        scope: "chapter",
+                        stage: "mapping-font",
+                        code: error.name || "mapping-font-error",
+                        message: error.message,
+                        chapter: { index: 0, title: parsed.title, url: location.href }
+                    },
+                    diagnosticTaskId
+                );
                 showMessagePopup({
                     tone: "error",
                     title: "映射字体解析失败",
@@ -64,6 +109,7 @@ export async function downloadCurrentPage(format: "txt" | "html" = "txt"): Promi
             throw error;
         }
         if (format === "txt" && normalized.kind === "mapped") {
+            diagnosticResult = "cancelled";
             showMessagePopup({
                 tone: "warning",
                 title: "TXT 导出不可用",
@@ -79,6 +125,7 @@ export async function downloadCurrentPage(format: "txt" | "html" = "txt"): Promi
                 fontBytes: normalized.chapter.mappingFont?.blob.size || 0
             }))
         ) {
+            diagnosticResult = "cancelled";
             return;
         }
 
@@ -92,6 +139,16 @@ export async function downloadCurrentPage(format: "txt" | "html" = "txt"): Promi
 
         // 根据格式检查内容
         if (format === "txt" && !contentText) {
+            recordBrowserDiagnosticFailure(
+                {
+                    scope: "chapter",
+                    stage: "parse",
+                    code: "chapter-content-missing",
+                    message: "当前页面没有可导出的正文内容",
+                    chapter: { index: 0, title, url: location.href }
+                },
+                diagnosticTaskId
+            );
             showMessagePopup({ tone: "warning", title: "未找到正文", message: "当前页面没有可导出的正文内容。" });
             return;
         } else {
@@ -175,6 +232,7 @@ export async function downloadCurrentPage(format: "txt" | "html" = "txt"): Promi
                 blob = new Blob([finalHtml], { type: "text/html;charset=utf-8" });
                 downloadFilename = `${bookNamePrefix}${safeTitle}.html`;
             }
+            generated = true;
 
             const a = document.createElement("a");
             a.href = URL.createObjectURL(blob);
@@ -182,12 +240,12 @@ export async function downloadCurrentPage(format: "txt" | "html" = "txt"): Promi
 
             document.body.appendChild(a);
             a.click();
+            downloadTriggered = true;
             document.body.removeChild(a);
             URL.revokeObjectURL(a.href);
 
-            const bookId = viewAllBtn?.href.match(/\/detail\/(\d+)/)?.[1];
             await addDownloadHistory({
-                bookId,
+                bookId: bookId === "unknown" ? undefined : bookId,
                 bookName: htmlMeta.bookName || parsed.bookName || "未命名小说",
                 author: htmlMeta.author || author,
                 format,
@@ -205,14 +263,44 @@ export async function downloadCurrentPage(format: "txt" | "html" = "txt"): Promi
             });
 
             log(`✔ 单章下载完成 (${format.toUpperCase()})`);
+            diagnosticResult = "success";
         }
     } catch (e: any) {
         console.error(e);
+        recordBrowserDiagnosticFailure(
+            {
+                scope: "export",
+                stage: `single-${format}`,
+                code: e?.name || "single-export-failed",
+                message: e?.message || String(e),
+                chapter: {
+                    index: 0,
+                    title: document.title.split(" - ")[0] || "未命名章节",
+                    url: location.href
+                }
+            },
+            diagnosticTaskId
+        );
         showMessagePopup({
             tone: "error",
             title: "单章下载失败",
             message: "下载当前章节时发生错误。",
-            details: e.message
+            details: e?.message || String(e)
         });
+    } finally {
+        // 下载已触发后，即使后续历史写入失败，导出本身仍应记为成功；任务失败原因另行保留。
+        const exportOutcome = downloadTriggered ? "success" : diagnosticResult;
+        recordBrowserDiagnosticExport(
+            {
+                scope: "single",
+                format,
+                outcome: exportOutcome,
+                generated,
+                downloadTriggered,
+                failureStage: exportOutcome === "failed" ? (generated ? "download" : "generate") : null
+            },
+            diagnosticTaskId
+        );
+        finishBrowserSingleChapterDiagnosticSession(diagnosticTaskId, diagnosticResult);
     }
 }

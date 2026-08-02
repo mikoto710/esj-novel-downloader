@@ -1,5 +1,7 @@
 import { el, enableDrag } from "../utils/dom";
 import { createCommonHeader } from "./popup-components";
+import { listBrowserDiagnosticSessions } from "../adapters/browser-diagnostics";
+import { createDiagnosticPopup } from "./diagnostics";
 
 export type MessagePopupTone = "info" | "warning" | "error";
 
@@ -78,6 +80,36 @@ export function showMessagePopup(options: MessagePopupOptions): HTMLElement {
         );
     }
 
+    const footerButtons: Array<string | Node> = [];
+    const diagnosticStore = options.tone === "error" ? listBrowserDiagnosticSessions() : null;
+    if (diagnosticStore && diagnosticStore.active.length + diagnosticStore.history.length > 0) {
+        footerButtons.push(
+            el(
+                "button",
+                {
+                    id: "esj-message-diagnostic",
+                    style: "padding:8px 12px;background:#2b9bd7;color:#fff;border:1px solid #2b9bd7;border-radius:6px;cursor:pointer;",
+                    onclick: () => {
+                        close();
+                        createDiagnosticPopup();
+                    }
+                },
+                ["查看诊断日志"]
+            )
+        );
+    }
+    footerButtons.push(
+        el(
+            "button",
+            {
+                id: "esj-message-close",
+                style: "padding:8px 12px;background:#eee;border:1px solid #ccc;border-radius:6px;cursor:pointer;",
+                onclick: close
+            },
+            [options.closeText || "关闭"]
+        )
+    );
+
     const popup = el(
         "div",
         {
@@ -95,17 +127,7 @@ export function showMessagePopup(options: MessagePopupOptions): HTMLElement {
                 { style: "padding:16px;font-size:15px;line-height:1.7;min-height:0;overflow:auto;" },
                 bodyChildren
             ),
-            el("div", { style: "padding:12px;display:flex;justify-content:flex-end;" }, [
-                el(
-                    "button",
-                    {
-                        id: "esj-message-close",
-                        style: "padding:8px 12px;background:#eee;border:1px solid #ccc;border-radius:6px;cursor:pointer;",
-                        onclick: close
-                    },
-                    [options.closeText || "关闭"]
-                )
-            ])
+            el("div", { style: "padding:12px;display:flex;justify-content:flex-end;gap:8px;" }, footerButtons)
         ]
     );
 

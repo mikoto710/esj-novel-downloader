@@ -56,6 +56,16 @@ describe("full-book export recovery contracts", () => {
             throw new Error("object URL unavailable");
         });
         const { state } = await prepareExportPopup();
+        const diagnostics = await import("../../src/adapters/browser-diagnostics");
+        diagnostics.startBrowserDiagnosticSession({
+            taskId: "export-retry",
+            bookId: "100",
+            bookTitle: "Export retry",
+            pageUrl: "https://www.esjzone.cc/detail/100.html",
+            sourcePageType: "detail",
+            imageEnabled: false
+        });
+        diagnostics.finishBrowserDiagnosticSession("export-retry", "success");
 
         click("#esj-epub");
         await waitForMessage("EPUB 下载失败");
@@ -69,6 +79,21 @@ describe("full-book export recovery contracts", () => {
 
         expect(mocks.buildEpub).toHaveBeenCalledOnce();
         expect(mocks.addDownloadHistory).toHaveBeenCalledOnce();
+        expect(diagnostics.listBrowserDiagnosticSessions().history[0].exports).toEqual([
+            expect.objectContaining({
+                format: "epub",
+                outcome: "failed",
+                generated: true,
+                downloadTriggered: false,
+                failureStage: "download"
+            }),
+            expect.objectContaining({
+                format: "epub",
+                outcome: "success",
+                generated: true,
+                downloadTriggered: true
+            })
+        ]);
     });
 
     it("keeps HTML retryable after consecutive generation failures", async () => {
@@ -168,12 +193,25 @@ describe("full-book export recovery contracts", () => {
             }
         });
         await prepareExportPopup(createCachedData({ chapters: [mappedChapter] }));
+        const diagnostics = await import("../../src/adapters/browser-diagnostics");
+        diagnostics.startBrowserDiagnosticSession({
+            taskId: "mapped-cancel",
+            bookId: "101",
+            bookTitle: "Mapped cancel",
+            pageUrl: "https://www.esjzone.cc/detail/101.html",
+            sourcePageType: "detail",
+            imageEnabled: false
+        });
+        diagnostics.finishBrowserDiagnosticSession("mapped-cancel", "success");
 
         click("#esj-epub");
         await vi.waitFor(() => expect(document.querySelector("#esj-mapping-export-confirm")).not.toBeNull());
         click('#esj-mapping-export-confirm [title="关闭"]');
         await vi.waitFor(() => expect((document.querySelector("#esj-epub") as HTMLButtonElement).disabled).toBe(false));
         expect(mocks.buildEpub).not.toHaveBeenCalled();
+        expect(diagnostics.listBrowserDiagnosticSessions().history[0].exports).toEqual([
+            expect.objectContaining({ format: "epub", outcome: "cancelled", generated: false })
+        ]);
 
         click("#esj-epub");
         await vi.waitFor(() => expect(document.querySelector("#esj-mapping-export-continue")).not.toBeNull());
