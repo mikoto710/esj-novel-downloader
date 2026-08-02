@@ -4,10 +4,10 @@ import {
     DEFAULT_CACHE_WRITE_POLICY,
     estimateChapterCacheBytes,
     type CacheWritePolicy
-} from "../src/core/download/cache-write-buffer";
-import type { Chapter } from "../src/types";
-import type { DownloadCancellationMode } from "../src/types";
-import { createChapter, createDeferred, useFakeClock } from "./support";
+} from "../../src/core/download/cache-write-buffer";
+import type { Chapter } from "../../src/types";
+import type { DownloadCancellationMode } from "../../src/types";
+import { createChapter, createDeferred, useFakeClock } from "../support";
 
 describe("ChapterCacheWriteBuffer", () => {
     it("uses the configurable 25 chapter, 4 MiB, and 3 second defaults", () => {

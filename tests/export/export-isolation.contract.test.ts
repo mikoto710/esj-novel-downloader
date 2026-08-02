@@ -2,7 +2,7 @@
 
 import { IDBFactory } from "fake-indexeddb";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { createCachedData, createChapterFixture, installDocumentFixture } from "./support";
+import { createCachedData, createChapterFixture, installDocumentFixture } from "../support";
 
 describe("full-book and single-chapter export isolation", () => {
     const alertMock = vi.fn();
@@ -27,8 +27,8 @@ describe("full-book and single-chapter export isolation", () => {
     });
 
     it("does not replace full-book export data when exporting a single chapter", async () => {
-        const { state } = await import("../src/core/state");
-        const { downloadCurrentPage } = await import("../src/scrapers/single");
+        const { state } = await import("../../src/core/state");
+        const { downloadCurrentPage } = await import("../../src/scrapers/single");
         const fullBookData = createCachedData();
         state.cachedData = fullBookData;
 
@@ -54,7 +54,7 @@ describe("full-book and single-chapter export isolation", () => {
         );
         installDocumentFixture(fixture);
 
-        const { downloadCurrentPage } = await import("../src/scrapers/single");
+        const { downloadCurrentPage } = await import("../../src/scrapers/single");
         const exportPromise = downloadCurrentPage("html");
 
         await vi.waitFor(() => {

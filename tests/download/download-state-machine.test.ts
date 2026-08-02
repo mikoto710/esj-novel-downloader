@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
-import type { DownloadEvent } from "../src/core/download/contracts";
+import type { DownloadEvent } from "../../src/core/download/contracts";
 import {
     canTransitionDownloadPhase,
     createInitialDownloadSnapshot,
     DownloadStateMachine
-} from "../src/core/download/state-machine";
-import { RecordingDownloadEvents } from "./support";
+} from "../../src/core/download/state-machine";
+import { RecordingDownloadEvents } from "../support";
 
 describe("DownloadStateMachine", () => {
     it("accepts the normal download lifecycle", () => {

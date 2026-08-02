@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { runWorkerPool } from "../src/core/download/worker-pool";
-import { createDeferred } from "./support";
+import { runWorkerPool } from "../../src/core/download/worker-pool";
+import { createDeferred } from "../support";
 
 describe("runWorkerPool", () => {
     it("processes every item once with bounded concurrency", async () => {

@@ -8,13 +8,13 @@ const { fetchWithTimeoutMock, logMock, sleepWithAbortMock } = vi.hoisted(() => (
     sleepWithAbortMock: vi.fn().mockResolvedValue(undefined)
 }));
 
-vi.mock("../src/utils/index", () => ({
+vi.mock("../../src/utils/index", () => ({
     fetchWithTimeout: fetchWithTimeoutMock,
     log: logMock,
     sleepWithAbort: sleepWithAbortMock
 }));
 
-import { processHtmlImages } from "../src/utils/image";
+import { processHtmlImages } from "../../src/utils/image";
 
 function blobResponse(blob: Blob): Response {
     return { blob: vi.fn().mockResolvedValue(blob) } as unknown as Response;

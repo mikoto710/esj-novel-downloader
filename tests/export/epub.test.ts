@@ -2,19 +2,19 @@
 
 import JSZip from "jszip";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { BookMetadata, Chapter, ChapterImage } from "../src/types";
+import type { BookMetadata, Chapter, ChapterImage } from "../../src/types";
 
 const { loadScriptMock, logMock } = vi.hoisted(() => ({
     loadScriptMock: vi.fn(),
     logMock: vi.fn()
 }));
 
-vi.mock("../src/utils/index", () => ({
+vi.mock("../../src/utils/index", () => ({
     loadScript: loadScriptMock,
     log: logMock
 }));
 
-import { buildEpub } from "../src/core/epub";
+import { buildEpub } from "../../src/core/epub";
 
 const metadata: BookMetadata = {
     title: "测试书籍",

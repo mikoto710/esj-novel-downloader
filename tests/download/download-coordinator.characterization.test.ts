@@ -1,14 +1,14 @@
 import { describe, expect, it, vi } from "vitest";
-import { runDownload } from "../src/core/download/coordinator";
+import { runDownload } from "../../src/core/download/coordinator";
 import type {
     DownloadDependencies,
     DownloadEvent,
     DownloadSnapshot,
     DownloadTask
-} from "../src/core/download/contracts";
-import type { CachedData, Chapter, RuntimeCacheSession } from "../src/types";
-import { createChapter, createDownloadTask, FakeChapterFetcher, RecordingDownloadEvents } from "./support";
-import { MappingFontError } from "../src/core/mapping-font";
+} from "../../src/core/download/contracts";
+import type { CachedData, Chapter, RuntimeCacheSession } from "../../src/types";
+import { createChapter, createDownloadTask, FakeChapterFetcher, RecordingDownloadEvents } from "../support";
+import { MappingFontError } from "../../src/core/mapping-font";
 
 describe("runDownload characterization", () => {
     it("runs without DOM, IndexedDB, GM APIs, or global application state", async () => {

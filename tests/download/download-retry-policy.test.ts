@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { runWithRetry } from "../src/core/download/retry-policy";
+import { runWithRetry } from "../../src/core/download/retry-policy";
 
 describe("runWithRetry", () => {
     it("uses the configured attempts and backoff delays", async () => {

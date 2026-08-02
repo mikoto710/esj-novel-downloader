@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { log } from "../src/utils/index";
+import { log } from "../../src/utils/index";
 
 describe("log rendering", () => {
     beforeEach(() => {

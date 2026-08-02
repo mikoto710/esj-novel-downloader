@@ -143,10 +143,12 @@ src
 └── types.ts                              # 公共业务类型
 
 tests
+├── download / cache                      # 下载流程与缓存边界
+├── mapping-font / export / ui            # 字体、导出与界面行为
+├── infrastructure                        # 测试设施自测
 ├── support                               # mocks、fixtures、fakes 与资源追踪
 ├── stress                                # 大章节量专项压力测试
-├── setup.ts                              # 测试环境与泄漏检查
-└── *.test.ts                             # 单元、契约及流程测试
+└── setup.ts                              # 测试环境与泄漏检查
 ```
 
 ### 本地构建

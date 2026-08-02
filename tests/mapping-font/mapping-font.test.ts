@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 
 import { describe, expect, it } from "vitest";
-import { MAX_CHAPTER_MAPPING_FONT_BYTES, normalizeChapterMappingFont } from "../src/core/mapping-font";
-import { createChapter } from "./support";
+import { MAX_CHAPTER_MAPPING_FONT_BYTES, normalizeChapterMappingFont } from "../../src/core/mapping-font";
+import { createChapter } from "../support";
 
 function createWoff2Bytes(size = 64): Uint8Array {
     const bytes = new Uint8Array(size);

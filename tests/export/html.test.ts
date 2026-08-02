@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 
 import { describe, expect, it } from "vitest";
-import { buildHtml } from "../src/core/html";
-import { createBookMetadata, createChapter } from "./support";
+import { buildHtml } from "../../src/core/html";
+import { createBookMetadata, createChapter } from "../support";
 
 function createMappedChapter() {
     return createChapter(0, {

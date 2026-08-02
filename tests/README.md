@@ -2,10 +2,17 @@
 
 ## 目录职责
 
-- `tests/*.test.ts`：单元测试、契约测试、流程特征测试与测试基础设施自测；文件名优先表达被验证的业务边界，不按实现目录机械映射。
+- `tests/download/`：下载协调、生命周期、状态机、重试、完整性、worker pool、取消和浏览器下载流程契约。
+- `tests/cache/`：任务锁与缓存、下载历史隔离、增量写入缓冲、恢复、backpressure 和存储失败语义。
+- `tests/mapping-font/`：映射字体严格检测、旧缓存规范化及浏览器下载适配契约。
+- `tests/export/`：TXT、HTML、EPUB、图片资源处理和全本／单章导出隔离。
+- `tests/ui/`：日志渲染、全本映射字体弹窗和单章映射字体状态。
+- `tests/infrastructure/`：共享测试设施自身的行为验证。
 - `tests/stress/`：3000 章规模下的缓存复杂度与主流程压力测试，不纳入普通测试命令。
 - `tests/support/`：所有测试共享的 mocks、fixtures、fakes、factories 和资源追踪工具。
 - `tests/setup.ts`：每个用例统一安装/恢复 userscript API、fake IndexedDB、DOM 状态和资源泄漏检查。
+
+这些目录只是同一个 Vitest 测试包内的业务分组；`vitest.config.ts` 继续递归收集 `tests/**/*.test.ts`，不拆分 npm package。测试文件名优先表达被验证的业务边界，不按生产代码目录机械映射。
 
 ## 异步与时间
 
@@ -19,6 +26,7 @@
 - GM API 使用 `getUserscriptApiMocks()` 读取调用记录或驱动响应。
 - HTML 解析使用详情页、论坛页和章节 fixtures；业务流程测试不得依赖实时 ESJZone 页面。
 - 下载核心测试使用 `FakeChapterFetcher`、`FakeChapterProcessor`、`InMemoryCacheRepository` 和 `FakeBookLockService`，不得访问真实网络或 IndexedDB。
+- 浏览器下载适配契约复用 `browser-download-harness.ts` 提供的 mocks 和统一初始状态；新增场景应放入对应业务目录，不再建立职责混合的总入口契约文件。
 - IndexedDB adapter 测试使用 `openTestDatabase()` 创建唯一数据库，并在结束前执行 `closeTestDatabase()` 与 `deleteTestDatabase()`。
 - BroadcastChannel 测试使用 `installFakeBroadcastChannel()`，并显式关闭所有 channel。
 

@@ -2,7 +2,7 @@
 
 import { IDBFactory } from "fake-indexeddb";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { createChapter } from "./support";
+import { createChapter } from "../support";
 
 describe("cache and history isolation contract", () => {
     beforeEach(() => {
@@ -13,9 +13,9 @@ describe("cache and history isolation contract", () => {
     });
 
     it("keeps download history when persistent chapter caches are cleared", async () => {
-        const locks = await import("../src/core/book-lock");
-        const storage = await import("../src/core/cache/book-cache");
-        const history = await import("../src/core/download-history");
+        const locks = await import("../../src/core/book-lock");
+        const storage = await import("../../src/core/cache/book-cache");
+        const history = await import("../../src/core/download-history");
         const acquired = await locks.acquireBookDownloadLock("100", "detail");
         if (!acquired.acquired) {
             throw new Error("expected lock");

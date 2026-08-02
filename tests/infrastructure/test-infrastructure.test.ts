@@ -22,7 +22,7 @@ import {
     openTestDatabase,
     trackEventListener,
     useFakeClock
-} from "./support";
+} from "../support";
 
 describe("test infrastructure", () => {
     it("installs isolated userscript API mocks for every test", () => {

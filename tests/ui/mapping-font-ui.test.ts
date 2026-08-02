@@ -1,9 +1,9 @@
 // @vitest-environment jsdom
 
 import { beforeEach, describe, expect, it } from "vitest";
-import { state } from "../src/core/state";
-import { confirmMappingFontDownload, showFormatChoice } from "../src/ui/popups";
-import { createCachedData, createChapter, createDownloadTask } from "./support";
+import { state } from "../../src/core/state";
+import { confirmMappingFontDownload, showFormatChoice } from "../../src/ui/popups";
+import { createCachedData, createChapter, createDownloadTask } from "../support";
 
 function createMappedChapter() {
     return createChapter(0, {

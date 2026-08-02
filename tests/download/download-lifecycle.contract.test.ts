@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { createBookLock, createDeferred, createDetailPageFixture, installDocumentFixture } from "./support";
+import { createBookLock, createDeferred, createDetailPageFixture, installDocumentFixture } from "../support";
 
 const mocks = vi.hoisted(() => ({
     batchDownload: vi.fn(),
@@ -21,25 +21,25 @@ const mocks = vi.hoisted(() => ({
     log: vi.fn()
 }));
 
-vi.mock("../src/core/cache/sync", () => ({
+vi.mock("../../src/core/cache/sync", () => ({
     subscribeCacheSync: vi.fn(() => vi.fn()),
     publishCacheSyncEvent: vi.fn()
 }));
 
-vi.mock("../src/core/download/batch-download", () => ({ batchDownload: mocks.batchDownload }));
-vi.mock("../src/core/download/task-finalizer", () => ({ finalizeBookDownloadTask: mocks.finalize }));
-vi.mock("../src/core/book-lock", () => ({
+vi.mock("../../src/core/download/batch-download", () => ({ batchDownload: mocks.batchDownload }));
+vi.mock("../../src/core/download/task-finalizer", () => ({ finalizeBookDownloadTask: mocks.finalize }));
+vi.mock("../../src/core/book-lock", () => ({
     getConflictingBookDownloadLock: mocks.getConflict,
     acquireBookDownloadLock: mocks.acquire,
     markBookDownloadRunning: mocks.markRunning,
     startBookDownloadLockHeartbeat: mocks.startHeartbeat,
     updateBookDownloadLockTitle: mocks.updateTitle
 }));
-vi.mock("../src/core/cache/book-cache", () => ({
+vi.mock("../../src/core/cache/book-cache", () => ({
     loadBookCache: mocks.loadCache,
     claimBookCache: mocks.claimCache
 }));
-vi.mock("../src/core/parser", () => ({
+vi.mock("../../src/core/parser", () => ({
     parseBookMetadata: vi.fn(() => ({
         bookName: "测试小说",
         rawBookName: "测试小说",
@@ -50,16 +50,16 @@ vi.mock("../src/core/parser", () => ({
         coverUrl: undefined
     }))
 }));
-vi.mock("../src/ui/popups", () => ({
+vi.mock("../../src/ui/popups", () => ({
     createConfirmPopup: mocks.createConfirmPopup,
     createDownloadPopup: mocks.createDownloadPopup,
     showBookDownloadInProgressPopup: mocks.showConflict
 }));
-vi.mock("../src/utils/dom", () => ({ fullCleanup: mocks.fullCleanup }));
-vi.mock("../src/utils/index", () => ({ log: mocks.log }));
+vi.mock("../../src/utils/dom", () => ({ fullCleanup: mocks.fullCleanup }));
+vi.mock("../../src/utils/index", () => ({ log: mocks.log }));
 
-import { scrapeDetail } from "../src/scrapers/detail";
-import { state } from "../src/core/state";
+import { scrapeDetail } from "../../src/scrapers/detail";
+import { state } from "../../src/core/state";
 
 describe("download lifecycle contracts", () => {
     const lock = createBookLock();

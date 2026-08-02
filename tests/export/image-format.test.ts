@@ -5,7 +5,7 @@ import {
     isSupportedImageMediaType,
     normalizeImageBlob,
     resolveImageUrl
-} from "../src/utils/image-format";
+} from "../../src/utils/image-format";
 
 describe("resolveImageUrl", () => {
     const chapterUrl = "https://www.esjzone.cc/forum/1/2.html";
