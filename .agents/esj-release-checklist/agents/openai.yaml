@@ -1,0 +1,4 @@
+interface:
+  display_name: "ESJ Release Checklist"
+  short_description: "Assess ESJ release readiness with evidence and risk checks."
+  default_prompt: "Use $esj-release-checklist to assess release readiness without publishing anything."

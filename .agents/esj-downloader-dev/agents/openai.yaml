@@ -1,0 +1,4 @@
+interface:
+  display_name: "ESJ Downloader Development"
+  short_description: "Route ESJ downloader changes to the right boundaries and checks."
+  default_prompt: "Use $esj-downloader-dev to implement this ESJ Novel Downloader change safely."

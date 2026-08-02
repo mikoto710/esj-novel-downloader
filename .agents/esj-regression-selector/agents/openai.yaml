@@ -1,0 +1,4 @@
+interface:
+  display_name: "ESJ Regression Selector"
+  short_description: "Select focused regression coverage for ESJ downloader changes."
+  default_prompt: "Use $esj-regression-selector to choose and run regression checks for this change."
