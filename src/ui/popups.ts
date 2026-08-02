@@ -45,6 +45,25 @@ function formatMappingFontBytes(bytes: number): string {
     return `${(bytes / (1024 * 1024)).toFixed(1)} MiB`;
 }
 
+const MAX_EXPORT_ERROR_DETAIL_LENGTH = 2_000;
+
+function getExportErrorDetails(error: unknown): string {
+    const details = error instanceof Error ? error.message : String(error);
+    if (details.length <= MAX_EXPORT_ERROR_DETAIL_LENGTH) {
+        return details;
+    }
+    return `${details.slice(0, MAX_EXPORT_ERROR_DETAIL_LENGTH)}\n…（详情已截断）`;
+}
+
+function showExportFailure(format: "TXT" | "EPUB" | "HTML", stage: "生成" | "下载", error: unknown): void {
+    showMessagePopup({
+        tone: "error",
+        title: `${format} ${stage}失败`,
+        message: `无法${stage}${format}文件。`,
+        details: getExportErrorDetails(error)
+    });
+}
+
 /**
  * 在下载进度弹窗中持续显示映射字体限制
  */
@@ -497,6 +516,9 @@ export function showFormatChoice(): void {
             : ""
     ]);
 
+    let epubExporting = false;
+    let htmlExporting = false;
+
     const btnTxt = el(
         "button",
         {
@@ -509,9 +531,20 @@ export function showFormatChoice(): void {
                 ? undefined
                 : () => {
                       const filename = (data.metadata.title || "book") + ".txt";
-                      const blob = new Blob([data.txt], { type: "text/plain;charset=utf-8" });
-                      triggerDownload(blob, filename);
-                      void recordBookExport("txt");
+                      let blob: Blob;
+                      try {
+                          blob = new Blob([data.txt], { type: "text/plain;charset=utf-8" });
+                      } catch (error) {
+                          showExportFailure("TXT", "生成", error);
+                          return;
+                      }
+                      try {
+                          triggerDownload(blob, filename);
+                          void recordBookExport("txt");
+                      } catch (error) {
+                          console.error(error);
+                          showExportFailure("TXT", "下载", error);
+                      }
                   }
         },
         [hasMappedChapters ? "TXT 不可用" : "⬇ TXT 下载"]
@@ -564,46 +597,59 @@ export function showFormatChoice(): void {
 
     // 下载 EPUB
     async function handleEpubDownload() {
+        if (epubExporting) {
+            return;
+        }
+        epubExporting = true;
         const btn = document.querySelector("#esj-epub") as HTMLButtonElement;
         const currentData = state.cachedData as CachedData;
-        if (hasMappedChapters && !(await confirmMappingFontExport("EPUB", mappingSummary))) {
-            return;
-        }
-
-        // 如果已经生成过，直接下载缓存的 blob
-        if (currentData.epubBlob) {
-            const filename = (currentData.metadata.title || "book") + ".epub";
-            triggerDownload(currentData.epubBlob, filename);
-            void recordBookExport("epub");
-            return;
-        }
-
         const originalText = btn.innerText;
         const originalBg = btn.style.background;
         const oldTitle = document.title;
         try {
-            btn.innerText = "生成中...";
             btn.disabled = true;
+            if (hasMappedChapters && !(await confirmMappingFontExport("EPUB", mappingSummary))) {
+                return;
+            }
+
+            // 如果已经生成过，直接下载缓存的 blob
+            if (currentData.epubBlob) {
+                const filename = (currentData.metadata.title || "book") + ".epub";
+                try {
+                    triggerDownload(currentData.epubBlob, filename);
+                    void recordBookExport("epub");
+                } catch (error) {
+                    console.error(error);
+                    showExportFailure("EPUB", "下载", error);
+                }
+                return;
+            }
+
+            btn.innerText = "生成中...";
             btn.style.background = "#7ab8d6";
 
-            const oldTitle = document.title;
             document.title = "[生成 EPUB] " + oldTitle;
 
-            const blob = await buildEpub(currentData.chapters, currentData.metadata, getEpubTagPageSetting());
+            let blob: Blob;
+            try {
+                blob = await buildEpub(currentData.chapters, currentData.metadata, getEpubTagPageSetting());
+            } catch (error) {
+                console.error(error);
+                showExportFailure("EPUB", "生成", error);
+                return;
+            }
             currentData.epubBlob = blob;
 
             const filename = (currentData.metadata.title || "book") + ".epub";
-            triggerDownload(blob, filename);
-            void recordBookExport("epub");
-        } catch (e: any) {
-            console.error(e);
-            showMessagePopup({
-                tone: "error",
-                title: "EPUB 生成失败",
-                message: "无法生成 EPUB 文件。",
-                details: e.message
-            });
+            try {
+                triggerDownload(blob, filename);
+                void recordBookExport("epub");
+            } catch (error) {
+                console.error(error);
+                showExportFailure("EPUB", "下载", error);
+            }
         } finally {
+            epubExporting = false;
             btn.innerText = originalText;
             btn.disabled = false;
             btn.style.background = originalBg;
@@ -613,29 +659,38 @@ export function showFormatChoice(): void {
 
     // 下载 HTML
     async function handleHtmlDownload() {
-        const btn = document.querySelector("#esj-html") as HTMLButtonElement;
-        if (hasMappedChapters && !(await confirmMappingFontExport("HTML", mappingSummary))) {
+        if (htmlExporting) {
             return;
         }
+        htmlExporting = true;
+        const btn = document.querySelector("#esj-html") as HTMLButtonElement;
         const originalText = btn.innerText;
         try {
-            btn.innerText = "生成中...";
             btn.disabled = true;
+            if (hasMappedChapters && !(await confirmMappingFontExport("HTML", mappingSummary))) {
+                return;
+            }
+            btn.innerText = "生成中...";
 
-            const blob = await buildHtml(data.chapters, data.metadata);
+            let blob: Blob;
+            try {
+                blob = await buildHtml(data.chapters, data.metadata);
+            } catch (error) {
+                console.error(error);
+                showExportFailure("HTML", "生成", error);
+                return;
+            }
 
             const filename = (data.metadata.title || "book") + ".html";
-            triggerDownload(blob, filename);
-            void recordBookExport("html");
-        } catch (e: any) {
-            console.error(e);
-            showMessagePopup({
-                tone: "error",
-                title: "HTML 生成失败",
-                message: "无法生成 HTML 文件。",
-                details: e.message
-            });
+            try {
+                triggerDownload(blob, filename);
+                void recordBookExport("html");
+            } catch (error) {
+                console.error(error);
+                showExportFailure("HTML", "下载", error);
+            }
         } finally {
+            htmlExporting = false;
             btn.innerText = originalText;
             btn.disabled = false;
         }
