@@ -252,5 +252,11 @@ export function estimateChapterCacheBytes(chapter: Chapter): number {
         bytes += image.blob.size;
         bytes += encoder.encode(image.id + image.mediaType).byteLength;
     }
+    if (chapter.mappingFont) {
+        bytes += chapter.mappingFont.blob.size;
+        bytes += encoder.encode(
+            chapter.mappingFont.family + chapter.mappingFont.mediaType + chapter.mappingFont.sha256
+        ).byteLength;
+    }
     return bytes;
 }

@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
     ChapterCacheWriteBuffer,
     DEFAULT_CACHE_WRITE_POLICY,
+    estimateChapterCacheBytes,
     type CacheWritePolicy
 } from "../src/core/download/cache-write-buffer";
 import type { Chapter } from "../src/types";
@@ -43,6 +44,21 @@ describe("ChapterCacheWriteBuffer", () => {
         await expect(buffer.add(0, createChapter(0))).resolves.toBe(true);
         expect(write).toHaveBeenCalledOnce();
         expect(write.mock.calls[0][0]).toEqual(new Map([[0, createChapter(0)]]));
+    });
+
+    it("includes the mapped font Blob and metadata in the byte estimate", () => {
+        const chapter = createChapter();
+        const plainBytes = estimateChapterCacheBytes(chapter);
+        const mappingFont = {
+            family: "1",
+            blob: new Blob([new Uint8Array(64)], { type: "font/woff2" }),
+            mediaType: "font/woff2" as const,
+            sha256: "a".repeat(64)
+        };
+
+        expect(estimateChapterCacheBytes({ ...chapter, mappingFont })).toBe(
+            plainBytes + 64 + new TextEncoder().encode("1font/woff2" + "a".repeat(64)).byteLength
+        );
     });
 
     it("flushes pending chapters when the maximum delay elapses", async () => {

@@ -7,6 +7,16 @@ export interface Chapter {
     txtSegment: string;
     images?: ChapterImage[];
     imageErrors?: number;
+    // 字体必须与产生该映射正文的章节原子保存；仅用于临时视觉还原，不代表正文 Unicode 已恢复
+    mappingFont?: ChapterMappingFont;
+}
+
+// ESJZone 章节级映射字体，不单独建立缓存记录以避免正文与字体错配
+export interface ChapterMappingFont {
+    family: string;
+    blob: Blob;
+    mediaType: "font/woff2";
+    sha256: string;
 }
 
 // 章节图片结构
