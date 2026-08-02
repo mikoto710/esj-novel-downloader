@@ -8,7 +8,7 @@
 - `tests/export/`：TXT、HTML、EPUB、图片资源处理和全本／单章导出隔离。
 - `tests/ui/`：日志渲染、全本映射字体弹窗和单章映射字体状态。
 - `tests/infrastructure/`：共享测试设施自身的行为验证。
-- `tests/stress/`：3000 章规模下的缓存复杂度与主流程压力测试，不纳入普通测试命令。
+- `tests/stress/`：3000 章规模下的缓存复杂度、高缓存命中、图片 Blob、慢存储、backpressure 与取消矩阵压力测试，不纳入普通测试命令。
 - `tests/support/`：所有测试共享的 mocks、fixtures、fakes、factories 和资源追踪工具。
 - `tests/setup.ts`：每个用例统一安装/恢复 userscript API、fake IndexedDB、DOM 状态和资源泄漏检查。
 
