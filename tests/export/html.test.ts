@@ -2,6 +2,7 @@
 
 import { describe, expect, it } from "vitest";
 import { buildHtml } from "../../src/core/html";
+import { createMissingChapterPlaceholder } from "../../src/core/download/incomplete-chapters";
 import { createBookMetadata, createChapter } from "../support";
 
 function createMappedChapter() {
@@ -45,5 +46,19 @@ describe("buildHtml mapped font resources", () => {
         });
 
         await expect(buildHtml([chapter], createBookMetadata())).rejects.toThrow("缺少已校验的映射字体");
+    });
+
+    it("keeps the explicit missing chapter warning and source URL", async () => {
+        const chapter = createMissingChapterPlaceholder({
+            index: 0,
+            title: "缺失章节",
+            url: "https://www.esjzone.cc/forum/100/1.html"
+        });
+
+        const html = await readBlob(await buildHtml([chapter], createBookMetadata()));
+
+        expect(html).toContain("[章节缺失]");
+        expect(html).toContain("https://www.esjzone.cc/forum/100/1.html");
+        expect(html).toContain('class="esj-missing-chapter"');
     });
 });

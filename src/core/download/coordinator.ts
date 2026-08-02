@@ -7,7 +7,8 @@ import type {
     DownloadSnapshot,
     DownloadTask
 } from "./contracts";
-import { scanChapterIntegrity, type ChapterIntegrityIssue } from "./integrity";
+import { scanChapterIntegrity, scanMissingChapterTasks, type ChapterIntegrityIssue } from "./integrity";
+import { createMissingChapterPlaceholder } from "./incomplete-chapters";
 import { DEFAULT_CHAPTER_RETRY_POLICY, runWithRetry } from "./retry-policy";
 import { DownloadStateMachine } from "./state-machine";
 import { runWorkerPool } from "./worker-pool";
@@ -465,6 +466,15 @@ function getRetryReasonText(issue: ChapterIntegrityIssue, ctx: DownloadContext):
     return `图片失败 ${ctx.dependencies.runtime.chapters.get(issue.task.index)?.imageErrors ?? 0} 张`;
 }
 
+function throwIfMappingFontFailed(ctx: DownloadContext): void {
+    if (ctx.mappingFailures.size === 0) {
+        return;
+    }
+    const failures = Array.from(ctx.mappingFailures.values());
+    ctx.dependencies.ui.showMappingFontFailure(failures);
+    throw new MappingFontError("font-source-invalid", `${failures.length} 个章节的映射字体无法解析`);
+}
+
 // 扫描缺失或图片不完整的章节，并按原顺序执行一次补抓
 async function checkIntegrityAndRetry(tasks: DownloadTask[], ctx: DownloadContext): Promise<boolean> {
     const { dependencies, imageEnabled, total } = ctx;
@@ -509,12 +519,102 @@ async function checkIntegrityAndRetry(tasks: DownloadTask[], ctx: DownloadContex
     }
     const remainingIssues = scanChapterIntegrity(tasks, runtime.chapters, imageEnabled);
     updateSnapshot(ctx, { retryPendingCount: 0, failedCount: remainingIssues.length });
-    if (ctx.mappingFailures.size > 0) {
-        const failures = Array.from(ctx.mappingFailures.values());
-        dependencies.ui.showMappingFontFailure(failures);
-        throw new MappingFontError("font-source-invalid", `${failures.length} 个章节的映射字体无法解析`);
-    }
+    throwIfMappingFontFailed(ctx);
     return true;
+}
+
+async function retryMissingChapters(tasks: readonly DownloadTask[], ctx: DownloadContext): Promise<boolean> {
+    const { dependencies, total } = ctx;
+    const { runtime } = dependencies;
+    updateSnapshot(ctx, { retryPendingCount: tasks.length, failedCount: tasks.length });
+    await runWorkerPool({
+        items: tasks,
+        concurrency: 1,
+        isCancellationRequested: () => shouldStopWorkers(ctx),
+        beforeClaim: () => waitForMappingConsentBeforeClaim(ctx),
+        process: async (task) => {
+            dependencies.log(`再次补抓 [${task.index + 1}/${total}] (缺失)...`);
+            const result = await processChapterTask(task, ctx, true);
+            if (result === "cancelled") {
+                return;
+            }
+            updateSnapshot(ctx, {
+                retryPendingCount: Math.max(0, ctx.machine.snapshot.retryPendingCount - 1),
+                failedCount:
+                    result === "completed"
+                        ? Math.max(0, ctx.machine.snapshot.failedCount - 1)
+                        : ctx.machine.snapshot.failedCount
+            });
+            if (!runtime.isCancellationRequested()) {
+                await dependencies.scheduler.sleepWithAbort(300);
+            }
+        }
+    });
+    if (runtime.isCancellationRequested()) {
+        await finishCancellation(ctx);
+        return false;
+    }
+    throwIfStorageFailed(ctx);
+    throwIfMappingFontFailed(ctx);
+    return true;
+}
+
+/**
+ * 每次决策只基于上一轮补抓已经落盘后的实时章节表。
+ * 弹窗期间若外部取消，adapter 会通过 AbortSignal 将决策收口为 cancel，避免流程悬挂。
+ */
+async function resolveIncompleteChapters(tasks: DownloadTask[], ctx: DownloadContext): Promise<boolean> {
+    const { dependencies } = ctx;
+    const { runtime } = dependencies;
+
+    while (true) {
+        const missingTasks = scanMissingChapterTasks(tasks, runtime.chapters);
+        updateSnapshot(ctx, { retryPendingCount: 0, failedCount: missingTasks.length });
+        if (missingTasks.length === 0) {
+            return true;
+        }
+        if (ctx.machine.snapshot.phase === "flushing-cache") {
+            transition(ctx, "checking-integrity");
+        }
+
+        const decision = await dependencies.ui.confirmIncompleteChapters(
+            { missingTasks, totalChapters: ctx.total },
+            runtime.signal
+        );
+        dependencies.events.emit({
+            type: "incomplete-chapters-decided",
+            missingCount: missingTasks.length,
+            decision
+        });
+
+        if (runtime.isCancellationRequested() || decision === "cancel") {
+            if (!runtime.isCancellationRequested()) {
+                runtime.requestCancellation("flush");
+            }
+            await finishCancellation(ctx);
+            return false;
+        }
+        if (decision === "export-with-placeholders") {
+            dependencies.log(`⚠ 用户选择继续导出，${missingTasks.length} 个缺失章节将写入占位说明。`);
+            return true;
+        }
+
+        dependencies.log(`正在再次补抓 ${missingTasks.length} 个缺失章节...`);
+        if (!(await retryMissingChapters(missingTasks, ctx))) {
+            return false;
+        }
+        transition(ctx, "flushing-cache");
+        dependencies.log("再次补抓完成，正在保存下载进度...");
+        const saved = await ctx.cacheBuffer.flush();
+        if (runtime.isCancellationRequested()) {
+            await finishCancellation(ctx);
+            return false;
+        }
+        throwIfStorageFailed(ctx);
+        if (!saved) {
+            return false;
+        }
+    }
 }
 
 // 多个退出分支共享同一次取消收尾，避免重复 flush、清理 UI 或更新终态
@@ -577,18 +677,25 @@ async function performCancellation(ctx: DownloadContext): Promise<void> {
     dependencies.ui.cleanup();
 }
 
-// 按任务索引组装现有 TXT 和章节导出数据，缺失章节使用兼容占位内容
+// 占位只在内存导出数据中组装，不回写 runtime.chapters 或持久缓存
 function assembleExportChapters(ctx: DownloadContext): { text: string; chapters: Chapter[] } {
     const textSegments = [ctx.options.introTxt];
     const chapters: Chapter[] = [];
+    const tasksByIndex = new Map(ctx.options.tasks.map((task) => [task.index, task]));
     for (let index = 0; index < ctx.total; index++) {
         const chapter = ctx.dependencies.runtime.chapters.get(index);
         if (chapter) {
             textSegments.push(chapter.txtSegment);
             chapters.push(chapter);
         } else {
-            textSegments.push(`第 ${index + 1} 章 获取失败\n\n`);
-            chapters.push({ title: `第 ${index + 1} 章 (缺失)`, content: "内容抓取失败。", txtSegment: "" });
+            const task = tasksByIndex.get(index) || {
+                index,
+                title: `第 ${index + 1} 章`,
+                url: ""
+            };
+            const placeholder = createMissingChapterPlaceholder(task);
+            textSegments.push(placeholder.txtSegment);
+            chapters.push(placeholder);
         }
     }
     return { text: textSegments.join(""), chapters };
@@ -704,6 +811,9 @@ export async function runDownload(options: DownloadOptions, dependencies: Downlo
         if (!finalFlushSaved) {
             return;
         }
+        if (!(await resolveIncompleteChapters(options.tasks, ctx))) {
+            return;
+        }
         transition(ctx, "preparing-export");
         dependencies.log("正在准备导出...");
         const cover = await coverPromise;
@@ -746,19 +856,22 @@ export async function runDownload(options: DownloadOptions, dependencies: Downlo
                 rawBookName: options.rawBookName || options.bookName,
                 pageUrl: options.pageUrl || dependencies.environment.currentUrl(),
                 sourcePageType: options.sourcePageType === "forum" ? "forum" : "detail",
-                chapterInfo: `共 ${assembled.chapters.length} 章`,
+                chapterInfo:
+                    ctx.machine.snapshot.failedCount > 0
+                        ? `共 ${assembled.chapters.length} 章（${ctx.machine.snapshot.failedCount} 章缺失占位）`
+                        : `共 ${assembled.chapters.length} 章`,
                 imageEnabled
             }
         });
         dependencies.runtime.updateCacheSession({
             completedCount: total,
-            cachedChapterCount: assembled.chapters.length,
+            cachedChapterCount: dependencies.runtime.chapters.size,
             status: "export-ready",
             hasExportData: true
         });
         updateSnapshot(ctx, {
             completedCount: total,
-            cachedChapterCount: assembled.chapters.length,
+            cachedChapterCount: dependencies.runtime.chapters.size,
             hasExportData: true
         });
         transition(ctx, "export-ready");

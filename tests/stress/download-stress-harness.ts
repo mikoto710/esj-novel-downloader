@@ -66,6 +66,7 @@ export function createStressDownloadHarness(options: StressDownloadHarnessOption
                 snapshots.push(snapshot);
             },
             confirmMappingFontDownload: vi.fn(async () => true),
+            confirmIncompleteChapters: vi.fn(async () => "export-with-placeholders" as const),
             updateMappingFontWarning: vi.fn(),
             showMappingFontFailure: vi.fn(),
             cleanup: vi.fn(),

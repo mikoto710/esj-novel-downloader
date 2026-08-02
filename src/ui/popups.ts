@@ -16,7 +16,12 @@ import { buildHtml } from "../core/html";
 import { createCacheManagerPopup } from "./cache-manager";
 import { createDownloadHistoryPopup } from "./download-history";
 import { addDownloadHistory } from "../core/download-history";
-import type { MappingFontDetection, MappingFontSummary } from "../core/download/contracts";
+import type {
+    IncompleteChapterDecision,
+    IncompleteChapterDetection,
+    MappingFontDetection,
+    MappingFontSummary
+} from "../core/download/contracts";
 import { showMessagePopup } from "./message-popup";
 import { createCommonHeader } from "./popup-components";
 import { recordBrowserDiagnosticExport, recordBrowserDiagnosticFailure } from "../adapters/browser-diagnostics";
@@ -169,6 +174,116 @@ export function confirmMappingFontDownload(detection: MappingFontDetection): Pro
         document.body.appendChild(popup);
         enableDrag(popup, ".esj-common-header");
         (popup.querySelector("#esj-mapping-continue") as HTMLButtonElement | null)?.focus();
+    });
+}
+
+/**
+ * 自动补抓和持久化完成后仍缺章时，要求用户明确选择后续行为
+ */
+export function confirmIncompleteChapters(
+    detection: IncompleteChapterDetection,
+    signal?: AbortSignal
+): Promise<IncompleteChapterDecision> {
+    document.querySelector("#esj-incomplete-chapters")?.remove();
+    if (signal?.aborted) {
+        return Promise.resolve("cancel");
+    }
+
+    return new Promise<IncompleteChapterDecision>((resolve) => {
+        let settled = false;
+        let popup: HTMLElement;
+        const finish = (decision: IncompleteChapterDecision) => {
+            if (settled) {
+                return;
+            }
+            settled = true;
+            signal?.removeEventListener("abort", abortListener);
+            popup.remove();
+            resolve(decision);
+        };
+        const abortListener = () => finish("cancel");
+        signal?.addEventListener("abort", abortListener, { once: true });
+
+        const preview = detection.missingTasks
+            .slice(0, 10)
+            .map((task) =>
+                el("li", { style: "margin-bottom:8px;" }, [
+                    el("div", { style: "font-weight:bold;color:#333;" }, [
+                        `[${task.index + 1}/${detection.totalChapters}] ${task.title}`
+                    ]),
+                    el("div", { style: "color:#666;font-size:12px;overflow-wrap:anywhere;" }, [task.url])
+                ])
+            );
+        if (detection.missingTasks.length > preview.length) {
+            preview.push(
+                el("li", { style: "color:#8a5a00;" }, [
+                    `另有 ${detection.missingTasks.length - preview.length} 章未列出。`
+                ])
+            );
+        }
+
+        popup = el(
+            "div",
+            {
+                id: "esj-incomplete-chapters",
+                role: "alertdialog",
+                "aria-modal": "true",
+                style: "position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:560px;max-width:calc(100vw - 32px);max-height:calc(100vh - 32px);background:#fff;border:1px solid #aaa;border-radius:8px;box-shadow:0 0 18px rgba(0,0,0,.28);z-index:1000001;display:flex;flex-direction:column;"
+            },
+            [
+                createCommonHeader("⚠️ 仍有章节缺失", () => finish("cancel")),
+                el("div", { style: "padding:16px;font-size:15px;line-height:1.7;min-height:0;overflow:auto;" }, [
+                    el(
+                        "div",
+                        {
+                            style: "padding:10px 12px;border:1px solid #e6a23c;background:#fff7e6;color:#8a5a00;border-radius:6px;"
+                        },
+                        [
+                            `自动补抓后仍有 ${detection.missingTasks.length} 个章节缺失。请选择再次补抓、使用占位说明继续导出，或取消并保留当前缓存。`
+                        ]
+                    ),
+                    el("ol", { style: "margin:12px 0 0;padding-left:28px;" }, preview)
+                ]),
+                el(
+                    "div",
+                    {
+                        style: "padding:12px;display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap;"
+                    },
+                    [
+                        el(
+                            "button",
+                            {
+                                id: "esj-incomplete-cancel",
+                                style: "padding:8px 12px;background:#eee;border:1px solid #ccc;border-radius:6px;cursor:pointer;",
+                                onclick: () => finish("cancel")
+                            },
+                            ["取消并保留缓存"]
+                        ),
+                        el(
+                            "button",
+                            {
+                                id: "esj-incomplete-export",
+                                style: "padding:8px 12px;background:#fff7e6;color:#8a5a00;border:1px solid #e6a23c;border-radius:6px;cursor:pointer;",
+                                onclick: () => finish("export-with-placeholders")
+                            },
+                            ["仍然导出（写入占位）"]
+                        ),
+                        el(
+                            "button",
+                            {
+                                id: "esj-incomplete-retry",
+                                style: "padding:8px 12px;background:#2b9bd7;color:#fff;border:1px solid #2b9bd7;border-radius:6px;cursor:pointer;font-weight:bold;",
+                                onclick: () => finish("retry")
+                            },
+                            ["只重试缺失章节"]
+                        )
+                    ]
+                )
+            ]
+        );
+        document.body.appendChild(popup);
+        enableDrag(popup, ".esj-common-header");
+        (popup.querySelector("#esj-incomplete-retry") as HTMLButtonElement | null)?.focus();
     });
 }
 

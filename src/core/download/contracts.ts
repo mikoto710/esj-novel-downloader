@@ -102,6 +102,16 @@ export interface MappingFontDetection extends MappingFontSummary {
     inFlightLimit: number;
 }
 
+export type IncompleteChapterDecision = "retry" | "export-with-placeholders" | "cancel";
+
+/**
+ * 自动补抓和落盘完成后仍缺失的正文摘要
+ */
+export interface IncompleteChapterDetection {
+    missingTasks: readonly DownloadTask[];
+    totalChapters: number;
+}
+
 /**
  * 核心流程产生的结构化事件
  * 观察者不得通过事件直接修改下载状态
@@ -122,6 +132,11 @@ export type DownloadEvent =
           retry: boolean;
       }
     | { type: "mapping-font-updated"; summary: MappingFontSummary }
+    | {
+          type: "incomplete-chapters-decided";
+          missingCount: number;
+          decision: IncompleteChapterDecision;
+      }
     | { type: "download-failed"; error: unknown; snapshot: DownloadSnapshot };
 
 /**
@@ -148,6 +163,10 @@ export interface DownloadUiPort {
     prepare(): void;
     update(snapshot: DownloadSnapshot): void;
     confirmMappingFontDownload(detection: MappingFontDetection): Promise<boolean>;
+    confirmIncompleteChapters(
+        detection: IncompleteChapterDetection,
+        signal?: AbortSignal
+    ): Promise<IncompleteChapterDecision>;
     updateMappingFontWarning(summary: MappingFontSummary): void;
     showMappingFontFailure(failures: ReadonlyArray<{ task: DownloadTask; message: string }>): void;
     cleanup(): void;

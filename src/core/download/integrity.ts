@@ -61,3 +61,13 @@ export function scanChapterIntegrity(
     }
     return issues;
 }
+
+/**
+ * 只返回正文仍未进入运行时章节表的任务；图片失败不属于 D-03 缺章决策范围
+ */
+export function scanMissingChapterTasks(
+    tasks: readonly DownloadTask[],
+    chapters: ReadonlyMap<number, Chapter>
+): DownloadTask[] {
+    return tasks.filter((task) => !chapters.has(task.index));
+}

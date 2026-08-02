@@ -3,6 +3,8 @@ import { runDownload } from "../../src/core/download/coordinator";
 import type {
     DownloadDependencies,
     DownloadEvent,
+    IncompleteChapterDecision,
+    IncompleteChapterDetection,
     DownloadSnapshot,
     DownloadTask
 } from "../../src/core/download/contracts";
@@ -164,6 +166,167 @@ describe("runDownload characterization", () => {
             failure: { reason: "ownership-lost", operation: "write" }
         });
     });
+
+    it("requires an explicit decision and exports safe placeholders without caching them", async () => {
+        const tasks = [
+            createDownloadTask(0, {
+                title: "第 <script> 章",
+                url: "https://www.esjzone.cc/forum/100/1.html?from=<unsafe>"
+            })
+        ];
+        const harness = createHarness(tasks);
+        harness.dependencies.chapterFetcher.fetch = vi.fn(async () => {
+            throw new Error("offline");
+        });
+
+        await runDownload(createOptions(tasks), harness.dependencies);
+
+        expect(harness.ui.confirmIncompleteChapters).toHaveBeenCalledOnce();
+        expect(harness.ui.confirmIncompleteChapters).toHaveBeenCalledWith(
+            { missingTasks: tasks, totalChapters: 1 },
+            expect.any(AbortSignal)
+        );
+        expect(harness.exportData?.txt).toContain("[章节缺失]");
+        expect(harness.exportData?.txt).toContain("https://www.esjzone.cc/forum/100/1.html?from=%3Cunsafe%3E");
+        expect(harness.exportData?.chapters[0].content).toContain("第 &lt;script&gt; 章");
+        expect(harness.exportData?.chapters[0].content).not.toContain("<script>");
+        expect(harness.exportData?.exportContext?.chapterInfo).toBe("共 1 章（1 章缺失占位）");
+        expect(harness.dependencies.runtime.chapters.size).toBe(0);
+        expect(harness.ui.snapshots.at(-1)).toMatchObject({
+            phase: "export-ready",
+            cachedChapterCount: 0,
+            failedCount: 1
+        });
+        expect(harness.events.ofType("incomplete-chapters-decided")).toEqual([
+            expect.objectContaining({ decision: "export-with-placeholders", missingCount: 1 })
+        ]);
+    });
+
+    it("retries only missing chapters and rescans after the retry flush", async () => {
+        const tasks = [createDownloadTask(0)];
+        const harness = createHarness(tasks);
+        const fetch = vi
+            .fn()
+            .mockRejectedValueOnce(new Error("main 1"))
+            .mockRejectedValueOnce(new Error("main 2"))
+            .mockRejectedValueOnce(new Error("main 3"))
+            .mockRejectedValueOnce(new Error("automatic 1"))
+            .mockRejectedValueOnce(new Error("automatic 2"))
+            .mockRejectedValueOnce(new Error("automatic 3"))
+            .mockResolvedValue("<p>recovered</p>");
+        harness.dependencies.chapterFetcher.fetch = fetch;
+        harness.ui.confirmIncompleteChapters.mockResolvedValue("retry");
+
+        await runDownload(createOptions(tasks), harness.dependencies);
+
+        expect(fetch).toHaveBeenCalledTimes(7);
+        expect(harness.ui.confirmIncompleteChapters).toHaveBeenCalledOnce();
+        expect(harness.exportData?.chapters[0].content).not.toContain("[章节缺失]");
+        expect(harness.ui.snapshots.at(-1)).toMatchObject({ failedCount: 0, cachedChapterCount: 1 });
+        expect(harness.dependencies.log).toHaveBeenCalledWith("再次补抓完成，正在保存下载进度...");
+    });
+
+    it("shows the updated decision again when an explicit retry still fails", async () => {
+        const tasks = [createDownloadTask(0)];
+        const harness = createHarness(tasks);
+        harness.dependencies.chapterFetcher.fetch = vi.fn(async () => {
+            throw new Error("offline");
+        });
+        harness.ui.confirmIncompleteChapters
+            .mockResolvedValueOnce("retry")
+            .mockResolvedValueOnce("export-with-placeholders");
+
+        await runDownload(createOptions(tasks), harness.dependencies);
+
+        expect(harness.ui.confirmIncompleteChapters).toHaveBeenCalledTimes(2);
+        expect(harness.events.ofType("incomplete-chapters-decided")).toEqual([
+            expect.objectContaining({ decision: "retry", missingCount: 1 }),
+            expect.objectContaining({ decision: "export-with-placeholders", missingCount: 1 })
+        ]);
+        expect(harness.exportData?.chapters[0].content).toContain("[章节缺失]");
+    });
+
+    it("keeps mapping font failures blocking after an explicit missing chapter retry", async () => {
+        const tasks = [createDownloadTask(0)];
+        const harness = createHarness(tasks);
+        harness.dependencies.chapterFetcher.fetch = vi
+            .fn()
+            .mockRejectedValueOnce(new Error("main 1"))
+            .mockRejectedValueOnce(new Error("main 2"))
+            .mockRejectedValueOnce(new Error("main 3"))
+            .mockRejectedValueOnce(new Error("automatic 1"))
+            .mockRejectedValueOnce(new Error("automatic 2"))
+            .mockRejectedValueOnce(new Error("automatic 3"))
+            .mockResolvedValue("<p>mapped</p>");
+        harness.dependencies.chapterProcessor.process = async () => {
+            throw new MappingFontError("woff2-invalid", "invalid retry font");
+        };
+        harness.ui.confirmIncompleteChapters.mockResolvedValue("retry");
+
+        await expect(runDownload(createOptions(tasks), harness.dependencies)).rejects.toThrow(
+            "1 个章节的映射字体无法解析"
+        );
+
+        expect(harness.ui.confirmIncompleteChapters).toHaveBeenCalledOnce();
+        expect(harness.ui.showMappingFontFailure).toHaveBeenCalledWith([
+            expect.objectContaining({ task: tasks[0], message: expect.stringContaining("invalid retry font") })
+        ]);
+        expect(harness.ui.showFormatChoice).not.toHaveBeenCalled();
+    });
+
+    it("cancels and preserves the current cache when the user declines incomplete export", async () => {
+        const tasks = [createDownloadTask(0)];
+        const harness = createHarness(tasks);
+        harness.dependencies.chapterFetcher.fetch = vi.fn(async () => {
+            throw new Error("offline");
+        });
+        harness.ui.confirmIncompleteChapters.mockResolvedValue("cancel");
+
+        await runDownload(createOptions(tasks), harness.dependencies);
+
+        expect(harness.dependencies.runtime.requestCancellation).toHaveBeenCalledWith("flush");
+        expect(harness.exportData).toBeNull();
+        expect(harness.cacheClears).toHaveLength(0);
+        expect(harness.ui.showFormatChoice).not.toHaveBeenCalled();
+        expect(harness.ui.snapshots.at(-1)).toMatchObject({
+            phase: "cancelled",
+            cancellationOutcome: "saved",
+            hasExportData: false
+        });
+    });
+
+    it("settles an open incomplete chapter decision when cancellation wins the race", async () => {
+        const tasks = [createDownloadTask(0)];
+        const harness = createHarness(tasks);
+        harness.dependencies.chapterFetcher.fetch = vi.fn(async () => {
+            throw new Error("offline");
+        });
+        harness.ui.confirmIncompleteChapters.mockImplementation(
+            async (_detection, signal) =>
+                new Promise<IncompleteChapterDecision>((resolve) => {
+                    signal?.addEventListener("abort", () => resolve("cancel"), { once: true });
+                })
+        );
+
+        const download = runDownload(createOptions(tasks), harness.dependencies);
+        await vi.waitFor(() => expect(harness.ui.confirmIncompleteChapters).toHaveBeenCalledOnce());
+        harness.dependencies.runtime.requestCancellation("flush");
+        await download;
+
+        expect(harness.ui.snapshots.at(-1)).toMatchObject({ phase: "cancelled", cancellationOutcome: "saved" });
+        expect(harness.ui.showFormatChoice).not.toHaveBeenCalled();
+    });
+
+    it("does not prompt for chapters that only retain image failures", async () => {
+        const tasks = [createDownloadTask(0)];
+        const harness = createHarness(tasks);
+        harness.dependencies.chapterProcessor.process = async () => createChapter(0, { imageErrors: 1 });
+
+        await runDownload(createOptions(tasks, { imageEnabled: true }), harness.dependencies);
+
+        expect(harness.ui.confirmIncompleteChapters).not.toHaveBeenCalled();
+        expect(harness.exportData?.chapters).toHaveLength(1);
+    });
 });
 
 function createMappedChapter(index: number, family: string): Chapter {
@@ -193,6 +356,9 @@ function createHarness(tasks: DownloadTask[], chapters = new Map<number, Chapter
             this.snapshots.push(snapshot);
         },
         confirmMappingFontDownload: vi.fn(async () => true),
+        confirmIncompleteChapters: vi.fn<
+            (detection: IncompleteChapterDetection, signal?: AbortSignal) => Promise<IncompleteChapterDecision>
+        >(async () => "export-with-placeholders"),
         updateMappingFontWarning: vi.fn(),
         showMappingFontFailure: vi.fn(),
         cleanup: vi.fn(),
@@ -201,16 +367,18 @@ function createHarness(tasks: DownloadTask[], chapters = new Map<number, Chapter
     let exportData: CachedData | null = null;
     let runtimeSession: RuntimeCacheSession | null = null;
     let cancellationRequested = false;
+    const abortController = new AbortController();
 
     const dependencies: DownloadDependencies = {
         runtime: {
             chapters,
-            signal: new AbortController().signal,
+            signal: abortController.signal,
             activeBookLock: null,
             originalTitle: "Test",
             isCancellationRequested: () => cancellationRequested,
             requestCancellation: vi.fn(() => {
                 cancellationRequested = true;
+                abortController.abort();
             }),
             subscribeCancellation: () => () => undefined,
             startCacheSession(meta, taskId, initialChapterCount) {
@@ -283,7 +451,11 @@ function createHarness(tasks: DownloadTask[], chapters = new Map<number, Chapter
     };
 }
 
-function createOptions(tasks: DownloadTask[]) {
+function createOptions(tasks: DownloadTask[], overrides: Partial<ReturnType<typeof createOptionsBase>> = {}) {
+    return { ...createOptionsBase(tasks), ...overrides };
+}
+
+function createOptionsBase(tasks: DownloadTask[]) {
     return {
         bookId: "100",
         taskId: "task-100",

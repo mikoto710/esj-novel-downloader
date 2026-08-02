@@ -15,6 +15,7 @@ vi.mock("../../src/utils/index", () => ({
 }));
 
 import { buildEpub } from "../../src/core/epub";
+import { createMissingChapterPlaceholder } from "../../src/core/download/incomplete-chapters";
 
 const metadata: BookMetadata = {
     title: "测试书籍",
@@ -125,5 +126,21 @@ describe("buildEpub image resources", () => {
         expect(chapterXhtml).toContain('lang="en"');
         expect(chapterXhtml).toContain("font-feature-settings: &quot;locl&quot; 0");
         expect(embeddedFont).toEqual(fontBytes);
+    });
+
+    it("keeps the explicit missing chapter warning and source URL", async () => {
+        const chapter = createMissingChapterPlaceholder({
+            index: 0,
+            title: "缺失章节",
+            url: "https://www.esjzone.cc/forum/100/1.html"
+        });
+
+        const epub = await buildEpub([chapter], metadata, false);
+        const zip = await JSZip.loadAsync(await epub.arrayBuffer());
+        const chapterXhtml = await zip.file("OEBPS/chap_1.xhtml")?.async("string");
+
+        expect(chapterXhtml).toContain("[章节缺失]");
+        expect(chapterXhtml).toContain("https://www.esjzone.cc/forum/100/1.html");
+        expect(chapterXhtml).toContain('class="esj-missing-chapter"');
     });
 });

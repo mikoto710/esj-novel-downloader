@@ -460,6 +460,12 @@ export class DiagnosticManager {
                 } else if (event.type === "mapping-font-updated") {
                     session.task.mappingFontChapterCount = event.summary.chapterCount;
                     session.task.mappingFontBytes = event.summary.fontBytes;
+                } else if (event.type === "incomplete-chapters-decided") {
+                    session.events.push({
+                        at,
+                        type: event.type,
+                        details: { missingCount: event.missingCount, decision: event.decision }
+                    });
                 } else if (event.type === "download-failed") {
                     const error = event.error instanceof Error ? event.error : new Error(String(event.error));
                     session.failures.push({

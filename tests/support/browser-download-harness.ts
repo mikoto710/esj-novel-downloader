@@ -10,6 +10,7 @@ const hoistedBrowserDownloadMocks = vi.hoisted(() => ({
     createDownloadPopup: vi.fn(),
     showFormatChoice: vi.fn(),
     confirmMappingFontDownload: vi.fn(async () => true),
+    confirmIncompleteChapters: vi.fn(async () => "export-with-placeholders" as const),
     updateMappingFontWarning: vi.fn(),
     showMappingFontFailure: vi.fn(),
     updateTrayText: vi.fn(),
@@ -43,6 +44,7 @@ vi.mock("../../src/ui/popups", () => ({
     createDownloadPopup: hoistedBrowserDownloadMocks.createDownloadPopup,
     showFormatChoice: hoistedBrowserDownloadMocks.showFormatChoice,
     confirmMappingFontDownload: hoistedBrowserDownloadMocks.confirmMappingFontDownload,
+    confirmIncompleteChapters: hoistedBrowserDownloadMocks.confirmIncompleteChapters,
     updateMappingFontWarning: hoistedBrowserDownloadMocks.updateMappingFontWarning,
     showMappingFontFailure: hoistedBrowserDownloadMocks.showMappingFontFailure
 }));

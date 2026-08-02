@@ -157,6 +157,24 @@ describe("diagnostic session retention", () => {
         ]);
     });
 
+    it("records the explicit incomplete chapter decision", () => {
+        const repository = new MemoryDiagnosticRepository();
+        const manager = new DiagnosticManager(repository, () => 1_000);
+        manager.start(createInput("incomplete"));
+
+        manager.recordDownloadEvent("incomplete", {
+            type: "incomplete-chapters-decided",
+            missingCount: 2,
+            decision: "export-with-placeholders"
+        });
+
+        expect(manager.list().active[0].events.at(-1)).toEqual({
+            at: 0,
+            type: "incomplete-chapters-decided",
+            details: { missingCount: 2, decision: "export-with-placeholders" }
+        });
+    });
+
     it("removes query strings, fragments and non-http protocols from exported URLs", () => {
         expect(sanitizeDiagnosticUrl("https://www.esjzone.cc/forum/1/2.html?token=secret#content")).toBe(
             "https://www.esjzone.cc/forum/1/2.html"

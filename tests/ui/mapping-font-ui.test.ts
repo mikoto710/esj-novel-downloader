@@ -2,7 +2,7 @@
 
 import { beforeEach, describe, expect, it } from "vitest";
 import { state } from "../../src/core/state";
-import { confirmMappingFontDownload, showFormatChoice } from "../../src/ui/popups";
+import { confirmIncompleteChapters, confirmMappingFontDownload, showFormatChoice } from "../../src/ui/popups";
 import { createCachedData, createChapter, createDownloadTask } from "../support";
 
 function createMappedChapter() {
@@ -90,5 +90,38 @@ describe("mapped font export UI", () => {
         (document.querySelector("#esj-mapping-stop") as HTMLButtonElement).click();
 
         await expect(confirmation).resolves.toBe(false);
+    });
+});
+
+describe("incomplete chapter decision UI", () => {
+    beforeEach(() => {
+        document.body.innerHTML = "";
+    });
+
+    it("lists missing chapters and exposes all three explicit decisions", async () => {
+        const tasks = Array.from({ length: 12 }, (_, index) => createDownloadTask(index));
+        const decision = confirmIncompleteChapters({ missingTasks: tasks, totalChapters: 12 });
+
+        const popup = document.querySelector("#esj-incomplete-chapters");
+        expect(popup?.textContent).toContain("自动补抓后仍有 12 个章节缺失");
+        expect(popup?.querySelectorAll("ol li")).toHaveLength(11);
+        expect(popup?.textContent).toContain("另有 2 章未列出");
+        expect((document.activeElement as HTMLElement | null)?.id).toBe("esj-incomplete-retry");
+        (document.querySelector("#esj-incomplete-export") as HTMLButtonElement).click();
+
+        await expect(decision).resolves.toBe("export-with-placeholders");
+    });
+
+    it("closes as cancellation when the download signal aborts", async () => {
+        const controller = new AbortController();
+        const decision = confirmIncompleteChapters(
+            { missingTasks: [createDownloadTask()], totalChapters: 1 },
+            controller.signal
+        );
+
+        controller.abort();
+
+        await expect(decision).resolves.toBe("cancel");
+        expect(document.querySelector("#esj-incomplete-chapters")).toBeNull();
     });
 });

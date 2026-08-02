@@ -30,6 +30,7 @@ import {
 import type { Chapter } from "../types";
 import {
     confirmMappingFontDownload,
+    confirmIncompleteChapters,
     createDownloadPopup,
     showFormatChoice,
     showMappingFontFailure,
@@ -133,6 +134,7 @@ const ui: DownloadUiPort = {
         }
     },
     confirmMappingFontDownload,
+    confirmIncompleteChapters,
     updateMappingFontWarning,
     showMappingFontFailure,
     cleanup: () => fullCleanup(state.originalTitle),
