@@ -3,6 +3,8 @@ import { parseChapterHtml, parseBookMetadata } from "../core/parser";
 import { getImageDownloadSetting } from "../core/config";
 import { processHtmlImages } from "../utils/image";
 import { addDownloadHistory } from "../core/download-history";
+import { MappingFontError, normalizeChapterMappingFont, prepareChapterMappingExport } from "../core/mapping-font";
+import { confirmMappingFontExport } from "../ui/popups";
 
 /**
  * 抓取并下载当前单章节页面
@@ -41,10 +43,39 @@ export async function downloadCurrentPage(format: "txt" | "html" = "txt"): Promi
 
         const parsed = parseChapterHtml(html, defaultTitle);
 
+        let normalized;
+        try {
+            normalized = await normalizeChapterMappingFont({
+                title: parsed.title,
+                content: parsed.contentHtml,
+                txtSegment: `${parsed.title}\n\n${parsed.author}\n\n${parsed.contentText}\n\n`
+            });
+        } catch (error) {
+            if (error instanceof MappingFontError) {
+                alert(`本章检测到映射字体，但字体解析失败：${error.message}`);
+                return;
+            }
+            throw error;
+        }
+        if (format === "txt" && normalized.kind === "mapped") {
+            alert("本章使用自定义映射字体，正文尚未恢复为真实 Unicode，无法导出正确 TXT。");
+            return;
+        }
+        if (
+            format === "html" &&
+            normalized.kind === "mapped" &&
+            !(await confirmMappingFontExport("HTML", {
+                chapterCount: 1,
+                fontBytes: normalized.chapter.mappingFont?.blob.size || 0
+            }))
+        ) {
+            return;
+        }
+
         const title = parsed.title;
         const author = htmlMeta.author || parsed.author;
         const contentText = parsed.contentText;
-        let contentHtml = parsed.contentHtml;
+        let contentHtml = normalized.chapter.content;
         const imageEnabled = getImageDownloadSetting();
         let imageSuccessCount = 0;
         let imageFailureCount = 0;
@@ -88,8 +119,16 @@ export async function downloadCurrentPage(format: "txt" | "html" = "txt"): Promi
                 downloadFilename = `${bookNamePrefix}${safeTitle}.txt`;
             } else {
                 // 构建 HTML
+                const mappingExport = prepareChapterMappingExport({ ...normalized.chapter, content: contentHtml }, 0);
+                let mappingFontStyle = "";
+                if (mappingExport) {
+                    const fontDataUrl = await blobToBase64(mappingExport.font.blob);
+                    mappingFontStyle = `@font-face { font-family: '${mappingExport.fontFamily}'; src: url('${fontDataUrl}') format('woff2'); font-display: swap; }`;
+                    contentHtml = mappingExport.contentHtml;
+                }
                 const style = `
                 <style>
+                    ${mappingFontStyle}
                     body { font-family: sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; line-height: 1.6; color: #333; background: #f9f9f9; }
                     .chapter-card { background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
                     h1 { color: #2c3e50; border-bottom: 1px solid #eee; padding-bottom: 10px; }
