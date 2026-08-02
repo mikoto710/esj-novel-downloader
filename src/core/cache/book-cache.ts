@@ -354,10 +354,8 @@ export async function clearAllPersistentCaches(protectedBookIds: ReadonlySet<str
         );
         return newlyProtected;
     } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
         console.error("清理缓存失败", error);
-        alert("清理失败: " + message);
-        return [];
+        throw normalizeStorageError(error, "clear");
     }
 }
 

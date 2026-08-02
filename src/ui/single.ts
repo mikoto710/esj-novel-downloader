@@ -1,4 +1,5 @@
 import { el } from "../utils/dom";
+import { showMessagePopup } from "./message-popup";
 import { downloadCurrentPage } from "../scrapers/single";
 import { parseChapterHtml } from "../core/parser";
 import { MappingFontError, normalizeChapterMappingFont } from "../core/mapping-font";
@@ -199,7 +200,11 @@ export function injectSinglePageButton(): void {
             onclick: (e: Event) => {
                 e.preventDefault();
                 if (btnTxt.getAttribute("aria-disabled") === "true") {
-                    alert(btnTxt.getAttribute("title") || "TXT 导出不可用");
+                    showMessagePopup({
+                        tone: "warning",
+                        title: "TXT 导出不可用",
+                        message: btnTxt.getAttribute("title") || "TXT 导出不可用"
+                    });
                     return;
                 }
                 downloadCurrentPage("txt");
@@ -219,7 +224,11 @@ export function injectSinglePageButton(): void {
             onclick: (e: Event) => {
                 e.preventDefault();
                 if (btnHtml.getAttribute("aria-disabled") === "true") {
-                    alert(btnHtml.getAttribute("title") || "HTML 导出不可用");
+                    showMessagePopup({
+                        tone: "warning",
+                        title: "HTML 导出不可用",
+                        message: btnHtml.getAttribute("title") || "HTML 导出不可用"
+                    });
                     return;
                 }
                 downloadCurrentPage("html");

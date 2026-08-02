@@ -9,6 +9,7 @@ import {
 import { log } from "../utils/index";
 import { fullCleanup } from "../utils/dom";
 import { createConfirmPopup, createDownloadPopup, showBookDownloadInProgressPopup } from "../ui/popups";
+import { showMessagePopup } from "../ui/message-popup";
 import { batchDownload } from "../core/download/batch-download";
 import type { DownloadTask } from "../core/download/contracts";
 import { parseBookMetadata } from "../core/parser";
@@ -49,7 +50,11 @@ export async function scrapeDetail(): Promise<void> {
         const failure = normalizeStorageError(error, "read");
         console.error(failure);
         log(`❌ 无法读取本地缓存：${failure.message}`);
-        alert("本地缓存不可用，本次任务尚未开始。请检查浏览器存储权限或空间后重试。");
+        showMessagePopup({
+            tone: "error",
+            title: "本地缓存不可用",
+            message: "本次任务尚未开始。请检查浏览器存储权限或剩余空间后重试。"
+        });
         return;
     }
     state.globalChaptersMap = cacheResult.map || new Map();
@@ -104,7 +109,11 @@ export async function scrapeDetail(): Promise<void> {
         const chaptersNodes = Array.from(document.querySelectorAll("#chapterList a")) as HTMLAnchorElement[];
 
         if (chaptersNodes.length === 0) {
-            alert("未找到章节列表 #chapterList");
+            showMessagePopup({
+                tone: "error",
+                title: "无法开始下载",
+                message: "未找到章节列表 #chapterList。页面结构可能已经发生变化。"
+            });
             fullCleanup(state.originalTitle);
             return;
         }

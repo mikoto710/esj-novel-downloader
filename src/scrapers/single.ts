@@ -5,6 +5,7 @@ import { processHtmlImages } from "../utils/image";
 import { addDownloadHistory } from "../core/download-history";
 import { MappingFontError, normalizeChapterMappingFont, prepareChapterMappingExport } from "../core/mapping-font";
 import { confirmMappingFontExport } from "../ui/popups";
+import { showMessagePopup } from "../ui/message-popup";
 
 /**
  * 抓取并下载当前单章节页面
@@ -52,13 +53,22 @@ export async function downloadCurrentPage(format: "txt" | "html" = "txt"): Promi
             });
         } catch (error) {
             if (error instanceof MappingFontError) {
-                alert(`本章检测到映射字体，但字体解析失败：${error.message}`);
+                showMessagePopup({
+                    tone: "error",
+                    title: "映射字体解析失败",
+                    message: "本章检测到映射字体，但无法完成解析，已阻止导出。",
+                    details: error.message
+                });
                 return;
             }
             throw error;
         }
         if (format === "txt" && normalized.kind === "mapped") {
-            alert("本章使用自定义映射字体，正文尚未恢复为真实 Unicode，无法导出正确 TXT。");
+            showMessagePopup({
+                tone: "warning",
+                title: "TXT 导出不可用",
+                message: "本章使用自定义映射字体，正文尚未恢复为真实 Unicode，无法导出正确 TXT。"
+            });
             return;
         }
         if (
@@ -82,7 +92,7 @@ export async function downloadCurrentPage(format: "txt" | "html" = "txt"): Promi
 
         // 根据格式检查内容
         if (format === "txt" && !contentText) {
-            alert("未找到正文内容");
+            showMessagePopup({ tone: "warning", title: "未找到正文", message: "当前页面没有可导出的正文内容。" });
             return;
         } else {
             if (imageEnabled) {
@@ -198,6 +208,11 @@ export async function downloadCurrentPage(format: "txt" | "html" = "txt"): Promi
         }
     } catch (e: any) {
         console.error(e);
-        alert("下载出错: " + e.message);
+        showMessagePopup({
+            tone: "error",
+            title: "单章下载失败",
+            message: "下载当前章节时发生错误。",
+            details: e.message
+        });
     }
 }

@@ -7,8 +7,18 @@ import {
 import { CacheListItem } from "../types";
 import { subscribeCacheSync } from "../core/cache/sync";
 import { el, enableDrag } from "../utils/dom";
+import { showMessagePopup } from "./message-popup";
 
 let disposeActiveCacheManagerSynchronizer: (() => void) | null = null;
+
+function showCacheClearFailure(error: unknown): void {
+    showMessagePopup({
+        tone: "error",
+        title: "缓存清理失败",
+        message: "无法完成本地缓存清理，请检查浏览器存储状态后重试。",
+        details: error instanceof Error ? error.message : String(error)
+    });
+}
 
 function toggleSettingsLock(locked: boolean) {
     const buttons = document.querySelectorAll(".esj-settings-trigger");
@@ -253,7 +263,13 @@ export function createCacheManagerPopup(): void {
                     if (!confirmed) {
                         return;
                     }
-                    const result = await clearAllManagedCaches(false);
+                    let result: Awaited<ReturnType<typeof clearAllManagedCaches>>;
+                    try {
+                        result = await clearAllManagedCaches(false);
+                    } catch (error) {
+                        showCacheClearFailure(error);
+                        return;
+                    }
                     if (result.protectedBookIds.length > 0) {
                         await showCacheProtectionNotice(
                             `已保留 ${result.protectedBookIds.length} 本下载中的书籍缓存。`
@@ -275,7 +291,13 @@ export function createCacheManagerPopup(): void {
                         if (!confirmed) {
                             return;
                         }
-                        const result = await clearAllManagedCaches(true);
+                        let result: Awaited<ReturnType<typeof clearAllManagedCaches>>;
+                        try {
+                            result = await clearAllManagedCaches(true);
+                        } catch (error) {
+                            showCacheClearFailure(error);
+                            return;
+                        }
                         if (result.protectedBookIds.length > 0) {
                             await showCacheProtectionNotice(
                                 `已保留 ${result.protectedBookIds.length} 本下载中的书籍缓存。`

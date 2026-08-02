@@ -17,6 +17,8 @@ import { createCacheManagerPopup } from "./cache-manager";
 import { createDownloadHistoryPopup } from "./download-history";
 import { addDownloadHistory } from "../core/download-history";
 import type { MappingFontDetection, MappingFontSummary } from "../core/download/contracts";
+import { showMessagePopup } from "./message-popup";
+import { createCommonHeader } from "./popup-components";
 
 /**
  * 锁定/解锁页面上的设置按钮
@@ -141,8 +143,13 @@ export function showMappingFontFailure(failures: ReadonlyArray<{ task: { title: 
         .slice(0, 5)
         .map((failure) => `• ${failure.task.title}: ${failure.message}`)
         .join("\n");
-    const remaining = failures.length > 5 ? `\n另有 ${failures.length - 5} 章未列出。` : "";
-    alert(`有 ${failures.length} 个章节的映射字体无法解析，已阻止导出：\n${preview}${remaining}`);
+    const remaining = failures.length > 5 ? `另有 ${failures.length - 5} 章未列出。` : "";
+    showMessagePopup({
+        tone: "error",
+        title: "映射字体解析失败",
+        message: `有 ${failures.length} 个章节的映射字体无法解析，已阻止导出。`,
+        details: [preview, remaining].filter(Boolean)
+    });
 }
 
 export function confirmMappingFontExport(format: "EPUB" | "HTML", summary: MappingFontSummary): Promise<boolean> {
@@ -195,52 +202,6 @@ export function confirmMappingFontExport(format: "EPUB" | "HTML", summary: Mappi
         enableDrag(popup, ".esj-common-header");
         (popup.querySelector("#esj-mapping-export-continue") as HTMLButtonElement | null)?.focus();
     });
-}
-
-/**
- * 创建通用头部
- * @param title 标题
- * @param onClose 关闭回调
- * @param onMinimize (可选) 最小化回调，传了就会显示最小化按钮
- */
-function createCommonHeader(title: string, onClose: () => void, onMinimize?: () => void): HTMLElement {
-    const btnGroup: HTMLElement[] = [];
-
-    // 最小化按钮
-    if (onMinimize) {
-        const btnMin = el(
-            "button",
-            {
-                title: "最小化",
-                style: "border:none;background:#81d4fa;color:#000;padding:4px 10px;border-radius:6px;cursor:pointer;font-weight:bold;margin-right:5px;",
-                onclick: onMinimize
-            },
-            ["＿"]
-        );
-        btnGroup.push(btnMin);
-    }
-
-    // 关闭按钮
-    const btnClose = el(
-        "button",
-        {
-            title: "关闭",
-            style: "border:none;background:#ef5350;color:#fff;padding:4px 10px;border-radius:6px;cursor:pointer;font-weight:bold;",
-            onclick: onClose
-        },
-        ["✕"]
-    );
-    btnGroup.push(btnClose);
-
-    // 容器
-    return el(
-        "div",
-        {
-            className: "esj-common-header",
-            style: "padding:10px;background:#2b9bd7;color:#fff;display:flex;justify-content:space-between;align-items:center;cursor:move;border-radius:8px 8px 0 0;"
-        },
-        [el("span", { style: "font-weight:bold;" }, [title]), el("div", { style: "display:flex;" }, btnGroup)]
-    );
 }
 
 /**
@@ -451,7 +412,7 @@ export function createConfirmPopup(onOk: () => void, onCancel?: () => void, cach
  */
 export function showFormatChoice(): void {
     if (!state.cachedData) {
-        alert("暂无数据");
+        showMessagePopup({ tone: "info", title: "暂无可导出内容", message: "当前没有已完成的下载数据。" });
         return;
     }
 
@@ -636,7 +597,12 @@ export function showFormatChoice(): void {
             void recordBookExport("epub");
         } catch (e: any) {
             console.error(e);
-            alert("EPUB 生成失败: " + e.message);
+            showMessagePopup({
+                tone: "error",
+                title: "EPUB 生成失败",
+                message: "无法生成 EPUB 文件。",
+                details: e.message
+            });
         } finally {
             btn.innerText = originalText;
             btn.disabled = false;
@@ -663,7 +629,12 @@ export function showFormatChoice(): void {
             void recordBookExport("html");
         } catch (e: any) {
             console.error(e);
-            alert("HTML 生成失败: " + e.message);
+            showMessagePopup({
+                tone: "error",
+                title: "HTML 生成失败",
+                message: "无法生成 HTML 文件。",
+                details: e.message
+            });
         } finally {
             btn.innerText = originalText;
             btn.disabled = false;

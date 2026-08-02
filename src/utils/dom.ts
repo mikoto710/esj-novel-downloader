@@ -55,7 +55,8 @@ export function fullCleanup(originalTitle?: string): void {
         "#esj-download-history-confirm",
         "#esj-image-cache-confirm",
         "#esj-mapping-confirm",
-        "#esj-mapping-export-confirm"
+        "#esj-mapping-export-confirm",
+        "#esj-message-popup"
     ];
 
     selectors.forEach((sel) => {

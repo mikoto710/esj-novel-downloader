@@ -3,6 +3,7 @@ import { batchDownload } from "../core/download/batch-download";
 import type { DownloadTask } from "../core/download/contracts";
 import { parseBookMetadata } from "../core/parser";
 import { createConfirmPopup, createDownloadPopup, showBookDownloadInProgressPopup } from "../ui/popups";
+import { showMessagePopup } from "../ui/message-popup";
 import { abortActiveDownload, setAbortFlag, state, resetAbortController } from "../core/state";
 import {
     acquireBookDownloadLock,
@@ -55,7 +56,11 @@ export async function scrapeForum(): Promise<void> {
         const failure = normalizeStorageError(error, "read");
         console.error(failure);
         log(`❌ 无法读取本地缓存：${failure.message}`);
-        alert("本地缓存不可用，本次任务尚未开始。请检查浏览器存储权限或空间后重试。");
+        showMessagePopup({
+            tone: "error",
+            title: "本地缓存不可用",
+            message: "本次任务尚未开始。请检查浏览器存储权限或剩余空间后重试。"
+        });
         return;
     }
     state.globalChaptersMap = cacheResult.map || new Map();
@@ -128,7 +133,11 @@ export async function scrapeForum(): Promise<void> {
                 return;
             }
             console.error(e);
-            alert("无法获取书籍详情页数据！");
+            showMessagePopup({
+                tone: "error",
+                title: "无法获取书籍信息",
+                message: "无法获取书籍详情页数据，请稍后重试。"
+            });
             fullCleanup(state.originalTitle);
             return;
         }
@@ -153,7 +162,11 @@ export async function scrapeForum(): Promise<void> {
                 title: (node.getAttribute("data-title") || node.innerText || "").trim()
             }));
         } else {
-            alert("未找到任何章节链接！");
+            showMessagePopup({
+                tone: "warning",
+                title: "未找到章节",
+                message: "当前页面没有找到任何可下载的章节链接。"
+            });
             fullCleanup(state.originalTitle);
             return;
         }
