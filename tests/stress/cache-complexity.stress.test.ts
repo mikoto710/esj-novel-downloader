@@ -2,9 +2,11 @@
 
 import { IDBFactory } from "fake-indexeddb";
 import { describe, expect, it, vi } from "vitest";
+import { runDownload } from "../../src/core/download/coordinator";
 import { runWorkerPool } from "../../src/core/download/worker-pool";
 import type { Chapter } from "../../src/types";
-import { createChapter } from "../support";
+import { createChapter, createDownloadTask } from "../support";
+import { createStressDownloadHarness, createStressDownloadOptions } from "./download-stress-harness";
 
 describe("3000 chapter cache complexity", () => {
     it("serializes only dirty chapters instead of repeated whole-book snapshots", async () => {
@@ -49,6 +51,33 @@ describe("3000 chapter cache complexity", () => {
         expect(result).toEqual({ claimedCount: 3_000, completedCount: 3_000, cancelled: false });
         expect(processed.size).toBe(3_000);
         expect(maxActiveCount).toBe(5);
+    });
+
+    it("reuses 2975 cached chapters and only processes 25 misses", async () => {
+        const tasks = Array.from({ length: 3_000 }, (_, index) => createDownloadTask(index));
+        const cachedChapters = new Map(
+            tasks.slice(0, 2_975).map((task) => [task.index, createChapter(task.index)] as const)
+        );
+        const harness = createStressDownloadHarness({ tasks, chapters: cachedChapters });
+
+        await runDownload(createStressDownloadOptions(tasks), harness.dependencies);
+
+        expect(harness.fetchedIndexes).toEqual(Array.from({ length: 25 }, (_, index) => index + 2_975));
+        expect(harness.processedIndexes).toEqual(harness.fetchedIndexes);
+        expect(harness.persistedIndexes).toEqual(harness.fetchedIndexes);
+        expect(harness.events.ofType("chapter-restored")).toHaveLength(2_975);
+        expect(harness.exportData?.chapters).toHaveLength(3_000);
+        expect(harness.snapshots.at(-1)).toMatchObject({
+            phase: "export-ready",
+            scheduledCount: 3_000,
+            restoredCount: 2_975,
+            fetchedCount: 25,
+            processedCount: 25,
+            persistedCount: 3_000,
+            completedCount: 3_000,
+            cachedChapterCount: 3_000,
+            hasExportData: true
+        });
     });
 });
 
