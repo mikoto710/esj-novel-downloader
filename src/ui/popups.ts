@@ -361,7 +361,7 @@ export function createDownloadPopup(): HTMLElement {
                 ])
             ]),
             logBox,
-            el("div", { style: "padding:10px;display:flex;gap:8px;justify-content:flex-end;" }, [btnCancel])
+            el("div", { style: "padding:0px 10px 10px;display:flex;gap:8px;justify-content:flex-end;" }, [btnCancel])
         ]
     );
 
@@ -671,7 +671,7 @@ export function showFormatChoice(): void {
     const footer = el(
         "div",
         {
-            style: "display:flex;gap:15px;justify-content:center;padding:0 20px 8px 20px;"
+            style: "display:flex;gap:15px;justify-content:center;padding:0 20px 15px 20px;"
         },
         [btnTxt, btnEpub, btnHtml]
     );
