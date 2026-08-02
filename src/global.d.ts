@@ -52,6 +52,8 @@ interface GMInfo {
     script?: {
         version?: string;
     };
+    scriptHandler?: string;
+    version?: string;
 }
 
 declare const GM_info: GMInfo;

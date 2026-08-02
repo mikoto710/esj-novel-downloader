@@ -138,6 +138,10 @@ function flushPendingUiLogs(): void {
         return;
     }
 
+    // 日志也会被无 DOM 的基础设施适配器复用；此时只保留控制台与诊断记录，不刷新 UI。
+    if (typeof document === "undefined") {
+        return;
+    }
     const box = document.querySelector("#esj-log");
     if (!box) {
         return;

@@ -1,4 +1,3 @@
-import { log } from "../utils/index";
 import { batchDownload } from "../core/download/batch-download";
 import type { DownloadTask } from "../core/download/contracts";
 import { parseBookMetadata } from "../core/parser";
@@ -18,6 +17,15 @@ import { finalizeBookDownloadTask } from "../core/download/task-finalizer";
 import { normalizeStorageError, StorageError } from "../core/cache/storage-error";
 import { getImageDownloadSetting } from "../core/config";
 import { getImageCacheConfirmHint } from "../ui/image-cache-compatibility";
+import {
+    browserDiagnosticLog as log,
+    finishBrowserDiagnosticSession,
+    isBrowserDiagnosticSessionActive,
+    recordBrowserDiagnosticFailure,
+    recordBrowserPreflightDiagnosticFailure,
+    startBrowserDiagnosticSession,
+    updateBrowserDiagnosticSession
+} from "../adapters/browser-diagnostics";
 
 /**
  * 抓取论坛页面的章节列表并启动下载
@@ -56,6 +64,19 @@ export async function scrapeForum(): Promise<void> {
         const failure = normalizeStorageError(error, "read");
         console.error(failure);
         log(`❌ 无法读取本地缓存：${failure.message}`);
+        recordBrowserPreflightDiagnosticFailure({
+            bookId: bid,
+            bookTitle: document.title,
+            pageUrl: location.href,
+            sourcePageType: "forum",
+            imageEnabled: getImageDownloadSetting(),
+            failure: {
+                scope: "storage",
+                stage: "cache-read",
+                code: failure.reason,
+                message: failure.message
+            }
+        });
         showMessagePopup({
             tone: "error",
             title: "本地缓存不可用",
@@ -95,6 +116,15 @@ export async function scrapeForum(): Promise<void> {
     resetAbortController();
     const stopHeartbeat = startBookDownloadLockHeartbeat(lock, abortActiveDownload);
     createDownloadPopup();
+    // 从缓存认领前开始记录，才能覆盖 claim、详情页获取和正式下载阶段的失败
+    startBrowserDiagnosticSession({
+        taskId: lock.taskId,
+        bookId: bid,
+        bookTitle: document.title,
+        pageUrl: location.href,
+        sourcePageType: "forum",
+        imageEnabled
+    });
 
     try {
         log("正在准备本地缓存...");
@@ -133,6 +163,15 @@ export async function scrapeForum(): Promise<void> {
                 return;
             }
             console.error(e);
+            recordBrowserDiagnosticFailure(
+                {
+                    scope: "page",
+                    stage: "book-metadata",
+                    code: e.name || "book-metadata-failed",
+                    message: e.message
+                },
+                lock.taskId
+            );
             showMessagePopup({
                 tone: "error",
                 title: "无法获取书籍信息",
@@ -162,6 +201,15 @@ export async function scrapeForum(): Promise<void> {
                 title: (node.getAttribute("data-title") || node.innerText || "").trim()
             }));
         } else {
+            recordBrowserDiagnosticFailure(
+                {
+                    scope: "page",
+                    stage: "chapter-list",
+                    code: "chapter-list-missing",
+                    message: "书籍详情页未找到章节链接"
+                },
+                lock.taskId
+            );
             showMessagePopup({
                 tone: "warning",
                 title: "未找到章节",
@@ -178,12 +226,23 @@ export async function scrapeForum(): Promise<void> {
         });
 
         if (state.abortFlag || !(await markBookDownloadRunning(lock))) {
+            if (!state.abortFlag) {
+                recordBrowserDiagnosticFailure(
+                    {
+                        scope: "storage",
+                        stage: "lock-start",
+                        code: "ownership-lost",
+                        message: "下载任务锁在启动前已失效"
+                    },
+                    lock.taskId
+                );
+            }
             log("下载任务已取消或任务锁已失效，未启动下载。");
             fullCleanup(state.originalTitle);
             return;
         }
 
-        await batchDownload({
+        const options = {
             bookId: bid,
             taskId: lock.taskId,
             bookName: meta.bookName,
@@ -197,16 +256,31 @@ export async function scrapeForum(): Promise<void> {
             sourcePageType: "forum",
             imageEnabled,
             tasks
-        });
+        } as const;
+        updateBrowserDiagnosticSession(options);
+        await batchDownload(options);
     } catch (e: any) {
         if (state.abortFlag || e.name === "AbortError" || e.message === "User Aborted") {
             fullCleanup(state.originalTitle);
             return;
         }
         console.error(e);
+        // coordinator 已记录的终态错误不在页面层重复追加；这里只有启动阶段错误仍保持 active
+        if (isBrowserDiagnosticSessionActive(lock.taskId)) {
+            recordBrowserDiagnosticFailure(
+                {
+                    scope: e instanceof StorageError ? "storage" : "page",
+                    stage: "forum-page",
+                    code: e instanceof StorageError ? e.reason : e.name || "forum-page-failed",
+                    message: e.message
+                },
+                lock.taskId
+            );
+        }
         log(e instanceof StorageError ? `❌ 下载进度未保存：${e.message}` : "❌ 抓取流程异常: " + e.message);
         fullCleanup(state.originalTitle);
     } finally {
+        finishBrowserDiagnosticSession(lock.taskId, state.abortFlag ? "cancelled" : "failed");
         await finalizeBookDownloadTask(lock, stopHeartbeat);
     }
 }

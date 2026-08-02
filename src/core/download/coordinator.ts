@@ -142,6 +142,7 @@ function recordMappedChapter(ctx: DownloadContext, task: DownloadTask, chapter: 
     }
     ctx.mappedChapterIndexes.add(task.index);
     ctx.mappedFontBytes += font.blob.size;
+    ctx.dependencies.events.emit({ type: "mapping-font-updated", summary: getMappingFontSummary(ctx) });
     return true;
 }
 
@@ -287,7 +288,7 @@ async function persistTaskCacheBatch(
 }
 
 // 按现有策略重试章节 HTML，请求实现由 ChapterFetcherPort 提供
-async function downloadChapterHtml(task: DownloadTask, ctx: DownloadContext): Promise<string | null> {
+async function downloadChapterHtml(task: DownloadTask, ctx: DownloadContext, isRetry: boolean): Promise<string | null> {
     const { dependencies } = ctx;
     const result = await runWithRetry({
         policy: DEFAULT_CHAPTER_RETRY_POLICY,
@@ -300,7 +301,16 @@ async function downloadChapterHtml(task: DownloadTask, ctx: DownloadContext): Pr
         return result.value;
     }
     if (result.status === "failed") {
-        dependencies.log(`❌ 章节获取失败 (${task.title}): ${getErrorDetails(result.error).message}`);
+        const details = getErrorDetails(result.error);
+        dependencies.log(`❌ 章节获取失败 (${task.title}): ${details.message}`);
+        dependencies.events.emit({
+            type: "chapter-failed",
+            task,
+            stage: "fetch",
+            code: details.name || "chapter-fetch-failed",
+            message: details.message,
+            retry: isRetry
+        });
     }
     return null;
 }
@@ -352,7 +362,7 @@ async function processChapterTask(
         return runtime.isCancellationRequested() ? "cancelled" : "completed";
     }
 
-    const html = await downloadChapterHtml(task, ctx);
+    const html = await downloadChapterHtml(task, ctx, isRetry);
     if (!html || runtime.isCancellationRequested()) {
         if (!isRetry && !runtime.isCancellationRequested()) {
             updateSnapshot(ctx, {
@@ -376,6 +386,14 @@ async function processChapterTask(
         const message = `映射字体解析失败: ${error.message}`;
         ctx.mappingFailures.set(task.index, { task, message });
         dependencies.log(`❌ ${message} (${task.title})`);
+        dependencies.events.emit({
+            type: "chapter-failed",
+            task,
+            stage: "mapping-font",
+            code: error.code,
+            message: error.message,
+            retry: isRetry
+        });
         if (!isRetry) {
             updateSnapshot(ctx, {
                 completedCount: ctx.machine.snapshot.completedCount + 1,

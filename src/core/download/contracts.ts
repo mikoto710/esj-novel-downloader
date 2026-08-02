@@ -113,6 +113,15 @@ export type DownloadEvent =
     | { type: "cache-write-finished"; chapterCount: number; saved: boolean; failure: StorageFailure | null }
     | { type: "chapter-restored"; task: DownloadTask }
     | { type: "chapter-processed"; task: DownloadTask; retry: boolean }
+    | {
+          type: "chapter-failed";
+          task: DownloadTask;
+          stage: "fetch" | "mapping-font";
+          code: string;
+          message: string;
+          retry: boolean;
+      }
+    | { type: "mapping-font-updated"; summary: MappingFontSummary }
     | { type: "download-failed"; error: unknown; snapshot: DownloadSnapshot };
 
 /**

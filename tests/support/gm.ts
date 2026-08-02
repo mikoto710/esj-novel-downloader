@@ -78,7 +78,11 @@ export function installUserscriptApiMocks(initialValues: Record<string, unknown>
     vi.stubGlobal("GM_getValue", getValue);
     vi.stubGlobal("GM_setValue", setValue);
     vi.stubGlobal("GM_xmlhttpRequest", xmlhttpRequest);
-    vi.stubGlobal("GM_info", { script: { version: "0.0.0-test" } });
+    vi.stubGlobal("GM_info", {
+        script: { version: "0.0.0-test" },
+        scriptHandler: "Tampermonkey",
+        version: "0.0.0-test"
+    });
     vi.stubGlobal("unsafeWindow", globalThis);
     installedMocks = mocks;
     return mocks;

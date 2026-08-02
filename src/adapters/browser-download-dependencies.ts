@@ -42,6 +42,7 @@ import { fetchWithTimeout, log, sleep, sleepWithAbort } from "../utils/index";
 import { removeImgTags } from "../utils/text";
 import { normalizeChapterMappingFont } from "../core/mapping-font";
 import { normalizeImageBlob } from "../utils/image-format";
+import { browserDiagnosticEvents, browserDiagnosticLog } from "./browser-diagnostics";
 
 // 下载核心的浏览器实现边界
 // DOM、全局 state、网络、解析、图片、缓存和锁实现均限制在本模块中
@@ -253,7 +254,7 @@ export function createBrowserDownloadDependencies(): DownloadDependencies {
         coverCache,
         cache,
         lock,
-        events: { emit: () => undefined },
+        events: browserDiagnosticEvents,
         scheduler: {
             sleep,
             sleepWithAbort: (ms) => sleepWithAbort(ms, state.abortController?.signal),
@@ -271,6 +272,6 @@ export function createBrowserDownloadDependencies(): DownloadDependencies {
             currentUrl: () => location.href,
             now: () => Date.now()
         },
-        log
+        log: browserDiagnosticLog
     };
 }
