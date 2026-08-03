@@ -126,8 +126,43 @@ export function triggerDownload(blob: Blob, filename: string): void {
 }
 
 const UI_LOG_BATCH_DELAY_MS = 50;
+const UI_LOG_EVENT_LIMIT = 1000;
 let pendingUiLogLines: string[] = [];
 let uiLogFlushTimer: ReturnType<typeof setTimeout> | null = null;
+interface UiLogState {
+    nodes: Text[];
+    omittedCount: number;
+    truncationMarker: HTMLElement | null;
+}
+const uiLogStates = new WeakMap<Element, UiLogState>();
+
+function getUiLogState(box: Element): UiLogState {
+    const existing = uiLogStates.get(box);
+    if (existing && existing.nodes.every((node) => node.parentNode === box)) {
+        return existing;
+    }
+    const state: UiLogState = { nodes: [], omittedCount: 0, truncationMarker: null };
+    uiLogStates.set(box, state);
+    return state;
+}
+
+function trimUiLogs(box: Element, state: UiLogState): void {
+    const overflow = state.nodes.length - UI_LOG_EVENT_LIMIT;
+    if (overflow <= 0) {
+        return;
+    }
+
+    for (const node of state.nodes.splice(0, overflow)) {
+        node.remove();
+    }
+    state.omittedCount += overflow;
+    if (!state.truncationMarker) {
+        state.truncationMarker = document.createElement("span");
+        state.truncationMarker.dataset.esjLogTruncation = "true";
+        box.prepend(state.truncationMarker);
+    }
+    state.truncationMarker.textContent = `… 已省略 ${state.omittedCount} 条较早日志，可在 F12 控制台或诊断日志中查看排障信息\n`;
+}
 
 // 批量追加日志文本，避免章节量较大时反复复制日志框中的全部历史内容
 function flushPendingUiLogs(): void {
@@ -147,7 +182,15 @@ function flushPendingUiLogs(): void {
         return;
     }
     const isAtBottom = box.scrollTop + box.clientHeight >= box.scrollHeight - 10;
-    box.append(document.createTextNode(lines.join("")));
+    const state = getUiLogState(box);
+    const fragment = document.createDocumentFragment();
+    for (const line of lines) {
+        const node = document.createTextNode(line);
+        state.nodes.push(node);
+        fragment.append(node);
+    }
+    box.append(fragment);
+    trimUiLogs(box, state);
     if (isAtBottom) {
         box.scrollTop = box.scrollHeight;
     }

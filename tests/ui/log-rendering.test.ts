@@ -47,4 +47,19 @@ describe("log rendering", () => {
 
         expect(box.scrollTop).toBe(20);
     });
+
+    it("keeps the latest 1000 UI events while preserving every console event", async () => {
+        const box = document.querySelector("#esj-log") as HTMLElement;
+
+        for (let index = 0; index < 1005; index++) {
+            log(`event-${index}`);
+        }
+        await vi.advanceTimersByTimeAsync(50);
+
+        expect(console.log).toHaveBeenCalledTimes(1005);
+        expect(box.querySelector('[data-esj-log-truncation="true"]')?.textContent).toContain("已省略 5 条较早日志");
+        expect(box.textContent).not.toContain("event-4\n");
+        expect(box.textContent).toContain("event-5\n");
+        expect(box.textContent).toContain("event-1004\n");
+    });
 });
