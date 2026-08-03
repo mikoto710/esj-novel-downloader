@@ -69,7 +69,7 @@ export async function downloadCurrentPage(format: "txt" | "html" = "txt"): Promi
                 htmlMeta.intro = meta.baseIntroTxt;
                 htmlMeta.bookName = meta.bookName;
                 htmlMeta.author = meta.author;
-            } catch (e) {
+            } catch {
                 console.warn("书籍元数据获取失败，仅下载正文");
             }
         }

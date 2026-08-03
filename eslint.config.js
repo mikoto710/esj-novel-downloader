@@ -15,6 +15,23 @@ export default [
     prettierConfig,
 
     {
+        files: ["**/*.ts"],
+        rules: {
+            // 仅以下划线明确标记有意未使用的绑定，避免将遗漏误认为可接受的死代码。
+            "@typescript-eslint/no-unused-vars": [
+                "error",
+                {
+                    args: "all",
+                    argsIgnorePattern: "^_",
+                    caughtErrors: "all",
+                    caughtErrorsIgnorePattern: "^_",
+                    varsIgnorePattern: "^_"
+                }
+            ]
+        }
+    },
+
+    {
         files: ["src/**/*.ts"],
         languageOptions: {
             ecmaVersion: 2020,
@@ -33,8 +50,6 @@ export default [
             // 允许非空断言 (DOM操作常用)
             "@typescript-eslint/no-non-null-assertion": "off",
 
-            // 定义了但未使用的变量报警告，而不是报错
-            "@typescript-eslint/no-unused-vars": "warn"
         }
     },
 
