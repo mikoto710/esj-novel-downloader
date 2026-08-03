@@ -45,6 +45,7 @@ describe("processHtmlImages", () => {
             undefined
         );
         expect(result.failCount).toBe(0);
+        expect(result.failures).toEqual([]);
         expect(result.images).toHaveLength(1);
         expect(result.images[0]).toMatchObject({ id: "img_2_0.jpg", mediaType: "image/jpeg" });
         expect(result.images[0].blob.type).toBe("image/jpeg");
@@ -60,7 +61,36 @@ describe("processHtmlImages", () => {
         expect(fetchWithTimeoutMock).toHaveBeenCalledTimes(3);
         expect(result.images).toEqual([]);
         expect(result.failCount).toBe(1);
+        expect(result.failures).toEqual([
+            {
+                stage: "format",
+                code: "image-format-unrecognized",
+                message: "图片内容无法识别为支持的格式",
+                count: 1
+            }
+        ]);
         expect(result.processedHtml).toContain("图片加载失败");
+    });
+
+    it("groups request failures without retaining the image URL or response body", async () => {
+        fetchWithTimeoutMock.mockRejectedValue(new Error("https://images.example.invalid/secret-image?token=secret"));
+
+        const result = await processHtmlImages(
+            '<img src="https://images.example.invalid/secret-image?token=secret">',
+            0
+        );
+
+        expect(result.failCount).toBe(1);
+        expect(result.failures).toEqual([
+            {
+                stage: "request",
+                code: "image-request-failed",
+                message: "图片请求在重试后仍失败",
+                count: 1
+            }
+        ]);
+        expect(JSON.stringify(result.failures)).not.toContain("secret-image");
+        expect(JSON.stringify(result.failures)).not.toContain("token=secret");
     });
 
     it("keeps a normalized original when Canvas compression cannot decode it", async () => {
@@ -88,6 +118,7 @@ describe("processHtmlImages", () => {
         const result = await processHtmlImages('<img src="https://example.com/large.file">', 1);
 
         expect(result.failCount).toBe(0);
+        expect(result.failures).toEqual([]);
         expect(result.images[0]).toMatchObject({ id: "img_1_0.jpg", mediaType: "image/jpeg" });
         expect(result.images[0].blob.type).toBe("image/jpeg");
         expect(result.images[0].blob.size).toBe(jpegBlob.size);

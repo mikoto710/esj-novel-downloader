@@ -46,7 +46,7 @@ describe("browser download cancellation contracts", () => {
     it("does not persist a chapter cancelled during image processing", async () => {
         mocks.processHtmlImages.mockImplementationOnce(async () => {
             runtime.abortActiveDownload();
-            return { processedHtml: "<p>未完成正文</p>", images: [], failCount: 0 };
+            return { processedHtml: "<p>未完成正文</p>", images: [], failCount: 0, failures: [] };
         });
 
         await runtime.batchDownload({

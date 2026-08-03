@@ -4,6 +4,31 @@ import type { ChapterImage } from "../types";
 
 const IMAGE_FETCH_TIMEOUT = 20_000;
 
+export type ImageFailureStage = "url" | "request" | "format" | "processing";
+
+export interface ImageProcessingFailure {
+    stage: ImageFailureStage;
+    code: string;
+    message: string;
+    count: number;
+}
+
+function recordImageFailure(
+    failures: ImageProcessingFailure[],
+    stage: ImageFailureStage,
+    code: string,
+    message: string
+): void {
+    const existing = failures.find(
+        (failure) => failure.stage === stage && failure.code === code && failure.message === message
+    );
+    if (existing) {
+        existing.count++;
+        return;
+    }
+    failures.push({ stage, code, message, count: 1 });
+}
+
 /**
  * 压缩图片 (使用 Canvas)
  * @param blob 原始图片 Blob
@@ -79,6 +104,7 @@ export async function processHtmlImages(
     processedHtml: string;
     images: ChapterImage[];
     failCount: number;
+    failures: ImageProcessingFailure[];
 }> {
     const div = document.createElement("div");
     div.innerHTML = htmlContent;
@@ -86,6 +112,7 @@ export async function processHtmlImages(
     const imgs = Array.from(div.querySelectorAll("img"));
     const images: ChapterImage[] = [];
     let failCount = 0;
+    const failures: ImageProcessingFailure[] = [];
 
     if (imgs.length > 0) {
         console.log(`序列 ${chapterIndex + 1}: 发现 ${imgs.length} 张图片，开始处理...`);
@@ -101,6 +128,8 @@ export async function processHtmlImages(
         let downloadSuccess = false;
 
         let errorMsg = "未知错误";
+        let failureStage: ImageFailureStage = "url";
+        let failureCode = "invalid-image-url";
 
         // URL 预处理
         const resolvedSrc = resolveImageUrl(src, location.href);
@@ -113,6 +142,8 @@ export async function processHtmlImages(
         }
 
         if (resolvedSrc) {
+            failureStage = "request";
+            failureCode = "image-request-failed";
             const MAX_RETRIES = 3;
 
             for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
@@ -136,6 +167,8 @@ export async function processHtmlImages(
                     const downloadedBlob = await response.blob();
                     const normalized = await normalizeImageBlob(downloadedBlob);
                     if (!normalized) {
+                        failureStage = "format";
+                        failureCode = "image-format-unrecognized";
                         throw new Error(`无法识别图片格式 (${downloadedBlob.type || "unknown"})`);
                     }
 
@@ -143,6 +176,8 @@ export async function processHtmlImages(
 
                     // 压缩处理
                     if (blob.size > 100 * 1024) {
+                        failureStage = "processing";
+                        failureCode = "image-processing-failed";
                         const compressedBlob = await compressImage(blob);
                         if (compressedBlob) {
                             blob = compressedBlob;
@@ -185,6 +220,15 @@ export async function processHtmlImages(
 
         if (!downloadSuccess && !signal?.aborted) {
             failCount++;
+            const diagnosticMessage =
+                failureStage === "url"
+                    ? "图片链接无效"
+                    : failureStage === "format"
+                      ? "图片内容无法识别为支持的格式"
+                      : failureStage === "processing"
+                        ? "图片处理未完成"
+                        : "图片请求在重试后仍失败";
+            recordImageFailure(failures, failureStage, failureCode, diagnosticMessage);
 
             log(`❌ 插图获取失败，序列${chapterIndex + 1}: ${src} \n失败原因： ${errorMsg}`);
             // 失败后保留远程链接
@@ -204,6 +248,7 @@ export async function processHtmlImages(
     return {
         processedHtml: finalHtml,
         images,
-        failCount
+        failCount,
+        failures
     };
 }

@@ -112,6 +112,46 @@ describe("browser diagnostic persistence", () => {
         ]);
     });
 
+    it("keeps inline image failures inside a successful diagnostic session", () => {
+        startBrowserDiagnosticSession({
+            taskId: "task-inline-image",
+            bookId: "book-image",
+            bookTitle: "Image Book",
+            pageUrl: "https://www.esjzone.cc/detail/3.html",
+            sourcePageType: "detail",
+            imageEnabled: true
+        });
+        recordBrowserDiagnosticFailure({
+            scope: "image",
+            stage: "request",
+            code: "image-request-failed",
+            message:
+                "图片请求在重试后仍失败 data:image/png;base64,AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+            imageFailureCount: 2,
+            chapter: {
+                index: 0,
+                title: "Chapter 1",
+                url: "https://www.esjzone.cc/forum/3/1.html?cookie=secret"
+            }
+        });
+        finishBrowserDiagnosticSession("task-inline-image", "success");
+
+        const session = listBrowserDiagnosticSessions().history[0];
+        const exported = createBrowserDiagnosticExport(session).json;
+
+        expect(session.result).toBe("success");
+        expect(session.failures).toEqual([
+            expect.objectContaining({
+                scope: "image",
+                stage: "request",
+                imageFailureCount: 2,
+                chapter: expect.objectContaining({ index: 1, url: "https://www.esjzone.cc/forum/3/1.html" })
+            })
+        ]);
+        expect(exported).not.toContain("data:image");
+        expect(exported).not.toContain("cookie=secret");
+    });
+
     it("records structured download snapshots, mapped fonts and terminal failures", () => {
         startBrowserDiagnosticSession({
             taskId: "task-events",

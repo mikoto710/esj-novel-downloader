@@ -167,10 +167,36 @@ export async function downloadCurrentPage(format: "txt" | "html" = "txt"): Promi
                     contentHtml = tempHtml;
                     imageSuccessCount = processed.images.length;
                     imageFailureCount = processed.failCount;
+                    processed.failures.forEach((failure) => {
+                        recordBrowserDiagnosticFailure(
+                            {
+                                scope: "image",
+                                stage: failure.stage,
+                                code: failure.code,
+                                message: failure.message,
+                                imageFailureCount: failure.count,
+                                chapter: { index: 0, title, url: location.href }
+                            },
+                            diagnosticTaskId
+                        );
+                    });
                     log(`已嵌入 ${processed.images.length} 张图片`);
                 } catch (imgErr: any) {
                     imageFailureCount = (contentHtml.match(/<img\s/gi) || []).length;
                     console.error(imgErr);
+                    if (imageFailureCount > 0) {
+                        recordBrowserDiagnosticFailure(
+                            {
+                                scope: "image",
+                                stage: "processing",
+                                code: "image-processing-failed",
+                                message: "图片处理异常，正文已保留",
+                                imageFailureCount,
+                                chapter: { index: 0, title, url: location.href }
+                            },
+                            diagnosticTaskId
+                        );
+                    }
                     log(`⚠️ 图片处理失败，将保留原链接`);
                 }
             }

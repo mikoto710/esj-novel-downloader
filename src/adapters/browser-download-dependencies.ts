@@ -38,18 +38,35 @@ import {
 } from "../ui/popups";
 import { updateTrayText } from "../ui/tray";
 import { fullCleanup } from "../utils/dom";
-import { processHtmlImages } from "../utils/image";
+import { processHtmlImages, type ImageProcessingFailure } from "../utils/image";
 import { fetchWithTimeout, log, sleep, sleepWithAbort } from "../utils/index";
 import { removeImgTags } from "../utils/text";
 import { normalizeChapterMappingFont } from "../core/mapping-font";
 import { normalizeImageBlob } from "../utils/image-format";
-import { browserDiagnosticEvents, browserDiagnosticLog } from "./browser-diagnostics";
+import { browserDiagnosticEvents, browserDiagnosticLog, recordBrowserDiagnosticFailure } from "./browser-diagnostics";
 import { showDownloadTerminalFailure } from "../ui/download-terminal-notices";
 
 // 下载核心的浏览器实现边界
 // DOM、全局 state、网络、解析、图片、缓存和锁实现均限制在本模块中
 function getErrorMessage(error: unknown): string {
     return error instanceof Error ? error.message : String(error);
+}
+
+function recordInlineImageFailures(
+    task: { index: number; title: string; url: string },
+    failures: ImageProcessingFailure[]
+): void {
+    // 插图故障只作为当前章节的附加诊断，不能影响下载核心的章节成功、补抓或导出终态。
+    failures.forEach((failure) => {
+        recordBrowserDiagnosticFailure({
+            scope: "image",
+            stage: failure.stage,
+            code: failure.code,
+            message: failure.message,
+            imageFailureCount: failure.count,
+            chapter: task
+        });
+    });
 }
 
 // 将现有页面级全局状态包装为 runtime port，避免 coordinator 直接依赖 state 单例
@@ -178,9 +195,22 @@ const chapterProcessor: ChapterProcessorPort = {
                 finalHtml = processed.processedHtml;
                 images = processed.images;
                 imageErrors = processed.failCount;
+                if (!signal?.aborted) {
+                    recordInlineImageFailures(task, processed.failures);
+                }
             } catch (error) {
                 const matches = finalHtml.match(/<img\s/gi);
                 imageErrors = matches ? matches.length : 0;
+                if (!signal?.aborted && imageErrors > 0) {
+                    recordInlineImageFailures(task, [
+                        {
+                            stage: "processing",
+                            code: "image-processing-failed",
+                            message: "图片处理异常，正文已保留",
+                            count: imageErrors
+                        }
+                    ]);
+                }
                 log(
                     `⚠️ 图片处理异常，跳过 ${imageErrors} 张图片。第 ${task.index + 1} 章 标题：${task.title}，原因：${getErrorMessage(error)}`
                 );

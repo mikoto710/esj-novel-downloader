@@ -48,10 +48,11 @@ export interface DiagnosticChapterInfo {
 
 export interface DiagnosticFailure {
     at: number;
-    scope: "download" | "chapter" | "storage" | "export" | "page";
+    scope: "download" | "chapter" | "image" | "storage" | "export" | "page";
     stage: string;
     code: string;
     message: string;
+    imageFailureCount?: number;
     chapter?: DiagnosticChapterInfo;
 }
 
@@ -141,6 +142,7 @@ export interface RecordDiagnosticFailureInput {
     stage: string;
     code: string;
     message: string;
+    imageFailureCount?: number;
     chapter?: DownloadTask;
 }
 
@@ -395,6 +397,7 @@ export class DiagnosticManager {
                     stage: input.stage,
                     code: input.code,
                     message: limitText(input.message),
+                    ...(input.imageFailureCount === undefined ? {} : { imageFailureCount: input.imageFailureCount }),
                     ...(input.chapter
                         ? {
                               chapter: {

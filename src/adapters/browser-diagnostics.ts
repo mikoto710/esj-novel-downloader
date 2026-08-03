@@ -229,7 +229,8 @@ export function formatBrowserDiagnosticSummary(session: DiagnosticSession): stri
         const chapter = failure.chapter
             ? `；章节 ${failure.chapter.index}「${failure.chapter.title}」 ${failure.chapter.url}`
             : "";
-        return `- [${failure.code}] ${failure.message}${chapter}`;
+        const imageCount = failure.imageFailureCount === undefined ? "" : `；失败插图：${failure.imageFailureCount} 张`;
+        return `- [${failure.code}] ${failure.message}${imageCount}${chapter}`;
     });
     const exportLines = (session.exports || []).map((item) => {
         const format = `${item.scope === "single" ? "单章 " : ""}${item.format.toUpperCase()}`;

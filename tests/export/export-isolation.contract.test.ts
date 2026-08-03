@@ -60,6 +60,41 @@ describe("full-book and single-chapter export isolation", () => {
         });
     });
 
+    it("records an inline image failure without failing a single-chapter export", async () => {
+        GM_setValue("enable_image_download", true);
+        vi.doMock("../../src/utils/image", () => ({
+            processHtmlImages: vi.fn().mockResolvedValue({
+                processedHtml: '<p>正文保留</p><img src="https://example.test/image.jpg">',
+                images: [],
+                failCount: 1,
+                failures: [
+                    {
+                        stage: "request",
+                        code: "image-request-failed",
+                        message: "图片请求在重试后仍失败",
+                        count: 1
+                    }
+                ]
+            })
+        }));
+
+        const { downloadCurrentPage } = await import("../../src/scrapers/single");
+        await downloadCurrentPage("html");
+
+        const { listBrowserDiagnosticSessions } = await import("../../src/adapters/browser-diagnostics");
+        const diagnostic = listBrowserDiagnosticSessions().history[0];
+
+        expect(clickMock).toHaveBeenCalledOnce();
+        expect(diagnostic).toMatchObject({ result: "success", book: { sourcePageType: "single" } });
+        expect(diagnostic.failures).toEqual([
+            expect.objectContaining({
+                scope: "image",
+                imageFailureCount: 1,
+                chapter: expect.objectContaining({ index: 1 })
+            })
+        ]);
+    });
+
     it("preserves the source shaping environment in mapped single-chapter HTML", async () => {
         const bytes = new Uint8Array(64);
         const view = new DataView(bytes.buffer);

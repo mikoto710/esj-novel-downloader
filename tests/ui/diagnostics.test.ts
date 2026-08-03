@@ -66,6 +66,35 @@ describe("diagnostic history UI", () => {
         expect(document.querySelector("#esj-diagnostic-list")?.textContent).toContain("Diagnostic Book");
     });
 
+    it("keeps a successful presentation when only inline images failed", () => {
+        startBrowserDiagnosticSession({
+            taskId: "task-image-only",
+            bookId: "1737469479",
+            bookTitle: "Image-only diagnostic",
+            pageUrl: "https://www.esjzone.cc/detail/1737469479.html",
+            sourcePageType: "detail",
+            imageEnabled: true
+        });
+        recordBrowserDiagnosticFailure({
+            scope: "image",
+            stage: "request",
+            code: "image-request-failed",
+            message: "图片请求在重试后仍失败",
+            imageFailureCount: 2,
+            chapter: {
+                index: 0,
+                title: "Chapter 1",
+                url: "https://www.esjzone.cc/forum/1737469479/1.html"
+            }
+        });
+        finishBrowserDiagnosticSession("task-image-only", "success");
+
+        createDiagnosticPopup();
+
+        expect(document.querySelector("#esj-diagnostic-detail")?.textContent).toContain("下载完成");
+        expect(document.querySelector("#esj-diagnostic-detail")?.textContent).toContain("失败插图：2 张");
+    });
+
     it("opens diagnostics from settings", () => {
         seedDiagnostic("success");
         const settingsTrigger = document.createElement("button");
