@@ -16,7 +16,7 @@ describe("log rendering", () => {
         vi.useRealTimers();
     });
 
-    it("batches UI lines into one append while preserving console output", async () => {
+    it("renders the first UI line immediately and batches following lines", async () => {
         const box = document.querySelector("#esj-log") as HTMLElement;
         const append = vi.spyOn(box, "append");
         Object.defineProperty(box, "clientHeight", { configurable: true, value: 10 });
@@ -24,13 +24,18 @@ describe("log rendering", () => {
         box.scrollTop = 90;
 
         log("第一条");
+
+        expect(console.log).toHaveBeenCalledOnce();
+        expect(append).toHaveBeenCalledOnce();
+        expect(box.textContent).toContain("第一条\n");
+
         log("第二条");
 
         expect(console.log).toHaveBeenCalledTimes(2);
-        expect(append).not.toHaveBeenCalled();
+        expect(append).toHaveBeenCalledOnce();
         await vi.advanceTimersByTimeAsync(50);
 
-        expect(append).toHaveBeenCalledOnce();
+        expect(append).toHaveBeenCalledTimes(2);
         expect(box.textContent).toContain("第一条\n");
         expect(box.textContent).toContain("第二条\n");
         expect(box.scrollTop).toBe(100);

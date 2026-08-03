@@ -48,6 +48,38 @@ describe("runDownload characterization", () => {
         expect(harness.dependencies.log).not.toHaveBeenCalledWith(expect.stringContaining("正在预检"));
     });
 
+    it("yields while validating a large restored cache", async () => {
+        const tasks = Array.from({ length: 51 }, (_, index) => createDownloadTask(index));
+        const chapters = new Map(tasks.map((task) => [task.index, createChapter(task.index)]));
+        const harness = createHarness(tasks, chapters);
+        const sleepWithAbort = vi.fn(async () => undefined);
+        harness.dependencies.scheduler.sleepWithAbort = sleepWithAbort;
+
+        await runDownload(createOptions(tasks), harness.dependencies);
+
+        expect(sleepWithAbort).toHaveBeenCalledTimes(3);
+        expect(sleepWithAbort).toHaveBeenCalledWith(0);
+        expect(harness.dependencies.log).toHaveBeenCalledWith("💾 读取到 51 章缓存，正在校验...");
+        expect(harness.dependencies.log).toHaveBeenCalledWith("💾 已恢复 51 章缓存");
+        expect(harness.fetcher.calls).toHaveLength(0);
+    });
+
+    it("honors cancellation after yielding during cache validation", async () => {
+        const tasks = Array.from({ length: 30 }, (_, index) => createDownloadTask(index));
+        const chapters = new Map(tasks.map((task) => [task.index, createChapter(task.index)]));
+        const harness = createHarness(tasks, chapters);
+        harness.dependencies.scheduler.sleepWithAbort = vi.fn(async () => {
+            harness.dependencies.runtime.requestCancellation();
+        });
+
+        await runDownload(createOptions(tasks), harness.dependencies);
+
+        expect(harness.fetcher.calls).toHaveLength(0);
+        expect(harness.exportData).toBeNull();
+        expect(harness.ui.snapshots).toContainEqual(expect.objectContaining({ phase: "cancelled" }));
+        expect(harness.ui.showFormatChoice).not.toHaveBeenCalled();
+    });
+
     it("publishes structured phases and progress while preserving small-download results", async () => {
         const tasks = [createDownloadTask(0), createDownloadTask(1)];
         const harness = createHarness(tasks);
@@ -78,6 +110,7 @@ describe("runDownload characterization", () => {
         });
         expect(harness.exportData?.txt).toContain("第 1 章正文");
         expect(harness.exportData?.txt).toContain("第 2 章正文");
+        expect(harness.dependencies.log).not.toHaveBeenCalledWith("💾 已恢复 0 章缓存");
     });
 
     it("asks for consent once and publishes a persistent summary for mapped chapters", async () => {

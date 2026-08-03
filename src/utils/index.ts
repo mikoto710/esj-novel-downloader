@@ -200,6 +200,12 @@ function scheduleUiLogFlush(): void {
     if (uiLogFlushTimer !== null) {
         return;
     }
+
+    // 每批首条日志立即写入，让启动和阶段切换信息无需等待批处理窗口；
+    // 随后的高频日志仍在同一个 50 ms 窗口内合并，避免恢复逐条 DOM 追加。
+    if (typeof document !== "undefined" && document.querySelector("#esj-log")) {
+        flushPendingUiLogs();
+    }
     uiLogFlushTimer = setTimeout(flushPendingUiLogs, UI_LOG_BATCH_DELAY_MS);
 }
 

@@ -41,6 +41,8 @@ interface DownloadContext {
 
 type ChapterTaskResult = "completed" | "failed" | "cancelled";
 
+const CACHE_RESTORE_YIELD_INTERVAL = 25;
+
 function getErrorDetails(error: unknown): { name: string; message: string } {
     return error instanceof Error
         ? { name: error.name, message: error.message }
@@ -191,7 +193,15 @@ async function normalizeRestoredChapters(ctx: DownloadContext): Promise<boolean>
     const entries = Array.from(dependencies.runtime.chapters.entries()).sort(([left], [right]) => left - right);
     const changedEntries = new Map<number, Chapter>();
     let firstMappedTask: DownloadTask | null = null;
-    for (const [index, chapter] of entries) {
+    let invalidatedCount = 0;
+
+    if (entries.length > 0) {
+        // 先让浏览器绘制恢复阶段和首条日志；之后分片让步，避免大量命中缓存形成连续微任务，
+        // 导致日志、取消点击和页面绘制都要等待整批校验结束。
+        await dependencies.scheduler.sleepWithAbort(0);
+    }
+
+    for (const [entryIndex, [index, chapter]] of entries.entries()) {
         if (dependencies.runtime.isCancellationRequested()) {
             return false;
         }
@@ -215,14 +225,29 @@ async function normalizeRestoredChapters(ctx: DownloadContext): Promise<boolean>
             if (error instanceof MappingFontError) {
                 // 旧记录无法规范化时仅使该章失效，后续 worker 会重新抓取并重新验证
                 dependencies.runtime.chapters.delete(index);
+                invalidatedCount++;
                 dependencies.log(`⚠️ 旧缓存映射字体无效，将重新抓取 (${chapter.title}): ${error.message}`);
-                continue;
+            } else {
+                throw error;
             }
-            throw error;
+        }
+
+        if ((entryIndex + 1) % CACHE_RESTORE_YIELD_INTERVAL === 0 && entryIndex + 1 < entries.length) {
+            await dependencies.scheduler.sleepWithAbort(0);
+            if (dependencies.runtime.isCancellationRequested()) {
+                return false;
+            }
         }
     }
 
     const restoredTasks = options.tasks.filter((task) => dependencies.runtime.chapters.has(task.index));
+    if (entries.length > 0) {
+        dependencies.log(
+            invalidatedCount > 0
+                ? `💾 已恢复 ${restoredTasks.length} 章缓存，${invalidatedCount} 章需要重新抓取`
+                : `💾 已恢复 ${restoredTasks.length} 章缓存`
+        );
+    }
     updateSnapshot(ctx, {
         restoredCount: restoredTasks.length,
         completedCount: restoredTasks.length,
@@ -754,10 +779,10 @@ export async function runDownload(options: DownloadOptions, dependencies: Downlo
         transition(ctx, "preparing");
         dependencies.ui.prepare();
         dependencies.runtime.startCacheSession(cacheMeta, options.taskId, dependencies.runtime.chapters.size);
-        transition(ctx, "restoring-cache");
         if (dependencies.runtime.chapters.size > 0) {
-            dependencies.log(`💾 已从 IndexedDB 恢复 ${dependencies.runtime.chapters.size} 章缓存`);
+            dependencies.log(`💾 读取到 ${dependencies.runtime.chapters.size} 章缓存，正在校验...`);
         }
+        transition(ctx, "restoring-cache");
         if (!(await normalizeRestoredChapters(ctx))) {
             if (dependencies.runtime.isCancellationRequested()) {
                 await finishCancellation(ctx);

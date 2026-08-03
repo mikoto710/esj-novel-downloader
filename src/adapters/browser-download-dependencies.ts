@@ -112,6 +112,11 @@ const ui: DownloadUiPort = {
             return;
         }
         const phaseStatus: Partial<Record<DownloadSnapshot["phase"], string>> = {
+            preparing: "正在初始化下载任务...",
+            "restoring-cache":
+                snapshot.cachedChapterCount > 0
+                    ? `正在校验本地缓存 (${snapshot.cachedChapterCount} 章)`
+                    : "正在准备本地缓存...",
             "flushing-cache": `正在保存下载进度 (${snapshot.completedCount}/${snapshot.scheduledCount})`,
             "checking-integrity": `正在检查章节完整性 (${snapshot.completedCount}/${snapshot.scheduledCount})`,
             "preparing-export": `正在准备导出 (${snapshot.completedCount}/${snapshot.scheduledCount})`,
