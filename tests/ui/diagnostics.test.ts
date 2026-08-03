@@ -2,11 +2,14 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+    browserDiagnosticEvents,
     clearBrowserDiagnosticSessions,
     finishBrowserDiagnosticSession,
     recordBrowserDiagnosticFailure,
     startBrowserDiagnosticSession
 } from "../../src/adapters/browser-diagnostics";
+import { DIAGNOSTIC_CLOSE_UNCONFIRMED_MS } from "../../src/core/diagnostics";
+import { createInitialDownloadSnapshot } from "../../src/core/download/state-machine";
 import { createDiagnosticPopup } from "../../src/ui/diagnostics";
 import { showMessagePopup } from "../../src/ui/message-popup";
 import { createSettingsPanel } from "../../src/ui/popups";
@@ -34,6 +37,12 @@ function seedDiagnostic(result: "success" | "failed" = "failed"): void {
         });
     }
     finishBrowserDiagnosticSession(`task-${result}`, result);
+}
+
+function dispatchPageHide(persisted: boolean): void {
+    const event = new Event("pagehide");
+    Object.defineProperty(event, "persisted", { value: persisted });
+    window.dispatchEvent(event);
 }
 
 describe("diagnostic history UI", () => {
@@ -87,6 +96,70 @@ describe("diagnostic history UI", () => {
         Object.defineProperty(document, "visibilityState", { configurable: true, value: "visible" });
         document.dispatchEvent(new Event("visibilitychange"));
         expect(document.querySelector("#esj-diagnostic-list")?.textContent).toContain("Diagnostic Book");
+    });
+
+    it("moves a closed session out of active display when a same-book continuation starts", async () => {
+        vi.useFakeTimers();
+        startBrowserDiagnosticSession(
+            {
+                taskId: "task-closed",
+                bookId: "1737469479",
+                bookTitle: "Closed Diagnostic Book",
+                pageUrl: "https://www.esjzone.cc/detail/1737469479.html",
+                sourcePageType: "detail",
+                imageEnabled: false
+            },
+            { observePageClose: true }
+        );
+        createDiagnosticPopup();
+        dispatchPageHide(false);
+        await vi.advanceTimersByTimeAsync(3000);
+
+        expect(document.querySelector("#esj-diagnostic-list")?.textContent).toContain("页面已关闭，结果未确认");
+
+        startBrowserDiagnosticSession({
+            taskId: "task-resumed",
+            bookId: "1737469479",
+            bookTitle: "Resumed Diagnostic Book",
+            pageUrl: "https://www.esjzone.cc/forum/1737469479/1.html",
+            sourcePageType: "forum",
+            imageEnabled: false
+        });
+        browserDiagnosticEvents.emit({
+            type: "phase-changed",
+            previous: "idle",
+            current: "preparing",
+            snapshot: { ...createInitialDownloadSnapshot(2, 0), phase: "preparing" }
+        });
+        await vi.advanceTimersByTimeAsync(3000);
+
+        const listText = document.querySelector("#esj-diagnostic-list")?.textContent || "";
+        expect(listText).toContain("进行中");
+        expect(listText).toContain("已由新的续传任务接替");
+        expect(document.querySelector("#esj-diagnostic-detail")?.textContent).toContain("旧会话不再视为进行中");
+    });
+
+    it("labels a long-closed session as view-only interrupted without changing its raw result", () => {
+        vi.useFakeTimers();
+        vi.setSystemTime(new Date("2026-08-04T00:00:00.000Z"));
+        startBrowserDiagnosticSession(
+            {
+                taskId: "task-interrupted-view",
+                bookId: "1737469479",
+                bookTitle: "Interrupted View Book",
+                pageUrl: "https://www.esjzone.cc/detail/1737469479.html",
+                sourcePageType: "detail",
+                imageEnabled: false
+            },
+            { observePageClose: true }
+        );
+        dispatchPageHide(false);
+        vi.advanceTimersByTime(DIAGNOSTIC_CLOSE_UNCONFIRMED_MS);
+
+        createDiagnosticPopup();
+
+        expect(document.querySelector("#esj-diagnostic-list")?.textContent).toContain("异常中断（结果未确认）");
+        expect(document.querySelector("#esj-diagnostic-detail")?.textContent).toContain("原始结果：running");
     });
 
     it("preserves selection and scroll positions during automatic refresh", async () => {

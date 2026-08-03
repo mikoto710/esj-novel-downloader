@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
     createEmptyDiagnosticStore,
+    createDiagnosticSessionView,
     DiagnosticManager,
+    DIAGNOSTIC_CLOSE_UNCONFIRMED_MS,
     DIAGNOSTIC_HISTORY_LIMIT,
     DIAGNOSTIC_RETENTION_MS,
     DIAGNOSTIC_SESSION_BYTES_LIMIT,
@@ -11,6 +13,7 @@ import {
     type DiagnosticStore,
     type StartDiagnosticSessionInput
 } from "../../src/core/diagnostics";
+import { createInitialDownloadSnapshot } from "../../src/core/download/state-machine";
 
 class MemoryDiagnosticRepository implements DiagnosticRepository {
     store = createEmptyDiagnosticStore();
@@ -73,6 +76,60 @@ describe("diagnostic session retention", () => {
             expect.objectContaining({ taskId: "concurrent", result: "success" })
         ]);
         expect(reader.list().history).toEqual([expect.objectContaining({ taskId: "concurrent", result: "success" })]);
+    });
+
+    it("keeps a page-close observation nonterminal when a real outcome arrives", () => {
+        const repository = new MemoryDiagnosticRepository();
+        let now = 1_000;
+        const manager = new DiagnosticManager(repository, () => now);
+        manager.start(createInput("closed"));
+
+        now = 2_000;
+        manager.markCloseObserved("closed");
+        manager.finish("closed", "success");
+
+        expect(manager.list().history).toEqual([
+            expect.objectContaining({ taskId: "closed", result: "success", closeObservedAt: 2_000 })
+        ]);
+    });
+
+    it("derives replacement and interruption views without rewriting the active record", () => {
+        const repository = new MemoryDiagnosticRepository();
+        let now = 1_000;
+        const manager = new DiagnosticManager(repository, () => now);
+        manager.start(createInput("closed", { bookId: "book-1" }));
+
+        now = 2_000;
+        manager.markCloseObserved("closed");
+        now = 3_000;
+        manager.start(createInput("replacement", { bookId: "book-1" }));
+        const preparing = { ...createInitialDownloadSnapshot(12, 0), phase: "preparing" as const };
+        manager.recordDownloadEvent("replacement", {
+            type: "phase-changed",
+            previous: "idle",
+            current: "preparing",
+            snapshot: preparing
+        });
+
+        expect(createDiagnosticSessionView(manager.list(), now).unconfirmed).toEqual([
+            expect.objectContaining({
+                session: expect.objectContaining({ taskId: "closed", result: "running" }),
+                presentation: "superseded"
+            })
+        ]);
+
+        now = 2_000 + DIAGNOSTIC_CLOSE_UNCONFIRMED_MS;
+        const view = createDiagnosticSessionView(manager.list(), now);
+        expect(view.unconfirmed).toEqual([]);
+        expect(view.history).toContainEqual(
+            expect.objectContaining({
+                session: expect.objectContaining({ taskId: "closed", result: "running" }),
+                presentation: "interrupted"
+            })
+        );
+        expect(repository.store.active).toContainEqual(
+            expect.objectContaining({ taskId: "closed", result: "running", closeObservedAt: 2_000 })
+        );
     });
 
     it("keeps ten completed sessions and evicts older successful sessions first", () => {

@@ -112,14 +112,17 @@ export async function scrapeDetail(): Promise<void> {
     const stopHeartbeat = startBookDownloadLockHeartbeat(lock, abortActiveDownload);
     createDownloadPopup();
     // 从缓存认领前开始记录，才能覆盖 claim、页面解析和正式下载阶段的失败
-    startBrowserDiagnosticSession({
-        taskId: lock.taskId,
-        bookId,
-        bookTitle: document.title,
-        pageUrl: location.href,
-        sourcePageType: "detail",
-        imageEnabled
-    });
+    startBrowserDiagnosticSession(
+        {
+            taskId: lock.taskId,
+            bookId,
+            bookTitle: document.title,
+            pageUrl: location.href,
+            sourcePageType: "detail",
+            imageEnabled
+        },
+        { observePageClose: true }
+    );
     let downloadStarted = false;
 
     try {

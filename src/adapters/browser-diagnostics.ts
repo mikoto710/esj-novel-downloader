@@ -1,11 +1,14 @@
 import {
     createEmptyDiagnosticStore,
+    createDiagnosticSessionView,
     DiagnosticManager,
     DIAGNOSTIC_SCHEMA_VERSION,
     type DiagnosticRepository,
     type DiagnosticResult,
     type DiagnosticSession,
+    type DiagnosticSessionPresentation,
     type DiagnosticStore,
+    type DiagnosticSessionViewStore,
     type RecordDiagnosticFailureInput,
     type RecordDiagnosticExportInput,
     type StartDiagnosticSessionInput
@@ -49,6 +52,27 @@ const manager = new DiagnosticManager(new GmDiagnosticRepository());
 // 页面内只会有一个全本任务；lastTaskId 用于下载完成后的导出失败仍写回本页对应会话
 let currentTaskId: string | null = null;
 let lastTaskId: string | null = null;
+const closeObserverCleanups = new Map<string, () => void>();
+
+function stopBrowserDiagnosticCloseObserver(taskId: string): void {
+    const cleanup = closeObserverCleanups.get(taskId);
+    closeObserverCleanups.delete(taskId);
+    cleanup?.();
+}
+
+function observeBrowserDiagnosticPageClose(taskId: string): void {
+    stopBrowserDiagnosticCloseObserver(taskId);
+    const onPageHide = (event: PageTransitionEvent) => {
+        if (event.persisted) {
+            // bfcache 挂起后页面可能返回，不能把这次离场记录为关闭。
+            return;
+        }
+        stopBrowserDiagnosticCloseObserver(taskId);
+        manager.markCloseObserved(taskId);
+    };
+    window.addEventListener("pagehide", onPageHide);
+    closeObserverCleanups.set(taskId, () => window.removeEventListener("pagehide", onPageHide));
+}
 
 function parseChromeVersion(): string {
     const match = navigator.userAgent.match(/(?:Chrome|Chromium)\/(\d+(?:\.\d+)*)/);
@@ -70,13 +94,13 @@ export function startBrowserDiagnosticSession(
     input: Omit<StartDiagnosticSessionInput, "application" | "settings"> & {
         imageEnabled: boolean;
     },
-    options: { rememberForLaterFailures?: boolean } = {}
+    options: { rememberForLaterFailures?: boolean; observePageClose?: boolean } = {}
 ): DiagnosticSession {
     currentTaskId = input.taskId;
     if (options.rememberForLaterFailures !== false) {
         lastTaskId = input.taskId;
     }
-    return manager.start({
+    const session = manager.start({
         ...input,
         application: getApplicationInfo(),
         settings: {
@@ -85,6 +109,10 @@ export function startBrowserDiagnosticSession(
             epubTagPageEnabled: getEpubTagPageSetting()
         }
     });
+    if (options.observePageClose) {
+        observeBrowserDiagnosticPageClose(input.taskId);
+    }
+    return session;
 }
 
 export function recordBrowserPreflightDiagnosticFailure(
@@ -114,6 +142,7 @@ export function updateBrowserDiagnosticSessionMetadata(
 }
 
 export function finishBrowserDiagnosticSession(taskId: string, result: Exclude<DiagnosticResult, "running">): void {
+    stopBrowserDiagnosticCloseObserver(taskId);
     manager.finish(taskId, result);
     if (currentTaskId === taskId) {
         currentTaskId = null;
@@ -124,6 +153,7 @@ export function finishBrowserSingleChapterDiagnosticSession(
     taskId: string,
     result: Exclude<DiagnosticResult, "running">
 ): void {
+    stopBrowserDiagnosticCloseObserver(taskId);
     const completed = result === "success" ? 1 : 0;
     manager.finish(taskId, result, {
         phase: result === "success" ? "export-ready" : result === "cancelled" ? "cancelled" : "failed",
@@ -162,14 +192,17 @@ export function browserDiagnosticLog(message: string): void {
 
 export const browserDiagnosticEvents: DownloadEventSink = {
     emit(event) {
-        if (!currentTaskId) {
+        const taskId = currentTaskId;
+        if (!taskId) {
             return;
         }
-        manager.recordDownloadEvent(currentTaskId, event);
+        manager.recordDownloadEvent(taskId, event);
         if (event.type === "phase-changed" && ["export-ready", "cancelled"].includes(event.current)) {
+            stopBrowserDiagnosticCloseObserver(taskId);
             currentTaskId = null;
         }
         if (event.type === "download-failed") {
+            stopBrowserDiagnosticCloseObserver(taskId);
             currentTaskId = null;
         }
     }
@@ -177,6 +210,10 @@ export const browserDiagnosticEvents: DownloadEventSink = {
 
 export function listBrowserDiagnosticSessions(): DiagnosticStore {
     return manager.list();
+}
+
+export function listBrowserDiagnosticSessionView(): DiagnosticSessionViewStore {
+    return createDiagnosticSessionView(manager.list(), Date.now());
 }
 
 export function isBrowserDiagnosticSessionActive(taskId: string): boolean {
@@ -188,6 +225,10 @@ export function removeBrowserDiagnosticSession(sessionId: string): void {
 }
 
 export function clearBrowserDiagnosticSessions(): void {
+    for (const cleanup of closeObserverCleanups.values()) {
+        cleanup();
+    }
+    closeObserverCleanups.clear();
     manager.clear();
     currentTaskId = null;
     lastTaskId = null;
@@ -224,7 +265,23 @@ export function downloadBrowserDiagnosticSession(session: DiagnosticSession): vo
     triggerDownload(new Blob([exported.json], { type: "application/json;charset=utf-8" }), exported.filename);
 }
 
-export function formatBrowserDiagnosticSummary(session: DiagnosticSession): string {
+function formatPresentation(presentation: DiagnosticSessionPresentation): string {
+    if (presentation === "closed-unconfirmed") {
+        return "页面已关闭，结果未确认";
+    }
+    if (presentation === "superseded") {
+        return "已由新的续传任务接替，旧结果未确认";
+    }
+    if (presentation === "interrupted") {
+        return "异常中断（结果未确认）";
+    }
+    return presentation;
+}
+
+export function formatBrowserDiagnosticSummary(
+    session: DiagnosticSession,
+    presentation: DiagnosticSessionPresentation = session.result
+): string {
     const failureLines = session.failures.slice(-10).map((failure) => {
         const chapter = failure.chapter
             ? `；章节 ${failure.chapter.index}「${failure.chapter.title}」 ${failure.chapter.url}`
@@ -244,11 +301,16 @@ export function formatBrowserDiagnosticSummary(session: DiagnosticSession): stri
             ? `- ${format}：生成失败，未触发浏览器下载`
             : `- ${format}：生成成功，浏览器下载触发失败`;
     });
+    const presentationLine =
+        presentation === session.result
+            ? null
+            : `诊断视图：${formatPresentation(presentation)}；原始结果：${session.result}`;
     return [
         `ESJ Novel Downloader ${session.application.version}`,
         `${session.application.browser} / ${session.application.userscriptManager}`,
         `作品：${session.book.title}（${session.book.bookId}）`,
         `链接：${session.book.url}`,
+        ...(presentationLine ? [presentationLine] : []),
         `结果：${session.result}；阶段：${session.task.phase}`,
         `章节：${session.task.completedChapters}/${session.task.totalChapters}；缓存恢复：${session.task.restoredChapters}；失败：${session.task.failedChapters}`,
         `插图：${session.settings.imageEnabled ? "开启" : "关闭"}；并发：${session.settings.concurrency}`,

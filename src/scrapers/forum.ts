@@ -118,14 +118,17 @@ export async function scrapeForum(): Promise<void> {
     const stopHeartbeat = startBookDownloadLockHeartbeat(lock, abortActiveDownload);
     createDownloadPopup();
     // 从缓存认领前开始记录，才能覆盖 claim、详情页获取和正式下载阶段的失败
-    startBrowserDiagnosticSession({
-        taskId: lock.taskId,
-        bookId: bid,
-        bookTitle: document.title,
-        pageUrl: location.href,
-        sourcePageType: "forum",
-        imageEnabled
-    });
+    startBrowserDiagnosticSession(
+        {
+            taskId: lock.taskId,
+            bookId: bid,
+            bookTitle: document.title,
+            pageUrl: location.href,
+            sourcePageType: "forum",
+            imageEnabled
+        },
+        { observePageClose: true }
+    );
     let downloadStarted = false;
 
     try {

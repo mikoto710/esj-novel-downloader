@@ -18,6 +18,7 @@ const DIAGNOSTIC_EVENT_LIMIT = 500;
 const DIAGNOSTIC_EXPORT_LIMIT = 50;
 const DIAGNOSTIC_MESSAGE_LIMIT = 2_000;
 const DIAGNOSTIC_ACTIVE_STALE_MS = 24 * 60 * 60 * 1000;
+export const DIAGNOSTIC_CLOSE_UNCONFIRMED_MS = 30 * 60 * 1000;
 
 export type DiagnosticResult = "running" | "success" | "cancelled" | "failed" | "interrupted";
 
@@ -105,6 +106,7 @@ export interface DiagnosticSession {
     updatedAt: number;
     endedAt: number | null;
     result: DiagnosticResult;
+    closeObservedAt?: number;
     application: DiagnosticApplicationInfo;
     book: DiagnosticBookInfo;
     settings: DiagnosticSettings;
@@ -113,6 +115,19 @@ export interface DiagnosticSession {
     exports: DiagnosticExportRecord[];
     events: DiagnosticEventRecord[];
     logs: DiagnosticLogRecord[];
+}
+
+export type DiagnosticSessionPresentation = DiagnosticResult | "closed-unconfirmed" | "superseded";
+
+export interface DiagnosticSessionView {
+    session: DiagnosticSession;
+    presentation: DiagnosticSessionPresentation;
+}
+
+export interface DiagnosticSessionViewStore {
+    active: DiagnosticSessionView[];
+    unconfirmed: DiagnosticSessionView[];
+    history: DiagnosticSessionView[];
 }
 
 export interface DiagnosticStore {
@@ -264,6 +279,57 @@ function normalizeStore(store: DiagnosticStore, now: number): DiagnosticStore {
     return { schemaVersion: DIAGNOSTIC_SCHEMA_VERSION, active, history };
 }
 
+function isFullBookSession(session: DiagnosticSession): boolean {
+    return session.book.sourcePageType === "detail" || session.book.sourcePageType === "forum";
+}
+
+function hasReplacementSession(session: DiagnosticSession, sessions: DiagnosticSession[]): boolean {
+    const closeObservedAt = session.closeObservedAt;
+    if (closeObservedAt === undefined || !isFullBookSession(session)) {
+        return false;
+    }
+    return sessions.some(
+        (candidate) =>
+            candidate.taskId !== session.taskId &&
+            candidate.book.bookId === session.book.bookId &&
+            candidate.startedAt >= closeObservedAt &&
+            candidate.task.phase !== "idle" &&
+            isFullBookSession(candidate)
+    );
+}
+
+/**
+ * 构建只读展示模型；关闭观察和后续续传都不能反向改变下载业务终态。
+ */
+export function createDiagnosticSessionView(store: DiagnosticStore, now: number): DiagnosticSessionViewStore {
+    const allSessions = [...store.active, ...store.history];
+    const active: DiagnosticSessionView[] = [];
+    const unconfirmed: DiagnosticSessionView[] = [];
+    const history = store.history.map((session) => ({ session, presentation: session.result }));
+
+    for (const session of store.active) {
+        const closeObservedAt = session.closeObservedAt;
+        if (closeObservedAt === undefined) {
+            active.push({ session, presentation: "running" });
+            continue;
+        }
+        if (now - closeObservedAt >= DIAGNOSTIC_CLOSE_UNCONFIRMED_MS) {
+            history.push({ session, presentation: "interrupted" });
+            continue;
+        }
+        unconfirmed.push({
+            session,
+            presentation: hasReplacementSession(session, allSessions) ? "superseded" : "closed-unconfirmed"
+        });
+    }
+
+    history.sort(
+        (left, right) =>
+            (right.session.endedAt || right.session.updatedAt) - (left.session.endedAt || left.session.updatedAt)
+    );
+    return { active, unconfirmed, history };
+}
+
 function removeLowestPriorityOldest(history: DiagnosticSession[]): void {
     let candidate = 0;
     for (let index = 1; index < history.length; index++) {
@@ -355,6 +421,19 @@ export class DiagnosticManager {
         store.active.push(session);
         this.repository.save(normalizeStore(store, now));
         return session;
+    }
+
+    markCloseObserved(taskId: string): void {
+        const now = this.now();
+        const store = normalizeStore(this.repository.load(), now);
+        const session = store.active.find((item) => item.taskId === taskId);
+        if (!session || session.closeObservedAt !== undefined) {
+            return;
+        }
+        // 页面关闭只记录可观察事实；不得借此推断取消、失败或异常中断。
+        session.closeObservedAt = now;
+        session.updatedAt = now;
+        this.repository.save(normalizeStore(store, now));
     }
 
     updateSession(

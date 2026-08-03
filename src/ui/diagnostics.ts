@@ -3,7 +3,7 @@ import {
     createBrowserDiagnosticExport,
     downloadBrowserDiagnosticSession,
     formatBrowserDiagnosticSummary,
-    listBrowserDiagnosticSessions,
+    listBrowserDiagnosticSessionView,
     removeBrowserDiagnosticSession
 } from "../adapters/browser-diagnostics";
 import {
@@ -11,8 +11,8 @@ import {
     DIAGNOSTIC_RETENTION_MS,
     DIAGNOSTIC_SESSION_BYTES_LIMIT,
     DIAGNOSTIC_TOTAL_BYTES_LIMIT,
-    type DiagnosticResult,
-    type DiagnosticSession
+    type DiagnosticSessionPresentation,
+    type DiagnosticSessionView
 } from "../core/diagnostics";
 import { el, enableDrag } from "../utils/dom";
 import { createCommonHeader } from "./popup-components";
@@ -20,12 +20,14 @@ import { createCommonHeader } from "./popup-components";
 const DIAGNOSTIC_AUTO_REFRESH_INTERVAL_MS = 3000;
 let disposeActiveDiagnosticPopup: (() => void) | null = null;
 
-const resultPresentation: Record<DiagnosticResult, { icon: string; label: string; color: string }> = {
+const resultPresentation: Record<DiagnosticSessionPresentation, { icon: string; label: string; color: string }> = {
     running: { icon: "🔄", label: "进行中", color: "#2b9bd7" },
     success: { icon: "✅", label: "下载完成", color: "#2e7d32" },
     cancelled: { icon: "🛑", label: "用户取消", color: "#777" },
     failed: { icon: "❌", label: "任务失败", color: "#c62828" },
-    interrupted: { icon: "⚠️", label: "异常中断", color: "#a05a00" }
+    interrupted: { icon: "⚠️", label: "异常中断（结果未确认）", color: "#a05a00" },
+    "closed-unconfirmed": { icon: "⏳", label: "页面已关闭，结果未确认", color: "#a05a00" },
+    superseded: { icon: "↪️", label: "已由新的续传任务接替", color: "#56708a" }
 };
 
 function formatTime(timestamp: number): string {
@@ -36,11 +38,24 @@ function formatBytes(bytes: number): string {
     return bytes < 1024 * 1024 ? `${Math.round(bytes / 1024)} KiB` : `${(bytes / (1024 * 1024)).toFixed(1)} MiB`;
 }
 
-function sessionResult(session: DiagnosticSession): { icon: string; label: string; color: string } {
-    if (session.failures.some((failure) => failure.scope === "export") && session.result === "success") {
+function sessionResult(view: DiagnosticSessionView): { icon: string; label: string; color: string } {
+    if (view.session.failures.some((failure) => failure.scope === "export") && view.presentation === "success") {
         return { icon: "⚠️", label: "导出异常", color: "#a05a00" };
     }
-    return resultPresentation[session.result];
+    return resultPresentation[view.presentation];
+}
+
+function sessionPresentationHint(view: DiagnosticSessionView): string | null {
+    if (view.presentation === "closed-unconfirmed") {
+        return "页面关闭事件已被记录，但尚未收到下载完成、用户取消或任务失败的终态回执。";
+    }
+    if (view.presentation === "superseded") {
+        return "随后已有同一本书的全本任务进入下载流程；此旧会话不再视为进行中，原始结果仍未确认。";
+    }
+    if (view.presentation === "interrupted" && view.session.result === "running") {
+        return "页面关闭后超过 30 分钟仍未收到终态回执。此为诊断视图判断，不会改变下载、缓存或取消状态。";
+    }
+    return null;
 }
 
 async function copyText(text: string): Promise<void> {
@@ -131,9 +146,9 @@ export function createDiagnosticPopup(): void {
             id: "esj-diagnostic-download",
             style: `${buttonStyle}background:#2b9bd7;color:#fff;border-color:#2b9bd7;`,
             onclick: () => {
-                const selected = findSelected();
+                const selected = findSelectedView();
                 if (selected) {
-                    downloadBrowserDiagnosticSession(selected);
+                    downloadBrowserDiagnosticSession(selected.session);
                 }
             }
         },
@@ -145,12 +160,12 @@ export function createDiagnosticPopup(): void {
             id: "esj-diagnostic-copy",
             style: `${buttonStyle}background:#eee;`,
             onclick: async () => {
-                const selected = findSelected();
+                const selected = findSelectedView();
                 if (!selected) {
                     return;
                 }
                 try {
-                    await copyText(formatBrowserDiagnosticSummary(selected));
+                    await copyText(formatBrowserDiagnosticSummary(selected.session, selected.presentation));
                 } catch (error) {
                     console.error("复制诊断摘要失败", error);
                 }
@@ -180,11 +195,11 @@ export function createDiagnosticPopup(): void {
             id: "esj-diagnostic-delete",
             style: `${buttonStyle}background:#fff;color:#c62828;border-color:#d9534f;`,
             onclick: () => {
-                const selected = findSelected();
+                const selected = findSelectedView();
                 if (!selected) {
                     return;
                 }
-                removeBrowserDiagnosticSession(selected.id);
+                removeBrowserDiagnosticSession(selected.session.id);
                 selectedId = null;
                 render();
             }
@@ -192,23 +207,28 @@ export function createDiagnosticPopup(): void {
         ["删除记录"]
     ) as HTMLButtonElement;
 
-    const findSelected = (): DiagnosticSession | null => {
-        const store = listBrowserDiagnosticSessions();
-        return [...store.active, ...store.history].find((session) => session.id === selectedId) || null;
+    const findSelectedView = (): DiagnosticSessionView | null => {
+        const view = listBrowserDiagnosticSessionView();
+        return (
+            [...view.active, ...view.unconfirmed, ...view.history].find((item) => item.session.id === selectedId) ||
+            null
+        );
     };
 
-    const renderDetail = (session: DiagnosticSession | null) => {
+    const renderDetail = (view: DiagnosticSessionView | null) => {
         detail.replaceChildren();
-        downloadButton.disabled = !session;
-        copyButton.disabled = !session;
-        deleteButton.disabled = !session;
-        if (!session) {
+        downloadButton.disabled = !view;
+        copyButton.disabled = !view;
+        deleteButton.disabled = !view;
+        if (!view) {
             detail.appendChild(
                 el("div", { style: "padding:50px 12px;text-align:center;color:#777;" }, ["暂无诊断记录"])
             );
             return;
         }
-        const presentation = sessionResult(session);
+        const session = view.session;
+        const presentation = sessionResult(view);
+        const presentationHint = sessionPresentationHint(view);
         const exported = createBrowserDiagnosticExport(session);
         detail.append(
             el("div", { style: "font-size:18px;font-weight:bold;margin-bottom:6px;overflow-wrap:anywhere;" }, [
@@ -216,7 +236,20 @@ export function createDiagnosticPopup(): void {
             ]),
             el("div", { style: `color:${presentation.color};font-weight:bold;margin-bottom:12px;` }, [
                 `${presentation.icon} ${presentation.label}`
-            ]),
+            ])
+        );
+        if (presentationHint) {
+            detail.appendChild(
+                el(
+                    "div",
+                    {
+                        style: "padding:10px 12px;border:1px solid #9eb7ce;background:#f1f7fc;color:#375a7a;border-radius:6px;line-height:1.6;margin-bottom:12px;"
+                    },
+                    [presentationHint]
+                )
+            );
+        }
+        detail.append(
             el(
                 "div",
                 {
@@ -231,7 +264,7 @@ export function createDiagnosticPopup(): void {
                 {
                     style: "margin:0;padding:12px;white-space:pre-wrap;overflow-wrap:anywhere;background:#f7f7f7;border:1px solid #ddd;border-radius:6px;font:13px/1.65 monospace;"
                 },
-                [formatBrowserDiagnosticSummary(session)]
+                [formatBrowserDiagnosticSummary(session, view.presentation)]
             ),
             el("div", { style: "margin-top:10px;color:#777;font-size:12px;overflow-wrap:anywhere;" }, [
                 `文件：${exported.filename}`
@@ -242,25 +275,26 @@ export function createDiagnosticPopup(): void {
     const render = ({ preserveScroll = false }: { preserveScroll?: boolean } = {}) => {
         const listScrollTop = preserveScroll ? list.scrollTop : 0;
         const detailScrollTop = preserveScroll ? detail.scrollTop : 0;
-        const store = listBrowserDiagnosticSessions();
-        // 进行中会话单独置顶，不占最近 10 条历史名额
-        const sessions = [...store.active, ...store.history];
-        if (!selectedId || !sessions.some((session) => session.id === selectedId)) {
-            selectedId = sessions[0]?.id || null;
+        const view = listBrowserDiagnosticSessionView();
+        // 关闭后尚未确认的会话不可继续占用“进行中”位置，但仍保留给用户检查。
+        const sessions = [...view.active, ...view.unconfirmed, ...view.history];
+        if (!selectedId || !sessions.some((item) => item.session.id === selectedId)) {
+            selectedId = sessions[0]?.session.id || null;
         }
         list.replaceChildren();
         if (sessions.length === 0) {
             list.appendChild(el("div", { style: "padding:40px 12px;text-align:center;color:#777;" }, ["暂无记录"]));
         } else {
-            const appendSection = (title: string, items: DiagnosticSession[]) => {
+            const appendSection = (title: string, items: DiagnosticSessionView[]) => {
                 if (items.length === 0) {
                     return;
                 }
                 list.appendChild(
                     el("div", { style: "padding:9px 12px;color:#777;font-size:12px;font-weight:bold;" }, [title])
                 );
-                items.forEach((session) => {
-                    const presentation = sessionResult(session);
+                items.forEach((item) => {
+                    const session = item.session;
+                    const presentation = sessionResult(item);
                     const selected = session.id === selectedId;
                     const row = el(
                         "button",
@@ -292,10 +326,11 @@ export function createDiagnosticPopup(): void {
                     list.appendChild(row);
                 });
             };
-            appendSection("进行中", store.active);
-            appendSection(`最近任务（最多 ${DIAGNOSTIC_HISTORY_LIMIT} 条）`, store.history);
+            appendSection("进行中", view.active);
+            appendSection("结果待确认", view.unconfirmed);
+            appendSection(`最近任务（最多 ${DIAGNOSTIC_HISTORY_LIMIT} 条）`, view.history);
         }
-        renderDetail(findSelected());
+        renderDetail(sessions.find((item) => item.session.id === selectedId) || null);
         if (preserveScroll) {
             list.scrollTop = listScrollTop;
             detail.scrollTop = detailScrollTop;

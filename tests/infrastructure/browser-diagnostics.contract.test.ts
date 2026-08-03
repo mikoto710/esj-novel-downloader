@@ -1,3 +1,5 @@
+// @vitest-environment jsdom
+
 import { beforeEach, describe, expect, it } from "vitest";
 import {
     browserDiagnosticLog,
@@ -18,6 +20,12 @@ describe("browser diagnostic persistence", () => {
     beforeEach(() => {
         clearBrowserDiagnosticSessions();
     });
+
+    function dispatchPageHide(persisted: boolean): void {
+        const event = new Event("pagehide");
+        Object.defineProperty(event, "persisted", { value: persisted });
+        window.dispatchEvent(event);
+    }
 
     it("persists a completed session with settings, logs and controlled book details", () => {
         startBrowserDiagnosticSession({
@@ -275,5 +283,54 @@ describe("browser diagnostic persistence", () => {
         expect(session.result).toBe("success");
         expect(session.task.phase).toBe("export-ready");
         expect(session.failures).toEqual([]);
+    });
+
+    it("records a real page close without treating bfcache as a terminal outcome", () => {
+        startBrowserDiagnosticSession(
+            {
+                taskId: "task-page-close",
+                bookId: "book-page-close",
+                bookTitle: "Page Close Book",
+                pageUrl: "https://www.esjzone.cc/detail/12.html",
+                sourcePageType: "detail",
+                imageEnabled: false
+            },
+            { observePageClose: true }
+        );
+
+        dispatchPageHide(true);
+        const afterBfcache = listBrowserDiagnosticSessions().active[0];
+        expect(afterBfcache).toEqual(expect.objectContaining({ taskId: "task-page-close", result: "running" }));
+        expect(afterBfcache.closeObservedAt).toBeUndefined();
+
+        dispatchPageHide(false);
+        expect(listBrowserDiagnosticSessions().active[0]).toEqual(
+            expect.objectContaining({
+                taskId: "task-page-close",
+                result: "running",
+                closeObservedAt: expect.any(Number)
+            })
+        );
+    });
+
+    it("stops page-close observation after a real terminal outcome", () => {
+        startBrowserDiagnosticSession(
+            {
+                taskId: "task-page-terminal",
+                bookId: "book-page-terminal",
+                bookTitle: "Terminal Book",
+                pageUrl: "https://www.esjzone.cc/detail/13.html",
+                sourcePageType: "detail",
+                imageEnabled: false
+            },
+            { observePageClose: true }
+        );
+        finishBrowserDiagnosticSession("task-page-terminal", "cancelled");
+
+        dispatchPageHide(false);
+
+        const terminal = listBrowserDiagnosticSessions().history[0];
+        expect(terminal).toEqual(expect.objectContaining({ taskId: "task-page-terminal", result: "cancelled" }));
+        expect(terminal.closeObservedAt).toBeUndefined();
     });
 });
