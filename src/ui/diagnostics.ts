@@ -17,6 +17,9 @@ import {
 import { el, enableDrag } from "../utils/dom";
 import { createCommonHeader } from "./popup-components";
 
+const DIAGNOSTIC_AUTO_REFRESH_INTERVAL_MS = 3000;
+let disposeActiveDiagnosticPopup: (() => void) | null = null;
+
 const resultPresentation: Record<DiagnosticResult, { icon: string; label: string; color: string }> = {
     running: { icon: "🔄", label: "进行中", color: "#2b9bd7" },
     success: { icon: "✅", label: "下载完成", color: "#2e7d32" },
@@ -62,22 +65,46 @@ export function createDiagnosticPopup(): void {
     const existingPopup = document.querySelector("#esj-diagnostics") as HTMLElement | null;
     const openedFromSettings =
         existingPopup?.dataset.releaseSettingsLock === "true" || Boolean(document.querySelector("#esj-settings"));
+    disposeActiveDiagnosticPopup?.();
     existingPopup?.remove();
     document.querySelector("#esj-settings")?.remove();
 
     let selectedId: string | null = null;
+    let refreshTimer: number | null = null;
+    let removalObserver: MutationObserver | null = null;
+    let disposed = false;
     const toggleSettingsLock = (locked: boolean) => {
         document.querySelectorAll(".esj-settings-trigger").forEach((button) => {
             (button as HTMLButtonElement).disabled = locked;
         });
     };
-    const close = () => {
+    if (openedFromSettings) {
+        toggleSettingsLock(true);
+    }
+    const dispose = () => {
+        if (disposed) {
+            return;
+        }
+        disposed = true;
+        if (refreshTimer !== null) {
+            window.clearInterval(refreshTimer);
+            refreshTimer = null;
+        }
+        document.removeEventListener("visibilitychange", onVisibilityChange);
+        removalObserver?.disconnect();
+        removalObserver = null;
         document.querySelector("#esj-diagnostic-clear-confirm")?.remove();
-        popup.remove();
-        // 只有从设置面板进入时，诊断弹窗才接管并负责释放设置按钮锁。
+        if (disposeActiveDiagnosticPopup === dispose) {
+            disposeActiveDiagnosticPopup = null;
+        }
+        // 诊断弹窗仅在接管设置面板后释放设置入口，避免解除其他弹窗已持有的锁。
         if (openedFromSettings) {
             toggleSettingsLock(false);
         }
+    };
+    const close = () => {
+        dispose();
+        popup.remove();
     };
     const header = createCommonHeader("🩺 诊断日志", close);
     const list = el("div", {
@@ -94,7 +121,7 @@ export function createDiagnosticPopup(): void {
         {
             id: "esj-diagnostic-refresh",
             style: `${buttonStyle}background:#eee;margin-right:auto;`,
-            onclick: () => render()
+            onclick: () => render({ preserveScroll: true })
         },
         ["刷新"]
     ) as HTMLButtonElement;
@@ -212,7 +239,9 @@ export function createDiagnosticPopup(): void {
         );
     };
 
-    const render = () => {
+    const render = ({ preserveScroll = false }: { preserveScroll?: boolean } = {}) => {
+        const listScrollTop = preserveScroll ? list.scrollTop : 0;
+        const detailScrollTop = preserveScroll ? detail.scrollTop : 0;
         const store = listBrowserDiagnosticSessions();
         // 进行中会话单独置顶，不占最近 10 条历史名额
         const sessions = [...store.active, ...store.history];
@@ -267,7 +296,39 @@ export function createDiagnosticPopup(): void {
             appendSection(`最近任务（最多 ${DIAGNOSTIC_HISTORY_LIMIT} 条）`, store.history);
         }
         renderDetail(findSelected());
+        if (preserveScroll) {
+            list.scrollTop = listScrollTop;
+            detail.scrollTop = detailScrollTop;
+        }
     };
+
+    const refreshAutomatically = () => {
+        if (disposed || !popup.isConnected) {
+            dispose();
+            return;
+        }
+        // 清除确认期间不重绘，保留用户当前操作与确认对话框的归属。
+        if (document.visibilityState === "visible" && !document.querySelector("#esj-diagnostic-clear-confirm")) {
+            render({ preserveScroll: true });
+        }
+    };
+
+    const scheduleAutoRefresh = () => {
+        if (refreshTimer !== null) {
+            window.clearInterval(refreshTimer);
+            refreshTimer = null;
+        }
+        if (!disposed && document.visibilityState === "visible") {
+            refreshTimer = window.setInterval(refreshAutomatically, DIAGNOSTIC_AUTO_REFRESH_INTERVAL_MS);
+        }
+    };
+
+    function onVisibilityChange(): void {
+        scheduleAutoRefresh();
+        if (document.visibilityState === "visible") {
+            refreshAutomatically();
+        }
+    }
 
     const popup = el(
         "div",
@@ -299,6 +360,15 @@ export function createDiagnosticPopup(): void {
     document.body.appendChild(popup);
     enableDrag(popup, ".esj-common-header");
     render();
+    disposeActiveDiagnosticPopup = dispose;
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    removalObserver = new MutationObserver(() => {
+        if (!popup.isConnected) {
+            dispose();
+        }
+    });
+    removalObserver.observe(document.body, { childList: true });
+    scheduleAutoRefresh();
 
     function showClearConfirm(): Promise<boolean> {
         document.querySelector("#esj-diagnostic-clear-confirm")?.remove();

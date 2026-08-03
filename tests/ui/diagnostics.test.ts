@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
     clearBrowserDiagnosticSessions,
     finishBrowserDiagnosticSession,
@@ -42,6 +42,14 @@ describe("diagnostic history UI", () => {
         clearBrowserDiagnosticSessions();
     });
 
+    afterEach(() => {
+        (document.querySelector("#esj-diagnostics .esj-common-header button") as HTMLButtonElement | null)?.click();
+        document.querySelector("#esj-diagnostic-clear-confirm")?.remove();
+        vi.clearAllTimers();
+        vi.useRealTimers();
+        Object.defineProperty(document, "visibilityState", { configurable: true, value: "visible" });
+    });
+
     it("shows retained sessions, privacy boundaries and selected summary", () => {
         seedDiagnostic();
         createDiagnosticPopup();
@@ -63,6 +71,57 @@ describe("diagnostic history UI", () => {
         seedDiagnostic("success");
         (document.querySelector("#esj-diagnostic-refresh") as HTMLButtonElement).click();
 
+        expect(document.querySelector("#esj-diagnostic-list")?.textContent).toContain("Diagnostic Book");
+    });
+
+    it("automatically refreshes only while visible and resumes immediately", async () => {
+        vi.useFakeTimers();
+        createDiagnosticPopup();
+        Object.defineProperty(document, "visibilityState", { configurable: true, value: "hidden" });
+        document.dispatchEvent(new Event("visibilitychange"));
+
+        seedDiagnostic("success");
+        await vi.advanceTimersByTimeAsync(3000);
+        expect(document.querySelector("#esj-diagnostic-list")?.textContent).not.toContain("Diagnostic Book");
+
+        Object.defineProperty(document, "visibilityState", { configurable: true, value: "visible" });
+        document.dispatchEvent(new Event("visibilitychange"));
+        expect(document.querySelector("#esj-diagnostic-list")?.textContent).toContain("Diagnostic Book");
+    });
+
+    it("preserves selection and scroll positions during automatic refresh", async () => {
+        vi.useFakeTimers();
+        seedDiagnostic("success");
+        seedDiagnostic("failed");
+        createDiagnosticPopup();
+
+        const rows = document.querySelectorAll("#esj-diagnostic-list button");
+        (rows[1] as HTMLButtonElement).click();
+        const list = document.querySelector("#esj-diagnostic-list") as HTMLElement;
+        const detail = document.querySelector("#esj-diagnostic-detail") as HTMLElement;
+        list.scrollTop = 34;
+        detail.scrollTop = 56;
+        const selectedTitle = detail.querySelector("div")?.textContent;
+
+        await vi.advanceTimersByTimeAsync(3000);
+
+        expect(detail.querySelector("div")?.textContent).toBe(selectedTitle);
+        expect(list.scrollTop).toBe(34);
+        expect(detail.scrollTop).toBe(56);
+    });
+
+    it("does not refresh while a clear confirmation is open", async () => {
+        vi.useFakeTimers();
+        createDiagnosticPopup();
+        (document.querySelector("#esj-diagnostic-clear") as HTMLButtonElement).click();
+        seedDiagnostic("success");
+
+        await vi.advanceTimersByTimeAsync(3000);
+        expect(document.querySelector("#esj-diagnostic-list")?.textContent).not.toContain("Diagnostic Book");
+
+        (document.querySelector("#esj-diagnostic-clear-cancel") as HTMLButtonElement).click();
+        await Promise.resolve();
+        await vi.advanceTimersByTimeAsync(3000);
         expect(document.querySelector("#esj-diagnostic-list")?.textContent).toContain("Diagnostic Book");
     });
 
@@ -125,6 +184,44 @@ describe("diagnostic history UI", () => {
         (document.querySelector("#esj-diagnostics .esj-common-header button") as HTMLButtonElement).click();
 
         expect(settingsTrigger.disabled).toBe(true);
+    });
+
+    it("cleans automatic refresh and its settings lock after external removal", async () => {
+        vi.useFakeTimers();
+        const settingsTrigger = document.createElement("button");
+        settingsTrigger.className = "esj-settings-trigger";
+        document.body.appendChild(settingsTrigger);
+        createSettingsPanel();
+        (
+            Array.from(document.querySelectorAll("#esj-settings button")).find(
+                (item) => item.textContent === "诊断日志"
+            ) as HTMLButtonElement
+        ).click();
+
+        (document.querySelector("#esj-diagnostics") as HTMLElement).remove();
+        await Promise.resolve();
+
+        expect(settingsTrigger.disabled).toBe(false);
+        expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it("keeps the settings lock when replacing an open diagnostic popup", () => {
+        const settingsTrigger = document.createElement("button");
+        settingsTrigger.className = "esj-settings-trigger";
+        document.body.appendChild(settingsTrigger);
+        createSettingsPanel();
+        (
+            Array.from(document.querySelectorAll("#esj-settings button")).find(
+                (item) => item.textContent === "诊断日志"
+            ) as HTMLButtonElement
+        ).click();
+
+        createDiagnosticPopup();
+
+        expect(document.querySelectorAll("#esj-diagnostics")).toHaveLength(1);
+        expect(settingsTrigger.disabled).toBe(true);
+        (document.querySelector("#esj-diagnostics .esj-common-header button") as HTMLButtonElement).click();
+        expect(settingsTrigger.disabled).toBe(false);
     });
 
     it("offers diagnostic access from an error popup when a session exists", () => {
