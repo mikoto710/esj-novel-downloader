@@ -17,6 +17,7 @@ const mocks = vi.hoisted(() => ({
     createConfirmPopup: vi.fn(),
     createDownloadPopup: vi.fn(),
     showConflict: vi.fn(),
+    showTerminalFailure: vi.fn(),
     fullCleanup: vi.fn(),
     log: vi.fn()
 }));
@@ -57,6 +58,10 @@ vi.mock("../../src/ui/popups", () => ({
 }));
 vi.mock("../../src/utils/dom", () => ({ fullCleanup: mocks.fullCleanup }));
 vi.mock("../../src/utils/index", () => ({ log: mocks.log }));
+vi.mock("../../src/ui/download-terminal-notices", () => ({
+    showCacheDiscardFailure: vi.fn(),
+    showDownloadTerminalFailure: mocks.showTerminalFailure
+}));
 
 import { scrapeDetail } from "../../src/scrapers/detail";
 import { state } from "../../src/core/state";
@@ -88,7 +93,7 @@ describe("download lifecycle contracts", () => {
         mocks.updateTitle.mockResolvedValue(undefined);
         mocks.createConfirmPopup.mockImplementation((onOk: () => void) => onOk());
         mocks.batchDownload.mockResolvedValue(undefined);
-        mocks.finalize.mockResolvedValue(undefined);
+        mocks.finalize.mockResolvedValue({ cacheDiscarded: false, cacheClearFailure: null });
     });
 
     it.each(["success", "failure", "cancel"] as const)("finalizes exactly once after %s", async (outcome) => {
@@ -104,6 +109,28 @@ describe("download lifecycle contracts", () => {
 
         expect(mocks.finalize).toHaveBeenCalledOnce();
         expect(mocks.finalize).toHaveBeenCalledWith(lock, mocks.stopHeartbeat);
+    });
+
+    it("does not remove a terminal notice owned by the download coordinator", async () => {
+        mocks.batchDownload.mockRejectedValueOnce(new Error("download failed"));
+
+        await scrapeDetail();
+
+        expect(mocks.fullCleanup).not.toHaveBeenCalled();
+    });
+
+    it("shows a common terminal notice when the task lock is lost before downloading", async () => {
+        mocks.markRunning.mockResolvedValueOnce(false);
+
+        await scrapeDetail();
+
+        expect(mocks.batchDownload).not.toHaveBeenCalled();
+        expect(mocks.fullCleanup).toHaveBeenCalledOnce();
+        expect(mocks.showTerminalFailure).toHaveBeenCalledWith({
+            kind: "cancellation",
+            outcome: "ownership-lost",
+            storageFailure: null
+        });
     });
 
     it("shows cache preparation before claiming the writer", async () => {

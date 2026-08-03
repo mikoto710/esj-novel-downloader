@@ -471,7 +471,6 @@ function throwIfMappingFontFailed(ctx: DownloadContext): void {
         return;
     }
     const failures = Array.from(ctx.mappingFailures.values());
-    ctx.dependencies.ui.showMappingFontFailure(failures);
     throw new MappingFontError("font-source-invalid", `${failures.length} 个章节的映射字体无法解析`);
 }
 
@@ -675,6 +674,13 @@ async function performCancellation(ctx: DownloadContext): Promise<void> {
     dependencies.log(resultMessage);
     await dependencies.scheduler.sleep(800);
     dependencies.ui.cleanup();
+    if (cancellationOutcome !== "saved" && cancellationOutcome !== "discarded") {
+        dependencies.ui.showTerminalFailure({
+            kind: "cancellation",
+            outcome: cancellationOutcome,
+            storageFailure
+        });
+    }
 }
 
 // 占位只在内存导出数据中组装，不回写 runtime.chapters 或持久缓存
@@ -896,6 +902,17 @@ export async function runDownload(options: DownloadOptions, dependencies: Downlo
             transition(ctx, "failed");
         }
         dependencies.events.emit({ type: "download-failed", error: reportedError, snapshot: ctx.machine.snapshot });
+        // 正式下载阶段由 coordinator 先清理进度弹窗，再发布唯一终态提示；页面层不得再次 fullCleanup。
+        dependencies.ui.cleanup();
+        if (reportedError instanceof MappingFontError && ctx.mappingFailures.size > 0) {
+            dependencies.ui.showMappingFontFailure(Array.from(ctx.mappingFailures.values()));
+        } else {
+            dependencies.ui.showTerminalFailure({
+                kind: "download",
+                message: getErrorDetails(reportedError).message,
+                storageFailure: ctx.machine.snapshot.storageFailure
+            });
+        }
         throw reportedError;
     } finally {
         cacheBuffer.dispose();

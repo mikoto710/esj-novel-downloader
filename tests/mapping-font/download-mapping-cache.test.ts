@@ -33,6 +33,7 @@ describe("mapped font cache normalization", () => {
             confirmIncompleteChapters: vi.fn(async () => "export-with-placeholders" as const),
             updateMappingFontWarning: vi.fn(),
             showMappingFontFailure: vi.fn(),
+            showTerminalFailure: vi.fn(),
             cleanup: vi.fn(),
             showFormatChoice: vi.fn()
         };
@@ -116,6 +117,7 @@ describe("mapped font cache normalization", () => {
             confirmIncompleteChapters: vi.fn(async () => "export-with-placeholders" as const),
             updateMappingFontWarning: vi.fn(),
             showMappingFontFailure: vi.fn(),
+            showTerminalFailure: vi.fn(),
             cleanup: vi.fn(),
             showFormatChoice: vi.fn()
         };

@@ -44,6 +44,7 @@ import { removeImgTags } from "../utils/text";
 import { normalizeChapterMappingFont } from "../core/mapping-font";
 import { normalizeImageBlob } from "../utils/image-format";
 import { browserDiagnosticEvents, browserDiagnosticLog } from "./browser-diagnostics";
+import { showDownloadTerminalFailure } from "../ui/download-terminal-notices";
 
 // 下载核心的浏览器实现边界
 // DOM、全局 state、网络、解析、图片、缓存和锁实现均限制在本模块中
@@ -137,6 +138,7 @@ const ui: DownloadUiPort = {
     confirmIncompleteChapters,
     updateMappingFontWarning,
     showMappingFontFailure,
+    showTerminalFailure: showDownloadTerminalFailure,
     cleanup: () => fullCleanup(state.originalTitle),
     showFormatChoice
 };

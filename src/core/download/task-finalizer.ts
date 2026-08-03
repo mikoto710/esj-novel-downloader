@@ -2,22 +2,41 @@ import { BookDownloadLock } from "../../types";
 import { releaseBookDownloadLock, shouldDiscardBookDownloadCache } from "../book-lock";
 import { clearBookCacheForTask } from "../cache/book-cache";
 import { clearRuntimeCacheSession, state } from "../state";
-import { normalizeStorageError } from "../cache/storage-error";
+import {
+    createStorageError,
+    normalizeStorageError,
+    toStorageFailure,
+    type StorageFailure
+} from "../cache/storage-error";
 import { log } from "../../utils/index";
 
 /**
  * 收尾已取得锁的全本下载任务
  * 所有成功、失败和取消路径都必须调用本函数，确保心跳停止并最终释放任务锁
  */
-export async function finalizeBookDownloadTask(lock: BookDownloadLock, stopHeartbeat: () => void): Promise<void> {
+export interface BookDownloadFinalizationResult {
+    cacheDiscarded: boolean;
+    cacheClearFailure: StorageFailure | null;
+}
+
+export async function finalizeBookDownloadTask(
+    lock: BookDownloadLock,
+    stopHeartbeat: () => void
+): Promise<BookDownloadFinalizationResult> {
     let cacheDiscarded = false;
+    let cacheClearFailure: StorageFailure | null = null;
     try {
         // 远程“停止并清除”由锁携带意图，只有当前 writer 可以清除对应缓存
         if (await shouldDiscardBookDownloadCache(lock)) {
             try {
                 cacheDiscarded = await clearBookCacheForTask(lock.bookId, lock.taskId);
+                if (!cacheDiscarded) {
+                    cacheClearFailure = toStorageFailure(createStorageError("ownership-lost", "clear"));
+                    log(`❌ 任务已停止，但缓存清理失败：${cacheClearFailure.message}`);
+                }
             } catch (error) {
                 const failure = normalizeStorageError(error, "clear");
+                cacheClearFailure = toStorageFailure(failure);
                 console.error("停止任务时清理缓存失败", failure);
                 log(`❌ 任务已停止，但缓存清理失败：${failure.message}`);
             }
@@ -37,4 +56,5 @@ export async function finalizeBookDownloadTask(lock: BookDownloadLock, stopHeart
             }
         }
     }
+    return { cacheDiscarded, cacheClearFailure };
 }

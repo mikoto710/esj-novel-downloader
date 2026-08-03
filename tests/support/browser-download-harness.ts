@@ -13,6 +13,7 @@ const hoistedBrowserDownloadMocks = vi.hoisted(() => ({
     confirmIncompleteChapters: vi.fn(async () => "export-with-placeholders" as const),
     updateMappingFontWarning: vi.fn(),
     showMappingFontFailure: vi.fn(),
+    showTerminalFailure: vi.fn(),
     updateTrayText: vi.fn(),
     saveCache: vi.fn(),
     clearCache: vi.fn(),
@@ -47,6 +48,9 @@ vi.mock("../../src/ui/popups", () => ({
     confirmIncompleteChapters: hoistedBrowserDownloadMocks.confirmIncompleteChapters,
     updateMappingFontWarning: hoistedBrowserDownloadMocks.updateMappingFontWarning,
     showMappingFontFailure: hoistedBrowserDownloadMocks.showMappingFontFailure
+}));
+vi.mock("../../src/ui/download-terminal-notices", () => ({
+    showDownloadTerminalFailure: hoistedBrowserDownloadMocks.showTerminalFailure
 }));
 vi.mock("../../src/ui/tray", () => ({ updateTrayText: hoistedBrowserDownloadMocks.updateTrayText }));
 vi.mock("../../src/core/cache/book-cache", () => ({

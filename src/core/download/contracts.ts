@@ -63,6 +63,18 @@ export type DownloadPhase =
  */
 export type DownloadCancellationOutcome = "saved" | "save-failed" | "save-timed-out" | "discarded" | "ownership-lost";
 
+export type DownloadTerminalFailure =
+    | {
+          kind: "download";
+          message: string;
+          storageFailure: StorageFailure | null;
+      }
+    | {
+          kind: "cancellation";
+          outcome: Exclude<DownloadCancellationOutcome, "saved" | "discarded">;
+          storageFailure: StorageFailure | null;
+      };
+
 /**
  * 下载核心对外发布的进度快照
  * restored/fetched/processed/persisted 分别表示恢复、网络获取、内容处理和持久化进度，
@@ -169,6 +181,7 @@ export interface DownloadUiPort {
     ): Promise<IncompleteChapterDecision>;
     updateMappingFontWarning(summary: MappingFontSummary): void;
     showMappingFontFailure(failures: ReadonlyArray<{ task: DownloadTask; message: string }>): void;
+    showTerminalFailure(failure: DownloadTerminalFailure): void;
     cleanup(): void;
     showFormatChoice(): void;
 }

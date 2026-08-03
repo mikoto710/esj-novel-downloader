@@ -126,6 +126,10 @@ describe("runDownload characterization", () => {
         expect(harness.ui.showMappingFontFailure).toHaveBeenCalledWith([
             expect.objectContaining({ task: tasks[0], message: expect.stringContaining("invalid test font") })
         ]);
+        expect(harness.ui.cleanup.mock.invocationCallOrder[0]).toBeLessThan(
+            harness.ui.showMappingFontFailure.mock.invocationCallOrder[0]
+        );
+        expect(harness.ui.showTerminalFailure).not.toHaveBeenCalled();
         expect(harness.ui.showFormatChoice).not.toHaveBeenCalled();
     });
 
@@ -165,6 +169,14 @@ describe("runDownload characterization", () => {
             saved: false,
             failure: { reason: "ownership-lost", operation: "write" }
         });
+        expect(harness.ui.showTerminalFailure).toHaveBeenCalledWith({
+            kind: "download",
+            message: expect.any(String),
+            storageFailure: expect.objectContaining({ reason: "ownership-lost", operation: "write" })
+        });
+        expect(harness.ui.cleanup.mock.invocationCallOrder[0]).toBeLessThan(
+            harness.ui.showTerminalFailure.mock.invocationCallOrder[0]
+        );
     });
 
     it("requires an explicit decision and exports safe placeholders without caching them", async () => {
@@ -361,6 +373,7 @@ function createHarness(tasks: DownloadTask[], chapters = new Map<number, Chapter
         >(async () => "export-with-placeholders"),
         updateMappingFontWarning: vi.fn(),
         showMappingFontFailure: vi.fn(),
+        showTerminalFailure: vi.fn(),
         cleanup: vi.fn(),
         showFormatChoice: vi.fn()
     };

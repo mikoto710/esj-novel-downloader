@@ -40,6 +40,7 @@ describe("browser download cancellation contracts", () => {
         expect(mocks.fetchWithTimeout).toHaveBeenCalledTimes(3);
         expect(mocks.showFormatChoice).not.toHaveBeenCalled();
         expect(mocks.fullCleanup).toHaveBeenCalledOnce();
+        expect(mocks.showTerminalFailure).not.toHaveBeenCalled();
     });
 
     it("does not persist a chapter cancelled during image processing", async () => {
@@ -112,6 +113,13 @@ describe("browser download cancellation contracts", () => {
             expect(mocks.saveCache).toHaveBeenCalledOnce();
             expect(mocks.fullCleanup).toHaveBeenCalledOnce();
             expect(mocks.log.mock.calls.flat().join("\n")).toContain("进度保存超时");
+            expect(mocks.showTerminalFailure).toHaveBeenCalledOnce();
+            expect(mocks.showTerminalFailure).toHaveBeenCalledWith(
+                expect.objectContaining({ kind: "cancellation", outcome: "save-timed-out" })
+            );
+            expect(mocks.fullCleanup.mock.invocationCallOrder[0]).toBeLessThan(
+                mocks.showTerminalFailure.mock.invocationCallOrder[0]
+            );
         } finally {
             blockedSave.resolve(true);
             await downloadPromise;

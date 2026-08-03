@@ -16,6 +16,7 @@ scrapers / ui
 - `contracts.ts` exposes the core ports and process data. Browser implementations belong in `adapters/`.
 - `integrity.ts` classifies missing chapters and image retry conditions. `incomplete-chapters.ts` creates export-only placeholders after an explicit user decision; callers must not write those placeholders back to the chapter map or persistent cache.
 - `core/cache/` owns v3 incremental cache, legacy-cache lazy migration, listing, and cross-page synchronization.
+- `ui/download-terminal-notices.ts` translates structured download, cancellation, and cache-discard failures into the common message popup after lifecycle cleanup; core code must not render DOM directly.
 
 ## High-risk invariants
 

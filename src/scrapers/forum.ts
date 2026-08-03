@@ -17,6 +17,7 @@ import { finalizeBookDownloadTask } from "../core/download/task-finalizer";
 import { normalizeStorageError, StorageError } from "../core/cache/storage-error";
 import { getImageDownloadSetting } from "../core/config";
 import { getImageCacheConfirmHint } from "../ui/image-cache-compatibility";
+import { showCacheDiscardFailure, showDownloadTerminalFailure } from "../ui/download-terminal-notices";
 import {
     browserDiagnosticLog as log,
     finishBrowserDiagnosticSession,
@@ -125,6 +126,7 @@ export async function scrapeForum(): Promise<void> {
         sourcePageType: "forum",
         imageEnabled
     });
+    let downloadStarted = false;
 
     try {
         log("正在准备本地缓存...");
@@ -239,6 +241,13 @@ export async function scrapeForum(): Promise<void> {
             }
             log("下载任务已取消或任务锁已失效，未启动下载。");
             fullCleanup(state.originalTitle);
+            if (!state.abortFlag) {
+                showDownloadTerminalFailure({
+                    kind: "cancellation",
+                    outcome: "ownership-lost",
+                    storageFailure: null
+                });
+            }
             return;
         }
 
@@ -258,6 +267,7 @@ export async function scrapeForum(): Promise<void> {
             tasks
         } as const;
         updateBrowserDiagnosticSession(options);
+        downloadStarted = true;
         await batchDownload(options);
     } catch (e: any) {
         if (state.abortFlag || e.name === "AbortError" || e.message === "User Aborted") {
@@ -265,8 +275,8 @@ export async function scrapeForum(): Promise<void> {
             return;
         }
         console.error(e);
-        // coordinator 已记录的终态错误不在页面层重复追加；这里只有启动阶段错误仍保持 active
-        if (isBrowserDiagnosticSessionActive(lock.taskId)) {
+        // 正式下载错误已由 coordinator 清理并显示终态弹窗；页面层只处理启动阶段错误。
+        if (!downloadStarted && isBrowserDiagnosticSessionActive(lock.taskId)) {
             recordBrowserDiagnosticFailure(
                 {
                     scope: e instanceof StorageError ? "storage" : "page",
@@ -276,11 +286,29 @@ export async function scrapeForum(): Promise<void> {
                 },
                 lock.taskId
             );
+            log(e instanceof StorageError ? `❌ 下载进度未保存：${e.message}` : "❌ 抓取流程异常: " + e.message);
+            fullCleanup(state.originalTitle);
+            showMessagePopup({
+                tone: "error",
+                title: "无法开始下载",
+                message: e instanceof StorageError ? e.message : "下载启动过程中发生异常，请稍后重试。",
+                details: e instanceof StorageError ? undefined : e.message
+            });
         }
-        log(e instanceof StorageError ? `❌ 下载进度未保存：${e.message}` : "❌ 抓取流程异常: " + e.message);
-        fullCleanup(state.originalTitle);
     } finally {
         finishBrowserDiagnosticSession(lock.taskId, state.abortFlag ? "cancelled" : "failed");
-        await finalizeBookDownloadTask(lock, stopHeartbeat);
+        const finalization = await finalizeBookDownloadTask(lock, stopHeartbeat);
+        if (finalization.cacheClearFailure) {
+            recordBrowserDiagnosticFailure(
+                {
+                    scope: "storage",
+                    stage: "cache-discard",
+                    code: finalization.cacheClearFailure.reason,
+                    message: finalization.cacheClearFailure.message
+                },
+                lock.taskId
+            );
+            showCacheDiscardFailure(finalization.cacheClearFailure);
+        }
     }
 }
