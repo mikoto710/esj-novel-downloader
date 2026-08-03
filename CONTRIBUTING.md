@@ -37,7 +37,7 @@ npm run build
 npm run test:stress
 ```
 
-`npm run build` 包含 TypeScript 检查、普通自动化测试和 userscript 构建，但不包含格式检查或压力测试。
+`npm run build` 包含 TypeScript 检查、普通自动化测试、ESLint、格式检查和 userscript 构建，但不包含压力测试。
 
 ## 架构边界
 
