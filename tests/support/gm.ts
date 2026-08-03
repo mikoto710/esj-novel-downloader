@@ -1,7 +1,12 @@
 import { vi } from "vitest";
 
+type GmRequestDetails = Tampermonkey.Request<unknown>;
+type GmLoadResponse = Tampermonkey.Response<unknown>;
+type GmErrorResponse = Tampermonkey.ErrorResponse;
+const GM_READY_STATE_DONE = 4 as Tampermonkey.ReadyState;
+
 interface PendingGmRequest {
-    details: GM_RequestDetails;
+    details: GmRequestDetails;
     aborted: boolean;
     settled: boolean;
     abort: ReturnType<typeof vi.fn>;
@@ -16,9 +21,9 @@ export interface UserscriptApiMocks {
     readonly getValue: ReturnType<typeof vi.fn>;
     readonly setValue: ReturnType<typeof vi.fn>;
     readonly xmlhttpRequest: ReturnType<typeof vi.fn>;
-    respond(index: number, response?: Partial<GM_Response>): void;
-    fail(index: number, response?: Partial<GM_Response>): void;
-    timeout(index: number, response?: Partial<GM_Response>): void;
+    respond(index: number, response?: Partial<GmLoadResponse>): void;
+    fail(index: number, response?: Partial<GmErrorResponse>): void;
+    timeout(index: number): void;
 }
 
 let installedMocks: UserscriptApiMocks | null = null;
@@ -33,7 +38,7 @@ export function installUserscriptApiMocks(initialValues: Record<string, unknown>
     const setValue = vi.fn((key: string, value: unknown) => {
         values.set(key, value);
     });
-    const xmlhttpRequest = vi.fn((details: GM_RequestDetails) => {
+    const xmlhttpRequest = vi.fn((details: GmRequestDetails) => {
         const pending: PendingGmRequest = {
             details,
             aborted: false,
@@ -46,7 +51,7 @@ export function installUserscriptApiMocks(initialValues: Record<string, unknown>
             }
             pending.settled = true;
             pending.aborted = true;
-            details.onabort?.(createGmResponse({ status: 0, statusText: "abort" }));
+            details.onabort?.();
         });
         requests.push(pending);
         return { abort: pending.abort };
@@ -61,17 +66,19 @@ export function installUserscriptApiMocks(initialValues: Record<string, unknown>
         respond: (index, response) => {
             const pending = getPendingRequest(requests, index);
             markRequestSettled(pending, index);
-            pending.details.onload?.(createGmResponse(response));
+            const loaded = createGmResponse(response);
+            pending.details.onload?.call(loaded, loaded);
         },
         fail: (index, response) => {
             const pending = getPendingRequest(requests, index);
             markRequestSettled(pending, index);
-            pending.details.onerror?.(createGmResponse({ status: 500, statusText: "error", ...response }));
+            const failed = createGmErrorResponse(response);
+            pending.details.onerror?.call(failed, failed);
         },
-        timeout: (index, response) => {
+        timeout: (index) => {
             const pending = getPendingRequest(requests, index);
             markRequestSettled(pending, index);
-            pending.details.ontimeout?.(createGmResponse({ status: 0, statusText: "timeout", ...response }));
+            pending.details.ontimeout?.();
         }
     };
 
@@ -120,16 +127,31 @@ function getPendingRequest(requests: PendingGmRequest[], index: number): Pending
     return pending;
 }
 
-function createGmResponse(overrides: Partial<GM_Response> = {}): GM_Response {
+function createGmResponse(overrides: Partial<GmLoadResponse> = {}): GmLoadResponse {
     return {
         finalUrl: "https://www.esjzone.cc/forum/1/2.html",
-        readyState: 4,
+        readyState: GM_READY_STATE_DONE,
         status: 200,
         statusText: "OK",
         responseHeaders: "",
         response: "",
         responseText: "",
         responseXML: null,
+        context: undefined,
+        ...overrides
+    };
+}
+
+function createGmErrorResponse(overrides: Partial<GmErrorResponse> = {}): GmErrorResponse {
+    return {
+        readyState: GM_READY_STATE_DONE,
+        status: 500,
+        statusText: "error",
+        responseHeaders: "",
+        response: "",
+        responseText: "",
+        responseXML: null,
+        error: "error",
         ...overrides
     };
 }

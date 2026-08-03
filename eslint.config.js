@@ -38,18 +38,4 @@ export default [
         }
     },
 
-    // 补充 globals 库里可能没有的油猴变量
-    {
-        files: ["src/**/*.ts"],
-        languageOptions: {
-            globals: {
-                JSZip: "readonly",
-                GM_xmlhttpRequest: "readonly",
-                GM_setValue: "readonly",
-                GM_getValue: "readonly",
-                GM_registerMenuCommand: "readonly",
-                unsafeWindow: "readonly"
-            }
-        }
-    }
 ]
