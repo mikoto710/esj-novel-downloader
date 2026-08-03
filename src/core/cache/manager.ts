@@ -33,7 +33,7 @@ function createPersistentListItem(entry: PersistentCacheEntry): CacheListItem {
     return {
         bookId: entry.bookId,
         bookName: entry.meta?.rawBookName || entry.meta?.bookName || `Book ${entry.bookId}`,
-        rawBookName: entry.meta?.rawBookName,
+        ...(entry.meta?.rawBookName ? { rawBookName: entry.meta.rawBookName } : {}),
         author: entry.meta?.author || "-",
         pageUrl: entry.meta?.pageUrl || "",
         totalChapters: entry.totalChapters,
@@ -97,10 +97,11 @@ export async function listManagedCaches(): Promise<CacheListItem[]> {
             const persistentChapterCount = existing?.persistentChapterCount || 0;
             const progressCount = Math.max(runtime.completedCount, runtime.cachedChapterCount, persistentChapterCount);
 
+            const rawBookName = runtime.rawBookName || existing?.rawBookName;
             result.set(runtime.bookId, {
                 bookId: runtime.bookId,
                 bookName: runtime.rawBookName || runtime.bookName || existing?.bookName || `Book ${runtime.bookId}`,
-                rawBookName: runtime.rawBookName || existing?.rawBookName,
+                ...(rawBookName ? { rawBookName } : {}),
                 author: runtime.author || existing?.author || "-",
                 pageUrl: runtime.pageUrl || existing?.pageUrl || "",
                 totalChapters: runtime.totalChapters || existing?.totalChapters || null,
@@ -123,10 +124,11 @@ export async function listManagedCaches(): Promise<CacheListItem[]> {
     // 活动锁最终覆盖任务状态，避免把下载中的条目标记为普通缓存
     activeLocks.forEach((lock) => {
         const existing = result.get(lock.bookId);
+        const rawBookName = existing?.rawBookName;
         result.set(lock.bookId, {
             bookId: lock.bookId,
             bookName: existing?.bookName || lock.bookName || `Book ${lock.bookId}`,
-            rawBookName: existing?.rawBookName,
+            ...(rawBookName ? { rawBookName } : {}),
             author: existing?.author || "-",
             pageUrl: existing?.pageUrl || "",
             totalChapters: existing?.totalChapters || null,

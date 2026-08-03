@@ -402,7 +402,11 @@ export async function releaseBookDownloadLock(
                 status: "released",
                 releasedAt,
                 heartbeatAt: releasedAt,
-                discardCacheCompletedAt: options.cacheDiscarded ? releasedAt : current.discardCacheCompletedAt
+                ...(options.cacheDiscarded
+                    ? { discardCacheCompletedAt: releasedAt }
+                    : current.discardCacheCompletedAt === undefined
+                      ? {}
+                      : { discardCacheCompletedAt: current.discardCacheCompletedAt })
             };
         },
         lockStore

@@ -245,20 +245,21 @@ export async function downloadCurrentPage(format: "txt" | "html" = "txt"): Promi
             URL.revokeObjectURL(a.href);
 
             await addDownloadHistory({
-                bookId: bookId === "unknown" ? undefined : bookId,
+                ...(bookId === "unknown" ? {} : { bookId }),
                 bookName: htmlMeta.bookName || parsed.bookName || "未命名小说",
                 author: htmlMeta.author || author,
                 format,
                 sourcePageType: "single",
                 chapterInfo: title,
-                imageInfo:
-                    format === "html"
-                        ? {
+                ...(format === "html"
+                    ? {
+                          imageInfo: {
                               enabled: imageEnabled,
                               successCount: imageSuccessCount,
                               failureCount: imageFailureCount
                           }
-                        : undefined,
+                      }
+                    : {}),
                 pageUrl: location.href
             });
 

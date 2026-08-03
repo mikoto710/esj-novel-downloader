@@ -867,13 +867,13 @@ export function showFormatChoice(): void {
                       failureCount: data.chapters.reduce((count, chapter) => count + (chapter.imageErrors || 0), 0)
                   };
         return addDownloadHistory({
-            bookId: context?.bookId,
+            ...(context?.bookId === undefined ? {} : { bookId: context.bookId }),
             bookName: context?.rawBookName || data.metadata.title || "未命名小说",
             author: data.metadata.author || "",
             format,
             sourcePageType: context?.sourcePageType || "detail",
             chapterInfo: context?.chapterInfo || `${data.chapters.length} 章`,
-            imageInfo,
+            ...(imageInfo === undefined ? {} : { imageInfo }),
             pageUrl: context?.pageUrl || location.href
         });
     }

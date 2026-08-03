@@ -317,7 +317,7 @@ export function fetchWithTimeout(
             method: (options.method as "GET" | "POST") || "GET",
             url: url,
             headers: options.headers as Record<string, string>,
-            data: options.body ?? undefined,
+            ...(options.body == null ? {} : { data: options.body }),
             timeout: timeout,
             responseType: "blob",
             anonymous: options.credentials === "omit",

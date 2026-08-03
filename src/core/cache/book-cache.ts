@@ -68,7 +68,7 @@ function toV3PersistentEntry(data: CacheManifestV3): PersistentCacheEntry {
         chapterCount: data.chapterCount,
         totalChapters: data.meta?.totalChapters ?? null,
         meta: data.meta || null,
-        writerTaskId: data.writerTaskId,
+        ...(data.writerTaskId === undefined ? {} : { writerTaskId: data.writerTaskId }),
         isLegacy: false
     };
 }
@@ -87,7 +87,7 @@ function toLegacyPersistentEntry(record: LegacyCacheRecord): PersistentCacheEntr
         chapterCount: data.chapters.length,
         totalChapters: data.meta?.totalChapters ?? null,
         meta: data.meta || null,
-        writerTaskId: data.writerTaskId,
+        ...(data.writerTaskId === undefined ? {} : { writerTaskId: data.writerTaskId }),
         isLegacy: !data.meta
     };
 }
@@ -105,7 +105,11 @@ export async function loadBookCache(bookId: string): Promise<BookCacheLoadResult
             }
             const map = await readCacheChaptersV3(bookId);
             console.log(`✅ 读取到本地缓存，章节数：${map.size}`);
-            return { size: map.size, map: map.size > 0 ? map : null, meta: manifest.meta };
+            return {
+                size: map.size,
+                map: map.size > 0 ? map : null,
+                ...(manifest.meta === undefined ? {} : { meta: manifest.meta })
+            };
         }
 
         const legacy = await readLegacyCache(bookId);
@@ -119,7 +123,11 @@ export async function loadBookCache(bookId: string): Promise<BookCacheLoadResult
 
         const map = new Map<number, Chapter>(legacy.data.chapters);
         console.log(`✅ 读取到本地缓存，章节数：${map.size}`);
-        return { size: map.size, map: map.size > 0 ? map : null, meta: legacy.data.meta };
+        return {
+            size: map.size,
+            map: map.size > 0 ? map : null,
+            ...(legacy.data.meta === undefined ? {} : { meta: legacy.data.meta })
+        };
     } catch (error) {
         console.error("读取缓存失败", error);
         throw normalizeStorageError(error, "read");
@@ -139,7 +147,10 @@ export async function claimBookCache(
     try {
         const legacy = await readLegacyCache(bookId);
         const migrationSource = isReusableLegacyCache(legacy?.data)
-            ? { chapters: legacy.data.chapters, meta: legacy.data.meta }
+            ? {
+                  chapters: legacy.data.chapters,
+                  ...(legacy.data.meta === undefined ? {} : { meta: legacy.data.meta })
+              }
             : null;
         const attemptCount = migrationSource ? 2 : 1;
         let claimResult: Awaited<ReturnType<typeof claimCacheV3>> | null = null;

@@ -209,7 +209,7 @@ function createBuffer(
     return new ChapterCacheWriteBuffer({
         policy,
         write,
-        estimateBytes,
+        ...(estimateBytes === undefined ? {} : { estimateBytes }),
         schedule: () => () => undefined
     });
 }

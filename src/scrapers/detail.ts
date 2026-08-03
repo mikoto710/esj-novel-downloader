@@ -201,7 +201,7 @@ export async function scrapeDetail(): Promise<void> {
             introTxt: meta.introTxt,
             description: meta.description,
             tags: meta.tags,
-            coverUrl: meta.coverUrl,
+            ...(meta.coverUrl === undefined ? {} : { coverUrl: meta.coverUrl }),
             pageUrl: location.href,
             sourcePageType: "detail",
             imageEnabled,

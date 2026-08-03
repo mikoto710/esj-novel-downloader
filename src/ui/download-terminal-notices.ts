@@ -3,11 +3,16 @@ import type { StorageFailure } from "../core/cache/storage-error";
 import { showMessagePopup } from "./message-popup";
 
 function showStorageFailure(title: string, message: string, failure: StorageFailure | null): void {
+    if (!failure) {
+        showMessagePopup({ tone: "error", title, message });
+        return;
+    }
+
     showMessagePopup({
         tone: "error",
         title,
         message,
-        details: failure ? `原因：${failure.message}\n代码：${failure.reason}\n操作：${failure.operation}` : undefined
+        details: `原因：${failure.message}\n代码：${failure.reason}\n操作：${failure.operation}`
     });
 }
 

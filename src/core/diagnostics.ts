@@ -395,13 +395,15 @@ export class DiagnosticManager {
                     stage: input.stage,
                     code: input.code,
                     message: limitText(input.message),
-                    chapter: input.chapter
+                    ...(input.chapter
                         ? {
-                              index: input.chapter.index + 1,
-                              title: input.chapter.title,
-                              url: sanitizeDiagnosticUrl(input.chapter.url)
+                              chapter: {
+                                  index: input.chapter.index + 1,
+                                  title: input.chapter.title,
+                                  url: sanitizeDiagnosticUrl(input.chapter.url)
+                              }
                           }
-                        : undefined
+                        : {})
                 });
             },
             true

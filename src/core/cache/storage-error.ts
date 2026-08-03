@@ -74,7 +74,9 @@ export class StorageError extends Error {
         this.name = "StorageError";
         this.reason = failure.reason;
         this.operation = failure.operation;
-        this.causeReason = failure.causeReason;
+        if (failure.causeReason !== undefined) {
+            this.causeReason = failure.causeReason;
+        }
     }
 }
 
@@ -104,9 +106,9 @@ export function normalizeStorageError(
             reason,
             operation,
             message,
-            causeReason: options.migration
-                ? (causeReason as Exclude<StorageFailureReason, "migration-failed">)
-                : undefined
+            ...(options.migration
+                ? { causeReason: causeReason as Exclude<StorageFailureReason, "migration-failed"> }
+                : {})
         },
         { cause: error }
     );
@@ -127,7 +129,7 @@ export function toStorageFailure(error: StorageError): StorageFailure {
         reason: error.reason,
         operation: error.operation,
         message: error.message,
-        causeReason: error.causeReason
+        ...(error.causeReason === undefined ? {} : { causeReason: error.causeReason })
     };
 }
 

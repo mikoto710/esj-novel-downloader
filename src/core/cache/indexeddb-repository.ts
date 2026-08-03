@@ -248,9 +248,9 @@ export async function claimCacheV3(
                         ...current,
                         ts: Date.now(),
                         chapterCount: compatibility === "compatible" ? current.chapterCount : 0,
-                        meta: current.meta
-                            ? { ...current.meta, imageEnabled: requestedImageEnabled, updatedAt: Date.now() }
-                            : undefined,
+                        ...(current.meta
+                            ? { meta: { ...current.meta, imageEnabled: requestedImageEnabled, updatedAt: Date.now() } }
+                            : {}),
                         writerTaskId: taskId,
                         cleared: false
                     } satisfies CacheManifestV3,
@@ -281,7 +281,7 @@ export async function claimCacheV3(
                     bookId,
                     ts: Date.now(),
                     chapterCount: migratedEntries.length,
-                    meta: migratedEntries.length > 0 ? migrationSource?.meta : undefined,
+                    ...(migratedEntries.length > 0 && migrationSource?.meta ? { meta: migrationSource.meta } : {}),
                     writerTaskId: taskId,
                     cleared: false
                 } satisfies CacheManifestV3,
@@ -330,7 +330,7 @@ export async function putCacheBatchV3(
                         ...current,
                         ts: normalizedMeta?.updatedAt || Date.now(),
                         chapterCount: countRequest.result,
-                        meta: normalizedMeta
+                        ...(normalizedMeta === undefined ? {} : { meta: normalizedMeta })
                     } satisfies CacheManifestV3,
                     getManifestKey(bookId)
                 );

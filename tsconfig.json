@@ -4,6 +4,8 @@
         "module": "ESNext",
         "lib": ["DOM", "ESNext"],
         "strict": true,
+        "exactOptionalPropertyTypes": true,
+        "skipLibCheck": true,
         "moduleResolution": "Bundler",
         "allowSyntheticDefaultImports": true,
         "noImplicitAny": true,

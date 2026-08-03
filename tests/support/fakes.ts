@@ -348,6 +348,6 @@ async function waitForDeferred<T>(deferred: Deferred<T>, signal?: AbortSignal): 
 function structuredCloneChapter(chapter: Chapter): Chapter {
     return {
         ...chapter,
-        images: chapter.images?.map((image) => ({ ...image }))
+        ...(chapter.images === undefined ? {} : { images: chapter.images.map((image) => ({ ...image })) })
     };
 }

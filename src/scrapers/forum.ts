@@ -151,9 +151,8 @@ export async function scrapeForum(): Promise<void> {
 
         let doc: Document;
         try {
-            const resp = await fetch(detailUrl, {
-                signal: state.abortController?.signal
-            });
+            const signal = state.abortController?.signal;
+            const resp = await fetch(detailUrl, signal === undefined ? {} : { signal });
             if (!resp.ok) {
                 throw new Error(`HTTP Error ${resp.status}`);
             }
@@ -260,7 +259,7 @@ export async function scrapeForum(): Promise<void> {
             introTxt: meta.introTxt,
             description: meta.description,
             tags: meta.tags,
-            coverUrl: meta.coverUrl,
+            ...(meta.coverUrl === undefined ? {} : { coverUrl: meta.coverUrl }),
             pageUrl: detailUrl,
             sourcePageType: "forum",
             imageEnabled,
