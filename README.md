@@ -1,6 +1,6 @@
 # ESJ Novel Downloader
 
-![Version](https://img.shields.io/github/v/release/mikoto710/esj-novel-downloader?label=version) ![License](https://img.shields.io/github/license/mikoto710/esj-novel-downloader) ![Language](https://img.shields.io/badge/language-TypeScript-blue)
+![Stable](https://img.shields.io/github/v/release/mikoto710/esj-novel-downloader?label=stable) ![Pre-release](https://img.shields.io/github/v/release/mikoto710/esj-novel-downloader?include_prereleases=true&label=pre-release) ![License](https://img.shields.io/github/license/mikoto710/esj-novel-downloader) ![Language](https://img.shields.io/badge/language-TypeScript-blue)
 
 一个用于 **ESJZone** 的 Tampermonkey 脚本。  
 支持 **TXT / EPUB / HTML 下载**，并适配多种页面类型 (小说详情页 / 单章阅读页 / 论坛列表页)。
@@ -38,131 +38,72 @@
 
 ## 使用方法
 
-脚本会自动检测当前页面类型并提供相应的下载入口。
+脚本会自动检测当前页面类型，并提供相应的下载入口。
 
 ### 全本下载
 
 1. 在小说详情页或论坛列表页点击“全本下载”。
-2. 如果检测到未完成的本地缓存，确认窗口会显示已缓存章节数；继续下载时会跳过已有章节。
-3. 下载过程中可以最小化进度窗口。点击“取消任务”会停止抓取并尝试保存当前进度。
-4. 主抓取完成后，脚本会检查缺失章节；开启正文插图时，也会检查失败图片并尝试自动补抓。
-5. 自动补抓后如果仍有章节缺失，脚本会列出缺失章节，并让你选择只重试缺失章节、使用明确占位继续导出，或取消并保留缓存。占位只写入本次 TXT、HTML、EPUB 导出，不会保存为章节缓存。
-6. 处理完成后选择 TXT、EPUB 或 HTML 导出；开启正文插图时，窗口会显示图片处理结果。
+2. 如果存在未完成的本地缓存，可以继续下载并跳过已经完成的章节。
+3. 下载期间可以最小化进度窗口；点击“取消任务”会停止抓取并尝试保存当前进度。
+4. 下载完成后会自动检查缺失章节；开启正文插图时，也会检查失败图片并尝试补抓。
+5. 如果补抓后仍有章节缺失，可以选择：
+    - 只重试缺失章节；
+    - 使用明确占位继续导出；
+    - 取消并保留缓存。
+6. 处理完成后，可以选择 TXT、EPUB 或 HTML 导出。
+
+缺章占位只会写入本次导出，不会保存到章节缓存。
 
 ### 单章导出
 
-在单章阅读页顶部会显示 TXT 和 HTML 两个下载按钮：
+单章阅读页顶部提供以下按钮：
 
-- **TXT**: 导出当前章节的纯文本内容。
-- **HTML**: 导出带排版的单页文件；开启正文插图后，会尝试将图片写入文件。
+- **TXT**：导出当前章节的纯文本内容。
+- **HTML**：导出保留排版的单页文件；开启正文插图后会尝试嵌入图片。
 
 ### 设置
 
 小说详情页和论坛列表页的“全本下载”按钮旁提供“设置”入口：
 
-- **下载线程数**: 设置并发章节请求数量，默认为 5。更高的并发数不一定更快，可能受到网络或站点限制。
-- **下载正文插图**: 抓取章节正文中的图片并写入 EPUB / HTML。开启后会增加下载时间、缓存占用和导出体积。
-- **生成 EPUB 标签页**: 在 EPUB 中生成独立标签页；关闭后标签仍会写入 EPUB 元数据。
-- **缓存管理**: 查看和清理持久缓存、当前页会话缓存，以及停止正在运行的下载任务。
-- **下载记录**: 查看、筛选和清理全本及单章导出记录。
-- **诊断日志**: 查看当前任务和最近 10 次任务的结构化诊断记录，并下载 JSON 或复制摘要用于问题反馈。
+- **下载线程数**：设置并发章节请求数量，默认为 5。
+- **下载正文插图**：抓取正文图片并写入 EPUB / HTML；会增加下载时间、缓存占用和文件体积。
+- **生成 EPUB 标签页**：控制是否在 EPUB 中生成独立标签页。
+- **缓存管理**：查看或清理下载缓存，以及停止正在运行的任务。
+- **下载记录**：查看和清理全本及单章导出记录。
+- **诊断日志**：查看当前任务和最近 10 次任务的诊断记录。
 
-> **正文插图说明**: 插图开关不影响封面。开启后，脚本会在章节抓取阶段下载并处理正文图片；成功的图片会写入 EPUB / HTML，失败的图片会保留原始链接并计入结果统计。TXT 不包含图片；当前版本开启该选项后，TXT 下载也可能执行图片处理，因此仅需要 TXT 时建议关闭。部分图片需要脚本管理器授予跨域访问权限。
->
-> 切换插图设置时不会立即全局清理缓存。正在下载的任务继续使用启动时的设置；后续同一本书开始新任务时会比较缓存设置，不一致或旧缓存缺少设置记录时才失效对应章节并重新抓取。
+正文插图开关不影响封面。图片抓取失败时，脚本会尽量保留原始链接并在结果中提示。部分图片可能需要脚本管理器授予跨域访问权限。
 
-### 诊断日志
+### 诊断与问题反馈
 
-全本下载、缓存、全本导出或单章导出发生错误时，错误弹窗会提供“查看诊断日志”入口；也可以随时从“设置 → 诊断与反馈”打开历史列表。当前进行中的任务不占历史名额，已结束记录最多保留 10 条和 7 天，并受 2 MiB 总容量与 256 KiB 单条上限约束。
+下载、缓存或导出发生错误时，可以从错误弹窗或“设置 → 诊断与反馈”打开诊断记录，并下载 JSON 或复制摘要。
 
-诊断 JSON 会包含脚本与运行环境、作品名称、`bookId`、作品 URL、任务设置、阶段与计数、导出格式、文件生成及浏览器下载触发结果，以及失败章节的序号、标题和 URL，方便开发者定位具体问题。文件不会包含小说正文、章节 HTML、Cookie、认证或请求头、图片、字体、Blob、data URI、Base64、原始 IndexedDB 记录或未清理的完整调用栈。由于文件仍包含阅读作品和章节信息，请确认后再公开上传。
+诊断文件会包含运行环境、作品名称与链接、任务设置、导出结果和失败章节信息，但不会包含小说正文、登录凭据、图片或字体内容。由于文件仍包含阅读作品和章节信息，请确认后再公开上传。
+
+下载进度窗口只保留最近 1000 个日志事件。需要反馈问题时，建议提供对应任务的诊断 JSON，并说明复现步骤、导出格式和正文插图设置。
 
 ### 自定义映射字体正文
 
-部分 ESJZone 作品会用章节专属字体替换正文字符。页面视觉上仍是正常汉字，但底层 Unicode 并不是真实正文，因此这不是 UTF-8 文件编码问题。
+部分 ESJZone 作品使用章节专属字体显示正文。页面视觉上是正常汉字，但底层 Unicode 并不是真实正文，因此这不是 UTF-8 编码问题。
 
-- 脚本会按严格结构识别此类章节；首次检测到后暂停领取新章节并要求确认，普通章节不受影响。
-- 映射正文无法生成正确 TXT，因此全本和单章的 TXT 按钮会禁用。
-- HTML / EPUB 会嵌入每章经过校验的原始 WOFF2，但能否正确显示取决于浏览器或阅读器是否支持并启用内嵌字体；复制、搜索、词典、朗读和无障碍阅读仍可能得到错误字符。
-- EPUB 阅读器兼容性并不一致：目前实测 Thorium Reader 可以正常渲染映射字体，Chrome 扩展 Beautiful EPUB Reader 仍会显示未映射的底层字符。遇到显示异常时，请先改用支持内嵌字体的阅读器。
-- 每章可能使用独立字体，缓存和导出文件会明显增大。已验证样本中，231 个字体章节约为 EPUB 增加 76.7 MiB，单文件 HTML 使用 base64 后约增加 102.3 MiB。
-- 字体缺失、结构不匹配或完整性校验失败时会阻止静默导出，并显示失败章节。
+- 脚本检测到此类章节后会暂停领取新章节，并要求用户确认是否继续。
+- 映射正文无法生成正确 TXT，因此 TXT 导出会被禁用。
+- HTML / EPUB 会嵌入章节字体，但复制、搜索、词典和朗读仍可能得到错误字符。
+- 是否能够正确显示取决于浏览器或阅读器对内嵌字体的支持。
+- 目前实测 Thorium Reader 可以正常渲染；Chrome 扩展 Beautiful EPUB Reader 无法正确显示。
+- 每章可能使用独立字体，因此缓存和导出文件体积可能明显增加。
+- 字体缺失或结构校验失败时，脚本会停止导出并显示失败章节。
 
-恢复真实 Unicode 仍是长期方向；当前字体嵌入方案只是明确标注的临时视觉兼容措施。
+恢复真实 Unicode 是长期方向；当前方案仅提供视觉兼容。
+
+### 兼容性与已知限制
+
+- 当前主动验收环境为 **Chrome + Tampermonkey**。其他浏览器或脚本管理器尚未纳入发布门槛。
+- 断点进度保存在浏览器 IndexedDB 中。清理站点数据、使用隐私模式或更换浏览器配置文件可能导致缓存丢失。
+- 如果发生存储失败，脚本会明确提示；最新一批下载进度可能没有保存。
+- 脚本依赖 ESJZone 当前页面结构和访问方式，站点更新可能影响抓取功能。
 
 ## 开发与构建
-
-本项目基于 **TypeScript** 开发，使用 **Rollup** + **esbuild** 构建 userscript，并使用 **Vitest** + **jsdom** 运行自动化测试。全本下载已按页面接入、浏览器适配、核心流程和持久化边界拆分，修改时应保持各层职责独立。
-
-### 下载架构
-
-```text
-scrapers / ui
-    └─> core/download/batch-download.ts
-            ├─> core/download/coordinator.ts
-            └─> adapters/browser-download-dependencies.ts
-                    ├─> core/cache
-                    ├─> core/book-lock.ts / core/state.ts
-                    └─> ui / GM API / DOM
-```
-
-- `batch-download.ts` 是页面层启动全本下载的组合入口，只负责创建浏览器依赖并调用核心流程。
-- `coordinator.ts` 负责下载状态流转、缓存恢复、章节调度、完整性检查、取消和导出准备，不直接访问 DOM、GM API 或浏览器全局状态。
-- `contracts.ts` 定义下载核心所需的端口和数据结构；浏览器实现集中在 `adapters/browser-download-dependencies.ts`。
-- `core/cache/` 负责 v3 增量缓存、旧缓存惰性迁移、缓存列表与跨页面同步。
-- 下载任务的锁、缓存写入者和取消模式必须保持一致；成功、失败和取消路径都应进入统一收尾流程。
-- 新增下载流程行为时，优先通过依赖端口扩展核心，不要把页面对象重新引入 `core/download/`。
-
-### 项目结构
-
-```
-src
-├── adapters
-│   ├── browser-diagnostics.ts            # 诊断记录的 GM 存储与浏览器信息适配
-│   └── browser-download-dependencies.ts  # 下载端口的浏览器实现与装配
-├── core
-│   ├── cache
-│   │   ├── book-cache.ts                 # 书籍缓存聚合与惰性迁移
-│   │   ├── indexeddb-repository.ts       # v3 IndexedDB 持久化
-│   │   ├── legacy-cache.ts               # v2 及更早缓存读取
-│   │   ├── manager.ts                    # 缓存查看、停止与清理
-│   │   └── sync.ts                       # 缓存跨页面同步
-│   ├── download
-│   │   ├── batch-download.ts             # 全本下载的浏览器组合入口
-│   │   ├── coordinator.ts                # 可注入依赖的下载主流程
-│   │   ├── contracts.ts                  # 核心端口与流程类型
-│   │   ├── cache-write-buffer.ts         # 增量缓存批量写入
-│   │   ├── incomplete-chapters.ts        # 缺章导出占位内容
-│   │   ├── integrity.ts                  # 章节与图片完整性检查
-│   │   ├── retry-policy.ts               # 可取消的重试策略
-│   │   ├── state-machine.ts              # 下载阶段状态机
-│   │   ├── task-finalizer.ts             # 锁与缓存统一收尾
-│   │   └── worker-pool.ts                # 有界并发任务调度
-│   ├── book-lock.ts                      # 跨页面任务锁与取消协调
-│   ├── config.ts                         # 用户配置管理
-│   ├── download-history.ts               # 下载记录存储
-│   ├── diagnostics.ts                    # 结构化诊断会话、清理优先级与容量边界
-│   ├── epub.ts / html.ts                 # 导出文件生成
-│   ├── mapping-font.ts                   # 映射字体检测、校验与导出绑定
-│   ├── parser.ts                         # 章节 HTML 解析
-│   └── state.ts                          # 浏览器运行时状态
-├── scrapers                              # 不同 ESJZone 页面接入
-├── ui                                    # 页面组件、弹窗与样式
-├── utils                                 # DOM、图片与文本工具
-├── global.d.ts                           # userscript 全局类型
-├── index.ts                              # 项目入口
-└── types.ts                              # 公共业务类型
-
-tests
-├── download / cache                      # 下载流程与缓存边界
-├── mapping-font / export / ui            # 字体、导出与界面行为
-├── infrastructure                        # 测试设施自测
-├── support                               # mocks、fixtures、fakes 与资源追踪
-├── stress                                # 大章节量专项压力测试
-└── setup.ts                              # 测试环境与泄漏检查
-```
-
-### 本地构建
 
 需要 **Node.js 20.19+** 环境；推荐使用 **Node.js 22**，与 CI 和发布工作流保持一致。
 
@@ -183,37 +124,4 @@ npm run build
 
 `npm run format` 会直接修改文件，执行后应检查差异。构建产物位于 `dist/esj-novel-downloader.user.js`。
 
-### 自动化测试
-
-普通测试覆盖纯函数、下载核心、缓存、锁、取消、UI 契约和导出隔离；需要浏览器 DOM 的测试使用 jsdom。测试不得依赖实时 ESJZone 页面或真实网络，详细约定见 [`tests/README.md`](tests/README.md)。
-
-```bash
-# 单次运行全部测试
-npm test
-
-# 监听文件变化并持续运行测试
-npm run test:watch
-
-# 执行 TypeScript 类型检查和全部测试
-npm run check
-
-# 执行 3000 章缓存复杂度与下载流程压力测试
-npm run test:stress
-```
-
-普通 `npm test` 和 `npm run check` 不包含 `tests/stress/`。修改下载调度、增量缓存、锁或取消机制时，应额外运行 `npm run test:stress`。
-
-### 提交与发布前检查
-
-```bash
-# 1. 检查格式；若失败，按提示格式化并审查修改
-npm run format:check
-
-# 2. 类型检查、普通测试和正式构建
-npm run build
-
-# 3. 大章节量压力测试
-npm run test:stress
-```
-
-发布提交仅更新版本与发布相关文档。发布标签必须与 `package.json` 完全一致，例如版本 `1.5.0-beta.1` 对应标签 `v1.5.0-beta.1`。
+贡献流程、代码规范和发布要求见 [`CONTRIBUTING.md`](CONTRIBUTING.md)，测试目录与隔离约定见 [`tests/README.md`](tests/README.md)。
