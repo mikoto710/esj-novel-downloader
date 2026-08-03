@@ -520,9 +520,8 @@ export class DiagnosticManager {
     }
 
     list(): DiagnosticStore {
-        const store = normalizeStore(this.repository.load(), this.now());
-        this.repository.save(store);
-        return store;
+        // 诊断弹窗会跨标签页轮询；查询不得将旧快照写回共享存储并覆盖任务的最新终态。
+        return normalizeStore(this.repository.load(), this.now());
     }
 
     remove(sessionId: string): void {

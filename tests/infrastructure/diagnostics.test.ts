@@ -24,6 +24,18 @@ class MemoryDiagnosticRepository implements DiagnosticRepository {
     }
 }
 
+class InterleavingDiagnosticRepository extends MemoryDiagnosticRepository {
+    onLoad: (() => void) | null = null;
+
+    load(): DiagnosticStore {
+        const snapshot = super.load();
+        const onLoad = this.onLoad;
+        this.onLoad = null;
+        onLoad?.();
+        return snapshot;
+    }
+}
+
 function createInput(
     taskId: string,
     overrides: Partial<StartDiagnosticSessionInput> = {}
@@ -46,6 +58,23 @@ function createInput(
 }
 
 describe("diagnostic session retention", () => {
+    it("does not overwrite another page's terminal result while listing a stale snapshot", () => {
+        const repository = new InterleavingDiagnosticRepository();
+        const writer = new DiagnosticManager(repository, () => 1_000);
+        const reader = new DiagnosticManager(repository, () => 1_000);
+        writer.start(createInput("concurrent"));
+
+        repository.onLoad = () => {
+            writer.finish("concurrent", "success");
+        };
+
+        expect(reader.list().active).toEqual([expect.objectContaining({ taskId: "concurrent" })]);
+        expect(repository.store.history).toEqual([
+            expect.objectContaining({ taskId: "concurrent", result: "success" })
+        ]);
+        expect(reader.list().history).toEqual([expect.objectContaining({ taskId: "concurrent", result: "success" })]);
+    });
+
     it("keeps ten completed sessions and evicts older successful sessions first", () => {
         const repository = new MemoryDiagnosticRepository();
         let now = 1_000;
