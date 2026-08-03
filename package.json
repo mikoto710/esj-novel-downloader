@@ -12,7 +12,8 @@
         "test:watch": "vitest",
         "watch": "rollup -c -w",
         "format:check": "prettier --check \"src/**/*.{ts,js,json,md}\" \"tests/**/*.{ts,md}\" README.md package.json package-lock.json",
-        "format": "prettier --write \"src/**/*.{ts,js,json,md}\" && eslint \"src/**/*.{ts,js}\" --fix"
+        "format": "prettier --write \"src/**/*.{ts,js,json,md}\" \"tests/**/*.{ts,md}\" README.md package.json package-lock.json",
+        "lint:fix": "eslint src tests --fix"
     },
     "devDependencies": {
         "@eslint/js": "^9.39.2",
