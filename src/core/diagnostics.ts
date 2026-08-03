@@ -360,10 +360,18 @@ export class DiagnosticManager {
         options: Partial<Pick<DownloadOptions, "bookName" | "pageUrl" | "sourcePageType" | "tasks">>
     ): void {
         this.mutateSession(taskId, (session) => {
-            if (options.bookName) session.book.title = options.bookName;
-            if (options.pageUrl) session.book.url = sanitizeDiagnosticUrl(options.pageUrl);
-            if (options.sourcePageType) session.book.sourcePageType = options.sourcePageType;
-            if (options.tasks) session.task.totalChapters = options.tasks.length;
+            if (options.bookName) {
+                session.book.title = options.bookName;
+            }
+            if (options.pageUrl) {
+                session.book.url = sanitizeDiagnosticUrl(options.pageUrl);
+            }
+            if (options.sourcePageType) {
+                session.book.sourcePageType = options.sourcePageType;
+            }
+            if (options.tasks) {
+                session.task.totalChapters = options.tasks.length;
+            }
         });
     }
 
@@ -371,7 +379,9 @@ export class DiagnosticManager {
         this.mutateSession(taskId, (session, now) => {
             const level = /❌|失败|异常/.test(message) ? "error" : /⚠|警告|重试/.test(message) ? "warning" : "info";
             session.logs.push({ at: now - session.startedAt, level, message: limitText(message) });
-            if (session.logs.length > DIAGNOSTIC_LOG_LIMIT) session.logs.shift();
+            if (session.logs.length > DIAGNOSTIC_LOG_LIMIT) {
+                session.logs.shift();
+            }
         });
     }
 
@@ -403,7 +413,9 @@ export class DiagnosticManager {
             taskId,
             (session, now) => {
                 session.exports.push({ at: now - session.startedAt, ...input });
-                if (session.exports.length > DIAGNOSTIC_EXPORT_LIMIT) session.exports.shift();
+                if (session.exports.length > DIAGNOSTIC_EXPORT_LIMIT) {
+                    session.exports.shift();
+                }
             },
             true
         );
@@ -429,12 +441,20 @@ export class DiagnosticManager {
                         phase: event.current,
                         details: { previous: event.previous }
                     });
-                    if (event.current === "export-ready") this.finishInStore(session, "success", now);
-                    if (event.current === "cancelled") this.finishInStore(session, "cancelled", now);
-                    if (event.current === "failed") this.finishInStore(session, "failed", now);
+                    if (event.current === "export-ready") {
+                        this.finishInStore(session, "success", now);
+                    }
+                    if (event.current === "cancelled") {
+                        this.finishInStore(session, "cancelled", now);
+                    }
+                    if (event.current === "failed") {
+                        this.finishInStore(session, "failed", now);
+                    }
                 } else if (event.type === "cache-write-finished") {
                     session.task.cacheWriteCount++;
-                    if (!event.saved) session.task.cacheWriteFailureCount++;
+                    if (!event.saved) {
+                        session.task.cacheWriteFailureCount++;
+                    }
                     session.events.push({
                         at,
                         type: event.type,
@@ -476,7 +496,9 @@ export class DiagnosticManager {
                         message: limitText(error.message)
                     });
                 }
-                if (session.events.length > DIAGNOSTIC_EVENT_LIMIT) session.events.shift();
+                if (session.events.length > DIAGNOSTIC_EVENT_LIMIT) {
+                    session.events.shift();
+                }
             },
             true
         );
@@ -485,7 +507,9 @@ export class DiagnosticManager {
     finish(taskId: string, result: Exclude<DiagnosticResult, "running">, task?: Partial<DiagnosticTaskSummary>): void {
         // 页面 finally 只负责收尾仍处于 active 的启动阶段会话，不得覆盖 coordinator 已发布的终态
         this.mutateSession(taskId, (session, now) => {
-            if (task) session.task = { ...session.task, ...task };
+            if (task) {
+                session.task = { ...session.task, ...task };
+            }
             this.finishInStore(session, result, now);
         });
     }
@@ -522,9 +546,13 @@ export class DiagnosticManager {
         const now = this.now();
         const store = normalizeStore(this.repository.load(), now);
         let session = store.active.find((item) => item.taskId === taskId);
-        let activeIndex = session ? store.active.indexOf(session) : -1;
-        if (!session && includeHistory) session = store.history.find((item) => item.taskId === taskId);
-        if (!session) return;
+        const activeIndex = session ? store.active.indexOf(session) : -1;
+        if (!session && includeHistory) {
+            session = store.history.find((item) => item.taskId === taskId);
+        }
+        if (!session) {
+            return;
+        }
         mutator(session, now);
         session.updatedAt = now;
         // 终态变更与历史搬移在同一次 repository save 中完成，避免同时存在于 active 和 history

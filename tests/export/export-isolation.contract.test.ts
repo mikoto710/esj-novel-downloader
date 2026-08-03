@@ -7,7 +7,10 @@ import { createCachedData, createChapterFixture, installDocumentFixture } from "
 describe("full-book and single-chapter export isolation", () => {
     const alertMock = vi.fn();
     const clickMock = vi.fn();
-    const createObjectUrlMock = vi.fn((_blob: Blob) => "blob:single-chapter");
+    const createObjectUrlMock = vi.fn((blob: Blob) => {
+        void blob;
+        return "blob:single-chapter";
+    });
 
     beforeEach(() => {
         vi.resetModules();

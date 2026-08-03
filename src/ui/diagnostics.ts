@@ -105,7 +105,9 @@ export function createDiagnosticPopup(): void {
             style: `${buttonStyle}background:#2b9bd7;color:#fff;border-color:#2b9bd7;`,
             onclick: () => {
                 const selected = findSelected();
-                if (selected) downloadBrowserDiagnosticSession(selected);
+                if (selected) {
+                    downloadBrowserDiagnosticSession(selected);
+                }
             }
         },
         ["下载诊断日志"]
@@ -117,7 +119,9 @@ export function createDiagnosticPopup(): void {
             style: `${buttonStyle}background:#eee;`,
             onclick: async () => {
                 const selected = findSelected();
-                if (!selected) return;
+                if (!selected) {
+                    return;
+                }
                 try {
                     await copyText(formatBrowserDiagnosticSummary(selected));
                 } catch (error) {
@@ -150,7 +154,9 @@ export function createDiagnosticPopup(): void {
             style: `${buttonStyle}background:#fff;color:#c62828;border-color:#d9534f;`,
             onclick: () => {
                 const selected = findSelected();
-                if (!selected) return;
+                if (!selected) {
+                    return;
+                }
                 removeBrowserDiagnosticSession(selected.id);
                 selectedId = null;
                 render();
@@ -218,7 +224,9 @@ export function createDiagnosticPopup(): void {
             list.appendChild(el("div", { style: "padding:40px 12px;text-align:center;color:#777;" }, ["暂无记录"]));
         } else {
             const appendSection = (title: string, items: DiagnosticSession[]) => {
-                if (items.length === 0) return;
+                if (items.length === 0) {
+                    return;
+                }
                 list.appendChild(
                     el("div", { style: "padding:9px 12px;color:#777;font-size:12px;font-weight:bold;" }, [title])
                 );

@@ -73,7 +73,9 @@ export function startBrowserDiagnosticSession(
     options: { rememberForLaterFailures?: boolean } = {}
 ): DiagnosticSession {
     currentTaskId = input.taskId;
-    if (options.rememberForLaterFailures !== false) lastTaskId = input.taskId;
+    if (options.rememberForLaterFailures !== false) {
+        lastTaskId = input.taskId;
+    }
     return manager.start({
         ...input,
         application: getApplicationInfo(),
@@ -113,7 +115,9 @@ export function updateBrowserDiagnosticSessionMetadata(
 
 export function finishBrowserDiagnosticSession(taskId: string, result: Exclude<DiagnosticResult, "running">): void {
     manager.finish(taskId, result);
-    if (currentTaskId === taskId) currentTaskId = null;
+    if (currentTaskId === taskId) {
+        currentTaskId = null;
+    }
 }
 
 export function finishBrowserSingleChapterDiagnosticSession(
@@ -129,28 +133,38 @@ export function finishBrowserSingleChapterDiagnosticSession(
         completedChapters: completed,
         failedChapters: result === "failed" ? 1 : 0
     });
-    if (currentTaskId === taskId) currentTaskId = null;
+    if (currentTaskId === taskId) {
+        currentTaskId = null;
+    }
 }
 
 export function recordBrowserDiagnosticFailure(input: RecordDiagnosticFailureInput, taskId = currentTaskId): void {
     const targetTaskId = taskId || lastTaskId || getLatestBrowserDiagnosticSession()?.taskId;
-    if (targetTaskId) manager.recordFailure(targetTaskId, input);
+    if (targetTaskId) {
+        manager.recordFailure(targetTaskId, input);
+    }
 }
 
 export function recordBrowserDiagnosticExport(input: RecordDiagnosticExportInput, taskId = currentTaskId): void {
     const targetTaskId = taskId || lastTaskId || getLatestBrowserDiagnosticSession()?.taskId;
-    if (targetTaskId) manager.recordExport(targetTaskId, input);
+    if (targetTaskId) {
+        manager.recordExport(targetTaskId, input);
+    }
 }
 
 export function browserDiagnosticLog(message: string): void {
     // 先保持原有 UI/控制台日志，再以最佳努力写入诊断；诊断异常不得改变下载行为
     log(message);
-    if (currentTaskId) manager.recordLog(currentTaskId, message);
+    if (currentTaskId) {
+        manager.recordLog(currentTaskId, message);
+    }
 }
 
 export const browserDiagnosticEvents: DownloadEventSink = {
     emit(event) {
-        if (!currentTaskId) return;
+        if (!currentTaskId) {
+            return;
+        }
         manager.recordDownloadEvent(currentTaskId, event);
         if (event.type === "phase-changed" && ["export-ready", "cancelled"].includes(event.current)) {
             currentTaskId = null;
@@ -219,8 +233,12 @@ export function formatBrowserDiagnosticSummary(session: DiagnosticSession): stri
     });
     const exportLines = (session.exports || []).map((item) => {
         const format = `${item.scope === "single" ? "单章 " : ""}${item.format.toUpperCase()}`;
-        if (item.outcome === "cancelled") return `- ${format}：用户取消`;
-        if (item.outcome === "success") return `- ${format}：生成成功，已触发浏览器下载`;
+        if (item.outcome === "cancelled") {
+            return `- ${format}：用户取消`;
+        }
+        if (item.outcome === "success") {
+            return `- ${format}：生成成功，已触发浏览器下载`;
+        }
         return item.failureStage === "generate"
             ? `- ${format}：生成失败，未触发浏览器下载`
             : `- ${format}：生成成功，浏览器下载触发失败`;

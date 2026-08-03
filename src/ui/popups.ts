@@ -191,18 +191,7 @@ export function confirmIncompleteChapters(
 
     return new Promise<IncompleteChapterDecision>((resolve) => {
         let settled = false;
-        let popup: HTMLElement;
-        const finish = (decision: IncompleteChapterDecision) => {
-            if (settled) {
-                return;
-            }
-            settled = true;
-            signal?.removeEventListener("abort", abortListener);
-            popup.remove();
-            resolve(decision);
-        };
         const abortListener = () => finish("cancel");
-        signal?.addEventListener("abort", abortListener, { once: true });
 
         const preview = detection.missingTasks
             .slice(0, 10)
@@ -222,7 +211,7 @@ export function confirmIncompleteChapters(
             );
         }
 
-        popup = el(
+        const popup = el(
             "div",
             {
                 id: "esj-incomplete-chapters",
@@ -281,6 +270,16 @@ export function confirmIncompleteChapters(
                 )
             ]
         );
+        const finish = (decision: IncompleteChapterDecision) => {
+            if (settled) {
+                return;
+            }
+            settled = true;
+            signal?.removeEventListener("abort", abortListener);
+            popup.remove();
+            resolve(decision);
+        };
+        signal?.addEventListener("abort", abortListener, { once: true });
         document.body.appendChild(popup);
         enableDrag(popup, ".esj-common-header");
         (popup.querySelector("#esj-incomplete-retry") as HTMLButtonElement | null)?.focus();
