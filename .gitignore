@@ -5,3 +5,4 @@ Thumbs.db
 dist/
 .cache/
 .vscode/
+.agents/
