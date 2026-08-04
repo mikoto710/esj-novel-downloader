@@ -133,7 +133,11 @@ chore: prepare beta release
 - 不要提交 `dist/`。
 - `alpha`、`beta` 和 `rc` 从 `dev` 发布。
 - 稳定版本从 `main` 发布。
+- 标签必须与 `package.json` 中的版本完全一致；预发布标签提交必须包含在 `dev`，稳定版标签提交必须包含在 `main`。
+- 发布资源必须由对应标签的源码重新构建，不得复用旧的 `dist` 产物。
 - 版本号、标签和 GitHub Release 由维护者统一处理。
+
+修改 `.codex/skills` 后应运行 skill 结构校验，并确认 `agents/openai.yaml` 仍与对应的 `SKILL.md` 一致。
 
 发布准备需要记录：
 
