@@ -42,6 +42,7 @@ export async function buildHtml(chapters: Chapter[], metadata: BookMetadata): Pr
     const style = `
         <style>
             ${mappingFontStyles.join("\n")}
+            html { scroll-behavior: smooth; }
             body { font-family: sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; line-height: 1.6; color: #333; background: #f9f9f9; }
             img { max-width: 100%; height: auto; display: block; margin: 10px auto; }
             h1, h2, h3 { color: #2c3e50; }
@@ -57,11 +58,14 @@ export async function buildHtml(chapters: Chapter[], metadata: BookMetadata): Pr
             }
             
             /* 目录样式 */
-            .toc { background: #fff; padding: 20px; border-radius: 8px; margin-bottom: 20px; }
-            .toc ul { list-style-type: none; padding: 0; margin: 0; }
+            .toc { position: sticky; top: 12px; z-index: 1; background: #fff; padding: 14px 20px; border-radius: 8px; margin-bottom: 20px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
+            .toc summary { color: #2c3e50; cursor: pointer; font-size: 1.2em; font-weight: bold; }
+            .toc-list { list-style-type: none; max-height: min(60vh, 520px); overflow-y: auto; padding: 10px 0 0; margin: 0; }
             .toc li { margin: 5px 0; border-bottom: 1px dashed #eee; }
             .toc a { text-decoration: none; color: #0366d6; display: block; padding: 5px 0; }
             .toc a:hover { text-decoration: underline; background-color: #f0f8ff; }
+            @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+            @media print { .toc { position: static; box-shadow: none; } .toc-list { max-height: none; } }
             
             .cover-img { text-align: center; margin-bottom: 20px; }
             .meta-info { font-size: 0.9em; color: #666; margin-bottom: 20px; white-space: pre-wrap; }
@@ -69,11 +73,11 @@ export async function buildHtml(chapters: Chapter[], metadata: BookMetadata): Pr
     `;
 
     // 目录
-    let tocHtml = `<div class="toc"><h2>目录</h2><ul>`;
+    let tocHtml = `<nav class="toc" aria-label="章节导航"><details><summary>章节导航（${chapters.length}）</summary><ol class="toc-list">`;
     chapters.forEach((chap, i) => {
         tocHtml += `<li><a href="#chap${i}">${chap.title}</a></li>`;
     });
-    tocHtml += `</ul></div>`;
+    tocHtml += `</ol></details></nav>`;
 
     // 封面和元数据
     let metaHtml = "";

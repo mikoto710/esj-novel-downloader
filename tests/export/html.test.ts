@@ -27,6 +27,19 @@ async function readBlob(blob: Blob): Promise<string> {
 }
 
 describe("buildHtml mapped font resources", () => {
+    it("creates a collapsed semantic chapter navigation with anchors", async () => {
+        const chapters = [createChapter(0, { title: "第一章" }), createChapter(1, { title: "第二章" })];
+        const html = await readBlob(await buildHtml(chapters, createBookMetadata()));
+
+        expect(html).toContain('<nav class="toc" aria-label="章节导航">');
+        expect(html).toContain('<details><summary>章节导航（2）</summary><ol class="toc-list">');
+        expect(html).not.toContain("<details open>");
+        expect(html).toContain('<a href="#chap0">第一章</a>');
+        expect(html).toContain('<a href="#chap1">第二章</a>');
+        expect(html).toContain('id="chap0" class="chapter"');
+        expect(html).toContain('id="chap1" class="chapter"');
+    });
+
     it("embeds a controlled WOFF2 data URL and rewrites the chapter family", async () => {
         const blob = await buildHtml([createMappedChapter()], createBookMetadata());
         const html = await readBlob(blob);
