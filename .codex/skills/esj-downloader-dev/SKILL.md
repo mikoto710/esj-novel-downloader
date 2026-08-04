@@ -17,6 +17,9 @@ description: Implement, refactor, or diagnose ESJ Novel Downloader TypeScript us
 
 - Make the smallest focused edit; do not combine unrelated formatting, dependency, or version changes.
 - Add a regression test for a defect. Use contract tests for stable cross-boundary behavior and characterization tests before refactoring established complex behavior.
+- Use the existing shared popup components for user prompts; do not introduce `alert`.
+- Snapshot task settings before cache claim and download startup so cross-page setting changes affect only future tasks.
+- During bulk cache recovery, aggregate diagnostics in memory instead of persisting one diagnostic update per restored chapter.
 - Production comments use Chinese and explain business invariants, lifecycle ownership, or race ordering. Do not narrate syntax; add a concise comment when correctness depends on async completion order or a non-obvious compatibility boundary.
 - Use fixtures, fakes, fake clocks, and userscript mocks. Do not access ESJZone, live network services, or production IndexedDB in automated tests.
 - Leave version, tags, GitHub Releases, and `dist/` untouched unless the user explicitly assigns release work.
