@@ -26,6 +26,7 @@ import { showMessagePopup } from "./message-popup";
 import { createCommonHeader } from "./popup-components";
 import { recordBrowserDiagnosticExport, recordBrowserDiagnosticFailure } from "../adapters/browser-diagnostics";
 import { createDiagnosticPopup } from "./diagnostics";
+import { listActiveBookDownloadLocks } from "../core/book-lock";
 
 /**
  * 锁定/解锁页面上的设置按钮
@@ -54,6 +55,60 @@ function formatMappingFontBytes(bytes: number): string {
 
 const MAX_EXPORT_ERROR_DETAIL_LENGTH = 2_000;
 const diagnosticExportFormat = { TXT: "txt", EPUB: "epub", HTML: "html" } as const;
+
+function confirmImageSettingChange(activeTaskCount: number): Promise<boolean> {
+    document.querySelector("#esj-image-setting-task-confirm")?.remove();
+
+    return new Promise((resolve) => {
+        let settled = false;
+        const finish = (confirmed: boolean) => {
+            if (settled) {
+                return;
+            }
+            settled = true;
+            popup.remove();
+            resolve(confirmed);
+        };
+        const popup = el(
+            "div",
+            {
+                id: "esj-image-setting-task-confirm",
+                role: "dialog",
+                "aria-modal": "true",
+                style: "position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:440px;max-width:calc(100vw - 32px);background:#fff;border:1px solid #aaa;border-radius:8px;box-shadow:0 0 18px rgba(0,0,0,.28);z-index:1000001;display:flex;flex-direction:column;"
+            },
+            [
+                createCommonHeader("⚠️ 切换插图设置", () => finish(false)),
+                el("div", { style: "padding:16px;font-size:14px;line-height:1.7;color:#333;" }, [
+                    `当前有 ${activeTaskCount} 个全本任务正在下载。它们会继续使用启动时的插图设置，不受本次切换影响；本次更改仅对之后新启动的任务生效。`
+                ]),
+                el("div", { style: "padding:12px;display:flex;justify-content:flex-end;gap:8px;" }, [
+                    el(
+                        "button",
+                        {
+                            id: "esj-image-setting-task-confirm-cancel",
+                            style: "padding:8px 12px;background:#eee;border:1px solid #ccc;border-radius:6px;cursor:pointer;",
+                            onclick: () => finish(false)
+                        },
+                        ["取消"]
+                    ),
+                    el(
+                        "button",
+                        {
+                            id: "esj-image-setting-task-confirm-continue",
+                            style: "padding:8px 12px;background:#2b9bd7;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:bold;",
+                            onclick: () => finish(true)
+                        },
+                        ["继续切换"]
+                    )
+                ])
+            ]
+        );
+        document.body.appendChild(popup);
+        enableDrag(popup, ".esj-common-header");
+        (popup.querySelector("#esj-image-setting-task-confirm-cancel") as HTMLButtonElement | null)?.focus();
+    });
+}
 
 function getExportErrorDetails(error: unknown): string {
     const details = error instanceof Error ? error.message : String(error);
@@ -979,8 +1034,20 @@ export function createSettingsPanel(): void {
     const checkboxInput = el("input", {
         type: "checkbox",
         checked: isImageEnabled,
-        onchange: (e: Event) => {
+        onchange: async (e: Event) => {
+            const input = e.target as HTMLInputElement;
             const checked = (e.target as HTMLInputElement).checked;
+            const previous = getImageDownloadSetting();
+            input.disabled = true;
+            try {
+                const activeTasks = await listActiveBookDownloadLocks();
+                if (activeTasks.length > 0 && !(await confirmImageSettingChange(activeTasks.length))) {
+                    input.checked = previous;
+                    return;
+                }
+            } finally {
+                input.disabled = false;
+            }
             setImageDownloadSetting(checked);
             // 已有章节由后续任务按 imageEnabled 逐书判断，不在设置变更时全局清理
             log(`正文图片下载已${checked ? "开启" : "关闭"}`);
