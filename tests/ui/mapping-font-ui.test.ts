@@ -112,6 +112,22 @@ describe("incomplete chapter decision UI", () => {
         await expect(decision).resolves.toBe("export-with-placeholders");
     });
 
+    it("returns retry and removes the dialog when missing chapters are retried", async () => {
+        const decision = confirmIncompleteChapters({ missingTasks: [createDownloadTask()], totalChapters: 1 });
+        (document.querySelector("#esj-incomplete-retry") as HTMLButtonElement).click();
+
+        await expect(decision).resolves.toBe("retry");
+        expect(document.querySelector("#esj-incomplete-chapters")).toBeNull();
+    });
+
+    it("returns cancel and removes the dialog when cancellation keeps the cache", async () => {
+        const decision = confirmIncompleteChapters({ missingTasks: [createDownloadTask()], totalChapters: 1 });
+        (document.querySelector("#esj-incomplete-cancel") as HTMLButtonElement).click();
+
+        await expect(decision).resolves.toBe("cancel");
+        expect(document.querySelector("#esj-incomplete-chapters")).toBeNull();
+    });
+
     it("closes as cancellation when the download signal aborts", async () => {
         const controller = new AbortController();
         const decision = confirmIncompleteChapters(
