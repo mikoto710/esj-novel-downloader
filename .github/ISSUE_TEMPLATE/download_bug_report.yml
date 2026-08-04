@@ -1,0 +1,85 @@
+name: 下载、缓存与导出 Bug
+description: 反馈内容抓取、缓存恢复、任务取消、插图或导出异常等下载相关问题
+title: "[Bug]: "
+labels:
+    - bug
+body:
+    - type: markdown
+      attributes:
+          value: |
+              感谢你提交 Bug 反馈。请一次只报告一个问题。
+              请勿上传小说正文、Cookie、登录信息、访问令牌或其他敏感内容。
+
+    - type: checkboxes
+      id: checks
+      attributes:
+          label: 提交前确认
+          options:
+              - label: 我已搜索现有 Issue，没有发现相同问题。
+                required: true
+              - label: 我确认这是现有功能未按预期工作的 Bug；如果只是询问使用方法或希望增加、改变功能，我会改用其他模板。
+                required: true
+              - label: 我已移除小说正文、Cookie、账号信息和其他敏感内容。
+                required: true
+
+    - type: dropdown
+      id: problem_type
+      attributes:
+          label: 问题类型
+          options:
+              - 全本下载
+              - 单章导出
+              - 缓存或任务恢复
+              - 取消、停止或任务锁
+              - 正文插图
+              - TXT、HTML 或 EPUB 导出
+              - 下载速度或性能
+              - 其他
+      validations:
+          required: true
+
+    - type: textarea
+      id: problem_description
+      attributes:
+          label: 问题描述
+          description: 请说明实际发生的情况、预期行为和出现频率。
+          placeholder: |
+              实际发生：
+              预期行为：
+              出现频率：
+      validations:
+          required: true
+
+    - type: textarea
+      id: reproduction_steps
+      attributes:
+          label: 复现步骤
+          description: 如果可以稳定复现，请提供操作步骤；如果不能稳定复现，请说明问题发生前的最后几步操作。
+          placeholder: |
+              1. 打开……
+              2. 设置……
+              3. 点击……
+              4. 观察到……
+
+    - type: input
+      id: userscript_version
+      attributes:
+          label: 脚本版本
+          description: 请填写脚本管理器中显示的完整版本号。本地源码构建请同时提供 commit。
+          placeholder: 例如：1.5.0-beta.3
+      validations:
+          required: true
+
+    - type: textarea
+      id: diagnostic_info
+      attributes:
+          label: 诊断信息
+          description: 请从“设置 → 诊断与反馈”导出对应任务的 JSON，并拖放到此处。如果无法生成诊断文件，请说明原因，并补充浏览器和脚本管理器版本。
+      validations:
+          required: true
+
+    - type: textarea
+      id: additional_information
+      attributes:
+          label: 补充信息
+          description: 可补充相关页面链接、控制台日志、截图、录屏、导出格式或阅读器信息。

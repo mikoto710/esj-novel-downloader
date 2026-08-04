@@ -1,0 +1,90 @@
+name: 配置、界面与兼容性 Bug
+description: 反馈安装更新、按钮注入、设置或兼容性等非下载相关问题
+title: "[Bug]: "
+labels:
+    - bug
+body:
+    - type: markdown
+      attributes:
+          value: |
+              感谢你提交 Bug 反馈。请一次只报告一个问题。
+              下载问题请改用“下载、缓存与导出 Bug”模板。
+              请勿上传 Cookie、登录信息、访问令牌或其他敏感内容。
+
+    - type: checkboxes
+      id: checks
+      attributes:
+          label: 提交前确认
+          options:
+              - label: 我已搜索现有 Issue，没有发现相同问题。
+                required: true
+              - label: 我确认这是现有功能未按预期工作的 Bug；如果只是询问使用方法或希望增加、改变功能，我会改用其他模板。
+                required: true
+              - label: 我已移除小说正文、Cookie、账号信息和其他敏感内容。
+                required: true
+
+    - type: dropdown
+      id: problem_type
+      attributes:
+          label: 问题类型
+          options:
+              - 安装或更新
+              - 页面没有出现脚本按钮
+              - 设置开关或弹窗
+              - 缓存管理界面
+              - 下载历史界面
+              - ESJ 页面兼容性
+              - 浏览器或脚本管理器兼容性
+              - 其他
+      validations:
+          required: true
+
+    - type: textarea
+      id: problem_description
+      attributes:
+          label: 问题描述
+          description: 请说明实际发生的情况、预期行为和出现频率。
+          placeholder: |
+              实际发生：
+              预期行为：
+              出现频率：
+      validations:
+          required: true
+
+    - type: textarea
+      id: reproduction_steps
+      attributes:
+          label: 复现步骤
+          description: 如果可以稳定复现，请提供操作步骤；如果不能稳定复现，请说明问题发生前的最后几步操作。
+          placeholder: |
+              1. 打开……
+              2. 设置……
+              3. 点击……
+              4. 观察到……
+
+    - type: input
+      id: userscript_version
+      attributes:
+          label: 脚本版本
+          description: 请填写脚本管理器中显示的完整版本号。本地源码构建请同时提供 commit。
+          placeholder: 例如：1.5.0-beta.3
+      validations:
+          required: true
+
+    - type: textarea
+      id: environment
+      attributes:
+          label: 运行环境
+          placeholder: |
+              浏览器及版本：
+              脚本管理器及版本：
+              ESJ 域名或页面链接：
+              安装来源：
+      validations:
+          required: true
+
+    - type: textarea
+      id: additional_information
+      attributes:
+          label: 补充信息
+          description: 可粘贴控制台日志，并上传截图或录屏。
