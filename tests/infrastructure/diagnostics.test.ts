@@ -17,12 +17,14 @@ import { createInitialDownloadSnapshot } from "../../src/core/download/state-mac
 
 class MemoryDiagnosticRepository implements DiagnosticRepository {
     store = createEmptyDiagnosticStore();
+    saveCount = 0;
 
     load(): DiagnosticStore {
         return structuredClone(this.store);
     }
 
     save(store: DiagnosticStore): void {
+        this.saveCount++;
         this.store = structuredClone(store);
     }
 }
@@ -61,6 +63,37 @@ function createInput(
 }
 
 describe("diagnostic session retention", () => {
+    it("does not persist every restored or processed chapter when a large cache is resumed", () => {
+        const repository = new MemoryDiagnosticRepository();
+        const manager = new DiagnosticManager(repository, () => 1_000);
+        manager.start(createInput("large-cache", { totalChapters: 3_000 }));
+        const savesAfterStart = repository.saveCount;
+
+        for (let index = 0; index < 1_224; index++) {
+            const task = {
+                index,
+                title: `Chapter ${index + 1}`,
+                url: `https://www.esjzone.cc/forum/book/${index}.html`
+            };
+            manager.recordDownloadEvent("large-cache", { type: "chapter-restored", task });
+            manager.recordDownloadEvent("large-cache", { type: "chapter-processed", task, retry: false });
+        }
+
+        expect(repository.saveCount).toBe(savesAfterStart);
+
+        const snapshot = {
+            ...createInitialDownloadSnapshot(3_000, 0),
+            phase: "restoring-cache" as const,
+            restoredCount: 1_224,
+            completedCount: 1_224,
+            cachedChapterCount: 1_224
+        };
+        manager.recordDownloadEvent("large-cache", { type: "snapshot-updated", snapshot });
+
+        expect(repository.saveCount).toBe(savesAfterStart + 1);
+        expect(manager.list().active[0].task).toMatchObject({ restoredChapters: 1_224, completedChapters: 1_224 });
+    });
+
     it("does not overwrite another page's terminal result while listing a stale snapshot", () => {
         const repository = new InterleavingDiagnosticRepository();
         const writer = new DiagnosticManager(repository, () => 1_000);

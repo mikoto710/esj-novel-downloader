@@ -506,6 +506,10 @@ export class DiagnosticManager {
     }
 
     recordDownloadEvent(taskId: string, event: DownloadEvent): void {
+        if (event.type === "chapter-restored" || event.type === "chapter-processed") {
+            // 逐章恢复和处理没有独立诊断字段；对应的快照会汇总进度，避免大缓存恢复时逐章读写整份 GM 存储。
+            return;
+        }
         this.mutateSession(
             taskId,
             (session, now) => {
