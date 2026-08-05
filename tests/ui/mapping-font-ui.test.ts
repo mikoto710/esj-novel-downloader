@@ -91,6 +91,19 @@ describe("mapped font export UI", () => {
 
         await expect(confirmation).resolves.toBe(false);
     });
+
+    it("closes as rejection when the task signal aborts", async () => {
+        const controller = new AbortController();
+        const confirmation = confirmMappingFontDownload(
+            { task: createDownloadTask(), chapterCount: 1, fontBytes: 64, inFlightLimit: 1 },
+            controller.signal
+        );
+
+        controller.abort();
+
+        await expect(confirmation).resolves.toBe(false);
+        expect(document.querySelector("#esj-mapping-confirm")).toBeNull();
+    });
 });
 
 describe("incomplete chapter decision UI", () => {

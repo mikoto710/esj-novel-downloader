@@ -42,6 +42,21 @@ export interface ProtectedChapterAuthPort {
     ): Promise<ProtectedChapterUnlockResult>;
 }
 
+export interface ProtectedChapterPrompt {
+    task: DownloadTask;
+    totalChapters: number;
+    pendingCount: number;
+    message?: string;
+    initialPassword?: string;
+    rememberPassword?: boolean;
+}
+
+export type ProtectedChapterDecision =
+    | { action: "submit"; password: string; rememberPassword: boolean }
+    | { action: "skip-current" }
+    | { action: "skip-all" }
+    | { action: "cancel" };
+
 /**
  * 页面适配层启动一次全本下载所需的数据
  */
@@ -197,7 +212,7 @@ export interface DownloadRuntimePort {
 export interface DownloadUiPort {
     prepare(): void;
     update(snapshot: DownloadSnapshot): void;
-    confirmMappingFontDownload(detection: MappingFontDetection): Promise<boolean>;
+    confirmMappingFontDownload(detection: MappingFontDetection, signal?: AbortSignal): Promise<boolean>;
     confirmIncompleteChapters(
         detection: IncompleteChapterDetection,
         signal?: AbortSignal

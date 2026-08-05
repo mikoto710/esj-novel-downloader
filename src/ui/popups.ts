@@ -20,7 +20,9 @@ import type {
     IncompleteChapterDecision,
     IncompleteChapterDetection,
     MappingFontDetection,
-    MappingFontSummary
+    MappingFontSummary,
+    ProtectedChapterDecision,
+    ProtectedChapterPrompt
 } from "../core/download/contracts";
 import { showMessagePopup } from "./message-popup";
 import { createCommonHeader } from "./popup-components";
@@ -164,8 +166,11 @@ export function updateMappingFontWarning(summary: MappingFontSummary): void {
 /**
  * 首次检测到映射正文后要求用户明确同意，关闭弹窗等同停止下载
  */
-export function confirmMappingFontDownload(detection: MappingFontDetection): Promise<boolean> {
+export function confirmMappingFontDownload(detection: MappingFontDetection, signal?: AbortSignal): Promise<boolean> {
     document.querySelector("#esj-mapping-confirm")?.remove();
+    if (signal?.aborted) {
+        return Promise.resolve(false);
+    }
     return new Promise<boolean>((resolve) => {
         let settled = false;
         const finish = (confirmed: boolean) => {
@@ -173,9 +178,11 @@ export function confirmMappingFontDownload(detection: MappingFontDetection): Pro
                 return;
             }
             settled = true;
+            signal?.removeEventListener("abort", onAbort);
             popup.remove();
             resolve(confirmed);
         };
+        const onAbort = () => finish(false);
         const header = createCommonHeader("⚠️ 检测到自定义映射字体", () => finish(false));
         const body = el("div", { style: "padding:16px;font-size:14px;line-height:1.7;color:#333;" }, [
             el("div", { style: "font-weight:bold;margin-bottom:8px;" }, [detection.task.title]),
@@ -229,6 +236,132 @@ export function confirmMappingFontDownload(detection: MappingFontDetection): Pro
         document.body.appendChild(popup);
         enableDrag(popup, ".esj-common-header");
         (popup.querySelector("#esj-mapping-continue") as HTMLButtonElement | null)?.focus();
+        signal?.addEventListener("abort", onAbort, { once: true });
+    });
+}
+
+export function closeProtectedChapterPrompt(): void {
+    document.querySelector("#esj-protected-chapter")?.remove();
+}
+
+/**
+ * 提交密码时保留弹窗，授权结果可以在同一弹窗内继续显示；跳过或取消才结束当前交互
+ */
+export function promptProtectedChapterPassword(
+    prompt: ProtectedChapterPrompt,
+    signal?: AbortSignal
+): Promise<ProtectedChapterDecision> {
+    closeProtectedChapterPrompt();
+    if (signal?.aborted) {
+        return Promise.resolve({ action: "cancel" });
+    }
+
+    return new Promise((resolve) => {
+        let settled = false;
+        const finish = (decision: ProtectedChapterDecision, keepOpen = false) => {
+            if (settled) {
+                return;
+            }
+            settled = true;
+            signal?.removeEventListener("abort", onAbort);
+            if (!keepOpen) {
+                popup.remove();
+            }
+            resolve(decision);
+        };
+        const onAbort = () => finish({ action: "cancel" });
+        const error = el("div", {
+            id: "esj-protected-error",
+            style: `min-height:20px;margin-top:8px;color:${prompt.message ? "#c62828" : "#666"};font-size:13px;`
+        });
+        error.textContent = prompt.message || "密码只用于本次授权，不会写入缓存或日志。";
+        const passwordInput = el("input", {
+            id: "esj-protected-password",
+            type: "password",
+            autocomplete: "off",
+            value: prompt.initialPassword || "",
+            style: "width:100%;box-sizing:border-box;padding:9px;border:1px solid #bbb;border-radius:5px;"
+        }) as HTMLInputElement;
+        const remember = el("input", {
+            id: "esj-protected-remember",
+            type: "checkbox",
+            checked: prompt.rememberPassword === true
+        }) as HTMLInputElement;
+        const submit = () => {
+            const password = passwordInput.value;
+            if (!password) {
+                error.textContent = "请输入密码。";
+                error.style.color = "#c62828";
+                passwordInput.focus();
+                return;
+            }
+            finish({ action: "submit", password, rememberPassword: remember.checked }, true);
+        };
+        passwordInput.onkeydown = (event) => {
+            if (event.key === "Enter") {
+                event.preventDefault();
+                submit();
+            }
+        };
+        const header = createCommonHeader("🔒 章节需要密码", () => finish({ action: "cancel" }));
+        const body = el("div", { style: "padding:16px;font-size:14px;line-height:1.6;color:#333;" }, [
+            el("div", { style: "font-weight:bold;" }, [prompt.task.title]),
+            el("div", { style: "margin:4px 0 10px;color:#666;" }, [
+                `目录位置 ${prompt.task.index + 1}/${prompt.totalChapters}｜密码待处理 ${prompt.pendingCount}`
+            ]),
+            el(
+                "a",
+                {
+                    href: prompt.task.url,
+                    target: "_blank",
+                    rel: "noopener noreferrer",
+                    style: "display:inline-block;margin-bottom:10px;"
+                },
+                ["打开原章节"]
+            ),
+            passwordInput,
+            el("label", { style: "display:flex;gap:7px;align-items:flex-start;margin-top:10px;cursor:pointer;" }, [
+                remember,
+                el("span", {}, ["仅在本次下载中用于后续密码章节（不会保存）"])
+            ]),
+            error
+        ]);
+        const footer = el(
+            "div",
+            { style: "padding:12px;display:flex;flex-wrap:wrap;justify-content:flex-end;gap:8px;" },
+            [
+                el("button", { id: "esj-protected-cancel", onclick: () => finish({ action: "cancel" }) }, ["取消任务"]),
+                el("button", { id: "esj-protected-skip-all", onclick: () => finish({ action: "skip-all" }) }, [
+                    "跳过全部剩余密码章节"
+                ]),
+                el("button", { id: "esj-protected-skip", onclick: () => finish({ action: "skip-current" }) }, [
+                    "跳过本章"
+                ]),
+                el(
+                    "button",
+                    {
+                        id: "esj-protected-submit",
+                        onclick: submit,
+                        style: "background:#2b9bd7;color:#fff;border:none;padding:7px 12px;border-radius:5px;"
+                    },
+                    ["提交密码"]
+                )
+            ]
+        );
+        const popup = el(
+            "div",
+            {
+                id: "esj-protected-chapter",
+                role: "dialog",
+                "aria-modal": "true",
+                style: "position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:480px;max-width:calc(100vw - 32px);background:#fff;border:1px solid #aaa;border-radius:8px;box-shadow:0 0 18px rgba(0,0,0,.28);z-index:1000002;"
+            },
+            [header, body, footer]
+        );
+        document.body.appendChild(popup);
+        enableDrag(popup, ".esj-common-header");
+        passwordInput.focus();
+        signal?.addEventListener("abort", onAbort, { once: true });
     });
 }
 

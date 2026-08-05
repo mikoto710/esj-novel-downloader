@@ -1,0 +1,83 @@
+// @vitest-environment jsdom
+
+import { beforeEach, describe, expect, it } from "vitest";
+import { closeProtectedChapterPrompt, promptProtectedChapterPassword } from "../../src/ui/popups";
+import { createDownloadTask } from "../support";
+
+function prompt(signal?: AbortSignal) {
+    return promptProtectedChapterPassword(
+        {
+            task: createDownloadTask(36, { title: "第 37 章 暗号", url: "https://www.esjzone.cc/forum/100/37.html" }),
+            totalChapters: 300,
+            pendingCount: 3
+        },
+        signal
+    );
+}
+
+describe("protected chapter password UI", () => {
+    beforeEach(() => closeProtectedChapterPrompt());
+
+    it("shows the exact chapter identity, queue count, link, and memory scope", async () => {
+        const decision = prompt();
+        const popup = document.querySelector("#esj-protected-chapter") as HTMLElement;
+
+        expect(popup.textContent).toContain("第 37 章 暗号");
+        expect(popup.textContent).toContain("目录位置 37/300");
+        expect(popup.textContent).toContain("密码待处理 3");
+        expect((popup.querySelector("a") as HTMLAnchorElement).href).toBe("https://www.esjzone.cc/forum/100/37.html");
+        expect((popup.querySelector("#esj-protected-remember") as HTMLInputElement).checked).toBe(false);
+
+        (popup.querySelector("#esj-protected-cancel") as HTMLButtonElement).click();
+        await expect(decision).resolves.toEqual({ action: "cancel" });
+    });
+
+    it("submits a password and explicit task-only reuse choice", async () => {
+        const decision = prompt();
+        const input = document.querySelector("#esj-protected-password") as HTMLInputElement;
+        const remember = document.querySelector("#esj-protected-remember") as HTMLInputElement;
+        input.value = "fictional-password";
+        remember.checked = true;
+        (document.querySelector("#esj-protected-submit") as HTMLButtonElement).click();
+
+        await expect(decision).resolves.toEqual({
+            action: "submit",
+            password: "fictional-password",
+            rememberPassword: true
+        });
+        expect(document.querySelector("#esj-protected-chapter")).not.toBeNull();
+        closeProtectedChapterPrompt();
+    });
+
+    it.each([
+        ["#esj-protected-skip", { action: "skip-current" }],
+        ["#esj-protected-skip-all", { action: "skip-all" }],
+        ["#esj-protected-cancel", { action: "cancel" }]
+    ])("returns and cleans up the %s decision", async (selector, expected) => {
+        const decision = prompt();
+        (document.querySelector(selector) as HTMLButtonElement).click();
+
+        await expect(decision).resolves.toEqual(expected);
+        expect(document.querySelector("#esj-protected-chapter")).toBeNull();
+    });
+
+    it("returns cancellation and removes the prompt when the task aborts", async () => {
+        const controller = new AbortController();
+        const decision = prompt(controller.signal);
+
+        controller.abort();
+
+        await expect(decision).resolves.toEqual({ action: "cancel" });
+        expect(document.querySelector("#esj-protected-chapter")).toBeNull();
+    });
+
+    it("keeps an empty password in the same prompt", async () => {
+        const decision = prompt();
+        (document.querySelector("#esj-protected-submit") as HTMLButtonElement).click();
+
+        expect(document.querySelector("#esj-protected-error")?.textContent).toBe("请输入密码。");
+        expect(document.querySelector("#esj-protected-chapter")).not.toBeNull();
+        (document.querySelector("#esj-protected-cancel") as HTMLButtonElement).click();
+        await expect(decision).resolves.toEqual({ action: "cancel" });
+    });
+});
