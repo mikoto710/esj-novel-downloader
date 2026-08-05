@@ -19,6 +19,29 @@ export interface DownloadTask {
     title: string;
 }
 
+export type ProtectedChapterProtocolErrorCode =
+    | "token-invalid"
+    | "response-invalid"
+    | "unknown-status"
+    | "content-invalid";
+
+export type ProtectedChapterUnlockResult =
+    | { kind: "unlocked"; html: string }
+    | { kind: "password-rejected"; message: string }
+    | { kind: "protocol-error"; code: ProtectedChapterProtocolErrorCode; message: string };
+
+/**
+ * 站点密码授权由浏览器 adapter 实现；核心只编排结构化结果，不接触密码协议和 DOM
+ */
+export interface ProtectedChapterAuthPort {
+    unlock(
+        task: DownloadTask,
+        protectedPageHtml: string,
+        password: string,
+        signal?: AbortSignal
+    ): Promise<ProtectedChapterUnlockResult>;
+}
+
 /**
  * 页面适配层启动一次全本下载所需的数据
  */

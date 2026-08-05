@@ -20,6 +20,11 @@ export interface ChapterFixtureOptions {
     contentHtml?: string;
 }
 
+export interface ProtectedChapterFixtureOptions {
+    title?: string;
+    message?: string;
+}
+
 /**
  * 创建小说详情页 DOM 夹具
  */
@@ -79,6 +84,28 @@ export function createChapterFixture(options: ChapterFixtureOptions = {}): strin
                 <h2>${escapeFixtureText(title)}</h2>
                 <div class="single-post-meta"><div>${escapeFixtureText(author)}</div></div>
                 <article class="forum-content">${contentHtml}</article>
+            </body>
+        </html>`;
+}
+
+/**
+ * 创建站点密码章节页 HTML 夹具
+ */
+export function createProtectedChapterFixture(options: ProtectedChapterFixtureOptions = {}): string {
+    const title = options.title ?? "第 2 章 密码章节";
+    const message = options.message ?? "请输入密码";
+
+    return `<!doctype html>
+        <html>
+            <head><title>${escapeFixtureText(title)} - ESJZone</title></head>
+            <body>
+                <h2>${escapeFixtureText(title)}</h2>
+                <div class="single-post-meta"><div>章节作者</div></div>
+                <article class="forum-content">
+                    <div id="oops">${escapeFixtureText(message)}</div>
+                    <input id="pw" name="pw" type="password">
+                    <button class="btn-send-pw" type="button">送出</button>
+                </article>
             </body>
         </html>`;
 }
