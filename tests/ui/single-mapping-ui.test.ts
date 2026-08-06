@@ -94,6 +94,25 @@ describe("single-page mapped font UI", () => {
         });
     });
 
+    it("offers interactive export instead of parsing a protected form as chapter content", async () => {
+        installSinglePage(`
+            <div id="oops">请输入密码</div>
+            <input id="pw" name="pw" type="password">
+            <button class="btn-send-pw" type="button">送出</button>
+        `);
+
+        injectSinglePageButton();
+
+        await vi.waitFor(() => {
+            const buttons = getButtons();
+            expect(buttons.txt.getAttribute("aria-disabled")).toBe("false");
+            expect(buttons.html.getAttribute("aria-disabled")).toBe("false");
+            expect(document.querySelector("#esj-single-mapping-warning")?.textContent).toContain(
+                "本章需要密码，点击导出后输入密码"
+            );
+        });
+    });
+
     it("keeps both exports disabled when the final mapped structure is invalid", async () => {
         installSinglePage(`<section style="font-family: '1', sans-serif;"><p>Invalid mapped body</p></section>`);
 

@@ -1,7 +1,11 @@
 // @vitest-environment jsdom
 
-import { beforeEach, describe, expect, it } from "vitest";
-import { closeProtectedChapterPrompt, promptProtectedChapterPassword } from "../../src/ui/popups";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import {
+    closeProtectedChapterPrompt,
+    promptProtectedChapterPassword,
+    setProtectedChapterPromptBusy
+} from "../../src/ui/popups";
 import { createDownloadTask } from "../support";
 
 function prompt(signal?: AbortSignal) {
@@ -113,5 +117,34 @@ describe("protected chapter password UI", () => {
         expect((document.querySelector("#esj-protected-submit") as HTMLButtonElement).textContent).toBe("重试连接");
         (document.querySelector("#esj-protected-cancel") as HTMLButtonElement).click();
         await expect(reconnectDecision).resolves.toEqual({ action: "cancel" });
+    });
+
+    it("keeps cancellation active while an authorization request is pending", async () => {
+        const pendingDecision = vi.fn();
+        const decision = promptProtectedChapterPassword(
+            {
+                task: createDownloadTask(36),
+                totalChapters: 300,
+                pendingCount: 1
+            },
+            undefined,
+            pendingDecision
+        );
+        const input = document.querySelector("#esj-protected-password") as HTMLInputElement;
+        input.value = "fictional-password";
+        (document.querySelector("#esj-protected-submit") as HTMLButtonElement).click();
+        await expect(decision).resolves.toEqual({
+            action: "submit",
+            password: "fictional-password",
+            rememberPassword: false
+        });
+
+        setProtectedChapterPromptBusy();
+        expect(input.disabled).toBe(true);
+        expect((document.querySelector("#esj-protected-submit") as HTMLButtonElement).disabled).toBe(true);
+        (document.querySelector("#esj-protected-cancel") as HTMLButtonElement).click();
+
+        expect(pendingDecision).toHaveBeenCalledWith({ action: "cancel" });
+        closeProtectedChapterPrompt();
     });
 });

@@ -3,6 +3,7 @@ import { showMessagePopup } from "./message-popup";
 import { downloadCurrentPage } from "../scrapers/single";
 import { parseChapterHtml } from "../core/parser";
 import { MappingFontError, normalizeChapterMappingFont } from "../core/mapping-font";
+import { isProtectedChapterHtml } from "../adapters/browser-protected-chapter";
 
 const TXT_TITLE = "下载本章 (TXT)";
 const HTML_TITLE = "下载本章 (HTML)";
@@ -81,6 +82,19 @@ async function updateSinglePageMappingUi(version: number): Promise<void> {
     try {
         if (!document.querySelector(".forum-content")) {
             throw new Error("未找到章节正文，无法完成映射字体检测");
+        }
+        if (isProtectedChapterHtml(document.documentElement.outerHTML)) {
+            if (
+                version !== mappingUiRefreshVersion ||
+                !elements.txtButton.isConnected ||
+                !elements.htmlButton.isConnected
+            ) {
+                return;
+            }
+            enableSingleExport(elements.txtButton, TXT_TITLE);
+            enableSingleExport(elements.htmlButton, HTML_TITLE);
+            replaceSingleMappingNotice(elements.container, "🔒 本章需要密码，点击导出后输入密码。", "#a45b00");
+            return;
         }
         const parsed = parseChapterHtml(document.documentElement.outerHTML, document.title.split(" - ")[0]);
         const normalized = await normalizeChapterMappingFont({

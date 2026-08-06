@@ -244,12 +244,40 @@ export function closeProtectedChapterPrompt(): void {
     document.querySelector("#esj-protected-chapter")?.remove();
 }
 
+export function setProtectedChapterPromptBusy(message = "正在验证密码，请稍候..."): void {
+    const popup = document.querySelector("#esj-protected-chapter") as HTMLElement | null;
+    if (!popup) {
+        return;
+    }
+    const passwordInput = popup.querySelector("#esj-protected-password") as HTMLInputElement | null;
+    const remember = popup.querySelector("#esj-protected-remember") as HTMLInputElement | null;
+    const submit = popup.querySelector("#esj-protected-submit") as HTMLButtonElement | null;
+    const error = popup.querySelector("#esj-protected-error") as HTMLElement | null;
+    if (passwordInput) {
+        passwordInput.disabled = true;
+    }
+    if (remember) {
+        remember.disabled = true;
+    }
+    if (submit) {
+        submit.disabled = true;
+        submit.textContent = "正在验证...";
+    }
+    if (error) {
+        error.style.color = "#666";
+        error.textContent = message;
+    }
+}
+
 /**
  * 提交密码时保留弹窗，授权结果可以在同一弹窗内继续显示；跳过或取消才结束当前交互
  */
 export function promptProtectedChapterPassword(
     prompt: ProtectedChapterPrompt,
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    onPendingDecision?: (
+        decision: Extract<ProtectedChapterDecision, { action: "skip-current" | "skip-all" | "cancel" }>
+    ) => void
 ): Promise<ProtectedChapterDecision> {
     const existingPopup = document.querySelector("#esj-protected-chapter") as HTMLElement | null;
     if (signal?.aborted) {
@@ -272,6 +300,15 @@ export function promptProtectedChapterPassword(
             resolve(decision);
         };
         const onAbort = () => finish({ action: "cancel" });
+        const finishOrNotify = (
+            decision: Extract<ProtectedChapterDecision, { action: "skip-current" | "skip-all" | "cancel" }>
+        ) => {
+            if (settled) {
+                onPendingDecision?.(decision);
+                return;
+            }
+            finish(decision);
+        };
         const error = el("div", {
             id: "esj-protected-error",
             style: `min-height:20px;margin-top:8px;color:${prompt.message ? "#c62828" : "#666"};font-size:13px;`
@@ -305,7 +342,7 @@ export function promptProtectedChapterPassword(
                 submit();
             }
         };
-        const header = createCommonHeader("🔒 章节需要密码", () => finish({ action: "cancel" }));
+        const header = createCommonHeader("🔒 章节需要密码", () => finishOrNotify({ action: "cancel" }));
         const body = el("div", { style: "padding:16px;font-size:14px;line-height:1.6;color:#333;" }, [
             el("div", { style: "font-weight:bold;" }, [prompt.task.title]),
             el("div", { style: "margin:4px 0 10px;color:#666;" }, [
@@ -332,11 +369,13 @@ export function promptProtectedChapterPassword(
             "div",
             { style: "padding:12px;display:flex;flex-wrap:wrap;justify-content:flex-end;gap:8px;" },
             [
-                el("button", { id: "esj-protected-cancel", onclick: () => finish({ action: "cancel" }) }, ["取消任务"]),
-                el("button", { id: "esj-protected-skip-all", onclick: () => finish({ action: "skip-all" }) }, [
+                el("button", { id: "esj-protected-cancel", onclick: () => finishOrNotify({ action: "cancel" }) }, [
+                    "取消任务"
+                ]),
+                el("button", { id: "esj-protected-skip-all", onclick: () => finishOrNotify({ action: "skip-all" }) }, [
                     "跳过全部剩余密码章节"
                 ]),
-                el("button", { id: "esj-protected-skip", onclick: () => finish({ action: "skip-current" }) }, [
+                el("button", { id: "esj-protected-skip", onclick: () => finishOrNotify({ action: "skip-current" }) }, [
                     "跳过本章"
                 ]),
                 el(
