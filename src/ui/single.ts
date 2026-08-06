@@ -248,7 +248,7 @@ export function injectSinglePageButton(): void {
         return;
     }
 
-    // 创建按钮 (TXT)
+    // 创建 TXT 按钮
     const btnTxt = el(
         "a",
         {
@@ -275,7 +275,7 @@ export function injectSinglePageButton(): void {
         [el("i", { className: "icon-download" })]
     );
 
-    // 创建按钮 (HTML)
+    // 创建 HTML 按钮
     const btnHtml = el(
         "a",
         {

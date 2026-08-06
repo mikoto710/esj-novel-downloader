@@ -37,7 +37,7 @@ export function escapeHtmlPreserveLine(s: string | null | undefined): string {
 }
 
 /**
- * 将 HTML 字符串转换为符合 XHTML 标准的字符串 (用于 EPUB)
+ * 将 HTML 字符串转换为 EPUB XHTML
  * @param htmlString 输入的 HTML 字符串
  * @returns 转换后的 XHTML 字符串
  */

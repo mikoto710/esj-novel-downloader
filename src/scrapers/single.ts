@@ -38,7 +38,7 @@ export async function downloadCurrentPage(format: "txt" | "html" = "txt"): Promi
             totalChapters: 1,
             imageEnabled: getImageDownloadSetting()
         },
-        // 单章导出不应覆盖全本任务留给后续导出失败使用的会话指针。
+        // 单章导出不覆盖全本任务的会话指针
         { rememberForLaterFailures: false }
     );
 
@@ -326,7 +326,7 @@ export async function downloadCurrentPage(format: "txt" | "html" = "txt"): Promi
             details: e?.message || String(e)
         });
     } finally {
-        // 下载已触发后，即使后续历史写入失败，导出本身仍应记为成功；任务失败原因另行保留。
+        // 下载触发后历史写入失败不影响导出成功
         const exportOutcome = downloadTriggered ? "success" : diagnosticResult;
         recordBrowserDiagnosticExport(
             {

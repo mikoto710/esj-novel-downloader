@@ -148,7 +148,7 @@ function reopenProtectedChapterForRetry(ctx: DownloadContext, task: DownloadTask
 }
 
 function beginProtectedRetryRound(ctx: DownloadContext): void {
-    // “跳过全部”只约束当前补抓轮次；显式开始下一轮时必须重新允许用户处理密码章节。
+    // “跳过全部”只约束当前补抓轮次；显式开始下一轮时必须重新允许用户处理密码章节
     ctx.skipRemainingProtectedRetries = false;
 }
 
@@ -278,8 +278,7 @@ async function normalizeRestoredChapters(ctx: DownloadContext): Promise<boolean>
     let invalidatedCount = 0;
 
     if (entries.length > 0) {
-        // 先让浏览器绘制恢复阶段和首条日志；之后分片让步，避免大量命中缓存形成连续微任务，
-        // 导致日志、取消点击和页面绘制都要等待整批校验结束。
+        // 先让浏览器绘制恢复阶段和首条日志；之后分片让步，避免大量命中缓存形成连续微任务
         await dependencies.scheduler.sleepWithAbort(0);
     }
 
@@ -873,8 +872,8 @@ async function retryMissingChapters(tasks: readonly DownloadTask[], ctx: Downloa
 }
 
 /**
- * 每次决策只基于上一轮补抓已经落盘后的实时章节表。
- * 弹窗期间若外部取消，adapter 会通过 AbortSignal 将决策收口为 cancel，避免流程悬挂。
+ * 补抓决策基于已落盘的实时章节表
+ * 外部取消时由 AbortSignal 收口决策
  */
 async function resolveIncompleteChapters(tasks: DownloadTask[], ctx: DownloadContext): Promise<boolean> {
     const { dependencies } = ctx;
@@ -1242,7 +1241,7 @@ export async function runDownload(options: DownloadOptions, dependencies: Downlo
             transition(ctx, "failed");
         }
         dependencies.events.emit({ type: "download-failed", error: reportedError, snapshot: ctx.machine.snapshot });
-        // 正式下载阶段由 coordinator 先清理进度弹窗，再发布唯一终态提示；页面层不得再次 fullCleanup。
+        // coordinator 统一清理进度弹窗并发布终态提示
         dependencies.ui.cleanup();
         if (reportedError instanceof MappingFontError && ctx.mappingFailures.size > 0) {
             dependencies.ui.showMappingFontFailure(Array.from(ctx.mappingFailures.values()));

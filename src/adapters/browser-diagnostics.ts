@@ -64,7 +64,7 @@ function observeBrowserDiagnosticPageClose(taskId: string): void {
     stopBrowserDiagnosticCloseObserver(taskId);
     const onPageHide = (event: PageTransitionEvent) => {
         if (event.persisted) {
-            // bfcache 挂起后页面可能返回，不能把这次离场记录为关闭。
+            // bfcache 挂起后页面可能返回，不能把这次离场记录为关闭
             return;
         }
         stopBrowserDiagnosticCloseObserver(taskId);

@@ -219,7 +219,7 @@ export async function scrapeDetail(): Promise<void> {
             return;
         }
         console.error(e);
-        // 正式下载错误已由 coordinator 清理并显示终态弹窗；页面层只处理启动阶段错误。
+        // 正式下载错误由 coordinator 处理，页面层只处理启动错误
         if (!downloadStarted && isBrowserDiagnosticSessionActive(lock.taskId)) {
             recordBrowserDiagnosticFailure(
                 {

@@ -30,7 +30,7 @@ function recordImageFailure(
 }
 
 /**
- * 压缩图片 (使用 Canvas)
+ * 使用 Canvas 压缩图片
  * @param blob 原始图片 Blob
  * @param quality 压缩质量 (0.1 - 1.0)
  * @param maxWidth 最大宽度 (防止过大)
@@ -61,7 +61,7 @@ async function compressImage(blob: Blob, quality = 0.7, maxWidth = 800): Promise
                 return resolve(null);
             }
 
-            // 填充白色背景 (防止透明 PNG 变黑)
+            // 填充白色背景避免透明 PNG 变黑
             ctx.fillStyle = "#FFFFFF";
             ctx.fillRect(0, 0, width, height);
 

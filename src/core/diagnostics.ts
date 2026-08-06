@@ -14,7 +14,7 @@ export const DIAGNOSTIC_TOTAL_BYTES_LIMIT = 2 * 1024 * 1024;
 export const DIAGNOSTIC_SESSION_BYTES_LIMIT = 256 * 1024;
 const DIAGNOSTIC_LOG_LIMIT = 500;
 const DIAGNOSTIC_EVENT_LIMIT = 500;
-// 同一全本任务可能反复导出多种格式；保留最近结果即可，避免重试无限放大单条记录。
+// 同一全本任务只保留最近导出结果
 const DIAGNOSTIC_EXPORT_LIMIT = 50;
 const DIAGNOSTIC_MESSAGE_LIMIT = 2_000;
 const DIAGNOSTIC_ACTIVE_STALE_MS = 24 * 60 * 60 * 1000;
@@ -234,7 +234,7 @@ function trimSessionToLimit(session: DiagnosticSession): DiagnosticSession {
 }
 
 function repairTerminalResult(session: DiagnosticSession): DiagnosticSession {
-    // 兼容本功能开发期间已经写入、尚未包含 exports 字段的 v1 诊断记录。
+    // 兼容缺少 exports 字段的早期诊断记录
     const normalized = {
         ...session,
         task: { ...initialTaskSummary(session.task.totalChapters), ...session.task },
@@ -308,7 +308,7 @@ function hasReplacementSession(session: DiagnosticSession, sessions: DiagnosticS
 }
 
 /**
- * 构建只读展示模型；关闭观察和后续续传都不能反向改变下载业务终态。
+ * 构建只读展示模型不改变下载终态
  */
 export function createDiagnosticSessionView(store: DiagnosticStore, now: number): DiagnosticSessionViewStore {
     const allSessions = [...store.active, ...store.history];
@@ -449,7 +449,7 @@ export class DiagnosticManager {
         if (!session || session.closeObservedAt !== undefined) {
             return;
         }
-        // 页面关闭只记录可观察事实；不得借此推断取消、失败或异常中断。
+        // 页面关闭只记录可观察事实
         session.closeObservedAt = now;
         session.updatedAt = now;
         this.repository.save(normalizeStore(store, now));
@@ -526,7 +526,7 @@ export class DiagnosticManager {
 
     recordDownloadEvent(taskId: string, event: DownloadEvent): void {
         if (event.type === "chapter-restored" || event.type === "chapter-processed") {
-            // 逐章恢复和处理没有独立诊断字段；对应的快照会汇总进度，避免大缓存恢复时逐章读写整份 GM 存储。
+            // 逐章恢复和处理只汇总到快照
             return;
         }
         this.mutateSession(
@@ -632,7 +632,7 @@ export class DiagnosticManager {
     }
 
     list(): DiagnosticStore {
-        // 诊断弹窗会跨标签页轮询；查询不得将旧快照写回共享存储并覆盖任务的最新终态。
+        // 诊断查询不回写旧快照
         return normalizeStore(this.repository.load(), this.now());
     }
 

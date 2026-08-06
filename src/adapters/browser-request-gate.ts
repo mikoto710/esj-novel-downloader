@@ -12,7 +12,7 @@ function createAbortError(): DOMException {
 }
 
 /**
- * 普通章节请求可以并行；独占授权一旦排队，后续普通请求必须等待，避免覆盖站点的章节会话上下文。
+ * 普通章节请求可以并行；独占授权一旦排队，后续普通请求必须等待，避免覆盖站点的章节会话上下文
  */
 export class BrowserRequestGate {
     private readonly queue: PendingRequest<unknown>[] = [];

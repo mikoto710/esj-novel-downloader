@@ -60,7 +60,7 @@ function recordInlineImageFailures(
     task: { index: number; title: string; url: string },
     failures: ImageProcessingFailure[]
 ): void {
-    // 插图故障只作为当前章节的附加诊断，不能影响下载核心的章节成功、补抓或导出终态。
+    // 插图故障只作为当前章节的附加诊断，不能影响下载核心的章节成功、补抓或导出终态
     failures.forEach((failure) => {
         recordBrowserDiagnosticFailure({
             scope: "image",
@@ -294,7 +294,7 @@ const lock: BookLockService = {
  */
 export function createBrowserDownloadDependencies(): DownloadDependencies {
     const requestGate = new BrowserRequestGate();
-    // 共享租约覆盖响应正文读取，确保独占授权开始前所有普通章节请求已经完整结束。
+    // 授权开始前普通章节请求必须完成
     const chapterFetcher: ChapterFetcherPort = {
         fetch(task, signal) {
             return requestGate.runShared(async () => {

@@ -115,7 +115,7 @@ export function createDiagnosticPopup(): void {
         if (disposeActiveDiagnosticPopup === dispose) {
             disposeActiveDiagnosticPopup = null;
         }
-        // 诊断弹窗仅在接管设置面板后释放设置入口，避免解除其他弹窗已持有的锁。
+        // 诊断弹窗仅在接管设置面板后释放设置入口，避免解除其他弹窗已持有的锁
         if (openedFromSettings) {
             toggleSettingsLock(false);
         }
@@ -279,7 +279,7 @@ export function createDiagnosticPopup(): void {
         const listScrollTop = preserveScroll ? list.scrollTop : 0;
         const detailScrollTop = preserveScroll ? detail.scrollTop : 0;
         const view = listBrowserDiagnosticSessionView();
-        // 关闭后尚未确认的会话不可继续占用“进行中”位置，但仍保留给用户检查。
+        // 关闭后未确认会话不占用进行中位置但保留检查
         const sessions = [...view.active, ...view.unconfirmed, ...view.history];
         if (!selectedId || !sessions.some((item) => item.session.id === selectedId)) {
             selectedId = sessions[0]?.session.id || null;
@@ -345,7 +345,7 @@ export function createDiagnosticPopup(): void {
             dispose();
             return;
         }
-        // 清除确认期间不重绘，保留用户当前操作与确认对话框的归属。
+        // 清除确认期间不重绘，保留用户当前操作与确认对话框的归属
         if (document.visibilityState === "visible" && !document.querySelector("#esj-diagnostic-clear-confirm")) {
             render({ preserveScroll: true });
         }

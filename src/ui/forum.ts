@@ -14,7 +14,7 @@ export function injectForumButton(): void {
     // 找到包含发帖按钮的 column
     let container = document.querySelector(".forum-list-page .column");
 
-    // 如果找不到现有容器，手动创建一个容器，并插在表格 (.table-responsive) 前面
+    // 找不到容器时插入到 .table-responsive 前
     if (!container) {
         const tableEl = document.querySelector(".table-responsive");
 

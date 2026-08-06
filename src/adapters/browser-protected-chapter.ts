@@ -109,7 +109,7 @@ export function createBrowserProtectedChapterAuth(
     return {
         async unlock(task: DownloadTask, _protectedPageHtml: string, password: string, signal?: AbortSignal) {
             return requestGate.runExclusive(async () => {
-                // 只有刷新后的目标章节可以建立本次授权上下文，检测阶段保留的旧页面不得继续参与回填。
+                // 仅刷新后的目标章节可建立授权上下文
                 const refreshedResponse = await request(
                     task.url,
                     { method: "GET", credentials: "include" },

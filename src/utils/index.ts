@@ -1,5 +1,5 @@
 /**
- * 安全获取全局变量 (兼容油猴沙箱环境)
+ * 获取兼容油猴沙箱的全局变量
  * @param name 变量名，如 'JSZip'
  */
 function getGlobalVar<T>(name: string): T | undefined {
@@ -58,7 +58,7 @@ export function loadSingleScript<T>(src: string, globalName: string): Promise<T>
 
 /**
  * 支持自动 Fallback 的脚本加载器
- * @param srcs 单个 URL 或 URL 数组 (按序重试)
+ * @param srcs 按顺序重试的 URL 列表
  * @param globalName 全局变量名，如 'JSZip'
  */
 export async function loadScript<T>(srcs: string | string[], globalName: string): Promise<T> {
@@ -80,7 +80,7 @@ export async function loadScript<T>(srcs: string | string[], globalName: string)
 
 /**
  * 异步延迟
- * @param ms 延迟时间(ms)
+ * @param ms 延迟时间
  */
 export function sleep(ms: number): Promise<void> {
     return new Promise((r) => setTimeout(r, ms));
@@ -88,7 +88,7 @@ export function sleep(ms: number): Promise<void> {
 
 /**
  * 支持中断的异步延迟
- * @param ms 延迟时间(ms)
+ * @param ms 延迟时间
  * @param signal 中断信号
  */
 export function sleepWithAbort(ms: number, signal?: AbortSignal): Promise<void> {
@@ -164,7 +164,7 @@ function trimUiLogs(box: Element, state: UiLogState): void {
     state.truncationMarker.textContent = `… 已省略 ${state.omittedCount} 条较早日志，可在 F12 控制台或诊断日志中查看排障信息\n`;
 }
 
-// 批量追加日志文本，避免章节量较大时反复复制日志框中的全部历史内容
+// 批量追加日志避免重复复制历史内容
 function flushPendingUiLogs(): void {
     uiLogFlushTimer = null;
     const lines = pendingUiLogLines;
@@ -173,7 +173,7 @@ function flushPendingUiLogs(): void {
         return;
     }
 
-    // 日志也会被无 DOM 的基础设施适配器复用；此时只保留控制台与诊断记录，不刷新 UI。
+    // 日志也会被无 DOM 的基础设施适配器复用，此时只保留控制台与诊断记录，不刷新 UI
     if (typeof document === "undefined") {
         return;
     }
@@ -201,8 +201,7 @@ function scheduleUiLogFlush(): void {
         return;
     }
 
-    // 每批首条日志立即写入，让启动和阶段切换信息无需等待批处理窗口；
-    // 随后的高频日志仍在同一个 50 ms 窗口内合并，避免恢复逐条 DOM 追加。
+    // 每批首条日志立即写入，后续日志在 50 ms 窗口内合并
     if (typeof document !== "undefined" && document.querySelector("#esj-log")) {
         flushPendingUiLogs();
     }
@@ -226,7 +225,7 @@ export function log(msg: string): void {
  * 支持超时和外部中断的 fetch
  * @param url 请求地址
  * @param options fetch配置
- * @param timeout 超时时间(ms)
+ * @param timeout 超时时间 (ms)
  * @param cancelSignal 外部取消信号
  * @deprecated 请使用 fetchWithTimeout 代替
  */
@@ -243,7 +242,7 @@ export async function fetchWithTimeoutNative(
     // 监听外部取消信号
     let onCancel: (() => void) | undefined;
 
-    // 无论 fetch 在干什么，这个 Promise 会瞬间报错，强行结束 await
+    // 立即拒绝 Promise 结束 await
     const abortPromise = new Promise<never>((_, reject) => {
         if (cancelSignal?.aborted) {
             return reject(new Error("User Aborted"));
@@ -282,7 +281,7 @@ export async function fetchWithTimeoutNative(
  * 基于 GM_xmlhttpRequest 的请求封装，支持超时和外部中断
  * @param url 请求地址
  * @param options fetch配置
- * @param timeout 超时时间(ms)
+ * @param timeout 超时时间 (ms)
  * @param cancelSignal 外部取消信号
  */
 export function fetchWithTimeout(
