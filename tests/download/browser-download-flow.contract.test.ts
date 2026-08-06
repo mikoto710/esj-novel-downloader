@@ -26,7 +26,7 @@ describe("browser download flow contracts", () => {
         expect(trayMessages).toContain("正在保存下载进度 (1/1)");
         expect(trayMessages).toContain("正在检查章节完整性 (1/1)");
         expect(trayMessages).toContain("正在准备导出 (1/1)");
-        expect(trayMessages).toContain("下载完成 (1/1)");
+        expect(trayMessages).toContain("导出准备完成 (1/1)");
     });
 
     it("shows cache validation before restored chapters finish normalizing", async () => {
@@ -86,5 +86,24 @@ describe("browser download flow contracts", () => {
         expect(String(mocks.fetchWithTimeout.mock.calls[2][1].body)).toBe("pw=fictional-password");
         expect(mocks.parseChapterHtml).toHaveBeenCalledWith(expect.stringContaining("unlocked body"), "第 1 章");
         expect(runtime.state.cachedData?.chapters).toHaveLength(1);
+    });
+
+    it("keeps protected chapters pending instead of presenting request completion as正文 progress", async () => {
+        const decision = createDeferred<{ action: "skip-current" }>();
+        document.body.innerHTML = '<span id="esj-title"></span><div id="esj-progress"></div>';
+        mocks.fetchWithTimeout.mockResolvedValueOnce({
+            text: vi.fn().mockResolvedValue(createProtectedChapterFixture())
+        });
+        mocks.promptProtectedChapterPassword.mockImplementationOnce(() => decision.promise);
+
+        const download = runtime.batchDownload(createBrowserDownloadOptions(createBrowserDownloadTasks(1)));
+        await vi.waitFor(() => expect(mocks.promptProtectedChapterPassword).toHaveBeenCalledOnce());
+
+        expect(document.querySelector("#esj-title")?.textContent).toContain("正文完成 0/1｜密码待处理 1｜正在抓取");
+        expect(document.title).toContain("[0/1｜密码1]");
+        expect((document.querySelector("#esj-progress") as HTMLElement).style.width).toBe("0%");
+
+        decision.resolve({ action: "skip-current" });
+        await download;
     });
 });

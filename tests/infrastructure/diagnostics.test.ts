@@ -86,12 +86,25 @@ describe("diagnostic session retention", () => {
             phase: "restoring-cache" as const,
             restoredCount: 1_224,
             completedCount: 1_224,
+            readyChapterCount: 1_224,
+            protectedDetectedCount: 4,
+            protectedPendingCount: 1,
+            protectedResolvedCount: 2,
+            protectedSkippedCount: 1,
             cachedChapterCount: 1_224
         };
         manager.recordDownloadEvent("large-cache", { type: "snapshot-updated", snapshot });
 
         expect(repository.saveCount).toBe(savesAfterStart + 1);
-        expect(manager.list().active[0].task).toMatchObject({ restoredChapters: 1_224, completedChapters: 1_224 });
+        expect(manager.list().active[0].task).toMatchObject({
+            restoredChapters: 1_224,
+            completedChapters: 1_224,
+            readyChapters: 1_224,
+            protectedDetectedChapters: 4,
+            protectedPendingChapters: 1,
+            protectedResolvedChapters: 2,
+            protectedSkippedChapters: 1
+        });
     });
 
     it("does not overwrite another page's terminal result while listing a stale snapshot", () => {

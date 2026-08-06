@@ -45,6 +45,7 @@ interface DownloadContext {
     decisionGate: UserDecisionGate;
     rememberedPassword: string | null;
     rememberPassword: boolean;
+    protectedDetectedIndexes: Set<number>;
 }
 
 type ChapterTaskResult = "completed" | "failed" | "cancelled" | "deferred";
@@ -84,7 +85,10 @@ function transition(ctx: DownloadContext, phase: DownloadSnapshot["phase"]): Dow
 }
 
 function updateSnapshot(ctx: DownloadContext, progress: Partial<Omit<DownloadSnapshot, "phase">>): DownloadSnapshot {
-    const snapshot = ctx.machine.update(progress);
+    const snapshot = ctx.machine.update({
+        ...progress,
+        readyChapterCount: ctx.dependencies.runtime.chapters.size
+    });
     publishSnapshot(ctx, snapshot);
     return snapshot;
 }
@@ -96,6 +100,30 @@ function updateProgress(ctx: DownloadContext): void {
         completedCount: snapshot.completedCount,
         cachedChapterCount: ctx.dependencies.runtime.chapters.size,
         status: "downloading"
+    });
+}
+
+function updateProtectedSnapshot(
+    ctx: DownloadContext,
+    progress: Partial<
+        Pick<
+            DownloadSnapshot,
+            "protectedDetectedCount" | "protectedPendingCount" | "protectedResolvedCount" | "protectedSkippedCount"
+        >
+    >
+): void {
+    updateSnapshot(ctx, progress);
+    updateProgress(ctx);
+}
+
+function registerProtectedDetection(ctx: DownloadContext, task: DownloadTask, skipped: boolean): void {
+    const snapshot = ctx.machine.snapshot;
+    const firstDetection = !ctx.protectedDetectedIndexes.has(task.index);
+    ctx.protectedDetectedIndexes.add(task.index);
+    updateProtectedSnapshot(ctx, {
+        protectedDetectedCount: snapshot.protectedDetectedCount + (firstDetection ? 1 : 0),
+        protectedPendingCount: snapshot.protectedPendingCount + (skipped ? 0 : 1),
+        protectedSkippedCount: snapshot.protectedSkippedCount + (skipped ? 1 : 0)
     });
 }
 
@@ -519,9 +547,13 @@ async function processChapterTask(
     updateSnapshot(ctx, { fetchedCount: ctx.machine.snapshot.fetchedCount + 1 });
     if (dependencies.protectedChapterDetector.isProtected(html)) {
         if (isRetry) {
+            // 已明确跳过的密码章节继续进入现有缺章决策，自动补抓不得再次打断用户输入流程
             return "failed";
         }
         const queued = ctx.protectedQueue.enqueue({ task, pageHtml: html });
+        if (queued.kind !== "duplicate") {
+            registerProtectedDetection(ctx, task, queued.kind === "skipped");
+        }
         if (queued.kind === "queued") {
             dependencies.log(`🔒 发现密码章节 [${task.index + 1}/${total}]：${task.title}，已加入等待队列。`);
         } else if (queued.kind === "skipped") {
@@ -536,13 +568,15 @@ async function processChapterTask(
 async function promptForProtectedChapter(
     item: ProtectedChapterWorkItem,
     ctx: DownloadContext,
-    message?: string
+    message?: string,
+    retryConnection = false
 ): Promise<ProtectedChapterDecision> {
     const prompt: ProtectedChapterPrompt = {
         task: item.task,
         totalChapters: ctx.total,
-        pendingCount: ctx.protectedQueue.pendingCount + 1,
+        pendingCount: ctx.machine.snapshot.protectedPendingCount,
         rememberPassword: ctx.rememberPassword,
+        retryConnection,
         ...(ctx.rememberedPassword ? { initialPassword: ctx.rememberedPassword } : {}),
         ...(message ? { message } : {})
     };
@@ -553,51 +587,90 @@ async function promptForProtectedChapter(
     );
 }
 
-async function resolveProtectedChapter(item: ProtectedChapterWorkItem, ctx: DownloadContext): Promise<void> {
+async function resolveProtectedChapter(
+    item: ProtectedChapterWorkItem,
+    ctx: DownloadContext
+): Promise<ChapterTaskResult> {
     const { dependencies } = ctx;
     let message: string | undefined;
     let useRememberedPassword = Boolean(ctx.rememberedPassword);
+    let retryConnection = false;
 
     while (!dependencies.runtime.isCancellationRequested()) {
         const decision: ProtectedChapterDecision =
             useRememberedPassword && ctx.rememberedPassword
                 ? { action: "submit", password: ctx.rememberedPassword, rememberPassword: true }
-                : await promptForProtectedChapter(item, ctx, message);
+                : await promptForProtectedChapter(item, ctx, message, retryConnection);
         useRememberedPassword = false;
 
         if (decision.action === "cancel") {
             dependencies.runtime.requestCancellation("flush");
-            return;
+            return "cancelled";
         }
         if (decision.action === "skip-current") {
             dependencies.ui.closeProtectedChapterPrompt();
             dependencies.log(`⏭ 已跳过密码章节 [${item.task.index + 1}/${ctx.total}]：${item.task.title}`);
-            return;
+            updateProtectedSnapshot(ctx, {
+                protectedPendingCount: Math.max(0, ctx.machine.snapshot.protectedPendingCount - 1),
+                protectedSkippedCount: ctx.machine.snapshot.protectedSkippedCount + 1
+            });
+            return "failed";
         }
         if (decision.action === "skip-all") {
             dependencies.ui.closeProtectedChapterPrompt();
             dependencies.log(`⏭ 已跳过密码章节 [${item.task.index + 1}/${ctx.total}]：${item.task.title}`);
-            for (const skipped of ctx.protectedQueue.skipAllRemaining()) {
+            const skippedItems = ctx.protectedQueue.skipAllRemaining();
+            for (const skipped of skippedItems) {
                 dependencies.log(`⏭ 已跳过密码章节 [${skipped.task.index + 1}/${ctx.total}]：${skipped.task.title}`);
             }
-            return;
+            updateProtectedSnapshot(ctx, {
+                protectedPendingCount: Math.max(
+                    0,
+                    ctx.machine.snapshot.protectedPendingCount - skippedItems.length - 1
+                ),
+                protectedSkippedCount: ctx.machine.snapshot.protectedSkippedCount + skippedItems.length + 1
+            });
+            return "failed";
         }
 
         ctx.rememberPassword = decision.rememberPassword;
         ctx.rememberedPassword = decision.rememberPassword ? decision.password : null;
         let result;
-        try {
-            result = await dependencies.protectedChapterAuth.unlock(
-                item.task,
-                item.pageHtml,
-                decision.password,
-                dependencies.runtime.signal
-            );
-        } catch (error) {
-            if (dependencies.runtime.isCancellationRequested() || isCancellationError(error)) {
-                return;
+        let technicalFailure = false;
+        for (let attempt = 0; attempt < 2; attempt++) {
+            try {
+                result = await dependencies.protectedChapterAuth.unlock(
+                    item.task,
+                    item.pageHtml,
+                    decision.password,
+                    dependencies.runtime.signal
+                );
+                break;
+            } catch (error) {
+                if (dependencies.runtime.isCancellationRequested() || isCancellationError(error)) {
+                    return "cancelled";
+                }
+                if (attempt === 0) {
+                    dependencies.log(
+                        `⚠️ 密码章节连接失败，正在进行一次技术重试 [${item.task.index + 1}/${ctx.total}]：${item.task.title}`
+                    );
+                    continue;
+                }
+                technicalFailure = true;
             }
-            message = `连接失败：${getErrorDetails(error).message}`;
+        }
+        if (technicalFailure || !result) {
+            dependencies.events.emit({
+                type: "chapter-failed",
+                task: item.task,
+                stage: "protected-auth",
+                code: "network-error",
+                message: "密码章节连接失败",
+                retry: false
+            });
+            dependencies.log(`❌ 密码章节连接失败 [${item.task.index + 1}/${ctx.total}]：${item.task.title}`);
+            message = "连接失败，请检查网络后重试。";
+            retryConnection = true;
             continue;
         }
 
@@ -605,20 +678,37 @@ async function resolveProtectedChapter(item: ProtectedChapterWorkItem, ctx: Down
             ctx.rememberedPassword = null;
             ctx.rememberPassword = false;
             message = result.message;
+            retryConnection = false;
+            dependencies.log(`⚠️ 密码不正确 [${item.task.index + 1}/${ctx.total}]：${item.task.title}`);
             continue;
         }
         if (result.kind === "protocol-error") {
+            dependencies.events.emit({
+                type: "chapter-failed",
+                task: item.task,
+                stage: "protected-auth",
+                code: result.code,
+                message: result.message,
+                retry: false
+            });
+            dependencies.log(`❌ 密码章节授权响应异常 [${item.task.index + 1}/${ctx.total}]：${item.task.title}`);
             message = result.message;
+            retryConnection = true;
             continue;
         }
 
         dependencies.ui.closeProtectedChapterPrompt();
+        updateProtectedSnapshot(ctx, {
+            protectedPendingCount: Math.max(0, ctx.machine.snapshot.protectedPendingCount - 1),
+            protectedResolvedCount: ctx.machine.snapshot.protectedResolvedCount + 1
+        });
         const processed = await processFetchedChapterHtml(item.task, result.html, ctx, false);
         if (processed === "completed") {
             dependencies.log(`🔓 密码章节解锁完成 [${item.task.index + 1}/${ctx.total}]：${item.task.title}`);
         }
-        return;
+        return processed;
     }
+    return "cancelled";
 }
 
 async function consumeProtectedChapters(ctx: DownloadContext): Promise<void> {
@@ -803,7 +893,11 @@ function finishCancellation(ctx: DownloadContext): Promise<void> {
 async function performCancellation(ctx: DownloadContext): Promise<void> {
     const { dependencies } = ctx;
     const { runtime } = dependencies;
-    updateSnapshot(ctx, { cancellationRequested: true, hasExportData: false });
+    updateSnapshot(ctx, {
+        cancellationRequested: true,
+        hasExportData: false,
+        protectedPendingCount: 0
+    });
     transition(ctx, "cancelling");
     const lockOwned = await dependencies.lock.owns(runtime.activeBookLock);
     const discardCache = await dependencies.lock.shouldDiscardCache(runtime.activeBookLock);
@@ -926,7 +1020,8 @@ export async function runDownload(options: DownloadOptions, dependencies: Downlo
         protectedQueue: new ProtectedChapterQueue(),
         decisionGate: new UserDecisionGate(),
         rememberedPassword: null,
-        rememberPassword: false
+        rememberPassword: false,
+        protectedDetectedIndexes: new Set()
     };
 
     try {

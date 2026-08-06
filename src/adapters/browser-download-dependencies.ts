@@ -137,24 +137,28 @@ const ui: DownloadUiPort = {
                 snapshot.cachedChapterCount > 0
                     ? `正在校验本地缓存 (${snapshot.cachedChapterCount} 章)`
                     : "正在准备本地缓存...",
-            "flushing-cache": `正在保存下载进度 (${snapshot.completedCount}/${snapshot.scheduledCount})`,
-            "checking-integrity": `正在检查章节完整性 (${snapshot.completedCount}/${snapshot.scheduledCount})`,
-            "preparing-export": `正在准备导出 (${snapshot.completedCount}/${snapshot.scheduledCount})`,
-            "export-ready": `下载完成 (${snapshot.completedCount}/${snapshot.scheduledCount})`
+            "flushing-cache": `正在保存下载进度 (${snapshot.readyChapterCount}/${snapshot.scheduledCount})`,
+            "checking-integrity": `正在检查章节完整性 (${snapshot.readyChapterCount}/${snapshot.scheduledCount})`,
+            "preparing-export": `正在准备导出 (${snapshot.readyChapterCount}/${snapshot.scheduledCount})`,
+            "export-ready": `导出准备完成 (${snapshot.readyChapterCount}/${snapshot.scheduledCount})`
         };
         const status = phaseStatus[snapshot.phase];
         if (status) {
             updateDownloadStatus(status);
             return;
         }
-        if (snapshot.phase !== "downloading" || snapshot.cancellationRequested || snapshot.completedCount === 0) {
+        if (
+            snapshot.phase !== "downloading" ||
+            snapshot.cancellationRequested ||
+            (snapshot.readyChapterCount === 0 && snapshot.protectedPendingCount === 0)
+        ) {
             return;
         }
-        const { completedCount: count, scheduledCount: total } = snapshot;
-        const downloadStatus = `全本下载 (${count}/${total}) `;
+        const { readyChapterCount: count, scheduledCount: total, protectedPendingCount: pending } = snapshot;
+        const downloadStatus = `正文完成 ${count}/${total}｜密码待处理 ${pending}｜正在抓取`;
         const progressEl = document.querySelector("#esj-progress") as HTMLElement | null;
         updateDownloadStatus(downloadStatus);
-        document.title = `[${count}/${total}] ${state.originalTitle}`;
+        document.title = `[${count}/${total}${pending > 0 ? `｜密码${pending}` : ""}] ${state.originalTitle}`;
         if (progressEl) {
             progressEl.style.width = (count / total) * 100 + "%";
         }

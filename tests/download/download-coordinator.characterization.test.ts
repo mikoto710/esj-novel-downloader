@@ -8,6 +8,7 @@ import type {
     DownloadSnapshot,
     DownloadTask,
     ProtectedChapterDecision,
+    ProtectedChapterPrompt,
     ProtectedChapterUnlockResult
 } from "../../src/core/download/contracts";
 import type { CachedData, Chapter, RuntimeCacheSession } from "../../src/types";
@@ -74,10 +75,81 @@ describe("runDownload characterization", () => {
 
         expect(harness.ui.showFormatChoice).not.toHaveBeenCalled();
         expect(harness.cacheClears).toHaveLength(0);
+        expect(harness.ui.snapshots.at(-1)).toMatchObject({
+            readyChapterCount: 0,
+            protectedDetectedCount: 1,
+            protectedPendingCount: 1,
+            protectedResolvedCount: 0,
+            protectedSkippedCount: 0
+        });
 
         unlock.resolve({ kind: "unlocked", html: "<p>unlocked body</p>" });
         await download;
         expect(harness.ui.showFormatChoice).toHaveBeenCalledOnce();
+        expect(harness.ui.snapshots.at(-1)).toMatchObject({
+            readyChapterCount: 1,
+            protectedDetectedCount: 1,
+            protectedPendingCount: 0,
+            protectedResolvedCount: 1,
+            protectedSkippedCount: 0
+        });
+    });
+
+    it("retries one technical failure automatically, then requires an explicit reconnect decision", async () => {
+        const tasks = [createDownloadTask(0)];
+        const harness = createHarness(tasks);
+        harness.dependencies.chapterFetcher.fetch = vi.fn(async () => "<protected>password form</protected>");
+        harness.dependencies.protectedChapterDetector.isProtected = () => true;
+        harness.ui.promptProtectedChapterPassword
+            .mockResolvedValueOnce({ action: "submit", password: "never-log-this", rememberPassword: true })
+            .mockResolvedValueOnce({ action: "submit", password: "never-log-this", rememberPassword: true });
+        harness.dependencies.protectedChapterAuth.unlock = vi
+            .fn()
+            .mockRejectedValueOnce(new Error("offline"))
+            .mockRejectedValueOnce(new Error("still offline"))
+            .mockResolvedValueOnce({ kind: "unlocked", html: "<p>unlocked body</p>" });
+
+        await runDownload(createOptions(tasks), harness.dependencies);
+
+        expect(harness.dependencies.protectedChapterAuth.unlock).toHaveBeenCalledTimes(3);
+        expect(harness.ui.promptProtectedChapterPassword).toHaveBeenCalledTimes(2);
+        expect(harness.ui.promptProtectedChapterPassword.mock.calls[1][0]).toMatchObject({
+            retryConnection: true,
+            initialPassword: "never-log-this"
+        });
+        expect(harness.log.mock.calls.flat().join("\n")).not.toContain("never-log-this");
+        expect(harness.events.ofType("chapter-failed")).toContainEqual(
+            expect.objectContaining({ stage: "protected-auth", code: "network-error" })
+        );
+    });
+
+    it("does not automatically retry password rejection or protocol failures", async () => {
+        const tasks = [createDownloadTask(0)];
+        const harness = createHarness(tasks);
+        harness.dependencies.chapterFetcher.fetch = vi.fn(async () => "<protected>password form</protected>");
+        harness.dependencies.protectedChapterDetector.isProtected = () => true;
+        harness.ui.promptProtectedChapterPassword
+            .mockResolvedValueOnce({ action: "submit", password: "wrong", rememberPassword: true })
+            .mockResolvedValueOnce({ action: "submit", password: "right", rememberPassword: false })
+            .mockResolvedValueOnce({ action: "submit", password: "right", rememberPassword: false });
+        harness.dependencies.protectedChapterAuth.unlock = vi
+            .fn()
+            .mockResolvedValueOnce({ kind: "password-rejected", message: "密码不正确" })
+            .mockResolvedValueOnce({ kind: "protocol-error", code: "token-invalid", message: "授权响应异常" })
+            .mockResolvedValueOnce({ kind: "unlocked", html: "<p>unlocked body</p>" });
+
+        await runDownload(createOptions(tasks), harness.dependencies);
+
+        expect(harness.dependencies.protectedChapterAuth.unlock).toHaveBeenCalledTimes(3);
+        expect(harness.ui.promptProtectedChapterPassword.mock.calls[1][0]).toMatchObject({
+            message: "密码不正确",
+            rememberPassword: false
+        });
+        expect(harness.ui.promptProtectedChapterPassword.mock.calls[1][0]).not.toHaveProperty("initialPassword");
+        expect(harness.ui.promptProtectedChapterPassword.mock.calls[2][0]).toMatchObject({
+            message: "授权响应异常",
+            retryConnection: true
+        });
     });
 
     it("keeps a skipped protected chapter out of the chapter map and reuses the incomplete decision", async () => {
@@ -97,6 +169,13 @@ describe("runDownload characterization", () => {
             expect.any(AbortSignal)
         );
         expect(harness.exportData?.chapters).toHaveLength(1);
+        expect(harness.ui.snapshots.at(-1)).toMatchObject({
+            readyChapterCount: 0,
+            protectedDetectedCount: 1,
+            protectedPendingCount: 0,
+            protectedResolvedCount: 0,
+            protectedSkippedCount: 1
+        });
     });
 
     it("runs without DOM, IndexedDB, GM APIs, or global application state", async () => {
@@ -492,7 +571,7 @@ function createHarness(tasks: DownloadTask[], chapters = new Map<number, Chapter
             (detection: IncompleteChapterDetection, signal?: AbortSignal) => Promise<IncompleteChapterDecision>
         >(async () => "export-with-placeholders"),
         promptProtectedChapterPassword: vi.fn(
-            async (): Promise<ProtectedChapterDecision> => ({
+            async (_prompt: ProtectedChapterPrompt, _signal?: AbortSignal): Promise<ProtectedChapterDecision> => ({
                 action: "skip-current"
             })
         ),
@@ -518,6 +597,7 @@ function createHarness(tasks: DownloadTask[], chapters = new Map<number, Chapter
     let cancellationRequested = false;
     const abortController = new AbortController();
 
+    const log = vi.fn();
     const dependencies: DownloadDependencies = {
         runtime: {
             chapters,
@@ -586,7 +666,7 @@ function createHarness(tasks: DownloadTask[], chapters = new Map<number, Chapter
             currentUrl: () => "https://www.esjzone.cc/detail/100.html",
             now: () => Date.parse("2026-01-01T00:00:00.000Z")
         },
-        log: vi.fn()
+        log
     };
 
     return {
@@ -596,6 +676,7 @@ function createHarness(tasks: DownloadTask[], chapters = new Map<number, Chapter
         processedIndexes,
         cacheClears,
         ui,
+        log,
         get exportData() {
             return exportData;
         }

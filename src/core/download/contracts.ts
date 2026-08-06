@@ -53,6 +53,7 @@ export interface ProtectedChapterPrompt {
     message?: string;
     initialPassword?: string;
     rememberPassword?: boolean;
+    retryConnection?: boolean;
 }
 
 export type ProtectedChapterDecision =
@@ -120,7 +121,7 @@ export type DownloadTerminalFailure =
 /**
  * 下载核心对外发布的进度快照
  * restored/fetched/processed/persisted 分别表示恢复、网络获取、内容处理和持久化进度，
- * completedCount 暂时兼容现有 UI 的章节完成数
+ * completedCount 暂时兼容现有任务决策计数；readyChapterCount 才表示可进入导出集合的正文数
  */
 export interface DownloadSnapshot {
     phase: DownloadPhase;
@@ -132,6 +133,11 @@ export interface DownloadSnapshot {
     retryPendingCount: number;
     failedCount: number;
     completedCount: number;
+    readyChapterCount: number;
+    protectedDetectedCount: number;
+    protectedPendingCount: number;
+    protectedResolvedCount: number;
+    protectedSkippedCount: number;
     cachedChapterCount: number;
     cancellationRequested: boolean;
     cancellationOutcome: DownloadCancellationOutcome | null;
@@ -180,7 +186,7 @@ export type DownloadEvent =
     | {
           type: "chapter-failed";
           task: DownloadTask;
-          stage: "fetch" | "mapping-font";
+          stage: "fetch" | "mapping-font" | "protected-auth";
           code: string;
           message: string;
           retry: boolean;

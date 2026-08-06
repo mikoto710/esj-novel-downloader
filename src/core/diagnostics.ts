@@ -88,6 +88,11 @@ export interface DiagnosticTaskSummary {
     processedChapters: number;
     persistedChapters: number;
     completedChapters: number;
+    readyChapters: number;
+    protectedDetectedChapters: number;
+    protectedPendingChapters: number;
+    protectedResolvedChapters: number;
+    protectedSkippedChapters: number;
     failedChapters: number;
     retryPendingChapters: number;
     cacheWriteCount: number;
@@ -230,7 +235,11 @@ function trimSessionToLimit(session: DiagnosticSession): DiagnosticSession {
 
 function repairTerminalResult(session: DiagnosticSession): DiagnosticSession {
     // 兼容本功能开发期间已经写入、尚未包含 exports 字段的 v1 诊断记录。
-    const normalized = { ...session, exports: Array.isArray(session.exports) ? session.exports : [] };
+    const normalized = {
+        ...session,
+        task: { ...initialTaskSummary(session.task.totalChapters), ...session.task },
+        exports: Array.isArray(session.exports) ? session.exports : []
+    };
     // 早期诊断实现可能被页面 finally 将已成功的 export-ready 会话覆盖为 failed；无失败证据时安全修正
     if (
         normalized.result === "failed" &&
@@ -354,6 +363,11 @@ function initialTaskSummary(totalChapters: number): DiagnosticTaskSummary {
         processedChapters: 0,
         persistedChapters: 0,
         completedChapters: 0,
+        readyChapters: 0,
+        protectedDetectedChapters: 0,
+        protectedPendingChapters: 0,
+        protectedResolvedChapters: 0,
+        protectedSkippedChapters: 0,
         failedChapters: 0,
         retryPendingChapters: 0,
         cacheWriteCount: 0,
@@ -375,6 +389,11 @@ function applySnapshot(session: DiagnosticSession, snapshot: DownloadSnapshot): 
         processedChapters: snapshot.processedCount,
         persistedChapters: snapshot.persistedCount,
         completedChapters: snapshot.completedCount,
+        readyChapters: snapshot.readyChapterCount,
+        protectedDetectedChapters: snapshot.protectedDetectedCount,
+        protectedPendingChapters: snapshot.protectedPendingCount,
+        protectedResolvedChapters: snapshot.protectedResolvedCount,
+        protectedSkippedChapters: snapshot.protectedSkippedCount,
         failedChapters: snapshot.failedCount,
         retryPendingChapters: snapshot.retryPendingCount,
         cancellationOutcome: snapshot.cancellationOutcome,

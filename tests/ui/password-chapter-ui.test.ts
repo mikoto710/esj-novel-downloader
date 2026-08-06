@@ -80,4 +80,38 @@ describe("protected chapter password UI", () => {
         (document.querySelector("#esj-protected-cancel") as HTMLButtonElement).click();
         await expect(decision).resolves.toEqual({ action: "cancel" });
     });
+
+    it("keeps the same popup while showing a rejected password and reconnect state", async () => {
+        const firstDecision = prompt();
+        const popup = document.querySelector("#esj-protected-chapter") as HTMLElement;
+        const input = popup.querySelector("#esj-protected-password") as HTMLInputElement;
+        input.value = "wrong";
+        (popup.querySelector("#esj-protected-submit") as HTMLButtonElement).click();
+        await firstDecision;
+
+        const rejectedDecision = promptProtectedChapterPassword({
+            task: createDownloadTask(36),
+            totalChapters: 300,
+            pendingCount: 3,
+            message: "密码不正确"
+        });
+        expect(document.querySelector("#esj-protected-chapter")).toBe(popup);
+        expect((popup.querySelector("#esj-protected-password") as HTMLInputElement).value).toBe("");
+        expect(popup.querySelector("#esj-protected-error")?.textContent).toBe("密码不正确");
+        (popup.querySelector("#esj-protected-skip") as HTMLButtonElement).click();
+        await expect(rejectedDecision).resolves.toEqual({ action: "skip-current" });
+
+        const reconnectDecision = promptProtectedChapterPassword({
+            task: createDownloadTask(36),
+            totalChapters: 300,
+            pendingCount: 3,
+            message: "连接失败，请检查网络后重试。",
+            initialPassword: "remembered",
+            rememberPassword: true,
+            retryConnection: true
+        });
+        expect((document.querySelector("#esj-protected-submit") as HTMLButtonElement).textContent).toBe("重试连接");
+        (document.querySelector("#esj-protected-cancel") as HTMLButtonElement).click();
+        await expect(reconnectDecision).resolves.toEqual({ action: "cancel" });
+    });
 });

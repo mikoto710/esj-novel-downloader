@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createDeferred, useFakeClock } from "../support";
+import { createProtectedChapterFixture } from "../support/fixtures";
 import {
     type BrowserDownloadRuntime,
     createBrowserDownloadOptions,
@@ -42,6 +43,46 @@ describe("browser download cancellation contracts", () => {
         expect(mocks.fullCleanup).toHaveBeenCalledOnce();
         expect(mocks.showTerminalFailure).not.toHaveBeenCalled();
     });
+
+    it.each(["token", "password"] as const)(
+        "settles repeated cancellation during the protected chapter %s request",
+        async (stage) => {
+            const requestStarted = createDeferred<void>();
+            const blockedRequest = (_url: string, _options: RequestInit, _timeout: number, signal?: AbortSignal) => {
+                requestStarted.resolve();
+                return new Promise<never>((_resolve, reject) => {
+                    signal?.addEventListener("abort", () => reject(new DOMException("cancelled", "AbortError")), {
+                        once: true
+                    });
+                });
+            };
+            mocks.promptProtectedChapterPassword.mockResolvedValue({
+                action: "submit",
+                password: "never-log-this",
+                rememberPassword: false
+            });
+            mocks.fetchWithTimeout.mockResolvedValueOnce({
+                text: vi.fn().mockResolvedValue(createProtectedChapterFixture())
+            });
+            if (stage === "password") {
+                mocks.fetchWithTimeout.mockResolvedValueOnce({
+                    text: vi.fn().mockResolvedValue("<JinJing>fictional-token</JinJing>")
+                });
+            }
+            mocks.fetchWithTimeout.mockImplementationOnce(blockedRequest);
+
+            const download = runtime.batchDownload(createBrowserDownloadOptions(createBrowserDownloadTasks(1)));
+            await requestStarted.promise;
+            runtime.abortActiveDownload();
+            runtime.abortActiveDownload();
+            await download;
+
+            expect(mocks.showFormatChoice).not.toHaveBeenCalled();
+            expect(mocks.fullCleanup).toHaveBeenCalledOnce();
+            expect(mocks.closeProtectedChapterPrompt).toHaveBeenCalled();
+            expect(mocks.log.mock.calls.flat().join("\n")).not.toContain("never-log-this");
+        }
+    );
 
     it("does not persist a chapter cancelled during image processing", async () => {
         mocks.processHtmlImages.mockImplementationOnce(async () => {

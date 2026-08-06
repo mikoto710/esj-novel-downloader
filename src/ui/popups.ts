@@ -251,13 +251,15 @@ export function promptProtectedChapterPassword(
     prompt: ProtectedChapterPrompt,
     signal?: AbortSignal
 ): Promise<ProtectedChapterDecision> {
-    closeProtectedChapterPrompt();
+    const existingPopup = document.querySelector("#esj-protected-chapter") as HTMLElement | null;
     if (signal?.aborted) {
+        closeProtectedChapterPrompt();
         return Promise.resolve({ action: "cancel" });
     }
 
     return new Promise((resolve) => {
         let settled = false;
+        let mountedPopup: HTMLElement;
         const finish = (decision: ProtectedChapterDecision, keepOpen = false) => {
             if (settled) {
                 return;
@@ -265,7 +267,7 @@ export function promptProtectedChapterPassword(
             settled = true;
             signal?.removeEventListener("abort", onAbort);
             if (!keepOpen) {
-                popup.remove();
+                mountedPopup.remove();
             }
             resolve(decision);
         };
@@ -344,7 +346,7 @@ export function promptProtectedChapterPassword(
                         onclick: submit,
                         style: "background:#2b9bd7;color:#fff;border:none;padding:7px 12px;border-radius:5px;"
                     },
-                    ["提交密码"]
+                    [prompt.retryConnection ? "重试连接" : "提交密码"]
                 )
             ]
         );
@@ -358,8 +360,14 @@ export function promptProtectedChapterPassword(
             },
             [header, body, footer]
         );
-        document.body.appendChild(popup);
-        enableDrag(popup, ".esj-common-header");
+        if (existingPopup) {
+            existingPopup.replaceChildren(...Array.from(popup.childNodes));
+            mountedPopup = existingPopup;
+        } else {
+            document.body.appendChild(popup);
+            mountedPopup = popup;
+        }
+        enableDrag(mountedPopup, ".esj-common-header");
         passwordInput.focus();
         signal?.addEventListener("abort", onAbort, { once: true });
     });
