@@ -46,6 +46,9 @@ interface DownloadContext {
     rememberedPassword: string | null;
     rememberPassword: boolean;
     protectedDetectedIndexes: Set<number>;
+    protectedResolvedIndexes: Set<number>;
+    protectedSkippedIndexes: Set<number>;
+    skipRemainingProtectedRetries: boolean;
 }
 
 type ChapterTaskResult = "completed" | "failed" | "cancelled" | "deferred";
@@ -120,11 +123,33 @@ function registerProtectedDetection(ctx: DownloadContext, task: DownloadTask, sk
     const snapshot = ctx.machine.snapshot;
     const firstDetection = !ctx.protectedDetectedIndexes.has(task.index);
     ctx.protectedDetectedIndexes.add(task.index);
+    if (skipped) {
+        ctx.protectedSkippedIndexes.add(task.index);
+    }
     updateProtectedSnapshot(ctx, {
         protectedDetectedCount: snapshot.protectedDetectedCount + (firstDetection ? 1 : 0),
         protectedPendingCount: snapshot.protectedPendingCount + (skipped ? 0 : 1),
         protectedSkippedCount: snapshot.protectedSkippedCount + (skipped ? 1 : 0)
     });
+}
+
+function reopenProtectedChapterForRetry(ctx: DownloadContext, task: DownloadTask): void {
+    const snapshot = ctx.machine.snapshot;
+    const firstDetection = !ctx.protectedDetectedIndexes.has(task.index);
+    const wasResolved = ctx.protectedResolvedIndexes.delete(task.index);
+    const wasSkipped = ctx.protectedSkippedIndexes.delete(task.index);
+    ctx.protectedDetectedIndexes.add(task.index);
+    updateProtectedSnapshot(ctx, {
+        protectedDetectedCount: snapshot.protectedDetectedCount + (firstDetection ? 1 : 0),
+        protectedPendingCount: snapshot.protectedPendingCount + 1,
+        protectedResolvedCount: Math.max(0, snapshot.protectedResolvedCount - (wasResolved ? 1 : 0)),
+        protectedSkippedCount: Math.max(0, snapshot.protectedSkippedCount - (wasSkipped ? 1 : 0))
+    });
+}
+
+function beginProtectedRetryRound(ctx: DownloadContext): void {
+    // “跳过全部”只约束当前补抓轮次；显式开始下一轮时必须重新允许用户处理密码章节。
+    ctx.skipRemainingProtectedRetries = false;
 }
 
 function getStorageFailure(ctx: DownloadContext): StorageFailure | null {
@@ -547,8 +572,16 @@ async function processChapterTask(
     updateSnapshot(ctx, { fetchedCount: ctx.machine.snapshot.fetchedCount + 1 });
     if (dependencies.protectedChapterDetector.isProtected(html)) {
         if (isRetry) {
-            // 已明确跳过的密码章节继续进入现有缺章决策，自动补抓不得再次打断用户输入流程
-            return "failed";
+            if (ctx.skipRemainingProtectedRetries) {
+                if (!ctx.protectedDetectedIndexes.has(task.index)) {
+                    registerProtectedDetection(ctx, task, true);
+                }
+                dependencies.log(`⏭ 本轮补抓已跳过密码章节 [${task.index + 1}/${total}]：${task.title}`);
+                return "failed";
+            }
+            reopenProtectedChapterForRetry(ctx, task);
+            dependencies.log(`🔒 补抓再次发现密码章节 [${task.index + 1}/${total}]：${task.title}`);
+            return resolveProtectedChapter({ task, pageHtml: html }, ctx, true);
         }
         const queued = ctx.protectedQueue.enqueue({ task, pageHtml: html });
         if (queued.kind !== "duplicate") {
@@ -589,7 +622,8 @@ async function promptForProtectedChapter(
 
 async function resolveProtectedChapter(
     item: ProtectedChapterWorkItem,
-    ctx: DownloadContext
+    ctx: DownloadContext,
+    isRetry = false
 ): Promise<ChapterTaskResult> {
     const { dependencies } = ctx;
     let message: string | undefined;
@@ -610,6 +644,7 @@ async function resolveProtectedChapter(
         if (decision.action === "skip-current") {
             dependencies.ui.closeProtectedChapterPrompt();
             dependencies.log(`⏭ 已跳过密码章节 [${item.task.index + 1}/${ctx.total}]：${item.task.title}`);
+            ctx.protectedSkippedIndexes.add(item.task.index);
             updateProtectedSnapshot(ctx, {
                 protectedPendingCount: Math.max(0, ctx.machine.snapshot.protectedPendingCount - 1),
                 protectedSkippedCount: ctx.machine.snapshot.protectedSkippedCount + 1
@@ -619,8 +654,13 @@ async function resolveProtectedChapter(
         if (decision.action === "skip-all") {
             dependencies.ui.closeProtectedChapterPrompt();
             dependencies.log(`⏭ 已跳过密码章节 [${item.task.index + 1}/${ctx.total}]：${item.task.title}`);
-            const skippedItems = ctx.protectedQueue.skipAllRemaining();
+            ctx.protectedSkippedIndexes.add(item.task.index);
+            if (isRetry) {
+                ctx.skipRemainingProtectedRetries = true;
+            }
+            const skippedItems = isRetry ? [] : ctx.protectedQueue.skipAllRemaining();
             for (const skipped of skippedItems) {
+                ctx.protectedSkippedIndexes.add(skipped.task.index);
                 dependencies.log(`⏭ 已跳过密码章节 [${skipped.task.index + 1}/${ctx.total}]：${skipped.task.title}`);
             }
             updateProtectedSnapshot(ctx, {
@@ -698,11 +738,12 @@ async function resolveProtectedChapter(
         }
 
         dependencies.ui.closeProtectedChapterPrompt();
+        ctx.protectedResolvedIndexes.add(item.task.index);
         updateProtectedSnapshot(ctx, {
             protectedPendingCount: Math.max(0, ctx.machine.snapshot.protectedPendingCount - 1),
             protectedResolvedCount: ctx.machine.snapshot.protectedResolvedCount + 1
         });
-        const processed = await processFetchedChapterHtml(item.task, result.html, ctx, false);
+        const processed = await processFetchedChapterHtml(item.task, result.html, ctx, isRetry);
         if (processed === "completed") {
             dependencies.log(`🔓 密码章节解锁完成 [${item.task.index + 1}/${ctx.total}]：${item.task.title}`);
         }
@@ -744,6 +785,7 @@ async function checkIntegrityAndRetry(tasks: DownloadTask[], ctx: DownloadContex
     const { dependencies, imageEnabled, total } = ctx;
     const { runtime } = dependencies;
     dependencies.log("正在进行章节完整性检查...");
+    beginProtectedRetryRound(ctx);
 
     const issues = scanChapterIntegrity(tasks, runtime.chapters, imageEnabled);
     updateSnapshot(ctx, { retryPendingCount: issues.length, failedCount: issues.length });
@@ -790,6 +832,7 @@ async function checkIntegrityAndRetry(tasks: DownloadTask[], ctx: DownloadContex
 async function retryMissingChapters(tasks: readonly DownloadTask[], ctx: DownloadContext): Promise<boolean> {
     const { dependencies, total } = ctx;
     const { runtime } = dependencies;
+    beginProtectedRetryRound(ctx);
     updateSnapshot(ctx, { retryPendingCount: tasks.length, failedCount: tasks.length });
     await runWorkerPool({
         items: tasks,
@@ -1021,7 +1064,10 @@ export async function runDownload(options: DownloadOptions, dependencies: Downlo
         decisionGate: new UserDecisionGate(),
         rememberedPassword: null,
         rememberPassword: false,
-        protectedDetectedIndexes: new Set()
+        protectedDetectedIndexes: new Set(),
+        protectedResolvedIndexes: new Set(),
+        protectedSkippedIndexes: new Set(),
+        skipRemainingProtectedRetries: false
     };
 
     try {

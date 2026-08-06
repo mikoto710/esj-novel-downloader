@@ -152,29 +152,123 @@ describe("runDownload characterization", () => {
         });
     });
 
-    it("keeps a skipped protected chapter out of the chapter map and reuses the incomplete decision", async () => {
+    it("re-prompts a skipped protected chapter during automatic retry", async () => {
         const tasks = [createDownloadTask(0)];
         const harness = createHarness(tasks);
         harness.dependencies.chapterFetcher.fetch = vi.fn(async () => "<protected>password form</protected>");
         harness.dependencies.protectedChapterDetector.isProtected = () => true;
-        harness.ui.promptProtectedChapterPassword.mockResolvedValue({ action: "skip-current" });
+        harness.ui.promptProtectedChapterPassword
+            .mockResolvedValueOnce({ action: "skip-current" })
+            .mockResolvedValueOnce({ action: "submit", password: "fictional-password", rememberPassword: false });
+        harness.dependencies.protectedChapterAuth.unlock = vi.fn(
+            async (): Promise<ProtectedChapterUnlockResult> => ({
+                kind: "unlocked",
+                html: "<p>recovered protected body</p>"
+            })
+        );
 
         await runDownload(createOptions(tasks), harness.dependencies);
 
-        expect(harness.ui.promptProtectedChapterPassword).toHaveBeenCalledOnce();
-        expect(harness.dependencies.protectedChapterAuth.unlock).not.toHaveBeenCalled();
-        expect(harness.dependencies.runtime.chapters.has(0)).toBe(false);
-        expect(harness.ui.confirmIncompleteChapters).toHaveBeenCalledWith(
-            { missingTasks: tasks, totalChapters: 1 },
-            expect.any(AbortSignal)
-        );
+        expect(harness.ui.promptProtectedChapterPassword).toHaveBeenCalledTimes(2);
+        expect(harness.ui.promptProtectedChapterPassword.mock.calls[1][0]).toMatchObject({
+            task: tasks[0],
+            pendingCount: 1
+        });
+        expect(harness.dependencies.protectedChapterAuth.unlock).toHaveBeenCalledOnce();
+        expect(harness.ui.confirmIncompleteChapters).not.toHaveBeenCalled();
+        expect(harness.dependencies.runtime.chapters.has(0)).toBe(true);
         expect(harness.exportData?.chapters).toHaveLength(1);
         expect(harness.ui.snapshots.at(-1)).toMatchObject({
-            readyChapterCount: 0,
+            readyChapterCount: 1,
             protectedDetectedCount: 1,
             protectedPendingCount: 0,
+            protectedResolvedCount: 1,
+            protectedSkippedCount: 0
+        });
+    });
+
+    it("keeps skip-all scoped to the current protected retry round", async () => {
+        const tasks = [createDownloadTask(0), createDownloadTask(1)];
+        const harness = createHarness(tasks);
+        harness.dependencies.chapterFetcher.fetch = vi.fn(async () => "<protected>password form</protected>");
+        harness.dependencies.protectedChapterDetector.isProtected = () => true;
+        harness.ui.promptProtectedChapterPassword.mockResolvedValue({ action: "skip-all" });
+
+        await runDownload(createOptions(tasks), harness.dependencies);
+
+        expect(harness.ui.promptProtectedChapterPassword).toHaveBeenCalledTimes(2);
+        expect(harness.dependencies.protectedChapterAuth.unlock).not.toHaveBeenCalled();
+        expect(harness.ui.confirmIncompleteChapters).toHaveBeenCalledOnce();
+        expect(harness.log.mock.calls.flat().join("\n")).toContain("本轮补抓已跳过密码章节");
+        expect(harness.ui.snapshots.at(-1)).toMatchObject({
+            protectedDetectedCount: 2,
+            protectedPendingCount: 0,
             protectedResolvedCount: 0,
-            protectedSkippedCount: 1
+            protectedSkippedCount: 2
+        });
+    });
+
+    it("re-prompts after an explicit missing-chapter retry starts a new round", async () => {
+        const tasks = [createDownloadTask(0)];
+        const harness = createHarness(tasks);
+        harness.dependencies.chapterFetcher.fetch = vi.fn(async () => "<protected>password form</protected>");
+        harness.dependencies.protectedChapterDetector.isProtected = () => true;
+        harness.ui.promptProtectedChapterPassword
+            .mockResolvedValueOnce({ action: "skip-current" })
+            .mockResolvedValueOnce({ action: "skip-all" })
+            .mockResolvedValueOnce({ action: "submit", password: "fictional-password", rememberPassword: false });
+        harness.ui.confirmIncompleteChapters.mockResolvedValue("retry");
+        harness.dependencies.protectedChapterAuth.unlock = vi.fn(
+            async (): Promise<ProtectedChapterUnlockResult> => ({
+                kind: "unlocked",
+                html: "<p>explicit retry body</p>"
+            })
+        );
+
+        await runDownload(createOptions(tasks), harness.dependencies);
+
+        expect(harness.ui.promptProtectedChapterPassword).toHaveBeenCalledTimes(3);
+        expect(harness.ui.confirmIncompleteChapters).toHaveBeenCalledOnce();
+        expect(harness.dependencies.protectedChapterAuth.unlock).toHaveBeenCalledOnce();
+        expect(harness.exportData?.chapters[0].content).not.toContain("[章节缺失]");
+        expect(harness.ui.snapshots.at(-1)).toMatchObject({
+            readyChapterCount: 1,
+            protectedDetectedCount: 1,
+            protectedPendingCount: 0,
+            protectedResolvedCount: 1,
+            protectedSkippedCount: 0
+        });
+    });
+
+    it("cancels cleanly while a protected retry prompt is pending", async () => {
+        const tasks = [createDownloadTask(0)];
+        const harness = createHarness(tasks);
+        harness.dependencies.chapterFetcher.fetch = vi.fn(async () => "<protected>password form</protected>");
+        harness.dependencies.protectedChapterDetector.isProtected = () => true;
+        harness.ui.promptProtectedChapterPassword
+            .mockResolvedValueOnce({ action: "skip-current" })
+            .mockImplementationOnce(
+                (_prompt: ProtectedChapterPrompt, signal?: AbortSignal) =>
+                    new Promise<ProtectedChapterDecision>((resolve) => {
+                        if (signal?.aborted) {
+                            resolve({ action: "cancel" });
+                            return;
+                        }
+                        signal?.addEventListener("abort", () => resolve({ action: "cancel" }), { once: true });
+                    })
+            );
+
+        const download = runDownload(createOptions(tasks), harness.dependencies);
+        await vi.waitFor(() => expect(harness.ui.promptProtectedChapterPassword).toHaveBeenCalledTimes(2));
+
+        harness.dependencies.runtime.requestCancellation("flush");
+        await download;
+
+        expect(harness.ui.showFormatChoice).not.toHaveBeenCalled();
+        expect(harness.ui.snapshots.at(-1)).toMatchObject({
+            phase: "cancelled",
+            cancellationRequested: true,
+            protectedPendingCount: 0
         });
     });
 
