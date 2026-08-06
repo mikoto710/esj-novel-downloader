@@ -151,12 +151,17 @@ const ui: DownloadUiPort = {
         if (
             snapshot.phase !== "downloading" ||
             snapshot.cancellationRequested ||
-            (snapshot.readyChapterCount === 0 && snapshot.protectedPendingCount === 0)
+            (snapshot.readyChapterCount === 0 &&
+                snapshot.protectedPendingCount === 0 &&
+                snapshot.protectedDetectedCount === 0)
         ) {
             return;
         }
         const { readyChapterCount: count, scheduledCount: total, protectedPendingCount: pending } = snapshot;
-        const downloadStatus = `正文完成 ${count}/${total}｜密码待处理 ${pending}｜正在抓取`;
+        const downloadStatus =
+            pending > 0
+                ? `正文完成 ${count}/${total}｜密码待处理 ${pending}｜正在抓取`
+                : `全本下载 (${count}/${total}) `;
         const progressEl = document.querySelector("#esj-progress") as HTMLElement | null;
         updateDownloadStatus(downloadStatus);
         document.title = `[${count}/${total}${pending > 0 ? `｜密码${pending}` : ""}] ${state.originalTitle}`;

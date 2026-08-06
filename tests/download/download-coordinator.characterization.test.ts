@@ -45,7 +45,8 @@ describe("runDownload characterization", () => {
 
         expect(harness.ui.promptProtectedChapterPassword).toHaveBeenCalledWith(
             expect.objectContaining({ task: tasks[1], totalChapters: 3 }),
-            expect.any(AbortSignal)
+            expect.any(AbortSignal),
+            expect.any(Function)
         );
         expect(harness.dependencies.protectedChapterAuth.unlock).toHaveBeenCalledWith(
             tasks[1],
@@ -268,6 +269,38 @@ describe("runDownload characterization", () => {
         await download;
 
         expect(harness.ui.showFormatChoice).not.toHaveBeenCalled();
+        expect(harness.ui.snapshots.at(-1)).toMatchObject({
+            phase: "cancelled",
+            cancellationRequested: true,
+            protectedPendingCount: 0
+        });
+    });
+
+    it("keeps popup cancellation connected while protected authorization is pending", async () => {
+        const tasks = [createDownloadTask(0)];
+        const harness = createHarness(tasks);
+        harness.dependencies.chapterFetcher.fetch = vi.fn(async () => "<protected>password form</protected>");
+        harness.dependencies.protectedChapterDetector.isProtected = () => true;
+        let cancelPendingAuthorization: (() => void) | undefined;
+        harness.ui.promptProtectedChapterPassword.mockImplementationOnce(async (_prompt, _signal, onPending) => {
+            cancelPendingAuthorization = () => onPending?.({ action: "cancel" });
+            return { action: "submit", password: "fictional-password", rememberPassword: false };
+        });
+        harness.dependencies.protectedChapterAuth.unlock = vi.fn(
+            async (_task: DownloadTask, _html: string, _password: string, signal?: AbortSignal) =>
+                new Promise<ProtectedChapterUnlockResult>((_resolve, reject) => {
+                    signal?.addEventListener("abort", () => reject(new DOMException("cancelled", "AbortError")), {
+                        once: true
+                    });
+                })
+        );
+
+        const download = runDownload(createOptions(tasks), harness.dependencies);
+        await vi.waitFor(() => expect(harness.dependencies.protectedChapterAuth.unlock).toHaveBeenCalledOnce());
+        cancelPendingAuthorization?.();
+        await download;
+
+        expect(harness.dependencies.runtime.requestCancellation).toHaveBeenCalledWith("flush");
         expect(harness.ui.snapshots.at(-1)).toMatchObject({
             phase: "cancelled",
             cancellationRequested: true,
@@ -668,9 +701,13 @@ function createHarness(tasks: DownloadTask[], chapters = new Map<number, Chapter
             (detection: IncompleteChapterDetection, signal?: AbortSignal) => Promise<IncompleteChapterDecision>
         >(async () => "export-with-placeholders"),
         promptProtectedChapterPassword: vi.fn(
-            async (_prompt: ProtectedChapterPrompt, _signal?: AbortSignal): Promise<ProtectedChapterDecision> => ({
-                action: "skip-current"
-            })
+            async (
+                _prompt: ProtectedChapterPrompt,
+                _signal?: AbortSignal,
+                _onPendingDecision?: (
+                    decision: Extract<ProtectedChapterDecision, { action: "skip-current" | "skip-all" | "cancel" }>
+                ) => void
+            ): Promise<ProtectedChapterDecision> => ({ action: "skip-current" })
         ),
         closeProtectedChapterPrompt: vi.fn(),
         updateMappingFontWarning: vi.fn(),

@@ -615,7 +615,12 @@ async function promptForProtectedChapter(
     };
     return runUserDecision(
         ctx,
-        () => ctx.dependencies.ui.promptProtectedChapterPassword(prompt, ctx.dependencies.runtime.signal),
+        () =>
+            ctx.dependencies.ui.promptProtectedChapterPassword(prompt, ctx.dependencies.runtime.signal, (decision) => {
+                if (decision.action === "cancel") {
+                    ctx.dependencies.runtime.requestCancellation("flush");
+                }
+            }),
         { action: "cancel" }
     );
 }

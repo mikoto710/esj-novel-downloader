@@ -230,7 +230,10 @@ export interface DownloadUiPort {
     ): Promise<IncompleteChapterDecision>;
     promptProtectedChapterPassword(
         prompt: ProtectedChapterPrompt,
-        signal?: AbortSignal
+        signal?: AbortSignal,
+        onPendingDecision?: (
+            decision: Extract<ProtectedChapterDecision, { action: "skip-current" | "skip-all" | "cancel" }>
+        ) => void
     ): Promise<ProtectedChapterDecision>;
     closeProtectedChapterPrompt(): void;
     updateMappingFontWarning(summary: MappingFontSummary): void;

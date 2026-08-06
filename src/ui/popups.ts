@@ -252,6 +252,8 @@ export function setProtectedChapterPromptBusy(message = "正在验证密码，�
     const passwordInput = popup.querySelector("#esj-protected-password") as HTMLInputElement | null;
     const remember = popup.querySelector("#esj-protected-remember") as HTMLInputElement | null;
     const submit = popup.querySelector("#esj-protected-submit") as HTMLButtonElement | null;
+    const skip = popup.querySelector("#esj-protected-skip") as HTMLButtonElement | null;
+    const skipAll = popup.querySelector("#esj-protected-skip-all") as HTMLButtonElement | null;
     const error = popup.querySelector("#esj-protected-error") as HTMLElement | null;
     if (passwordInput) {
         passwordInput.disabled = true;
@@ -262,6 +264,12 @@ export function setProtectedChapterPromptBusy(message = "正在验证密码，�
     if (submit) {
         submit.disabled = true;
         submit.textContent = "正在验证...";
+    }
+    if (skip) {
+        skip.disabled = true;
+    }
+    if (skipAll) {
+        skipAll.disabled = true;
     }
     if (error) {
         error.style.color = "#666";
@@ -334,6 +342,7 @@ export function promptProtectedChapterPassword(
                 passwordInput.focus();
                 return;
             }
+            setProtectedChapterPromptBusy();
             finish({ action: "submit", password, rememberPassword: remember.checked }, true);
         };
         passwordInput.onkeydown = (event) => {

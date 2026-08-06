@@ -1,11 +1,7 @@
 // @vitest-environment jsdom
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import {
-    closeProtectedChapterPrompt,
-    promptProtectedChapterPassword,
-    setProtectedChapterPromptBusy
-} from "../../src/ui/popups";
+import { closeProtectedChapterPrompt, promptProtectedChapterPassword } from "../../src/ui/popups";
 import { createDownloadTask } from "../support";
 
 function prompt(signal?: AbortSignal) {
@@ -50,6 +46,13 @@ describe("protected chapter password UI", () => {
             rememberPassword: true
         });
         expect(document.querySelector("#esj-protected-chapter")).not.toBeNull();
+        expect(input.disabled).toBe(true);
+        expect(remember.disabled).toBe(true);
+        expect((document.querySelector("#esj-protected-submit") as HTMLButtonElement).disabled).toBe(true);
+        expect((document.querySelector("#esj-protected-submit") as HTMLButtonElement).textContent).toBe("正在验证...");
+        expect((document.querySelector("#esj-protected-skip") as HTMLButtonElement).disabled).toBe(true);
+        expect((document.querySelector("#esj-protected-skip-all") as HTMLButtonElement).disabled).toBe(true);
+        expect((document.querySelector("#esj-protected-cancel") as HTMLButtonElement).disabled).toBe(false);
         closeProtectedChapterPrompt();
     });
 
@@ -159,9 +162,13 @@ describe("protected chapter password UI", () => {
             rememberPassword: false
         });
 
-        setProtectedChapterPromptBusy();
         expect(input.disabled).toBe(true);
         expect((document.querySelector("#esj-protected-submit") as HTMLButtonElement).disabled).toBe(true);
+        expect((document.querySelector("#esj-protected-skip") as HTMLButtonElement).disabled).toBe(true);
+        expect((document.querySelector("#esj-protected-skip-all") as HTMLButtonElement).disabled).toBe(true);
+        (document.querySelector("#esj-protected-submit") as HTMLButtonElement).click();
+        input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+        expect(pendingDecision).not.toHaveBeenCalled();
         (document.querySelector("#esj-protected-cancel") as HTMLButtonElement).click();
 
         expect(pendingDecision).toHaveBeenCalledWith({ action: "cancel" });
