@@ -64,6 +64,9 @@ describe("browser download cancellation contracts", () => {
             mocks.fetchWithTimeout.mockResolvedValueOnce({
                 text: vi.fn().mockResolvedValue(createProtectedChapterFixture())
             });
+            mocks.fetchWithTimeout.mockResolvedValueOnce({
+                text: vi.fn().mockResolvedValue(createProtectedChapterFixture())
+            });
             if (stage === "password") {
                 mocks.fetchWithTimeout.mockResolvedValueOnce({
                     text: vi.fn().mockResolvedValue("<JinJing>fictional-token</JinJing>")

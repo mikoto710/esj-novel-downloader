@@ -48,6 +48,7 @@ import { normalizeImageBlob } from "../utils/image-format";
 import { browserDiagnosticEvents, browserDiagnosticLog, recordBrowserDiagnosticFailure } from "./browser-diagnostics";
 import { showDownloadTerminalFailure } from "../ui/download-terminal-notices";
 import { createBrowserProtectedChapterAuth, isProtectedChapterHtml } from "./browser-protected-chapter";
+import { BrowserRequestGate } from "./browser-request-gate";
 
 // 下载核心的浏览器实现边界
 // DOM、全局 state、网络、解析、图片、缓存和锁实现均限制在本模块中
@@ -174,16 +175,7 @@ const ui: DownloadUiPort = {
     showFormatChoice
 };
 
-// 单次章节请求，超时和重试次数由 coordinator 统一控制
-const chapterFetcher: ChapterFetcherPort = {
-    async fetch(task, signal) {
-        const response = await fetchWithTimeout(task.url, { credentials: "include" }, 15000, signal);
-        return response.text();
-    }
-};
-
 const protectedChapterDetector = { isProtected: isProtectedChapterHtml };
-const protectedChapterAuth = createBrowserProtectedChapterAuth();
 
 // 解析正文并根据当前设置处理或移除图片
 const chapterProcessor: ChapterProcessorPort = {
@@ -296,6 +288,18 @@ const lock: BookLockService = {
  * 创建浏览器全本下载所需的 dependencies
  */
 export function createBrowserDownloadDependencies(): DownloadDependencies {
+    const requestGate = new BrowserRequestGate();
+    // 共享租约覆盖响应正文读取，确保独占授权开始前所有普通章节请求已经完整结束。
+    const chapterFetcher: ChapterFetcherPort = {
+        fetch(task, signal) {
+            return requestGate.runShared(async () => {
+                const response = await fetchWithTimeout(task.url, { credentials: "include" }, 15000, signal);
+                return response.text();
+            }, signal);
+        }
+    };
+    const protectedChapterAuth = createBrowserProtectedChapterAuth(fetchWithTimeout, requestGate);
+
     return {
         runtime,
         ui,

@@ -75,6 +75,7 @@ describe("protected chapter browser protocol", () => {
     it("uses the chapter-scoped token request and same-origin password endpoint", async () => {
         const request = vi
             .fn()
+            .mockResolvedValueOnce(textResponse(createProtectedChapterFixture()))
             .mockResolvedValueOnce(textResponse("<JinJing>fictional-token</JinJing>"))
             .mockResolvedValueOnce(textResponse(JSON.stringify({ status: 200, html: "<p>正文</p>", text: "meta" })));
         const auth = createBrowserProtectedChapterAuth(request);
@@ -82,27 +83,45 @@ describe("protected chapter browser protocol", () => {
         const result = await auth.unlock(task, createProtectedChapterFixture(), "R18");
 
         expect(result.kind).toBe("unlocked");
-        expect(request).toHaveBeenCalledTimes(2);
+        expect(request).toHaveBeenCalledTimes(3);
         expect(request.mock.calls[0][0]).toBe(task.url);
-        expect(request.mock.calls[0][1]).toMatchObject({ method: "POST", credentials: "include" });
-        expect(String(request.mock.calls[0][1].body)).toBe("plxf=getAuthToken");
-        expect(request.mock.calls[1][0]).toBe("https://www.esjzone.cc/inc/forum_pw.php");
-        expect(request.mock.calls[1][1].headers).toEqual({
+        expect(request.mock.calls[0][1]).toMatchObject({ method: "GET", credentials: "include" });
+        expect(request.mock.calls[1][0]).toBe(task.url);
+        expect(request.mock.calls[1][1]).toMatchObject({ method: "POST", credentials: "include" });
+        expect(String(request.mock.calls[1][1].body)).toBe("plxf=getAuthToken");
+        expect(request.mock.calls[2][0]).toBe("https://www.esjzone.cc/inc/forum_pw.php");
+        expect(request.mock.calls[2][1].headers).toEqual({
             Authorization: "fictional-token",
             "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
             "X-Requested-With": "XMLHttpRequest"
         });
-        expect(String(request.mock.calls[1][1].body)).toBe("pw=R18");
+        expect(String(request.mock.calls[2][1].body)).toBe("pw=R18");
+    });
+
+    it("uses a refreshed already-authorized chapter without requesting a token", async () => {
+        const refreshedHtml = createChapterFixture({ contentHtml: "<p>账号已授权正文</p>" });
+        const request = vi.fn().mockResolvedValue(textResponse(refreshedHtml));
+        const auth = createBrowserProtectedChapterAuth(request);
+
+        await expect(auth.unlock(task, createProtectedChapterFixture(), "R18")).resolves.toEqual({
+            kind: "unlocked",
+            html: refreshedHtml
+        });
+        expect(request).toHaveBeenCalledOnce();
+        expect(request.mock.calls[0][1]).toMatchObject({ method: "GET", credentials: "include" });
     });
 
     it("does not submit a password when the token response is invalid", async () => {
-        const request = vi.fn().mockResolvedValue(textResponse("<html>unexpected</html>"));
+        const request = vi
+            .fn()
+            .mockResolvedValueOnce(textResponse(createProtectedChapterFixture()))
+            .mockResolvedValueOnce(textResponse("<html>unexpected</html>"));
         const auth = createBrowserProtectedChapterAuth(request);
 
         await expect(auth.unlock(task, createProtectedChapterFixture(), "secret")).resolves.toMatchObject({
             kind: "protocol-error",
             code: "token-invalid"
         });
-        expect(request).toHaveBeenCalledOnce();
+        expect(request).toHaveBeenCalledTimes(2);
     });
 });

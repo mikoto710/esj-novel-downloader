@@ -5,6 +5,7 @@ import type {
     ProtectedChapterUnlockResult
 } from "../core/download/contracts";
 import { fetchWithTimeout } from "../utils/index";
+import { BrowserRequestGate } from "./browser-request-gate";
 
 type ProtectedChapterRequest = (
     url: string,
@@ -102,45 +103,60 @@ function parsePasswordResponse(text: string): unknown {
 }
 
 export function createBrowserProtectedChapterAuth(
-    request: ProtectedChapterRequest = fetchWithTimeout
+    request: ProtectedChapterRequest = fetchWithTimeout,
+    requestGate: BrowserRequestGate = new BrowserRequestGate()
 ): ProtectedChapterAuthPort {
     return {
-        async unlock(task: DownloadTask, protectedPageHtml: string, password: string, signal?: AbortSignal) {
-            const tokenResponse = await request(
-                task.url,
-                {
-                    method: "POST",
-                    credentials: "include",
-                    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-                    body: new URLSearchParams({ plxf: "getAuthToken" })
-                },
-                REQUEST_TIMEOUT_MS,
-                signal
-            );
-            const token = extractProtectedChapterToken(await tokenResponse.text());
-            if (!token) {
-                return protocolError("token-invalid", "无法取得有效的密码授权 token");
-            }
+        async unlock(task: DownloadTask, _protectedPageHtml: string, password: string, signal?: AbortSignal) {
+            return requestGate.runExclusive(async () => {
+                // 只有刷新后的目标章节可以建立本次授权上下文，检测阶段保留的旧页面不得继续参与回填。
+                const refreshedResponse = await request(
+                    task.url,
+                    { method: "GET", credentials: "include" },
+                    REQUEST_TIMEOUT_MS,
+                    signal
+                );
+                const refreshedPageHtml = await refreshedResponse.text();
+                if (!isProtectedChapterHtml(refreshedPageHtml)) {
+                    return { kind: "unlocked", html: refreshedPageHtml };
+                }
 
-            const passwordResponse = await request(
-                new URL("/inc/forum_pw.php", task.url).toString(),
-                {
-                    method: "POST",
-                    credentials: "include",
-                    headers: {
-                        Authorization: token,
-                        "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
-                        "X-Requested-With": "XMLHttpRequest"
+                const tokenResponse = await request(
+                    task.url,
+                    {
+                        method: "POST",
+                        credentials: "include",
+                        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+                        body: new URLSearchParams({ plxf: "getAuthToken" })
                     },
-                    body: new URLSearchParams({ pw: password })
-                },
-                REQUEST_TIMEOUT_MS,
-                signal
-            );
-            return classifyProtectedChapterResponse(
-                protectedPageHtml,
-                parsePasswordResponse(await passwordResponse.text())
-            );
+                    REQUEST_TIMEOUT_MS,
+                    signal
+                );
+                const token = extractProtectedChapterToken(await tokenResponse.text());
+                if (!token) {
+                    return protocolError("token-invalid", "无法取得有效的密码授权 token");
+                }
+
+                const passwordResponse = await request(
+                    new URL("/inc/forum_pw.php", task.url).toString(),
+                    {
+                        method: "POST",
+                        credentials: "include",
+                        headers: {
+                            Authorization: token,
+                            "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+                            "X-Requested-With": "XMLHttpRequest"
+                        },
+                        body: new URLSearchParams({ pw: password })
+                    },
+                    REQUEST_TIMEOUT_MS,
+                    signal
+                );
+                return classifyProtectedChapterResponse(
+                    refreshedPageHtml,
+                    parsePasswordResponse(await passwordResponse.text())
+                );
+            }, signal);
         }
     };
 }

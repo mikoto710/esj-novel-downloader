@@ -66,6 +66,7 @@ describe("browser download flow contracts", () => {
     it("wires protected chapter GET, token POST, password POST, and normal processing", async () => {
         mocks.fetchWithTimeout
             .mockResolvedValueOnce({ text: vi.fn().mockResolvedValue(createProtectedChapterFixture()) })
+            .mockResolvedValueOnce({ text: vi.fn().mockResolvedValue(createProtectedChapterFixture()) })
             .mockResolvedValueOnce({ text: vi.fn().mockResolvedValue("<JinJing>fictional-token</JinJing>") })
             .mockResolvedValueOnce({
                 text: vi.fn().mockResolvedValue(JSON.stringify({ status: 200, html: "<p>unlocked body</p>" }))
@@ -78,14 +79,63 @@ describe("browser download flow contracts", () => {
 
         await runtime.batchDownload(createBrowserDownloadOptions(createBrowserDownloadTasks(1)));
 
-        expect(mocks.fetchWithTimeout).toHaveBeenCalledTimes(3);
-        expect(mocks.fetchWithTimeout.mock.calls[1][1]).toMatchObject({ method: "POST", credentials: "include" });
-        expect(String(mocks.fetchWithTimeout.mock.calls[1][1].body)).toBe("plxf=getAuthToken");
-        expect(mocks.fetchWithTimeout.mock.calls[2][0]).toBe("https://www.esjzone.cc/inc/forum_pw.php");
-        expect(mocks.fetchWithTimeout.mock.calls[2][1].headers.Authorization).toBe("fictional-token");
-        expect(String(mocks.fetchWithTimeout.mock.calls[2][1].body)).toBe("pw=fictional-password");
+        expect(mocks.fetchWithTimeout).toHaveBeenCalledTimes(4);
+        expect(mocks.fetchWithTimeout.mock.calls[1][1]).toMatchObject({ method: "GET", credentials: "include" });
+        expect(mocks.fetchWithTimeout.mock.calls[2][1]).toMatchObject({ method: "POST", credentials: "include" });
+        expect(String(mocks.fetchWithTimeout.mock.calls[2][1].body)).toBe("plxf=getAuthToken");
+        expect(mocks.fetchWithTimeout.mock.calls[3][0]).toBe("https://www.esjzone.cc/inc/forum_pw.php");
+        expect(mocks.fetchWithTimeout.mock.calls[3][1].headers.Authorization).toBe("fictional-token");
+        expect(String(mocks.fetchWithTimeout.mock.calls[3][1].body)).toBe("pw=fictional-password");
         expect(mocks.parseChapterHtml).toHaveBeenCalledWith(expect.stringContaining("unlocked body"), "第 1 章");
         expect(runtime.state.cachedData?.chapters).toHaveLength(1);
+    });
+
+    it("waits for ordinary requests before refreshing and authorizing the protected chapter", async () => {
+        const tasks = createBrowserDownloadTasks(2);
+        const ordinaryStarted = createDeferred<void>();
+        const ordinaryFinished = createDeferred<void>();
+        const order: string[] = [];
+        let protectedGetCount = 0;
+        mocks.getConcurrency.mockReturnValue(2);
+        mocks.promptProtectedChapterPassword.mockResolvedValue({
+            action: "submit",
+            password: "fictional-password",
+            rememberPassword: false
+        });
+        mocks.fetchWithTimeout.mockImplementation(async (url: string, options: RequestInit = {}) => {
+            const method = options.method || "GET";
+            if (url === tasks[0].url && method === "GET") {
+                protectedGetCount++;
+                order.push(protectedGetCount === 1 ? "protected-detected" : "protected-refreshed");
+                return { text: vi.fn().mockResolvedValue(createProtectedChapterFixture()) } as unknown as Response;
+            }
+            if (url === tasks[1].url && method === "GET") {
+                order.push("ordinary-start");
+                ordinaryStarted.resolve();
+                await ordinaryFinished.promise;
+                order.push("ordinary-end");
+                return { text: vi.fn().mockResolvedValue("<html></html>") } as unknown as Response;
+            }
+            if (url === tasks[0].url && method === "POST") {
+                order.push("token");
+                return { text: vi.fn().mockResolvedValue("<JinJing>fictional-token</JinJing>") } as unknown as Response;
+            }
+            order.push("password");
+            return {
+                text: vi.fn().mockResolvedValue(JSON.stringify({ status: 200, html: "<p>unlocked body</p>" }))
+            } as unknown as Response;
+        });
+
+        const download = runtime.batchDownload(createBrowserDownloadOptions(tasks));
+        await ordinaryStarted.promise;
+        await vi.waitFor(() => expect(mocks.promptProtectedChapterPassword).toHaveBeenCalledOnce());
+        expect(order).not.toContain("protected-refreshed");
+
+        ordinaryFinished.resolve();
+        await download;
+
+        expect(order.indexOf("ordinary-end")).toBeLessThan(order.indexOf("protected-refreshed"));
+        expect(order.slice(order.indexOf("protected-refreshed"))).toEqual(["protected-refreshed", "token", "password"]);
     });
 
     it("keeps protected chapters pending instead of presenting request completion as正文 progress", async () => {
