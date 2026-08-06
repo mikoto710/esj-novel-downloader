@@ -7,6 +7,7 @@ import {
     browserDiagnosticEvents,
     createBrowserDiagnosticExport,
     finishBrowserDiagnosticSession,
+    formatBrowserDiagnosticSummary,
     listBrowserDiagnosticSessions,
     recordBrowserPreflightDiagnosticFailure,
     recordBrowserDiagnosticExport,
@@ -223,6 +224,40 @@ describe("browser diagnostic persistence", () => {
             }),
             expect.objectContaining({ scope: "download", code: "Error", message: "download failed" })
         ]);
+    });
+
+    it("summarizes protected chapter progress without treating password rejection as a failure", () => {
+        startBrowserDiagnosticSession({
+            taskId: "task-protected",
+            bookId: "book-protected",
+            bookTitle: "Protected Book",
+            pageUrl: "https://www.esjzone.cc/detail/14.html",
+            sourcePageType: "detail",
+            imageEnabled: false
+        });
+        browserDiagnosticEvents.emit({
+            type: "snapshot-updated",
+            snapshot: {
+                ...createInitialDownloadSnapshot(10, 0),
+                phase: "downloading",
+                protectedDetectedCount: 3,
+                protectedPendingCount: 1,
+                protectedResolvedCount: 1,
+                protectedSkippedCount: 1
+            }
+        });
+        browserDiagnosticEvents.emit({
+            type: "protected-chapter-password-rejected",
+            task: { index: 2, title: "Protected Chapter", url: "https://www.esjzone.cc/forum/14/3.html" }
+        });
+
+        const session = listBrowserDiagnosticSessions().active[0];
+        expect(formatBrowserDiagnosticSummary(session)).toContain("密码章节：发现 3；待处理 1；已解锁 1；已跳过 1");
+        expect(session.failures).toEqual([]);
+        expect(session.events.at(-1)).toMatchObject({
+            type: "protected-chapter-password-rejected",
+            details: { chapterIndex: 3, result: "password-rejected" }
+        });
     });
 
     it("persists failures that happen before a download lock is acquired", () => {

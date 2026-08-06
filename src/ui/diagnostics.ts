@@ -42,6 +42,9 @@ function sessionResult(view: DiagnosticSessionView): { icon: string; label: stri
     if (view.session.failures.some((failure) => failure.scope === "export") && view.presentation === "success") {
         return { icon: "⚠️", label: "导出异常", color: "#a05a00" };
     }
+    if (view.presentation === "running" && view.session.task.protectedPendingChapters > 0) {
+        return { icon: "🔒", label: "等待输入密码", color: "#a05a00" };
+    }
     return resultPresentation[view.presentation];
 }
 

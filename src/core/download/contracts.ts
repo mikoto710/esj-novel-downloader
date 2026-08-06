@@ -191,6 +191,7 @@ export type DownloadEvent =
           message: string;
           retry: boolean;
       }
+    | { type: "protected-chapter-password-rejected"; task: DownloadTask }
     | { type: "mapping-font-updated"; summary: MappingFontSummary }
     | {
           type: "incomplete-chapters-decided";

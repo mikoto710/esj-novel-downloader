@@ -719,6 +719,7 @@ async function resolveProtectedChapter(
             ctx.rememberPassword = false;
             message = result.message;
             retryConnection = false;
+            dependencies.events.emit({ type: "protected-chapter-password-rejected", task: item.task });
             dependencies.log(`⚠️ 密码不正确 [${item.task.index + 1}/${ctx.total}]：${item.task.title}`);
             continue;
         }

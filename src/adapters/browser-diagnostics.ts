@@ -313,6 +313,7 @@ export function formatBrowserDiagnosticSummary(
         ...(presentationLine ? [presentationLine] : []),
         `结果：${session.result}；阶段：${session.task.phase}`,
         `章节：${session.task.completedChapters}/${session.task.totalChapters}；缓存恢复：${session.task.restoredChapters}；失败：${session.task.failedChapters}`,
+        `密码章节：发现 ${session.task.protectedDetectedChapters}；待处理 ${session.task.protectedPendingChapters}；已解锁 ${session.task.protectedResolvedChapters}；已跳过 ${session.task.protectedSkippedChapters}`,
         `插图：${session.settings.imageEnabled ? "开启" : "关闭"}；并发：${session.settings.concurrency}`,
         exportLines.length > 0 ? `导出记录：\n${exportLines.join("\n")}` : "导出记录：无",
         failureLines.length > 0 ? `失败摘要：\n${failureLines.join("\n")}` : "失败摘要：无"

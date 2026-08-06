@@ -307,6 +307,34 @@ describe("diagnostic session retention", () => {
         });
     });
 
+    it("records a rejected protected password as a retryable event instead of a failure", () => {
+        const repository = new MemoryDiagnosticRepository();
+        const manager = new DiagnosticManager(repository, () => 1_000);
+        manager.start(createInput("protected-rejected"));
+
+        manager.recordDownloadEvent("protected-rejected", {
+            type: "protected-chapter-password-rejected",
+            task: {
+                index: 4,
+                title: "Protected Chapter",
+                url: "https://www.esjzone.cc/forum/1/5.html?token=secret"
+            }
+        });
+
+        const session = manager.list().active[0];
+        expect(session.failures).toEqual([]);
+        expect(session.events.at(-1)).toEqual({
+            at: 0,
+            type: "protected-chapter-password-rejected",
+            details: {
+                chapterIndex: 5,
+                chapterTitle: "Protected Chapter",
+                result: "password-rejected"
+            }
+        });
+        expect(JSON.stringify(session)).not.toContain("token=secret");
+    });
+
     it("removes query strings, fragments and non-http protocols from exported URLs", () => {
         expect(sanitizeDiagnosticUrl("https://www.esjzone.cc/forum/1/2.html?token=secret#content")).toBe(
             "https://www.esjzone.cc/forum/1/2.html"

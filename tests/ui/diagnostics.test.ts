@@ -83,6 +83,35 @@ describe("diagnostic history UI", () => {
         expect(document.querySelector("#esj-diagnostic-list")?.textContent).toContain("Diagnostic Book");
     });
 
+    it("labels a running session with protected chapters as waiting for a password", () => {
+        startBrowserDiagnosticSession({
+            taskId: "task-protected-waiting",
+            bookId: "book-protected-waiting",
+            bookTitle: "Protected Waiting Book",
+            pageUrl: "https://www.esjzone.cc/detail/15.html",
+            sourcePageType: "detail",
+            imageEnabled: false
+        });
+        browserDiagnosticEvents.emit({
+            type: "snapshot-updated",
+            snapshot: {
+                ...createInitialDownloadSnapshot(8, 0),
+                phase: "downloading",
+                protectedDetectedCount: 2,
+                protectedPendingCount: 1,
+                protectedResolvedCount: 1
+            }
+        });
+
+        createDiagnosticPopup();
+
+        expect(document.querySelector("#esj-diagnostic-list")?.textContent).toContain("等待输入密码");
+        expect(document.querySelector("#esj-diagnostic-detail")?.textContent).toContain("等待输入密码");
+        expect(document.querySelector("#esj-diagnostic-detail")?.textContent).toContain(
+            "密码章节：发现 2；待处理 1；已解锁 1；已跳过 0"
+        );
+    });
+
     it("automatically refreshes only while visible and resumes immediately", async () => {
         vi.useFakeTimers();
         createDiagnosticPopup();

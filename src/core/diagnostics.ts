@@ -584,6 +584,16 @@ export class DiagnosticManager {
                             url: sanitizeDiagnosticUrl(event.task.url)
                         }
                     });
+                } else if (event.type === "protected-chapter-password-rejected") {
+                    session.events.push({
+                        at,
+                        type: event.type,
+                        details: {
+                            chapterIndex: event.task.index + 1,
+                            chapterTitle: event.task.title,
+                            result: "password-rejected"
+                        }
+                    });
                 } else if (event.type === "mapping-font-updated") {
                     session.task.mappingFontChapterCount = event.summary.chapterCount;
                     session.task.mappingFontBytes = event.summary.fontBytes;

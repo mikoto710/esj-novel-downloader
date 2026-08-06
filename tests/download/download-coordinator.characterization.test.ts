@@ -150,6 +150,9 @@ describe("runDownload characterization", () => {
             message: "授权响应异常",
             retryConnection: true
         });
+        expect(harness.events.ofType("protected-chapter-password-rejected")).toEqual([
+            expect.objectContaining({ task: expect.objectContaining({ index: 0 }) })
+        ]);
     });
 
     it("re-prompts a skipped protected chapter during automatic retry", async () => {
