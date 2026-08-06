@@ -94,7 +94,7 @@ describe("single-page mapped font UI", () => {
         });
     });
 
-    it("offers interactive export instead of parsing a protected form as chapter content", async () => {
+    it("prompts for native password unlock and enables exports after unlock", async () => {
         installSinglePage(`
             <div id="oops">请输入密码</div>
             <input id="pw" name="pw" type="password">
@@ -107,9 +107,23 @@ describe("single-page mapped font UI", () => {
             const buttons = getButtons();
             expect(buttons.txt.getAttribute("aria-disabled")).toBe("false");
             expect(buttons.html.getAttribute("aria-disabled")).toBe("false");
-            expect(document.querySelector("#esj-single-mapping-warning")?.textContent).toContain(
-                "本章需要密码，点击导出后输入密码"
-            );
+            expect(buttons.txt.dataset.esjProtected).toBe("true");
+            expect(buttons.html.dataset.esjProtected).toBe("true");
+            expect(document.querySelector("#esj-single-mapping-warning")?.textContent).toContain("请先解锁后再下载");
+        });
+
+        getButtons().txt.click();
+        expect(document.querySelector("#esj-protected-chapter")).toBeNull();
+        expect(document.querySelector("#esj-message-popup")?.textContent).toContain("请先输入密码解锁该章节");
+        (document.querySelector("#esj-message-close") as HTMLButtonElement).click();
+
+        document.querySelector(".forum-content")!.innerHTML = "<p>Unlocked body</p>";
+        await vi.waitFor(() => {
+            const buttons = getButtons();
+            expect(buttons.txt.dataset.esjProtected).toBeUndefined();
+            expect(buttons.html.dataset.esjProtected).toBeUndefined();
+            expect(buttons.txt.getAttribute("title")).toBe("下载本章 (TXT)");
+            expect(document.querySelector("#esj-single-mapping-warning")).toBeNull();
         });
     });
 

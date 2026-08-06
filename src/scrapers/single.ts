@@ -4,15 +4,9 @@ import { getImageDownloadSetting } from "../core/config";
 import { processHtmlImages } from "../utils/image";
 import { addDownloadHistory } from "../core/download-history";
 import { MappingFontError, normalizeChapterMappingFont, prepareChapterMappingExport } from "../core/mapping-font";
-import {
-    closeProtectedChapterPrompt,
-    confirmMappingFontExport,
-    promptProtectedChapterPassword,
-    setProtectedChapterPromptBusy
-} from "../ui/popups";
+import { confirmMappingFontExport } from "../ui/popups";
 import { showMessagePopup } from "../ui/message-popup";
-import { createBrowserProtectedChapterAuth, isProtectedChapterHtml } from "../adapters/browser-protected-chapter";
-import type { DownloadTask, ProtectedChapterDecision } from "../core/download/contracts";
+import { isProtectedChapterHtml } from "../adapters/browser-protected-chapter";
 import {
     browserDiagnosticLog as log,
     finishBrowserSingleChapterDiagnosticSession,
@@ -21,128 +15,6 @@ import {
     startBrowserDiagnosticSession,
     updateBrowserDiagnosticSessionMetadata
 } from "../adapters/browser-diagnostics";
-
-type ProtectedTerminalDecision = Extract<ProtectedChapterDecision, { action: "skip-current" | "skip-all" | "cancel" }>;
-
-function isAbortError(error: unknown): boolean {
-    return error instanceof Error && error.name === "AbortError";
-}
-
-async function unlockSingleProtectedChapter(
-    pageHtml: string,
-    task: DownloadTask,
-    diagnosticTaskId: string
-): Promise<string | null> {
-    if (!isProtectedChapterHtml(pageHtml)) {
-        return pageHtml;
-    }
-
-    const auth = createBrowserProtectedChapterAuth();
-    let message: string | undefined;
-    let initialPassword: string | undefined;
-    let rememberPassword = false;
-    let retryConnection = false;
-
-    while (true) {
-        const requestController = new AbortController();
-        let pendingDecision: ProtectedTerminalDecision | null = null;
-        const decision = await promptProtectedChapterPassword(
-            {
-                task,
-                totalChapters: 1,
-                pendingCount: 1,
-                rememberPassword,
-                retryConnection,
-                ...(initialPassword ? { initialPassword } : {}),
-                ...(message ? { message } : {})
-            },
-            requestController.signal,
-            (nextDecision) => {
-                pendingDecision = nextDecision;
-                requestController.abort();
-            }
-        );
-
-        if (decision.action !== "submit") {
-            requestController.abort();
-            closeProtectedChapterPrompt();
-            log(`⏭ 已取消单章密码导出：${task.title}`);
-            return null;
-        }
-
-        rememberPassword = decision.rememberPassword;
-        initialPassword = decision.rememberPassword ? decision.password : undefined;
-        setProtectedChapterPromptBusy();
-
-        let result;
-        let technicalFailure = false;
-        for (let attempt = 0; attempt < 2; attempt++) {
-            try {
-                result = await auth.unlock(task, pageHtml, decision.password, requestController.signal);
-                break;
-            } catch (error) {
-                if (pendingDecision || isAbortError(error)) {
-                    break;
-                }
-                if (attempt === 0) {
-                    log(`⚠️ 单章密码连接失败，正在进行一次技术重试：${task.title}`);
-                    continue;
-                }
-                technicalFailure = true;
-            }
-        }
-
-        if (pendingDecision) {
-            closeProtectedChapterPrompt();
-            log(`⏭ 已取消单章密码导出：${task.title}`);
-            return null;
-        }
-        if (technicalFailure || !result) {
-            recordBrowserDiagnosticFailure(
-                {
-                    scope: "chapter",
-                    stage: "protected-auth",
-                    code: "network-error",
-                    message: "密码章节连接失败",
-                    chapter: task
-                },
-                diagnosticTaskId
-            );
-            log(`❌ 单章密码连接失败：${task.title}`);
-            message = "连接失败，请检查网络后重试。";
-            retryConnection = true;
-            continue;
-        }
-        if (result.kind === "password-rejected") {
-            initialPassword = undefined;
-            rememberPassword = false;
-            retryConnection = false;
-            message = result.message;
-            log(`⚠️ 单章密码不正确：${task.title}`);
-            continue;
-        }
-        if (result.kind === "protocol-error") {
-            recordBrowserDiagnosticFailure(
-                {
-                    scope: "chapter",
-                    stage: "protected-auth",
-                    code: result.code,
-                    message: result.message,
-                    chapter: task
-                },
-                diagnosticTaskId
-            );
-            log(`❌ 单章密码授权响应异常：${task.title}`);
-            message = result.message;
-            retryConnection = true;
-            continue;
-        }
-
-        closeProtectedChapterPrompt();
-        log(`🔓 单章密码解锁完成：${task.title}`);
-        return result.html;
-    }
-}
 
 /**
  * 抓取并下载当前单章节页面
@@ -203,18 +75,18 @@ export async function downloadCurrentPage(format: "txt" | "html" = "txt"): Promi
             }
         }
 
-        let html = document.documentElement.outerHTML;
+        const html = document.documentElement.outerHTML;
         const defaultTitle = document.title.split(" - ")[0] || "未命名章节";
-        const unlockedHtml = await unlockSingleProtectedChapter(
-            html,
-            { index: 0, url: location.href, title: defaultTitle },
-            diagnosticTaskId
-        );
-        if (!unlockedHtml) {
+        if (isProtectedChapterHtml(html)) {
+            log(`🔒 请先在正文区域解锁章节：${defaultTitle}`);
+            showMessagePopup({
+                tone: "warning",
+                title: "章节尚未解锁",
+                message: "请先输入密码解锁该章节。"
+            });
             diagnosticResult = "cancelled";
             return;
         }
-        html = unlockedHtml;
 
         const parsed = parseChapterHtml(html, defaultTitle);
 
@@ -454,7 +326,6 @@ export async function downloadCurrentPage(format: "txt" | "html" = "txt"): Promi
             details: e?.message || String(e)
         });
     } finally {
-        closeProtectedChapterPrompt();
         // 下载已触发后，即使后续历史写入失败，导出本身仍应记为成功；任务失败原因另行保留。
         const exportOutcome = downloadTriggered ? "success" : diagnosticResult;
         recordBrowserDiagnosticExport(

@@ -316,7 +316,7 @@ export function promptProtectedChapterPassword(
         error.textContent = prompt.message || "密码只用于本次授权，不会写入缓存或日志。";
         const passwordInput = el("input", {
             id: "esj-protected-password",
-            type: "password",
+            type: "text",
             autocomplete: "off",
             value: prompt.initialPassword || "",
             style: "width:100%;box-sizing:border-box;padding:9px;border:1px solid #bbb;border-radius:5px;"
@@ -367,23 +367,48 @@ export function promptProtectedChapterPassword(
         ]);
         const footer = el(
             "div",
-            { style: "padding:12px;display:flex;flex-wrap:wrap;justify-content:flex-end;gap:8px;" },
+            {
+                id: "esj-protected-actions",
+                style: "padding:12px;display:flex;justify-content:flex-end;gap:8px;"
+            },
             [
-                el("button", { id: "esj-protected-cancel", onclick: () => finishOrNotify({ action: "cancel" }) }, [
-                    "取消任务"
-                ]),
-                el("button", { id: "esj-protected-skip-all", onclick: () => finishOrNotify({ action: "skip-all" }) }, [
-                    "跳过全部剩余密码章节"
-                ]),
-                el("button", { id: "esj-protected-skip", onclick: () => finishOrNotify({ action: "skip-current" }) }, [
-                    "跳过本章"
-                ]),
+                el(
+                    "button",
+                    {
+                        id: "esj-protected-cancel",
+                        type: "button",
+                        className: "esj-protected-action esj-protected-action-default",
+                        onclick: () => finishOrNotify({ action: "cancel" })
+                    },
+                    ["取消任务"]
+                ),
+                el(
+                    "button",
+                    {
+                        id: "esj-protected-skip-all",
+                        type: "button",
+                        className: "esj-protected-action esj-protected-action-default",
+                        onclick: () => finishOrNotify({ action: "skip-all" })
+                    },
+                    ["跳过全部剩余密码章节"]
+                ),
+                el(
+                    "button",
+                    {
+                        id: "esj-protected-skip",
+                        type: "button",
+                        className: "esj-protected-action esj-protected-action-default",
+                        onclick: () => finishOrNotify({ action: "skip-current" })
+                    },
+                    ["跳过本章"]
+                ),
                 el(
                     "button",
                     {
                         id: "esj-protected-submit",
-                        onclick: submit,
-                        style: "background:#2b9bd7;color:#fff;border:none;padding:7px 12px;border-radius:5px;"
+                        type: "button",
+                        className: "esj-protected-action esj-protected-action-primary",
+                        onclick: submit
                     },
                     [prompt.retryConnection ? "重试连接" : "提交密码"]
                 )

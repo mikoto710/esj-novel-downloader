@@ -38,10 +38,22 @@ function disableSingleExport(button: HTMLElement, reason: string): void {
 }
 
 function enableSingleExport(button: HTMLElement, title: string): void {
+    delete button.dataset.esjProtected;
     button.setAttribute("aria-disabled", "false");
     button.setAttribute("title", title);
     button.style.opacity = "";
     button.style.cursor = "pointer";
+}
+
+function guideSingleProtectedExport(elements: SingleExportElements): void {
+    for (const button of [elements.txtButton, elements.htmlButton]) {
+        button.dataset.esjProtected = "true";
+        button.setAttribute("aria-disabled", "false");
+        button.setAttribute("title", "请先在正文区域输入章节密码");
+        button.style.opacity = "";
+        button.style.cursor = "pointer";
+    }
+    replaceSingleMappingNotice(elements.container, "🔒 本章需要密码，请先解锁后再下载。", "#a45b00");
 }
 
 function replaceSingleMappingNotice(container: HTMLElement, text: string, color: string): void {
@@ -91,9 +103,7 @@ async function updateSinglePageMappingUi(version: number): Promise<void> {
             ) {
                 return;
             }
-            enableSingleExport(elements.txtButton, TXT_TITLE);
-            enableSingleExport(elements.htmlButton, HTML_TITLE);
-            replaceSingleMappingNotice(elements.container, "🔒 本章需要密码，点击导出后输入密码。", "#a45b00");
+            guideSingleProtectedExport(elements);
             return;
         }
         const parsed = parseChapterHtml(document.documentElement.outerHTML, document.title.split(" - ")[0]);
@@ -181,6 +191,41 @@ function installSinglePageMappingUiLifecycle(): void {
         },
         true
     );
+    const contentObserver = new MutationObserver((mutations) => {
+        const chapterAdded = mutations.some((mutation) =>
+            Array.from(mutation.addedNodes).some(
+                (node) =>
+                    node instanceof Element &&
+                    (node.matches(".forum-content") || Boolean(node.querySelector(".forum-content")))
+            )
+        );
+        const waitingForUnlock = Boolean(document.querySelector('[data-esj-protected="true"]'));
+        const protectedContentChanged =
+            waitingForUnlock &&
+            !document.querySelector(
+                '.forum-content input#pw[type="password"], .forum-content input[name="pw"][type="password"]'
+            ) &&
+            mutations.some((mutation) => {
+                const target = mutation.target instanceof Element ? mutation.target : mutation.target.parentElement;
+                return Boolean(target?.closest(".forum-content"));
+            });
+        if (chapterAdded || protectedContentChanged) {
+            scheduleSinglePageMappingUiRefresh();
+        }
+    });
+    contentObserver.observe(document.documentElement, { childList: true, subtree: true });
+}
+
+function handleProtectedSingleExport(button: HTMLElement): boolean {
+    if (button.dataset.esjProtected !== "true") {
+        return false;
+    }
+    showMessagePopup({
+        tone: "warning",
+        title: "章节尚未解锁",
+        message: "请先输入密码解锁该章节。"
+    });
+    return true;
 }
 
 /**
@@ -213,6 +258,9 @@ export function injectSinglePageButton(): void {
             title: TXT_TITLE,
             onclick: (e: Event) => {
                 e.preventDefault();
+                if (handleProtectedSingleExport(btnTxt)) {
+                    return;
+                }
                 if (btnTxt.getAttribute("aria-disabled") === "true") {
                     showMessagePopup({
                         tone: "warning",
@@ -237,6 +285,9 @@ export function injectSinglePageButton(): void {
             title: HTML_TITLE,
             onclick: (e: Event) => {
                 e.preventDefault();
+                if (handleProtectedSingleExport(btnHtml)) {
+                    return;
+                }
                 if (btnHtml.getAttribute("aria-disabled") === "true") {
                     showMessagePopup({
                         tone: "warning",

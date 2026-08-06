@@ -18,6 +18,78 @@ const STYLES = `
 
     /* 按钮通用 */
     .btn { cursor: pointer; } 
+
+    #esj-protected-chapter {
+        font-family: sans-serif;
+    }
+
+    .esj-protected-action {
+        appearance: none;
+        flex: 0 0 auto;
+        padding: 8px 10px;
+        border-radius: 6px;
+        cursor: pointer;
+        font-family: inherit;
+        font-size: 14px;
+        font-weight: 600;
+        line-height: 1.2;
+        white-space: nowrap;
+        transition: background-color 0.2s, border-color 0.2s, opacity 0.2s;
+    }
+
+    #esj-protected-actions {
+        flex-wrap: nowrap;
+    }
+
+    .esj-protected-action-default {
+        background: #f5f5f5;
+        color: #333;
+        border: 1px solid #ccc;
+    }
+
+    .esj-protected-action-default:hover {
+        background: #e9e9e9;
+        border-color: #bbb;
+    }
+
+    .esj-protected-action-primary {
+        background: #2b9bd7;
+        color: #fff;
+        border: 1px solid #2388bd;
+    }
+
+    .esj-protected-action-primary:hover {
+        background: #2388bd;
+    }
+
+    .esj-protected-action:disabled {
+        cursor: not-allowed;
+        opacity: 0.6;
+    }
+
+    @media (max-width: 520px) {
+        #esj-protected-actions {
+            gap: 6px !important;
+        }
+
+        .esj-protected-action {
+            padding: 7px 8px;
+            font-size: 13px;
+        }
+    }
+
+    @media (max-width: 390px) {
+        #esj-protected-actions {
+            gap: 4px !important;
+            padding-right: 8px !important;
+            padding-left: 8px !important;
+        }
+
+        .esj-protected-action {
+            padding: 6px;
+            font-size: 12px;
+        }
+    }
     
     /* 最小化托盘 */
     #esj-min-tray {

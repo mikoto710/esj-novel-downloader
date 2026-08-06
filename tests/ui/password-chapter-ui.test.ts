@@ -53,6 +53,26 @@ describe("protected chapter password UI", () => {
         closeProtectedChapterPrompt();
     });
 
+    it("uses consistent action styles and a plaintext password field", async () => {
+        const decision = prompt();
+        const input = document.querySelector("#esj-protected-password") as HTMLInputElement;
+
+        for (const selector of [
+            "#esj-protected-cancel",
+            "#esj-protected-skip-all",
+            "#esj-protected-skip",
+            "#esj-protected-submit"
+        ]) {
+            expect(document.querySelector(selector)?.classList).toContain("esj-protected-action");
+        }
+        expect((document.querySelector("#esj-protected-actions") as HTMLElement).style.flexWrap).toBe("");
+        expect(input.type).toBe("text");
+        expect(document.querySelector("#esj-protected-visibility")).toBeNull();
+
+        (document.querySelector("#esj-protected-cancel") as HTMLButtonElement).click();
+        await expect(decision).resolves.toEqual({ action: "cancel" });
+    });
+
     it.each([
         ["#esj-protected-skip", { action: "skip-current" }],
         ["#esj-protected-skip-all", { action: "skip-all" }],
