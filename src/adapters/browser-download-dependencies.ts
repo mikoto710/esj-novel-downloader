@@ -29,9 +29,11 @@ import {
 } from "../core/cache/book-cache";
 import type { Chapter } from "../types";
 import {
+    closeProtectedChapterPrompt,
     confirmMappingFontDownload,
     confirmIncompleteChapters,
     createDownloadPopup,
+    promptProtectedChapterPassword,
     showFormatChoice,
     showMappingFontFailure,
     updateMappingFontWarning
@@ -45,6 +47,7 @@ import { normalizeChapterMappingFont } from "../core/mapping-font";
 import { normalizeImageBlob } from "../utils/image-format";
 import { browserDiagnosticEvents, browserDiagnosticLog, recordBrowserDiagnosticFailure } from "./browser-diagnostics";
 import { showDownloadTerminalFailure } from "../ui/download-terminal-notices";
+import { createBrowserProtectedChapterAuth, isProtectedChapterHtml } from "./browser-protected-chapter";
 
 // 下载核心的浏览器实现边界
 // DOM、全局 state、网络、解析、图片、缓存和锁实现均限制在本模块中
@@ -158,6 +161,8 @@ const ui: DownloadUiPort = {
     },
     confirmMappingFontDownload,
     confirmIncompleteChapters,
+    promptProtectedChapterPassword,
+    closeProtectedChapterPrompt,
     updateMappingFontWarning,
     showMappingFontFailure,
     showTerminalFailure: showDownloadTerminalFailure,
@@ -172,6 +177,9 @@ const chapterFetcher: ChapterFetcherPort = {
         return response.text();
     }
 };
+
+const protectedChapterDetector = { isProtected: isProtectedChapterHtml };
+const protectedChapterAuth = createBrowserProtectedChapterAuth();
 
 // 解析正文并根据当前设置处理或移除图片
 const chapterProcessor: ChapterProcessorPort = {
@@ -289,6 +297,8 @@ export function createBrowserDownloadDependencies(): DownloadDependencies {
         ui,
         chapterFetcher,
         chapterProcessor,
+        protectedChapterDetector,
+        protectedChapterAuth,
         coverFetcher,
         coverCache,
         cache,

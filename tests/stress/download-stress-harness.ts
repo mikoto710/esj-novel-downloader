@@ -67,6 +67,8 @@ export function createStressDownloadHarness(options: StressDownloadHarnessOption
             },
             confirmMappingFontDownload: vi.fn(async () => true),
             confirmIncompleteChapters: vi.fn(async () => "export-with-placeholders" as const),
+            promptProtectedChapterPassword: vi.fn(async () => ({ action: "skip-current" }) as const),
+            closeProtectedChapterPrompt: vi.fn(),
             updateMappingFontWarning: vi.fn(),
             showMappingFontFailure: vi.fn(),
             showTerminalFailure: vi.fn(),
@@ -84,6 +86,10 @@ export function createStressDownloadHarness(options: StressDownloadHarnessOption
                 processedIndexes.push(task.index);
                 return options.processChapter?.(task) ?? createChapter(task.index);
             }
+        },
+        protectedChapterDetector: { isProtected: () => false },
+        protectedChapterAuth: {
+            unlock: async () => ({ kind: "protocol-error", code: "response-invalid", message: "unused" })
         },
         coverFetcher: { fetch: async () => null },
         coverCache: { load: async () => null, put: async () => true },

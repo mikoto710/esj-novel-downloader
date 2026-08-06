@@ -42,6 +42,10 @@ export interface ProtectedChapterAuthPort {
     ): Promise<ProtectedChapterUnlockResult>;
 }
 
+export interface ProtectedChapterDetectorPort {
+    isProtected(html: string): boolean;
+}
+
 export interface ProtectedChapterPrompt {
     task: DownloadTask;
     totalChapters: number;
@@ -217,6 +221,11 @@ export interface DownloadUiPort {
         detection: IncompleteChapterDetection,
         signal?: AbortSignal
     ): Promise<IncompleteChapterDecision>;
+    promptProtectedChapterPassword(
+        prompt: ProtectedChapterPrompt,
+        signal?: AbortSignal
+    ): Promise<ProtectedChapterDecision>;
+    closeProtectedChapterPrompt(): void;
     updateMappingFontWarning(summary: MappingFontSummary): void;
     showMappingFontFailure(failures: ReadonlyArray<{ task: DownloadTask; message: string }>): void;
     showTerminalFailure(failure: DownloadTerminalFailure): void;
@@ -316,6 +325,8 @@ export interface DownloadPorts {
     ui: DownloadUiPort;
     chapterFetcher: ChapterFetcherPort;
     chapterProcessor: ChapterProcessorPort;
+    protectedChapterDetector: ProtectedChapterDetectorPort;
+    protectedChapterAuth: ProtectedChapterAuthPort;
     coverFetcher: CoverFetcherPort;
     coverCache: CoverCacheRepository;
     cache: ChapterCacheRepository;

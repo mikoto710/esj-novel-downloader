@@ -9,6 +9,7 @@ import {
     resetBrowserDownloadHarness
 } from "../support/browser-download-harness";
 import { createChapter, createDeferred } from "../support";
+import { createProtectedChapterFixture } from "../support/fixtures";
 
 const mocks = getBrowserDownloadMocks();
 let runtime: BrowserDownloadRuntime;
@@ -59,6 +60,31 @@ describe("browser download flow contracts", () => {
 
         expect(mocks.fetchWithTimeout).toHaveBeenCalledTimes(4);
         expect(mocks.saveCache).toHaveBeenCalledOnce();
+        expect(runtime.state.cachedData?.chapters).toHaveLength(1);
+    });
+
+    it("wires protected chapter GET, token POST, password POST, and normal processing", async () => {
+        mocks.fetchWithTimeout
+            .mockResolvedValueOnce({ text: vi.fn().mockResolvedValue(createProtectedChapterFixture()) })
+            .mockResolvedValueOnce({ text: vi.fn().mockResolvedValue("<JinJing>fictional-token</JinJing>") })
+            .mockResolvedValueOnce({
+                text: vi.fn().mockResolvedValue(JSON.stringify({ status: 200, html: "<p>unlocked body</p>" }))
+            });
+        mocks.promptProtectedChapterPassword.mockResolvedValue({
+            action: "submit",
+            password: "fictional-password",
+            rememberPassword: false
+        });
+
+        await runtime.batchDownload(createBrowserDownloadOptions(createBrowserDownloadTasks(1)));
+
+        expect(mocks.fetchWithTimeout).toHaveBeenCalledTimes(3);
+        expect(mocks.fetchWithTimeout.mock.calls[1][1]).toMatchObject({ method: "POST", credentials: "include" });
+        expect(String(mocks.fetchWithTimeout.mock.calls[1][1].body)).toBe("plxf=getAuthToken");
+        expect(mocks.fetchWithTimeout.mock.calls[2][0]).toBe("https://www.esjzone.cc/inc/forum_pw.php");
+        expect(mocks.fetchWithTimeout.mock.calls[2][1].headers.Authorization).toBe("fictional-token");
+        expect(String(mocks.fetchWithTimeout.mock.calls[2][1].body)).toBe("pw=fictional-password");
+        expect(mocks.parseChapterHtml).toHaveBeenCalledWith(expect.stringContaining("unlocked body"), "第 1 章");
         expect(runtime.state.cachedData?.chapters).toHaveLength(1);
     });
 });

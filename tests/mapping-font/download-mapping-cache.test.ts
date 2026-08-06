@@ -31,6 +31,8 @@ describe("mapped font cache normalization", () => {
             update: vi.fn(),
             confirmMappingFontDownload: vi.fn(async () => true),
             confirmIncompleteChapters: vi.fn(async () => "export-with-placeholders" as const),
+            promptProtectedChapterPassword: vi.fn(async () => ({ action: "skip-current" }) as const),
+            closeProtectedChapterPrompt: vi.fn(),
             updateMappingFontWarning: vi.fn(),
             showMappingFontFailure: vi.fn(),
             showTerminalFailure: vi.fn(),
@@ -55,6 +57,10 @@ describe("mapped font cache normalization", () => {
             ui,
             chapterFetcher: { fetch: vi.fn(async () => "") },
             chapterProcessor: { process: vi.fn(async () => createChapter()) },
+            protectedChapterDetector: { isProtected: () => false },
+            protectedChapterAuth: {
+                unlock: async () => ({ kind: "protocol-error", code: "response-invalid", message: "unused" })
+            },
             coverFetcher: { fetch: async () => null },
             coverCache: { load: async () => null, put: async () => true },
             cache: {
@@ -115,6 +121,8 @@ describe("mapped font cache normalization", () => {
             update: vi.fn(),
             confirmMappingFontDownload: vi.fn(async () => true),
             confirmIncompleteChapters: vi.fn(async () => "export-with-placeholders" as const),
+            promptProtectedChapterPassword: vi.fn(async () => ({ action: "skip-current" }) as const),
+            closeProtectedChapterPrompt: vi.fn(),
             updateMappingFontWarning: vi.fn(),
             showMappingFontFailure: vi.fn(),
             showTerminalFailure: vi.fn(),
@@ -143,6 +151,10 @@ describe("mapped font cache normalization", () => {
             },
             chapterProcessor: {
                 process: vi.fn(async (_html, task) => createChapter(task.index))
+            },
+            protectedChapterDetector: { isProtected: () => false },
+            protectedChapterAuth: {
+                unlock: async () => ({ kind: "protocol-error", code: "response-invalid", message: "unused" })
             },
             coverFetcher: { fetch: async () => null },
             coverCache: { load: async () => null, put: async () => true },
@@ -180,7 +192,8 @@ describe("mapped font cache normalization", () => {
 
         expect(ui.confirmMappingFontDownload).toHaveBeenCalledOnce();
         expect(ui.confirmMappingFontDownload).toHaveBeenCalledWith(
-            expect.objectContaining({ task: tasks[0], chapterCount: 2, fontBytes: 128, inFlightLimit: 0 })
+            expect.objectContaining({ task: tasks[0], chapterCount: 2, fontBytes: 128, inFlightLimit: 0 }),
+            expect.any(AbortSignal)
         );
         expect(ui.updateMappingFontWarning).toHaveBeenCalledWith({ chapterCount: 2, fontBytes: 128 });
         expect(fetchedIndexes).toEqual([2]);

@@ -6,13 +6,99 @@ import type {
     IncompleteChapterDecision,
     IncompleteChapterDetection,
     DownloadSnapshot,
-    DownloadTask
+    DownloadTask,
+    ProtectedChapterDecision,
+    ProtectedChapterUnlockResult
 } from "../../src/core/download/contracts";
 import type { CachedData, Chapter, RuntimeCacheSession } from "../../src/types";
-import { createChapter, createDownloadTask, FakeChapterFetcher, RecordingDownloadEvents } from "../support";
+import {
+    createChapter,
+    createDeferred,
+    createDownloadTask,
+    FakeChapterFetcher,
+    RecordingDownloadEvents
+} from "../support";
 import { MappingFontError } from "../../src/core/mapping-font";
 
 describe("runDownload characterization", () => {
+    it("processes protected chapters through the live queue and existing chapter pipeline", async () => {
+        const tasks = [createDownloadTask(0), createDownloadTask(1), createDownloadTask(2)];
+        const harness = createHarness(tasks);
+        harness.dependencies.chapterFetcher.fetch = vi.fn(async (task) =>
+            task.index === 1 ? "<protected>password form</protected>" : `<p>${task.title}</p>`
+        );
+        harness.dependencies.protectedChapterDetector.isProtected = vi.fn((html) => html.includes("<protected>"));
+        harness.ui.promptProtectedChapterPassword.mockResolvedValue({
+            action: "submit",
+            password: "fictional-password",
+            rememberPassword: false
+        });
+        harness.dependencies.protectedChapterAuth.unlock = vi.fn(
+            async (): Promise<ProtectedChapterUnlockResult> => ({
+                kind: "unlocked",
+                html: "<p>unlocked body</p>"
+            })
+        );
+
+        await runDownload(createOptions(tasks), harness.dependencies);
+
+        expect(harness.ui.promptProtectedChapterPassword).toHaveBeenCalledWith(
+            expect.objectContaining({ task: tasks[1], totalChapters: 3 }),
+            expect.any(AbortSignal)
+        );
+        expect(harness.dependencies.protectedChapterAuth.unlock).toHaveBeenCalledWith(
+            tasks[1],
+            "<protected>password form</protected>",
+            "fictional-password",
+            expect.any(AbortSignal)
+        );
+        expect(harness.processedIndexes.sort((a, b) => a - b)).toEqual([0, 1, 2]);
+        expect(harness.exportData?.chapters).toHaveLength(3);
+    });
+
+    it("waits for the protected queue before entering export preparation", async () => {
+        const tasks = [createDownloadTask(0)];
+        const harness = createHarness(tasks);
+        const unlock = createDeferred<Awaited<ReturnType<typeof harness.dependencies.protectedChapterAuth.unlock>>>();
+        harness.dependencies.chapterFetcher.fetch = vi.fn(async () => "<protected>password form</protected>");
+        harness.dependencies.protectedChapterDetector.isProtected = () => true;
+        harness.ui.promptProtectedChapterPassword.mockResolvedValue({
+            action: "submit",
+            password: "fictional-password",
+            rememberPassword: false
+        });
+        harness.dependencies.protectedChapterAuth.unlock = vi.fn(() => unlock.promise);
+
+        const download = runDownload(createOptions(tasks), harness.dependencies);
+        await vi.waitFor(() => expect(harness.dependencies.protectedChapterAuth.unlock).toHaveBeenCalledOnce());
+
+        expect(harness.ui.showFormatChoice).not.toHaveBeenCalled();
+        expect(harness.cacheClears).toHaveLength(0);
+
+        unlock.resolve({ kind: "unlocked", html: "<p>unlocked body</p>" });
+        await download;
+        expect(harness.ui.showFormatChoice).toHaveBeenCalledOnce();
+    });
+
+    it("keeps a skipped protected chapter out of the chapter map and reuses the incomplete decision", async () => {
+        const tasks = [createDownloadTask(0)];
+        const harness = createHarness(tasks);
+        harness.dependencies.chapterFetcher.fetch = vi.fn(async () => "<protected>password form</protected>");
+        harness.dependencies.protectedChapterDetector.isProtected = () => true;
+        harness.ui.promptProtectedChapterPassword.mockResolvedValue({ action: "skip-current" });
+
+        await runDownload(createOptions(tasks), harness.dependencies);
+
+        expect(harness.ui.promptProtectedChapterPassword).toHaveBeenCalledOnce();
+        expect(harness.dependencies.protectedChapterAuth.unlock).not.toHaveBeenCalled();
+        expect(harness.dependencies.runtime.chapters.has(0)).toBe(false);
+        expect(harness.ui.confirmIncompleteChapters).toHaveBeenCalledWith(
+            { missingTasks: tasks, totalChapters: 1 },
+            expect.any(AbortSignal)
+        );
+        expect(harness.exportData?.chapters).toHaveLength(1);
+    });
+
     it("runs without DOM, IndexedDB, GM APIs, or global application state", async () => {
         const tasks = [createDownloadTask(0), createDownloadTask(1)];
         const harness = createHarness(tasks, new Map([[0, createChapter(0)]]));
@@ -123,7 +209,8 @@ describe("runDownload characterization", () => {
 
         expect(harness.ui.confirmMappingFontDownload).toHaveBeenCalledOnce();
         expect(harness.ui.confirmMappingFontDownload).toHaveBeenCalledWith(
-            expect.objectContaining({ task: tasks[0], chapterCount: 1, fontBytes: 64, inFlightLimit: 1 })
+            expect.objectContaining({ task: tasks[0], chapterCount: 1, fontBytes: 64, inFlightLimit: 1 }),
+            expect.any(AbortSignal)
         );
         expect(harness.ui.updateMappingFontWarning).toHaveBeenLastCalledWith({ chapterCount: 2, fontBytes: 128 });
         expect(harness.ui.showFormatChoice).toHaveBeenCalledOnce();
@@ -404,11 +491,27 @@ function createHarness(tasks: DownloadTask[], chapters = new Map<number, Chapter
         confirmIncompleteChapters: vi.fn<
             (detection: IncompleteChapterDetection, signal?: AbortSignal) => Promise<IncompleteChapterDecision>
         >(async () => "export-with-placeholders"),
+        promptProtectedChapterPassword: vi.fn(
+            async (): Promise<ProtectedChapterDecision> => ({
+                action: "skip-current"
+            })
+        ),
+        closeProtectedChapterPrompt: vi.fn(),
         updateMappingFontWarning: vi.fn(),
         showMappingFontFailure: vi.fn(),
         showTerminalFailure: vi.fn(),
         cleanup: vi.fn(),
         showFormatChoice: vi.fn()
+    };
+    const protectedChapterDetector = { isProtected: vi.fn(() => false) };
+    const protectedChapterAuth = {
+        unlock: vi.fn(
+            async (): Promise<ProtectedChapterUnlockResult> => ({
+                kind: "protocol-error",
+                code: "response-invalid",
+                message: "unused"
+            })
+        )
     };
     let exportData: CachedData | null = null;
     let runtimeSession: RuntimeCacheSession | null = null;
@@ -454,6 +557,8 @@ function createHarness(tasks: DownloadTask[], chapters = new Map<number, Chapter
                 return createChapter(task.index);
             }
         },
+        protectedChapterDetector,
+        protectedChapterAuth,
         coverFetcher: { fetch: async () => null },
         coverCache: { load: async () => null, put: async () => true },
         cache: {

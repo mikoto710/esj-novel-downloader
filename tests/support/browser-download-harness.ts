@@ -1,4 +1,5 @@
 import { vi } from "vitest";
+import type { ProtectedChapterDecision } from "../../src/core/download/contracts";
 import { createBookLock, createDownloadTask } from "./factories";
 
 const hoistedBrowserDownloadMocks = vi.hoisted(() => ({
@@ -11,6 +12,8 @@ const hoistedBrowserDownloadMocks = vi.hoisted(() => ({
     showFormatChoice: vi.fn(),
     confirmMappingFontDownload: vi.fn(async () => true),
     confirmIncompleteChapters: vi.fn(async () => "export-with-placeholders" as const),
+    promptProtectedChapterPassword: vi.fn(async (): Promise<ProtectedChapterDecision> => ({ action: "skip-current" })),
+    closeProtectedChapterPrompt: vi.fn(),
     updateMappingFontWarning: vi.fn(),
     showMappingFontFailure: vi.fn(),
     showTerminalFailure: vi.fn(),
@@ -46,6 +49,8 @@ vi.mock("../../src/ui/popups", () => ({
     showFormatChoice: hoistedBrowserDownloadMocks.showFormatChoice,
     confirmMappingFontDownload: hoistedBrowserDownloadMocks.confirmMappingFontDownload,
     confirmIncompleteChapters: hoistedBrowserDownloadMocks.confirmIncompleteChapters,
+    promptProtectedChapterPassword: hoistedBrowserDownloadMocks.promptProtectedChapterPassword,
+    closeProtectedChapterPrompt: hoistedBrowserDownloadMocks.closeProtectedChapterPrompt,
     updateMappingFontWarning: hoistedBrowserDownloadMocks.updateMappingFontWarning,
     showMappingFontFailure: hoistedBrowserDownloadMocks.showMappingFontFailure
 }));
@@ -99,6 +104,7 @@ export async function resetBrowserDownloadHarness(): Promise<BrowserDownloadRunt
         text: vi.fn().mockResolvedValue("<html></html>")
     });
     hoistedBrowserDownloadMocks.createDownloadPopup.mockImplementation(() => document.createElement("div"));
+    hoistedBrowserDownloadMocks.promptProtectedChapterPassword.mockResolvedValue({ action: "skip-current" });
     hoistedBrowserDownloadMocks.saveCache.mockResolvedValue(true);
     hoistedBrowserDownloadMocks.clearCache.mockResolvedValue(true);
     hoistedBrowserDownloadMocks.loadCoverCache.mockResolvedValue(null);
