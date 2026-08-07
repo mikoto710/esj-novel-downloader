@@ -35,7 +35,7 @@ export type LocaleCatalog = Readonly<Record<string, string>>;
 export type LocaleCatalogs = Readonly<Record<InterfaceLocale, LocaleCatalog>>;
 
 /**
- * 基础文案键，后续迁移按需扩充
+ * 支持的文案键，作为语言字典完整性校验基准
  */
 export const LOCALE_KEYS = [
     "common.confirm",
@@ -433,9 +433,6 @@ export const LOCALE_KEYS = [
 
 export type LocaleKey = (typeof LOCALE_KEYS)[number];
 
-/**
- * 简体中文文案
- */
 export const LOCALE_CATALOGS: LocaleCatalogs = Object.freeze({
     "zh-CN": ZH_CN_MESSAGES,
     "zh-TW": ZH_TW_MESSAGES

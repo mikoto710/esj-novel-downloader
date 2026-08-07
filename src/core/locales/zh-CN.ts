@@ -405,7 +405,3 @@ export const ZH_CN_MESSAGES = Object.freeze({
     "settings.log.epubTag": "EPUB 标签页已{state}",
     "settings.log.initialized": "初始化参数：并发数：{concurrency}；图片下载：{imageEnabled}"
 } satisfies Readonly<Record<LocaleKey, string>>);
-
-/**
- * 繁體中文文案
- */

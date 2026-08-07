@@ -41,7 +41,7 @@ function parseParams(value: string | undefined): LocaleMessageParams | undefined
 }
 
 /**
- * 标记需要在运行时切换语言的文本节点
+ * 标记文本元素并保存其文案键，供运行时切换语言
  */
 export function bindInterfaceText(element: HTMLElement, key: LocaleKey, params?: LocaleMessageParams): HTMLElement {
     element.dataset.esjI18nText = key;
@@ -51,7 +51,7 @@ export function bindInterfaceText(element: HTMLElement, key: LocaleKey, params?:
 }
 
 /**
- * 标记需要在运行时切换语言的可访问属性
+ * 标记需要在运行时切换语言的提示或可访问属性
  */
 export function bindInterfaceAttribute(
     element: HTMLElement,
@@ -67,7 +67,7 @@ export function bindInterfaceAttribute(
 }
 
 /**
- * 原地刷新已绑定的长期界面元素
+ * 原地刷新已绑定的界面文本、title 和 aria-label 属性
  */
 export function refreshBoundInterfaceText(root: ParentNode = document): void {
     root.querySelectorAll<HTMLElement>("[data-esj-i18n-text]").forEach((element) => {

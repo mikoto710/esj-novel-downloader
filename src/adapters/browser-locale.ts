@@ -29,7 +29,7 @@ export function detectBrowserInterfaceLocale(language: string | undefined): Inte
 }
 
 /**
- * 解析浏览器界面语言
+ * 按用户偏好、网站转换状态、浏览器语言的顺序解析脚本界面语言
  */
 export function resolveBrowserInterfaceLocale(
     preference: InterfaceLocalePreference,
