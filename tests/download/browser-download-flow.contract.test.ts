@@ -23,7 +23,7 @@ describe("browser download flow contracts", () => {
         await runtime.batchDownload(createBrowserDownloadOptions(createBrowserDownloadTasks(1)));
 
         const trayMessages = mocks.updateTrayText.mock.calls.flat();
-        expect(trayMessages).toContain("全本下载 (1/1) ");
+        expect(trayMessages).toContain("全本下载 (1/1)");
         expect(trayMessages.join("\n")).not.toContain("密码待处理 0");
         expect(trayMessages).toContain("正在保存下载进度 (1/1)");
         expect(trayMessages).toContain("正在检查章节完整性 (1/1)");
@@ -158,6 +158,6 @@ describe("browser download flow contracts", () => {
         decision.resolve({ action: "skip-current" });
         await download;
 
-        expect(mocks.updateTrayText.mock.calls.flat()).toContain("全本下载 (0/1) ");
+        expect(mocks.updateTrayText.mock.calls.flat()).toContain("全本下载 (0/1)");
     });
 });

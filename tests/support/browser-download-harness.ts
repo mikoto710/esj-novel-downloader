@@ -65,7 +65,8 @@ vi.mock("../../src/core/cache/book-cache", () => ({
     putBookCoverForTask: hoistedBrowserDownloadMocks.saveCoverCache
 }));
 vi.mock("../../src/core/config", () => ({
-    getConcurrency: hoistedBrowserDownloadMocks.getConcurrency
+    getConcurrency: hoistedBrowserDownloadMocks.getConcurrency,
+    getInterfaceLocalePreference: () => "zh-CN"
 }));
 vi.mock("../../src/utils/image", () => ({ processHtmlImages: hoistedBrowserDownloadMocks.processHtmlImages }));
 vi.mock("../../src/core/parser", () => ({ parseChapterHtml: hoistedBrowserDownloadMocks.parseChapterHtml }));
