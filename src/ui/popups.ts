@@ -248,7 +248,7 @@ export function closeProtectedChapterPrompt(): void {
     document.querySelector("#esj-protected-chapter")?.remove();
 }
 
-export function setProtectedChapterPromptBusy(message = "正在验证密码，请稍候..."): void {
+export function setProtectedChapterPromptBusy(message = t("protected.busy")): void {
     const popup = document.querySelector("#esj-protected-chapter") as HTMLElement | null;
     if (!popup) {
         return;
@@ -267,7 +267,7 @@ export function setProtectedChapterPromptBusy(message = "正在验证密码，�
     }
     if (submit) {
         submit.disabled = true;
-        submit.textContent = "正在验证...";
+        submit.textContent = t("protected.busyShort");
     }
     if (skip) {
         skip.disabled = true;
@@ -325,7 +325,7 @@ export function promptProtectedChapterPassword(
             id: "esj-protected-error",
             style: `min-height:20px;margin-top:8px;color:${prompt.message ? "#c62828" : "#666"};font-size:13px;`
         });
-        error.textContent = prompt.message || "密码只用于本次授权，不会写入缓存或日志。";
+        error.textContent = prompt.message || t("protected.notice");
         const passwordInput = el("input", {
             id: "esj-protected-password",
             type: "text",
@@ -341,7 +341,7 @@ export function promptProtectedChapterPassword(
         const submit = () => {
             const password = passwordInput.value;
             if (!password) {
-                error.textContent = "请输入密码。";
+                error.textContent = t("protected.passwordRequired");
                 error.style.color = "#c62828";
                 passwordInput.focus();
                 return;
@@ -355,11 +355,15 @@ export function promptProtectedChapterPassword(
                 submit();
             }
         };
-        const header = createCommonHeader("🔒 章节需要密码", () => finishOrNotify({ action: "cancel" }));
+        const header = createCommonHeader(t("protected.required"), () => finishOrNotify({ action: "cancel" }));
         const body = el("div", { style: "padding:16px;font-size:14px;line-height:1.6;color:#333;" }, [
             el("div", { style: "font-weight:bold;" }, [prompt.task.title]),
             el("div", { style: "margin:4px 0 10px;color:#666;" }, [
-                `目录位置 ${prompt.task.index + 1}/${prompt.totalChapters}｜密码待处理 ${prompt.pendingCount}`
+                t("protected.position", {
+                    index: prompt.task.index + 1,
+                    total: prompt.totalChapters,
+                    pending: prompt.pendingCount
+                })
             ]),
             el(
                 "a",
@@ -369,12 +373,12 @@ export function promptProtectedChapterPassword(
                     rel: "noopener noreferrer",
                     style: "display:inline-block;margin-bottom:10px;"
                 },
-                ["打开原章节"]
+                [t("protected.openChapter")]
             ),
             passwordInput,
             el("label", { style: "display:flex;gap:7px;align-items:flex-start;margin-top:10px;cursor:pointer;" }, [
                 remember,
-                el("span", {}, ["仅在本次下载中用于后续密码章节（不会保存）"])
+                el("span", {}, [t("protected.remember")])
             ]),
             error
         ]);
@@ -403,7 +407,7 @@ export function promptProtectedChapterPassword(
                         className: "esj-protected-action esj-protected-action-default",
                         onclick: () => finishOrNotify({ action: "skip-all" })
                     },
-                    ["跳过全部剩余密码章节"]
+                    [t("protected.skipRemaining")]
                 ),
                 el(
                     "button",
@@ -423,7 +427,7 @@ export function promptProtectedChapterPassword(
                         className: "esj-protected-action esj-protected-action-primary",
                         onclick: submit
                     },
-                    [prompt.retryConnection ? "重试连接" : "提交密码"]
+                    [t(prompt.retryConnection ? "protected.retryConnection" : "protected.submit")]
                 )
             ]
         );

@@ -4,6 +4,7 @@ import { downloadCurrentPage } from "../scrapers/single";
 import { parseChapterHtml } from "../core/parser";
 import { MappingFontError, normalizeChapterMappingFont } from "../core/mapping-font";
 import { isProtectedChapterHtml } from "../adapters/browser-protected-chapter";
+import { t } from "./locale";
 
 const TXT_TITLE = "下载本章 (TXT)";
 const HTML_TITLE = "下载本章 (HTML)";
@@ -49,11 +50,11 @@ function guideSingleProtectedExport(elements: SingleExportElements): void {
     for (const button of [elements.txtButton, elements.htmlButton]) {
         button.dataset.esjProtected = "true";
         button.setAttribute("aria-disabled", "false");
-        button.setAttribute("title", "请先在正文区域输入章节密码");
+        button.setAttribute("title", t("protected.single.buttonTitle"));
         button.style.opacity = "";
         button.style.cursor = "pointer";
     }
-    replaceSingleMappingNotice(elements.container, "🔒 本章需要密码，请先解锁后再下载。", "#a45b00");
+    replaceSingleMappingNotice(elements.container, t("protected.single.notice"), "#a45b00");
 }
 
 function replaceSingleMappingNotice(container: HTMLElement, text: string, color: string): void {
@@ -222,8 +223,8 @@ function handleProtectedSingleExport(button: HTMLElement): boolean {
     }
     showMessagePopup({
         tone: "warning",
-        title: "章节尚未解锁",
-        message: "请先输入密码解锁该章节。"
+        title: t("protected.single.title"),
+        message: t("protected.single.message")
     });
     return true;
 }

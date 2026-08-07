@@ -6,6 +6,7 @@ import type {
 } from "../core/download/contracts";
 import { fetchWithTimeout } from "../utils/index";
 import { BrowserRequestGate } from "./browser-request-gate";
+import { t } from "../ui/locale";
 
 type ProtectedChapterRequest = (
     url: string,
@@ -73,25 +74,30 @@ export function replaceProtectedChapterContent(pageHtml: string, contentHtml: st
 
 export function classifyProtectedChapterResponse(pageHtml: string, payload: unknown): ProtectedChapterUnlockResult {
     if (!payload || typeof payload !== "object" || typeof (payload as PasswordResponsePayload).status !== "number") {
-        return protocolError("response-invalid", "密码章节响应格式无效");
+        return protocolError("response-invalid", t("protected.protocol.responseInvalid"));
     }
 
     const response = payload as PasswordResponsePayload;
     if (response.status === 206) {
         return {
             kind: "password-rejected",
-            message: typeof response.msg === "string" && response.msg.trim() ? response.msg.trim() : "密码不正确"
+            message:
+                typeof response.msg === "string" && response.msg.trim()
+                    ? response.msg.trim()
+                    : t("protected.protocol.passwordRejected")
         };
     }
     if (response.status !== 200) {
-        return protocolError("unknown-status", `站点返回未知密码状态：${response.status}`);
+        return protocolError("unknown-status", t("protected.protocol.unknownStatus", { status: response.status }));
     }
     if (typeof response.html !== "string") {
-        return protocolError("content-invalid", "密码章节正文格式无效");
+        return protocolError("content-invalid", t("protected.protocol.contentInvalid"));
     }
 
     const html = replaceProtectedChapterContent(pageHtml, response.html);
-    return html ? { kind: "unlocked", html } : protocolError("content-invalid", "密码章节正文为空或仍要求输入密码");
+    return html
+        ? { kind: "unlocked", html }
+        : protocolError("content-invalid", t("protected.protocol.contentStillProtected"));
 }
 
 function parsePasswordResponse(text: string): unknown {
@@ -134,7 +140,7 @@ export function createBrowserProtectedChapterAuth(
                 );
                 const token = extractProtectedChapterToken(await tokenResponse.text());
                 if (!token) {
-                    return protocolError("token-invalid", "无法取得有效的密码授权 token");
+                    return protocolError("token-invalid", t("protected.protocol.tokenInvalid"));
                 }
 
                 const passwordResponse = await request(

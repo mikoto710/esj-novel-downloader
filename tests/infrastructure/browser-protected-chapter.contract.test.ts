@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
     classifyProtectedChapterResponse,
     createBrowserProtectedChapterAuth,
@@ -8,6 +8,9 @@ import {
     isProtectedChapterHtml
 } from "../../src/adapters/browser-protected-chapter";
 import { createChapterFixture, createProtectedChapterFixture } from "../support/fixtures";
+import { setInterfaceLocalePreference } from "../../src/core/config";
+
+beforeEach(() => setInterfaceLocalePreference("zh-CN"));
 
 const task = {
     index: 1,

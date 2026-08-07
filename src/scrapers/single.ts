@@ -6,6 +6,7 @@ import { addDownloadHistory } from "../core/download-history";
 import { MappingFontError, normalizeChapterMappingFont, prepareChapterMappingExport } from "../core/mapping-font";
 import { confirmMappingFontExport } from "../ui/popups";
 import { showMessagePopup } from "../ui/message-popup";
+import { t } from "../ui/locale";
 import { isProtectedChapterHtml } from "../adapters/browser-protected-chapter";
 import {
     browserDiagnosticLog as log,
@@ -78,11 +79,11 @@ export async function downloadCurrentPage(format: "txt" | "html" = "txt"): Promi
         const html = document.documentElement.outerHTML;
         const defaultTitle = document.title.split(" - ")[0] || "未命名章节";
         if (isProtectedChapterHtml(html)) {
-            log(`🔒 请先在正文区域解锁章节：${defaultTitle}`);
+            log(t("protected.single.log", { title: defaultTitle }));
             showMessagePopup({
                 tone: "warning",
-                title: "章节尚未解锁",
-                message: "请先输入密码解锁该章节。"
+                title: t("protected.single.title"),
+                message: t("protected.single.message")
             });
             diagnosticResult = "cancelled";
             return;

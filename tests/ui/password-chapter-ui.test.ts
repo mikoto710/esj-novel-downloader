@@ -3,6 +3,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { closeProtectedChapterPrompt, promptProtectedChapterPassword } from "../../src/ui/popups";
 import { createDownloadTask } from "../support";
+import { setInterfaceLocalePreference } from "../../src/core/config";
 
 function prompt(signal?: AbortSignal) {
     return promptProtectedChapterPassword(
@@ -16,7 +17,10 @@ function prompt(signal?: AbortSignal) {
 }
 
 describe("protected chapter password UI", () => {
-    beforeEach(() => closeProtectedChapterPrompt());
+    beforeEach(() => {
+        closeProtectedChapterPrompt();
+        setInterfaceLocalePreference("zh-CN");
+    });
 
     it("shows the exact chapter identity, queue count, link, and memory scope", async () => {
         const decision = prompt();
@@ -30,6 +34,19 @@ describe("protected chapter password UI", () => {
 
         (popup.querySelector("#esj-protected-cancel") as HTMLButtonElement).click();
         await expect(decision).resolves.toEqual({ action: "cancel" });
+    });
+
+    it("renders the password prompt in traditional Chinese", async () => {
+        setInterfaceLocalePreference("zh-TW");
+        const decision = prompt();
+        const popup = document.querySelector("#esj-protected-chapter") as HTMLElement;
+
+        expect(popup.textContent).toContain("章節需要密碼");
+        expect(popup.textContent).toContain("密碼待處理 3");
+        expect(popup.textContent).toContain("不會儲存");
+
+        (popup.querySelector("#esj-protected-skip") as HTMLButtonElement).click();
+        await expect(decision).resolves.toEqual({ action: "skip-current" });
     });
 
     it("submits a password and explicit task-only reuse choice", async () => {

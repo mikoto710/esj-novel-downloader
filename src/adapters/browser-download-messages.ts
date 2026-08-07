@@ -140,23 +140,23 @@ export function formatDownloadLog(message: DownloadLog): string {
         case "chapter-skipped-non-site":
             return t("download.log.chapterSkippedNonSite", { completed: value(message, "completed"), total: value(message, "total"), title: value(message, "title") });
         case "protected-chapter-retry-skipped":
-            return `⏭ 本轮补抓已跳过密码章节 ${chapterTitle(message)}`;
+            return t("protected.log.retrySkipped", { chapter: chapterTitle(message) });
         case "protected-chapter-redetected":
-            return `🔒 补抓再次发现密码章节 ${chapterTitle(message)}`;
+            return t("protected.log.redetected", { chapter: chapterTitle(message) });
         case "protected-chapter-queued":
-            return `🔒 发现密码章节 ${chapterTitle(message)}，已加入等待队列。`;
+            return t("protected.log.queued", { chapter: chapterTitle(message) });
         case "protected-chapter-skipped":
-            return `⏭ 已跳过密码章节 ${chapterTitle(message)}`;
+            return t("protected.log.skipped", { chapter: chapterTitle(message) });
         case "protected-chapter-connection-retry":
-            return `⚠️ 密码章节连接失败，正在进行一次技术重试 ${chapterTitle(message)}`;
+            return t("protected.log.connectionRetry", { chapter: chapterTitle(message) });
         case "protected-chapter-connection-failed":
-            return `❌ 密码章节连接失败 ${chapterTitle(message)}`;
+            return t("protected.log.connectionFailed", { chapter: chapterTitle(message) });
         case "protected-chapter-password-rejected":
-            return `⚠️ 密码不正确 ${chapterTitle(message)}`;
+            return t("protected.log.passwordRejected", { chapter: chapterTitle(message) });
         case "protected-chapter-protocol-failed":
-            return `❌ 密码章节授权响应异常 ${chapterTitle(message)}`;
+            return t("protected.log.protocolFailed", { chapter: chapterTitle(message) });
         case "protected-chapter-unlocked":
-            return `🔓 密码章节解锁完成 ${chapterTitle(message)}`;
+            return t("protected.log.unlocked", { chapter: chapterTitle(message) });
         case "integrity-check-started":
             return t("download.log.integrityStarted");
         case "integrity-check-passed":

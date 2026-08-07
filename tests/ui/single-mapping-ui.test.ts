@@ -2,6 +2,7 @@
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { injectSinglePageButton } from "../../src/ui/single";
+import { setInterfaceLocalePreference } from "../../src/core/config";
 
 function createWoff2Bytes(): Uint8Array {
     const bytes = new Uint8Array(64);
@@ -37,6 +38,7 @@ function getButtons(): { txt: HTMLElement; html: HTMLElement } {
 
 describe("single-page mapped font UI", () => {
     beforeEach(() => {
+        setInterfaceLocalePreference("zh-CN");
         installSinglePage();
     });
 
