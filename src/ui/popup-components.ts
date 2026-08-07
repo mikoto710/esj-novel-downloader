@@ -1,4 +1,5 @@
 import { el } from "../utils/dom";
+import { t } from "./locale";
 
 /**
  * 创建弹窗公共标题栏
@@ -14,7 +15,8 @@ export function createCommonHeader(title: string, onClose: () => void, onMinimiz
             el(
                 "button",
                 {
-                    title: "最小化",
+                    title: t("common.minimize"),
+                    "aria-label": t("common.minimize"),
                     style: "border:none;background:#81d4fa;color:#000;padding:4px 10px;border-radius:6px;cursor:pointer;font-weight:bold;margin-right:5px;",
                     onclick: onMinimize
                 },
@@ -27,7 +29,8 @@ export function createCommonHeader(title: string, onClose: () => void, onMinimiz
         el(
             "button",
             {
-                title: "关闭",
+                title: t("common.close"),
+                "aria-label": t("common.close"),
                 style: "border:none;background:#ef5350;color:#fff;padding:4px 10px;border-radius:6px;cursor:pointer;font-weight:bold;",
                 onclick: onClose
             },

@@ -2,6 +2,7 @@ import { el, enableDrag } from "../utils/dom";
 import { createCommonHeader } from "./popup-components";
 import { listBrowserDiagnosticSessions } from "../adapters/browser-diagnostics";
 import { createDiagnosticPopup } from "./diagnostics";
+import { t } from "./locale";
 
 export type MessagePopupTone = "info" | "warning" | "error";
 
@@ -15,25 +16,31 @@ export interface MessagePopupOptions {
 
 const tonePresentation: Record<
     MessagePopupTone,
-    { icon: string; title: string; color: string; border: string; background: string }
+    {
+        icon: string;
+        title: "common.infoTitle" | "common.warningTitle" | "common.errorTitle";
+        color: string;
+        border: string;
+        background: string;
+    }
 > = {
     info: {
         icon: "ℹ️",
-        title: "提示",
+        title: "common.infoTitle",
         color: "#24566f",
         border: "#8dc9e8",
         background: "#eef7fc"
     },
     warning: {
         icon: "⚠️",
-        title: "请注意",
+        title: "common.warningTitle",
         color: "#8a5a00",
         border: "#e6a23c",
         background: "#fff7e6"
     },
     error: {
         icon: "❌",
-        title: "操作失败",
+        title: "common.errorTitle",
         color: "#a12622",
         border: "#d9534f",
         background: "#fff0f0"
@@ -54,7 +61,7 @@ export function showMessagePopup(options: MessagePopupOptions): HTMLElement {
         : "";
     const close = () => popup.remove();
     const titleId = "esj-message-title";
-    const header = createCommonHeader(`${presentation.icon} ${options.title || presentation.title}`, close);
+    const header = createCommonHeader(`${presentation.icon} ${options.title || t(presentation.title)}`, close);
     header.querySelector("span")?.setAttribute("id", titleId);
 
     const bodyChildren: Array<string | Node> = [
@@ -94,7 +101,7 @@ export function showMessagePopup(options: MessagePopupOptions): HTMLElement {
                         createDiagnosticPopup();
                     }
                 },
-                ["查看诊断日志"]
+                [t("common.viewDiagnostics")]
             )
         );
     }
@@ -106,7 +113,7 @@ export function showMessagePopup(options: MessagePopupOptions): HTMLElement {
                 style: "padding:8px 12px;background:#eee;border:1px solid #ccc;border-radius:6px;cursor:pointer;",
                 onclick: close
             },
-            [options.closeText || "关闭"]
+            [options.closeText || t("common.close")]
         )
     );
 

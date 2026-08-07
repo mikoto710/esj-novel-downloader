@@ -10,8 +10,11 @@ import {
     setImageDownloadSetting,
     getImageDownloadSetting,
     getEpubTagPageSetting,
-    setEpubTagPageSetting
+    setEpubTagPageSetting,
+    getInterfaceLocalePreference,
+    setInterfaceLocalePreference
 } from "../core/config";
+import { isInterfaceLocalePreference } from "../core/locale";
 import { buildHtml } from "../core/html";
 import { createCacheManagerPopup } from "./cache-manager";
 import { createDownloadHistoryPopup } from "./download-history";
@@ -29,6 +32,7 @@ import { createCommonHeader } from "./popup-components";
 import { recordBrowserDiagnosticExport, recordBrowserDiagnosticFailure } from "../adapters/browser-diagnostics";
 import { createDiagnosticPopup } from "./diagnostics";
 import { listActiveBookDownloadLocks } from "../core/book-lock";
+import { t } from "./locale";
 
 /**
  * 锁定/解锁页面上的设置按钮
@@ -80,9 +84,9 @@ function confirmImageSettingChange(activeTaskCount: number): Promise<boolean> {
                 style: "position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:440px;max-width:calc(100vw - 32px);background:#fff;border:1px solid #aaa;border-radius:8px;box-shadow:0 0 18px rgba(0,0,0,.28);z-index:1000001;display:flex;flex-direction:column;"
             },
             [
-                createCommonHeader("⚠️ 切换插图设置", () => finish(false)),
+                createCommonHeader(t("confirm.imageSettings.title"), () => finish(false)),
                 el("div", { style: "padding:16px;font-size:14px;line-height:1.7;color:#333;" }, [
-                    `当前有 ${activeTaskCount} 个全本任务正在下载。它们会继续使用启动时的插图设置，不受本次切换影响；本次更改仅对之后新启动的任务生效。`
+                    t("confirm.imageSettings.message", { count: activeTaskCount })
                 ]),
                 el("div", { style: "padding:12px;display:flex;justify-content:flex-end;gap:8px;" }, [
                     el(
@@ -92,7 +96,7 @@ function confirmImageSettingChange(activeTaskCount: number): Promise<boolean> {
                             style: "padding:8px 12px;background:#eee;border:1px solid #ccc;border-radius:6px;cursor:pointer;",
                             onclick: () => finish(false)
                         },
-                        ["取消"]
+                        [t("common.cancel")]
                     ),
                     el(
                         "button",
@@ -101,7 +105,7 @@ function confirmImageSettingChange(activeTaskCount: number): Promise<boolean> {
                             style: "padding:8px 12px;background:#2b9bd7;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:bold;",
                             onclick: () => finish(true)
                         },
-                        ["继续切换"]
+                        [t("confirm.imageSettings.continue")]
                     )
                 ])
             ]
@@ -761,9 +765,7 @@ export function createConfirmPopup(onOk: () => void, onCancel?: () => void, cach
     const cachedCount = state.globalChaptersMap.size;
     const hintText =
         cacheHint ||
-        (cachedCount > 0
-            ? `检测到已有 ${cachedCount} 章缓存，点击确定将跳过已下载章节继续下载。`
-            : "是否开始抓取该小说全部章节？");
+        (cachedCount > 0 ? t("confirm.download.cached", { count: cachedCount }) : t("confirm.download.empty"));
 
     const closeAction = () => {
         document.querySelector("#esj-confirm")?.remove();
@@ -773,7 +775,7 @@ export function createConfirmPopup(onOk: () => void, onCancel?: () => void, cach
         }
     };
 
-    const header = createCommonHeader("✔️ 确认下载", closeAction);
+    const header = createCommonHeader(t("confirm.download.title"), closeAction);
 
     const body = el("div", { style: "padding:16px;font-size:14px;" }, [hintText]);
 
@@ -790,7 +792,7 @@ export function createConfirmPopup(onOk: () => void, onCancel?: () => void, cach
                 }
             }
         },
-        ["取消"]
+        [t("common.cancel")]
     );
 
     const btnOk = el(
@@ -803,7 +805,7 @@ export function createConfirmPopup(onOk: () => void, onCancel?: () => void, cach
                 onOk();
             }
         },
-        ["确定"]
+        [t("common.confirm")]
     );
 
     const footer = el(
@@ -1162,11 +1164,38 @@ export function createSettingsPanel(): void {
         toggleSettingsLock(false);
     };
 
-    const header = createCommonHeader("⚙️ 脚本设置", closeAction);
+    const header = createCommonHeader(`⚙️ ${t("settings.title")}`, closeAction);
     const installedVersion =
         typeof GM_info !== "undefined" && GM_info.script?.version?.trim()
             ? `v${GM_info.script.version.trim()}`
-            : "版本未知";
+            : t("settings.versionUnknown");
+
+    const interfaceLocalePreference = getInterfaceLocalePreference();
+    const interfaceLocaleSelect = el(
+        "select",
+        {
+            id: "esj-interface-language",
+            "aria-label": t("settings.interfaceLanguage"),
+            style: "min-width: 150px; padding: 6px; border: 1px solid #ccc; border-radius: 4px;",
+            onchange: (e: Event) => {
+                const value = (e.target as HTMLSelectElement).value;
+                if (isInterfaceLocalePreference(value)) {
+                    setInterfaceLocalePreference(value);
+                }
+            }
+        },
+        [
+            el("option", { value: "auto", selected: interfaceLocalePreference === "auto" }, [
+                t("settings.interfaceLanguage.auto")
+            ]),
+            el("option", { value: "zh-CN", selected: interfaceLocalePreference === "zh-CN" }, [
+                t("settings.interfaceLanguage.simplified")
+            ]),
+            el("option", { value: "zh-TW", selected: interfaceLocalePreference === "zh-TW" }, [
+                t("settings.interfaceLanguage.traditional")
+            ])
+        ]
+    );
 
     // 并发数输入框
     const currentConcurrency = getConcurrency();
@@ -1216,7 +1245,7 @@ export function createSettingsPanel(): void {
                 createCacheManagerPopup();
             }
         },
-        ["缓存管理"]
+        [t("settings.cache")]
     );
 
     const btnDownloadHistory = el(
@@ -1229,7 +1258,7 @@ export function createSettingsPanel(): void {
                 createDownloadHistoryPopup();
             }
         },
-        ["下载记录"]
+        [t("settings.history")]
     );
 
     const btnDiagnostics = el(
@@ -1239,7 +1268,7 @@ export function createSettingsPanel(): void {
             style: "color:white;min-width:110px;",
             onclick: () => createDiagnosticPopup()
         },
-        ["诊断日志"]
+        [t("settings.diagnosticsButton")]
     );
 
     // 图片下载开关
@@ -1304,40 +1333,47 @@ export function createSettingsPanel(): void {
     const rowStyle = "display:flex; align-items:center; justify-content:space-between;";
 
     const rowConcurrency = el("div", { style: rowStyle }, [
-        el("label", { style: "color: #333;" }, ["下载线程数 (1-10):"]),
+        el("label", { style: "color: #333;" }, [t("settings.concurrency", { max: 10 })]),
         inputConcurrency
     ]);
 
+    const rowInterfaceLanguage = el("div", { style: rowStyle }, [
+        el("label", { style: "color: #333;" }, [t("settings.interfaceLanguage")]),
+        interfaceLocaleSelect
+    ]);
+
     const rowCache = el("div", { style: rowStyle }, [
-        el("label", { style: "color: #333;" }, ["下载缓存:"]),
+        el("label", { style: "color: #333;" }, [t("settings.cache")]),
         btnCacheManager
     ]);
 
     const rowHistory = el("div", { style: rowStyle }, [
-        el("label", { style: "color:#333;" }, ["下载记录:"]),
+        el("label", { style: "color:#333;" }, [t("settings.history")]),
         btnDownloadHistory
     ]);
 
     const rowDiagnostics = el("div", { style: rowStyle }, [
         el("div", {}, [
-            el("label", { style: "color:#333;" }, ["诊断与反馈:"]),
-            el("div", { style: "font-size:12px;color:#999;margin-top:2px;" }, ["(用于导出问题排查信息)"])
+            el("label", { style: "color:#333;" }, [t("settings.diagnostics")]),
+            el("div", { style: "font-size:12px;color:#999;margin-top:2px;" }, [t("settings.diagnosticsDescription")])
         ]),
         btnDiagnostics
     ]);
 
     const rowImage = el("div", { style: rowStyle }, [
         el("div", {}, [
-            el("label", { style: "color: #333;" }, ["下载正文插图: "]),
-            el("div", { style: "font-size:12px; color:#999; margin-top: 2px;" }, ["(会让速度变慢、体积变大)"])
+            el("label", { style: "color: #333;" }, [t("settings.imageDownload")]),
+            el("div", { style: "font-size:12px; color:#999; margin-top: 2px;" }, [
+                t("settings.imageDownloadDescription")
+            ])
         ]),
         switchToggleImage
     ]);
 
     const rowEpubTagPage = el("div", { style: rowStyle }, [
         el("div", {}, [
-            el("label", { style: "color: #333;" }, ["生成 EPUB 标签页: "]),
-            el("div", { style: "font-size:12px; color:#999; margin-top: 2px;" }, ["(关闭后标签仍会写入 EPUB 元数据)"])
+            el("label", { style: "color: #333;" }, [t("settings.epubTagPage")]),
+            el("div", { style: "font-size:12px; color:#999; margin-top: 2px;" }, [t("settings.epubTagPageDescription")])
         ]),
         switchToggleEpubTagPage
     ]);
@@ -1352,7 +1388,7 @@ export function createSettingsPanel(): void {
             rel: "noopener noreferrer",
             style: relatedLinkStyle + "background:#24292f;color:#fff;"
         },
-        ["GitHub 项目主页"]
+        [t("settings.github")]
     );
     const btnGreasyFork = el(
         "a",
@@ -1362,7 +1398,7 @@ export function createSettingsPanel(): void {
             rel: "noopener noreferrer",
             style: relatedLinkStyle + "background:#8b1a1a;color:#fff;"
         },
-        ["GreasyFork 脚本页"]
+        [t("settings.greasyFork")]
     );
     const btnIssue = el(
         "a",
@@ -1372,10 +1408,10 @@ export function createSettingsPanel(): void {
             rel: "noopener noreferrer",
             style: relatedLinkStyle + "margin-top:8px;background:#f6f8fa;border:1px solid #d0d7de;color:#24292f;"
         },
-        ["反馈问题 / Issues"]
+        [t("settings.feedback")]
     );
     const relatedLinks = el("div", { style: "text-align:center;" }, [
-        el("div", { style: "color:#333;font-weight:bold;margin-bottom:8px;" }, ["相关链接"]),
+        el("div", { style: "color:#333;font-weight:bold;margin-bottom:8px;" }, [t("settings.relatedLinks")]),
         el("div", { style: "display:flex;gap:8px;" }, [btnGithub, btnGreasyFork]),
         btnIssue,
         el("div", { style: "margin-top:12px;color:#999;font-size:12px;" }, [
@@ -1386,6 +1422,8 @@ export function createSettingsPanel(): void {
     // 组装整体面板
     const body = el("div", { style: "padding:25px 20px;font-size:14px;overflow:auto;min-height:0;" }, [
         rowConcurrency,
+        createDivider(),
+        rowInterfaceLanguage,
         createDivider(),
         rowImage,
         createDivider(),

@@ -206,7 +206,7 @@ describe("full-book export recovery contracts", () => {
 
         click("#esj-epub");
         await vi.waitFor(() => expect(document.querySelector("#esj-mapping-export-confirm")).not.toBeNull());
-        click('#esj-mapping-export-confirm [title="关闭"]');
+        click("#esj-mapping-export-confirm .esj-common-header button");
         await vi.waitFor(() => expect((document.querySelector("#esj-epub") as HTMLButtonElement).disabled).toBe(false));
         expect(mocks.buildEpub).not.toHaveBeenCalled();
         expect(diagnostics.listBrowserDiagnosticSessions().history[0].exports).toEqual([

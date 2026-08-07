@@ -13,6 +13,7 @@ import { createInitialDownloadSnapshot } from "../../src/core/download/state-mac
 import { createDiagnosticPopup } from "../../src/ui/diagnostics";
 import { showMessagePopup } from "../../src/ui/message-popup";
 import { createSettingsPanel } from "../../src/ui/popups";
+import { setInterfaceLocalePreference } from "../../src/core/config";
 
 function seedDiagnostic(result: "success" | "failed" = "failed"): void {
     startBrowserDiagnosticSession({
@@ -49,6 +50,7 @@ describe("diagnostic history UI", () => {
     beforeEach(() => {
         document.body.replaceChildren();
         clearBrowserDiagnosticSessions();
+        setInterfaceLocalePreference("zh-CN");
     });
 
     afterEach(() => {

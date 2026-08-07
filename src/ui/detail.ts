@@ -15,7 +15,7 @@ export function injectDetailButton(): void {
         return;
     }
 
-    const downloadBtn = createDownloadButton("btn-download-book", "全本下载", scrapeDetail, "m-b-10");
+    const downloadBtn = createDownloadButton("btn-download-book", undefined, scrapeDetail, "m-b-10");
 
     const settingBtn = createSettingButton("m-b-10");
 

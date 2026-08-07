@@ -36,7 +36,7 @@ describe("message popup UI", () => {
         expect(document.querySelector("#esj-message-popup")).toBeNull();
 
         showMessagePopup({ tone: "error", message: "Third message" });
-        (document.querySelector('#esj-message-popup [title="关闭"]') as HTMLButtonElement).click();
+        (document.querySelector("#esj-message-close") as HTMLButtonElement).click();
         expect(document.querySelector("#esj-message-popup")).toBeNull();
     });
 

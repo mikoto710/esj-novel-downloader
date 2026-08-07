@@ -14,12 +14,14 @@ vi.mock("../../src/core/book-lock", () => ({
 }));
 
 describe("image setting cache contracts", () => {
-    beforeEach(() => {
+    beforeEach(async () => {
         vi.resetModules();
         vi.stubGlobal("indexedDB", new IDBFactory());
         vi.stubGlobal("BroadcastChannel", undefined);
         localStorage.clear();
         listActiveBookDownloadLocks.mockResolvedValue([]);
+        const { setInterfaceLocalePreference } = await import("../../src/core/config");
+        setInterfaceLocalePreference("zh-CN");
     });
 
     it("changes the future task setting without clearing existing caches", async () => {

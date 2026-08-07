@@ -1,6 +1,7 @@
 import { el } from "../utils/dom";
 import { state } from "../core/state";
 import { showFormatChoice, createSettingsPanel } from "./popups";
+import { t } from "./locale";
 
 /**
  * 创建通用的设置按钮
@@ -11,6 +12,8 @@ export function createSettingButton(customClass: string = ""): HTMLElement {
         "button",
         {
             className: `btn btn-primary esj-settings-trigger ${customClass}`,
+            title: t("button.settings"),
+            "aria-label": t("button.settings"),
             style: "color: white; cursor: pointer; margin-left: 10px",
             onclick: (e: Event) => {
                 e.preventDefault();
@@ -38,7 +41,7 @@ export function createSettingButton(customClass: string = ""): HTMLElement {
  */
 export function createDownloadButton(
     id: string,
-    text: string = "全本下载",
+    text: string = t("button.downloadAll"),
     scrapeFn: () => Promise<void>,
     customClass: string = ""
 ): HTMLElement {
@@ -78,7 +81,7 @@ export function createDownloadButton(
 
                 // 执行抓取任务，进入 loading
                 btn.disabled = true;
-                btn.innerHTML = '<i class="icon-refresh fa-spin"></i> 准备中...';
+                btn.innerHTML = `<i class="icon-refresh fa-spin"></i> ${t("common.preparing")}`;
 
                 try {
                     await scrapeFn();
