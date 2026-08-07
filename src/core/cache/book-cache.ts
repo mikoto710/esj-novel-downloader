@@ -117,7 +117,7 @@ export async function loadBookCache(bookId: string): Promise<BookCacheLoadResult
             return { size: 0, map: null };
         }
         if (isExpired(legacy.data)) {
-            console.warn("⚠ 本地缓存已过期，本次不再使用");
+            console.warn("⚠️ 本地缓存已过期，本次不再使用");
             return { size: 0, map: null };
         }
 

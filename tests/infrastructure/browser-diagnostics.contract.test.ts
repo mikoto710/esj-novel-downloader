@@ -188,8 +188,8 @@ describe("browser diagnostic persistence", () => {
             type: "chapter-failed",
             task: { index: 8, title: "Broken chapter", url: "https://www.esjzone.cc/forum/9/10.html" },
             stage: "fetch",
-            code: "TimeoutError",
-            message: "request timed out",
+            code: "chapter-fetch-failed",
+            params: { detail: "request timed out" },
             retry: true
         });
         const failed = { ...downloading, phase: "failed" as const, failedCount: 1 };
@@ -201,7 +201,8 @@ describe("browser diagnostic persistence", () => {
         });
         browserDiagnosticEvents.emit({
             type: "download-failed",
-            error: new Error("download failed"),
+            code: "download-failed",
+            params: { detail: "download failed" },
             snapshot: failed
         });
 
@@ -219,10 +220,10 @@ describe("browser diagnostic persistence", () => {
         expect(session.failures).toEqual([
             expect.objectContaining({
                 scope: "chapter",
-                code: "TimeoutError",
+                code: "chapter-fetch-failed",
                 chapter: expect.objectContaining({ index: 9, title: "Broken chapter" })
             }),
-            expect.objectContaining({ scope: "download", code: "Error", message: "download failed" })
+            expect.objectContaining({ scope: "download", code: "download-failed", message: "download failed" })
         ]);
     });
 

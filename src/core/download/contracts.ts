@@ -8,6 +8,7 @@ import type {
     RuntimeCacheSession,
     SourcePageType
 } from "../../types";
+import type { DomainMessage, DomainMessageParams } from "../messages";
 import type { StorageFailure } from "../cache/storage-error";
 
 /**
@@ -18,6 +19,56 @@ export interface DownloadTask {
     url: string;
     title: string;
 }
+
+export type DownloadLogCode =
+    | "cover-cache-hit"
+    | "cover-cache-read-failed"
+    | "cover-cache-saved"
+    | "cover-cache-write-ownership-lost"
+    | "cover-cache-write-failed"
+    | "restored-mapping-font-invalid"
+    | "cache-restored"
+    | "cache-restored-with-invalidated"
+    | "cache-write-retry"
+    | "chapter-fetch-failed"
+    | "chapter-mapping-font-failed"
+    | "chapter-processed"
+    | "chapter-processed-with-images"
+    | "chapter-processed-with-image-failures"
+    | "chapter-skipped-non-site"
+    | "protected-chapter-retry-skipped"
+    | "protected-chapter-redetected"
+    | "protected-chapter-queued"
+    | "protected-chapter-skipped"
+    | "protected-chapter-connection-retry"
+    | "protected-chapter-connection-failed"
+    | "protected-chapter-password-rejected"
+    | "protected-chapter-protocol-failed"
+    | "protected-chapter-unlocked"
+    | "integrity-check-started"
+    | "integrity-check-passed"
+    | "integrity-check-failed"
+    | "chapter-integrity-retry"
+    | "missing-chapter-retry"
+    | "missing-chapter-export-with-placeholders"
+    | "missing-chapter-retry-started"
+    | "missing-chapter-retry-saved"
+    | "cancellation-cache-write-skipped-lock-lost"
+    | "cancellation-cache-discard-requested"
+    | "cancellation-cache-write-started"
+    | "cancellation-finished"
+    | "cache-restore-started"
+    | "download-started"
+    | "download-main-flush-started"
+    | "download-integrity-flush-started"
+    | "export-preparation-started"
+    | "download-completed"
+    | "download-storage-failed"
+    | "cache-discard-failed";
+
+export type DownloadLog = DomainMessage<DownloadLogCode>;
+
+export type DownloadChapterFailureCode = string;
 
 export type ProtectedChapterProtocolErrorCode =
     | "token-invalid"
@@ -188,8 +239,8 @@ export type DownloadEvent =
           type: "chapter-failed";
           task: DownloadTask;
           stage: "fetch" | "mapping-font" | "protected-auth";
-          code: string;
-          message: string;
+          code: DownloadChapterFailureCode;
+          params: DomainMessageParams;
           retry: boolean;
       }
     | { type: "protected-chapter-password-rejected"; task: DownloadTask }
@@ -199,7 +250,12 @@ export type DownloadEvent =
           missingCount: number;
           decision: IncompleteChapterDecision;
       }
-    | { type: "download-failed"; error: unknown; snapshot: DownloadSnapshot };
+    | {
+          type: "download-failed";
+          code: DownloadChapterFailureCode;
+          params: DomainMessageParams;
+          snapshot: DownloadSnapshot;
+      };
 
 /**
  * 当前页面运行状态的兼容边界
@@ -352,5 +408,5 @@ export interface DownloadDependencies extends DownloadPorts {
     scheduler: DownloadSchedulerPort;
     settings: DownloadSettingsPort;
     environment: DownloadEnvironmentPort;
-    log(message: string): void;
+    log(message: DownloadLog): void;
 }

@@ -181,6 +181,10 @@ function limitText(value: unknown): string {
     return text.length <= DIAGNOSTIC_MESSAGE_LIMIT ? text : `${text.slice(0, DIAGNOSTIC_MESSAGE_LIMIT)}…（已截断）`;
 }
 
+function getDomainMessageDetail(code: string, params: Readonly<Record<string, unknown>>): string {
+    return typeof params.detail === "string" ? params.detail : code;
+}
+
 export function sanitizeDiagnosticUrl(value: string): string {
     try {
         const url = new URL(value, "https://www.esjzone.cc");
@@ -477,7 +481,7 @@ export class DiagnosticManager {
 
     recordLog(taskId: string, message: string): void {
         this.mutateSession(taskId, (session, now) => {
-            const level = /❌|失败|异常/.test(message) ? "error" : /⚠|警告|重试/.test(message) ? "warning" : "info";
+            const level = /❌|失败|异常/.test(message) ? "error" : /⚠️|警告|重试/.test(message) ? "warning" : "info";
             session.logs.push({ at: now - session.startedAt, level, message: limitText(message) });
             if (session.logs.length > DIAGNOSTIC_LOG_LIMIT) {
                 session.logs.shift();
@@ -577,7 +581,7 @@ export class DiagnosticManager {
                         scope: "chapter",
                         stage: event.stage,
                         code: event.code,
-                        message: limitText(event.message),
+                        message: limitText(getDomainMessageDetail(event.code, event.params)),
                         chapter: {
                             index: event.task.index + 1,
                             title: event.task.title,
@@ -604,13 +608,12 @@ export class DiagnosticManager {
                         details: { missingCount: event.missingCount, decision: event.decision }
                     });
                 } else if (event.type === "download-failed") {
-                    const error = event.error instanceof Error ? event.error : new Error(String(event.error));
                     session.failures.push({
                         at,
                         scope: event.snapshot.storageFailure ? "storage" : "download",
                         stage: event.snapshot.phase,
-                        code: event.snapshot.storageFailure?.reason || error.name || "download-failed",
-                        message: limitText(error.message)
+                        code: event.snapshot.storageFailure?.reason || event.code || "download-failed",
+                        message: limitText(getDomainMessageDetail(event.code, event.params))
                     });
                 }
                 if (session.events.length > DIAGNOSTIC_EVENT_LIMIT) {

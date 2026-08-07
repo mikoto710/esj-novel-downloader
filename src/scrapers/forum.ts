@@ -14,10 +14,11 @@ import {
 import { claimBookCache, loadBookCache } from "../core/cache/book-cache";
 import { fullCleanup } from "../utils/dom";
 import { finalizeBookDownloadTask } from "../core/download/task-finalizer";
-import { normalizeStorageError, StorageError } from "../core/cache/storage-error";
+import { normalizeStorageError, StorageError, toStorageFailure } from "../core/cache/storage-error";
 import { getImageDownloadSetting } from "../core/config";
 import { getImageCacheConfirmHint } from "../ui/image-cache-compatibility";
 import { showCacheDiscardFailure, showDownloadTerminalFailure } from "../ui/download-terminal-notices";
+import { formatStorageFailure } from "../adapters/browser-download-messages";
 import {
     browserDiagnosticLog as log,
     finishBrowserDiagnosticSession,
@@ -63,8 +64,9 @@ export async function scrapeForum(): Promise<void> {
         cacheResult = await loadBookCache(bid);
     } catch (error) {
         const failure = normalizeStorageError(error, "read");
+        const displayMessage = formatStorageFailure(toStorageFailure(failure));
         console.error(failure);
-        log(`❌ 无法读取本地缓存：${failure.message}`);
+        log(`❌ 无法读取本地缓存：${displayMessage}`);
         recordBrowserPreflightDiagnosticFailure({
             bookId: bid,
             bookTitle: document.title,
@@ -288,18 +290,23 @@ export async function scrapeForum(): Promise<void> {
                 },
                 lock.taskId
             );
-            log(e instanceof StorageError ? `❌ 下载进度未保存：${e.message}` : "❌ 抓取流程异常: " + e.message);
+            const displayMessage = e instanceof StorageError ? formatStorageFailure(toStorageFailure(e)) : e.message;
+            log(
+                e instanceof StorageError
+                    ? `❌ 下载进度未保存：${displayMessage}`
+                    : "❌ 抓取流程异常: " + displayMessage
+            );
             fullCleanup(state.originalTitle);
             showMessagePopup({
                 tone: "error",
                 title: "无法开始下载",
-                message: e instanceof StorageError ? e.message : "下载启动过程中发生异常，请稍后重试。",
+                message: e instanceof StorageError ? displayMessage : "下载启动过程中发生异常，请稍后重试。",
                 details: e instanceof StorageError ? undefined : e.message
             });
         }
     } finally {
         finishBrowserDiagnosticSession(lock.taskId, state.abortFlag ? "cancelled" : "failed");
-        const finalization = await finalizeBookDownloadTask(lock, stopHeartbeat);
+        const finalization = await finalizeBookDownloadTask(lock, stopHeartbeat, log);
         if (finalization.cacheClearFailure) {
             recordBrowserDiagnosticFailure(
                 {

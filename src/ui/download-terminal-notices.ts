@@ -1,5 +1,6 @@
 import type { DownloadTerminalFailure } from "../core/download/contracts";
 import type { StorageFailure } from "../core/cache/storage-error";
+import { formatStorageFailure } from "../adapters/browser-download-messages";
 import { showMessagePopup } from "./message-popup";
 
 function showStorageFailure(title: string, message: string, failure: StorageFailure | null): void {
@@ -12,7 +13,7 @@ function showStorageFailure(title: string, message: string, failure: StorageFail
         tone: "error",
         title,
         message,
-        details: `原因：${failure.message}\n代码：${failure.reason}\n操作：${failure.operation}`
+        details: `原因：${formatStorageFailure(failure)}\n代码：${failure.reason}\n操作：${failure.operation}`
     });
 }
 

@@ -108,7 +108,7 @@ describe("download lifecycle contracts", () => {
         await scrapeDetail();
 
         expect(mocks.finalize).toHaveBeenCalledOnce();
-        expect(mocks.finalize).toHaveBeenCalledWith(lock, mocks.stopHeartbeat);
+        expect(mocks.finalize).toHaveBeenCalledWith(lock, mocks.stopHeartbeat, expect.any(Function));
     });
 
     it("does not remove a terminal notice owned by the download coordinator", async () => {

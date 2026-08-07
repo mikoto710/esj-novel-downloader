@@ -13,9 +13,10 @@ import {
     type RecordDiagnosticExportInput,
     type StartDiagnosticSessionInput
 } from "../core/diagnostics";
-import type { DownloadEventSink, DownloadOptions } from "../core/download/contracts";
+import type { DownloadEventSink, DownloadLog, DownloadOptions } from "../core/download/contracts";
 import { getConcurrency, getEpubTagPageSetting } from "../core/config";
 import { log, triggerDownload } from "../utils/index";
+import { formatDownloadLog } from "./browser-download-messages";
 
 const DIAGNOSTIC_STORAGE_KEY = "esj_diagnostic_sessions_v1";
 
@@ -182,11 +183,12 @@ export function recordBrowserDiagnosticExport(input: RecordDiagnosticExportInput
     }
 }
 
-export function browserDiagnosticLog(message: string): void {
+export function browserDiagnosticLog(message: string | DownloadLog): void {
     // 先保持原有 UI/控制台日志，再以最佳努力写入诊断；诊断异常不得改变下载行为
-    log(message);
+    const displayMessage = typeof message === "string" ? message : formatDownloadLog(message);
+    log(displayMessage);
     if (currentTaskId) {
-        manager.recordLog(currentTaskId, message);
+        manager.recordLog(currentTaskId, displayMessage);
     }
 }
 

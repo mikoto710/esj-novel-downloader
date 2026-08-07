@@ -8,7 +8,7 @@ import {
     toStorageFailure,
     type StorageFailure
 } from "../cache/storage-error";
-import { log } from "../../utils/index";
+import type { DownloadLog } from "./contracts";
 
 /**
  * 收尾已取得锁的全本下载任务
@@ -21,7 +21,8 @@ export interface BookDownloadFinalizationResult {
 
 export async function finalizeBookDownloadTask(
     lock: BookDownloadLock,
-    stopHeartbeat: () => void
+    stopHeartbeat: () => void,
+    logMessage?: (message: DownloadLog) => void
 ): Promise<BookDownloadFinalizationResult> {
     let cacheDiscarded = false;
     let cacheClearFailure: StorageFailure | null = null;
@@ -32,13 +33,27 @@ export async function finalizeBookDownloadTask(
                 cacheDiscarded = await clearBookCacheForTask(lock.bookId, lock.taskId);
                 if (!cacheDiscarded) {
                     cacheClearFailure = toStorageFailure(createStorageError("ownership-lost", "clear"));
-                    log(`❌ 任务已停止，但缓存清理失败：${cacheClearFailure.message}`);
+                    logMessage?.({
+                        code: "cache-discard-failed",
+                        params: {
+                            reason: cacheClearFailure.reason,
+                            operation: cacheClearFailure.operation,
+                            detail: cacheClearFailure.params?.detail || cacheClearFailure.message
+                        }
+                    });
                 }
             } catch (error) {
                 const failure = normalizeStorageError(error, "clear");
                 cacheClearFailure = toStorageFailure(failure);
                 console.error("停止任务时清理缓存失败", failure);
-                log(`❌ 任务已停止，但缓存清理失败：${failure.message}`);
+                logMessage?.({
+                    code: "cache-discard-failed",
+                    params: {
+                        reason: failure.reason,
+                        operation: failure.operation,
+                        detail: failure.params?.detail || failure.message
+                    }
+                });
             }
             if (cacheDiscarded) {
                 clearRuntimeCacheSession(lock.bookId);

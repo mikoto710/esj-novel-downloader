@@ -160,7 +160,7 @@ export function updateMappingFontWarning(summary: MappingFontSummary): void {
         });
         popup.querySelector("#esj-log")?.before(warning);
     }
-    warning.textContent = `⚠ 已检测到 ${summary.chapterCount} 个映射章节，字体共 ${formatMappingFontBytes(summary.fontBytes)}。TXT 导出已禁用，HTML/EPUB 仅保证视觉显示。`;
+    warning.textContent = `⚠️ 已检测到 ${summary.chapterCount} 个映射章节，字体共 ${formatMappingFontBytes(summary.fontBytes)}。TXT 导出已禁用，HTML/EPUB 仅保证视觉显示。`;
 }
 
 /**
@@ -911,7 +911,7 @@ export function showFormatChoice(): void {
                       style: "margin-top:10px;padding:10px;border:1px solid #e6a23c;background:#fff7e6;color:#8a5a00;border-radius:6px;font-size:12px;line-height:1.6;"
                   },
                   [
-                      `⚠ 检测到 ${mappingSummary.chapterCount} 个映射章节，字体共 ${formatMappingFontBytes(mappingSummary.fontBytes)}。TXT 已禁用；HTML/EPUB 仅保证视觉显示，复制、搜索和朗读可能不正确。`
+                      `⚠️ 检测到 ${mappingSummary.chapterCount} 个映射章节，字体共 ${formatMappingFontBytes(mappingSummary.fontBytes)}。TXT 已禁用；HTML/EPUB 仅保证视觉显示，复制、搜索和朗读可能不正确。`
                   ]
               )
             : ""

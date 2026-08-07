@@ -83,7 +83,7 @@ function showSingleMappingPending(): void {
 function showSingleMappingFailure(elements: SingleExportElements, reason: string): void {
     disableSingleExport(elements.txtButton, reason);
     disableSingleExport(elements.htmlButton, reason);
-    replaceSingleMappingNotice(elements.container, `⚠ ${reason}，已阻止导出。`, "#c62828");
+    replaceSingleMappingNotice(elements.container, `⚠️ ${reason}，已阻止导出。`, "#c62828");
 }
 
 async function updateSinglePageMappingUi(version: number): Promise<void> {
@@ -128,7 +128,7 @@ async function updateSinglePageMappingUi(version: number): Promise<void> {
         disableSingleExport(elements.txtButton, "映射正文尚未恢复为真实 Unicode，无法生成正确 TXT");
         replaceSingleMappingNotice(
             elements.container,
-            "⚠ 本章使用自定义映射字体，TXT 已禁用；HTML 仅保证视觉显示。",
+            "⚠️ 本章使用自定义映射字体，TXT 已禁用；HTML 仅保证视觉显示。",
             "#a45b00"
         );
     } catch (error) {

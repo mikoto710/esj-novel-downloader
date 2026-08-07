@@ -177,11 +177,11 @@ async function prepareCover(ctx: DownloadContext): Promise<BookCover | null> {
     try {
         const cached = await dependencies.coverCache.load(options.bookId, coverUrl);
         if (cached) {
-            dependencies.log("💾 已读取本地封面缓存");
+            dependencies.log({ code: "cover-cache-hit" });
             return cached;
         }
     } catch (error) {
-        dependencies.log(`⚠ 封面缓存读取失败，将重新下载：${getErrorDetails(error).message}`);
+        dependencies.log({ code: "cover-cache-read-failed", params: getErrorDetails(error) });
     }
 
     if (dependencies.runtime.isCancellationRequested()) {
@@ -200,9 +200,11 @@ async function prepareCover(ctx: DownloadContext): Promise<BookCover | null> {
             cover,
             dependencies.runtime.signal
         );
-        dependencies.log(saved ? "💾 封面已写入本地缓存" : "⚠ 封面缓存写入权已失效，本次继续使用内存封面");
+        dependencies.log({
+            code: saved ? "cover-cache-saved" : "cover-cache-write-ownership-lost"
+        });
     } catch (error) {
-        dependencies.log(`⚠ 封面缓存写入失败，本次继续使用内存封面：${getErrorDetails(error).message}`);
+        dependencies.log({ code: "cover-cache-write-failed", params: getErrorDetails(error) });
     }
     return cover;
 }
@@ -307,7 +309,10 @@ async function normalizeRestoredChapters(ctx: DownloadContext): Promise<boolean>
                 // 旧记录无法规范化时仅使该章失效，后续 worker 会重新抓取并重新验证
                 dependencies.runtime.chapters.delete(index);
                 invalidatedCount++;
-                dependencies.log(`⚠️ 旧缓存映射字体无效，将重新抓取 (${chapter.title}): ${error.message}`);
+                dependencies.log({
+                    code: "restored-mapping-font-invalid",
+                    params: { title: chapter.title, detail: error.message }
+                });
             } else {
                 throw error;
             }
@@ -323,11 +328,13 @@ async function normalizeRestoredChapters(ctx: DownloadContext): Promise<boolean>
 
     const restoredTasks = options.tasks.filter((task) => dependencies.runtime.chapters.has(task.index));
     if (entries.length > 0) {
-        dependencies.log(
-            invalidatedCount > 0
-                ? `💾 已恢复 ${restoredTasks.length} 章缓存，${invalidatedCount} 章需要重新抓取`
-                : `💾 已恢复 ${restoredTasks.length} 章缓存`
-        );
+        dependencies.log({
+            code: invalidatedCount > 0 ? "cache-restored-with-invalidated" : "cache-restored",
+            params: {
+                count: restoredTasks.length,
+                ...(invalidatedCount > 0 ? { invalidatedCount } : {})
+            }
+        });
     }
     updateSnapshot(ctx, {
         restoredCount: restoredTasks.length,
@@ -379,7 +386,14 @@ async function persistTaskCacheBatch(
         } catch (error) {
             const normalized = normalizeStorageError(error, "write");
             if (attempt === 1 && normalized.reason !== "ownership-lost" && !signal.aborted) {
-                dependencies.log(`⚠️ 缓存写入失败，正在进行一次安全重试：${normalized.message}`);
+                dependencies.log({
+                    code: "cache-write-retry",
+                    params: {
+                        reason: normalized.reason,
+                        operation: normalized.operation,
+                        detail: normalized.params?.detail || normalized.message
+                    }
+                });
                 continue;
             }
             dependencies.events.emit({
@@ -409,13 +423,27 @@ async function downloadChapterHtml(task: DownloadTask, ctx: DownloadContext, isR
     }
     if (result.status === "failed") {
         const details = getErrorDetails(result.error);
-        dependencies.log(`❌ 章节获取失败 (${task.title}): ${details.message}`);
+        dependencies.log({
+            code: "chapter-fetch-failed",
+            params: {
+                index: task.index + 1,
+                title: task.title,
+                errorName: details.name,
+                detail: details.message,
+                retry: isRetry
+            }
+        });
         dependencies.events.emit({
             type: "chapter-failed",
             task,
             stage: "fetch",
-            code: details.name || "chapter-fetch-failed",
-            message: details.message,
+            code: "chapter-fetch-failed",
+            params: {
+                index: task.index + 1,
+                title: task.title,
+                errorName: details.name,
+                detail: details.message
+            },
             retry: isRetry
         });
     }
@@ -440,13 +468,25 @@ async function processFetchedChapterHtml(
         }
         const message = `映射字体解析失败: ${error.message}`;
         ctx.mappingFailures.set(task.index, { task, message });
-        dependencies.log(`❌ ${message} (${task.title})`);
+        dependencies.log({
+            code: "chapter-mapping-font-failed",
+            params: {
+                index: task.index + 1,
+                title: task.title,
+                errorCode: error.code,
+                detail: error.message
+            }
+        });
         dependencies.events.emit({
             type: "chapter-failed",
             task,
             stage: "mapping-font",
             code: error.code,
-            message: error.message,
+            params: {
+                index: task.index + 1,
+                title: task.title,
+                detail: error.message
+            },
             retry: isRetry
         });
         if (!isRetry) {
@@ -489,19 +529,45 @@ async function processFetchedChapterHtml(
 
     const imageErrors = chapter.imageErrors || 0;
     const imageCount = chapter.images?.length || 0;
-    const prefix = isRetry ? "♻️ 补抓" : "✅ 抓取";
     if (imageErrors > 0) {
-        dependencies.log(
-            `${prefix} (${ctx.machine.snapshot.completedCount}/${total}): ${task.title} (${imageErrors}/${imageCount + imageErrors} 张图片获取失败)\nURL: ${task.url}`
-        );
+        dependencies.log({
+            code: "chapter-processed-with-image-failures",
+            params: {
+                retry: isRetry,
+                completed: ctx.machine.snapshot.completedCount,
+                total,
+                index: task.index + 1,
+                title: task.title,
+                imageErrors,
+                imageCount,
+                url: task.url
+            }
+        });
     } else if (imageCount > 0) {
-        dependencies.log(
-            `${prefix} (${ctx.machine.snapshot.completedCount}/${total}): ${task.title} (${imageCount} 张图片)\nURL: ${task.url}`
-        );
+        dependencies.log({
+            code: "chapter-processed-with-images",
+            params: {
+                retry: isRetry,
+                completed: ctx.machine.snapshot.completedCount,
+                total,
+                index: task.index + 1,
+                title: task.title,
+                imageCount,
+                url: task.url
+            }
+        });
     } else {
-        dependencies.log(
-            `${prefix} (${ctx.machine.snapshot.completedCount}/${total}): ${task.title}\nURL: ${task.url}`
-        );
+        dependencies.log({
+            code: "chapter-processed",
+            params: {
+                retry: isRetry,
+                completed: ctx.machine.snapshot.completedCount,
+                total,
+                index: task.index + 1,
+                title: task.title,
+                url: task.url
+            }
+        });
     }
 
     if (!runtime.isCancellationRequested()) {
@@ -552,7 +618,15 @@ async function processChapterTask(
         if (!saved) {
             return runtime.isCancellationRequested() ? "cancelled" : "failed";
         }
-        dependencies.log(`⚠️ 跳过 (${ctx.machine.snapshot.completedCount}/${total})：${task.title} (非站内)`);
+        dependencies.log({
+            code: "chapter-skipped-non-site",
+            params: {
+                completed: ctx.machine.snapshot.completedCount,
+                total,
+                index: task.index + 1,
+                title: task.title
+            }
+        });
         await dependencies.scheduler.sleepWithAbort(100);
         return runtime.isCancellationRequested() ? "cancelled" : "completed";
     }
@@ -575,11 +649,17 @@ async function processChapterTask(
                 if (!ctx.protectedDetectedIndexes.has(task.index)) {
                     registerProtectedDetection(ctx, task, true);
                 }
-                dependencies.log(`⏭ 本轮补抓已跳过密码章节 [${task.index + 1}/${total}]：${task.title}`);
+                dependencies.log({
+                    code: "protected-chapter-retry-skipped",
+                    params: { index: task.index + 1, total, title: task.title }
+                });
                 return "failed";
             }
             reopenProtectedChapterForRetry(ctx, task);
-            dependencies.log(`🔒 补抓再次发现密码章节 [${task.index + 1}/${total}]：${task.title}`);
+            dependencies.log({
+                code: "protected-chapter-redetected",
+                params: { index: task.index + 1, total, title: task.title }
+            });
             return resolveProtectedChapter({ task, pageHtml: html }, ctx, true);
         }
         const queued = ctx.protectedQueue.enqueue({ task, pageHtml: html });
@@ -587,9 +667,15 @@ async function processChapterTask(
             registerProtectedDetection(ctx, task, queued.kind === "skipped");
         }
         if (queued.kind === "queued") {
-            dependencies.log(`🔒 发现密码章节 [${task.index + 1}/${total}]：${task.title}，已加入等待队列。`);
+            dependencies.log({
+                code: "protected-chapter-queued",
+                params: { index: task.index + 1, total, title: task.title }
+            });
         } else if (queued.kind === "skipped") {
-            dependencies.log(`⏭ 已跳过密码章节 [${task.index + 1}/${total}]：${task.title}`);
+            dependencies.log({
+                code: "protected-chapter-skipped",
+                params: { index: task.index + 1, total, title: task.title }
+            });
         }
         return "deferred";
     }
@@ -647,7 +733,10 @@ async function resolveProtectedChapter(
         }
         if (decision.action === "skip-current") {
             dependencies.ui.closeProtectedChapterPrompt();
-            dependencies.log(`⏭ 已跳过密码章节 [${item.task.index + 1}/${ctx.total}]：${item.task.title}`);
+            dependencies.log({
+                code: "protected-chapter-skipped",
+                params: { index: item.task.index + 1, total: ctx.total, title: item.task.title }
+            });
             ctx.protectedSkippedIndexes.add(item.task.index);
             updateProtectedSnapshot(ctx, {
                 protectedPendingCount: Math.max(0, ctx.machine.snapshot.protectedPendingCount - 1),
@@ -657,7 +746,10 @@ async function resolveProtectedChapter(
         }
         if (decision.action === "skip-all") {
             dependencies.ui.closeProtectedChapterPrompt();
-            dependencies.log(`⏭ 已跳过密码章节 [${item.task.index + 1}/${ctx.total}]：${item.task.title}`);
+            dependencies.log({
+                code: "protected-chapter-skipped",
+                params: { index: item.task.index + 1, total: ctx.total, title: item.task.title }
+            });
             ctx.protectedSkippedIndexes.add(item.task.index);
             if (isRetry) {
                 ctx.skipRemainingProtectedRetries = true;
@@ -665,7 +757,10 @@ async function resolveProtectedChapter(
             const skippedItems = isRetry ? [] : ctx.protectedQueue.skipAllRemaining();
             for (const skipped of skippedItems) {
                 ctx.protectedSkippedIndexes.add(skipped.task.index);
-                dependencies.log(`⏭ 已跳过密码章节 [${skipped.task.index + 1}/${ctx.total}]：${skipped.task.title}`);
+                dependencies.log({
+                    code: "protected-chapter-skipped",
+                    params: { index: skipped.task.index + 1, total: ctx.total, title: skipped.task.title }
+                });
             }
             updateProtectedSnapshot(ctx, {
                 protectedPendingCount: Math.max(
@@ -695,9 +790,10 @@ async function resolveProtectedChapter(
                     return "cancelled";
                 }
                 if (attempt === 0) {
-                    dependencies.log(
-                        `⚠️ 密码章节连接失败，正在进行一次技术重试 [${item.task.index + 1}/${ctx.total}]：${item.task.title}`
-                    );
+                    dependencies.log({
+                        code: "protected-chapter-connection-retry",
+                        params: { index: item.task.index + 1, total: ctx.total, title: item.task.title }
+                    });
                     continue;
                 }
                 technicalFailure = true;
@@ -709,10 +805,13 @@ async function resolveProtectedChapter(
                 task: item.task,
                 stage: "protected-auth",
                 code: "network-error",
-                message: "密码章节连接失败",
+                params: { index: item.task.index + 1, total: ctx.total },
                 retry: false
             });
-            dependencies.log(`❌ 密码章节连接失败 [${item.task.index + 1}/${ctx.total}]：${item.task.title}`);
+            dependencies.log({
+                code: "protected-chapter-connection-failed",
+                params: { index: item.task.index + 1, total: ctx.total, title: item.task.title }
+            });
             message = "连接失败，请检查网络后重试。";
             retryConnection = true;
             continue;
@@ -724,7 +823,10 @@ async function resolveProtectedChapter(
             message = result.message;
             retryConnection = false;
             dependencies.events.emit({ type: "protected-chapter-password-rejected", task: item.task });
-            dependencies.log(`⚠️ 密码不正确 [${item.task.index + 1}/${ctx.total}]：${item.task.title}`);
+            dependencies.log({
+                code: "protected-chapter-password-rejected",
+                params: { index: item.task.index + 1, total: ctx.total, title: item.task.title }
+            });
             continue;
         }
         if (result.kind === "protocol-error") {
@@ -733,10 +835,23 @@ async function resolveProtectedChapter(
                 task: item.task,
                 stage: "protected-auth",
                 code: result.code,
-                message: result.message,
+                params: {
+                    index: item.task.index + 1,
+                    total: ctx.total,
+                    detail: result.message
+                },
                 retry: false
             });
-            dependencies.log(`❌ 密码章节授权响应异常 [${item.task.index + 1}/${ctx.total}]：${item.task.title}`);
+            dependencies.log({
+                code: "protected-chapter-protocol-failed",
+                params: {
+                    index: item.task.index + 1,
+                    total: ctx.total,
+                    title: item.task.title,
+                    errorCode: result.code,
+                    detail: result.message
+                }
+            });
             message = result.message;
             retryConnection = true;
             continue;
@@ -750,7 +865,10 @@ async function resolveProtectedChapter(
         });
         const processed = await processFetchedChapterHtml(item.task, result.html, ctx, isRetry);
         if (processed === "completed") {
-            dependencies.log(`🔓 密码章节解锁完成 [${item.task.index + 1}/${ctx.total}]：${item.task.title}`);
+            dependencies.log({
+                code: "protected-chapter-unlocked",
+                params: { index: item.task.index + 1, total: ctx.total, title: item.task.title }
+            });
         }
         return processed;
     }
@@ -767,14 +885,13 @@ async function consumeProtectedChapters(ctx: DownloadContext): Promise<void> {
     }
 }
 
-function getRetryReasonText(issue: ChapterIntegrityIssue, ctx: DownloadContext): string {
-    if (issue.reason === "missing") {
-        return "缺失";
-    }
-    if (issue.reason === "invalid-image-media-type") {
-        return "图片格式无效";
-    }
-    return `图片失败 ${ctx.dependencies.runtime.chapters.get(issue.task.index)?.imageErrors ?? 0} 张`;
+function getRetryReasonParams(issue: ChapterIntegrityIssue, ctx: DownloadContext) {
+    return {
+        reason: issue.reason,
+        ...(issue.reason === "image-errors"
+            ? { imageErrors: ctx.dependencies.runtime.chapters.get(issue.task.index)?.imageErrors ?? 0 }
+            : {})
+    };
 }
 
 function throwIfMappingFontFailed(ctx: DownloadContext): void {
@@ -789,25 +906,33 @@ function throwIfMappingFontFailed(ctx: DownloadContext): void {
 async function checkIntegrityAndRetry(tasks: DownloadTask[], ctx: DownloadContext): Promise<boolean> {
     const { dependencies, imageEnabled, total } = ctx;
     const { runtime } = dependencies;
-    dependencies.log("正在进行章节完整性检查...");
+    dependencies.log({ code: "integrity-check-started" });
     beginProtectedRetryRound(ctx);
 
     const issues = scanChapterIntegrity(tasks, runtime.chapters, imageEnabled);
     updateSnapshot(ctx, { retryPendingCount: issues.length, failedCount: issues.length });
 
     if (issues.length === 0) {
-        dependencies.log("✅ 完整性检查通过，无缺漏。");
+        dependencies.log({ code: "integrity-check-passed" });
         return true;
     }
 
-    dependencies.log(`⚠ 发现 ${issues.length} 个章节不完整 (缺失或含失败图片)，尝试自动补抓...`);
+    dependencies.log({ code: "integrity-check-failed", params: { count: issues.length } });
     await runWorkerPool({
         items: issues,
         concurrency: 1,
         isCancellationRequested: () => shouldStopWorkers(ctx),
         beforeClaim: () => waitForMappingConsentBeforeClaim(ctx),
         process: async (issue) => {
-            dependencies.log(`补抓 [${issue.task.index + 1}/${total}] (${getRetryReasonText(issue, ctx)})...`);
+            dependencies.log({
+                code: "chapter-integrity-retry",
+                params: {
+                    index: issue.task.index + 1,
+                    total,
+                    title: issue.task.title,
+                    ...getRetryReasonParams(issue, ctx)
+                }
+            });
             const result = await processChapterTask(issue.task, ctx, true);
             if (result === "cancelled") {
                 return;
@@ -845,7 +970,10 @@ async function retryMissingChapters(tasks: readonly DownloadTask[], ctx: Downloa
         isCancellationRequested: () => shouldStopWorkers(ctx),
         beforeClaim: () => waitForMappingConsentBeforeClaim(ctx),
         process: async (task) => {
-            dependencies.log(`再次补抓 [${task.index + 1}/${total}] (缺失)...`);
+            dependencies.log({
+                code: "missing-chapter-retry",
+                params: { index: task.index + 1, total, title: task.title, reason: "missing" }
+            });
             const result = await processChapterTask(task, ctx, true);
             if (result === "cancelled") {
                 return;
@@ -908,16 +1036,19 @@ async function resolveIncompleteChapters(tasks: DownloadTask[], ctx: DownloadCon
             return false;
         }
         if (decision === "export-with-placeholders") {
-            dependencies.log(`⚠ 用户选择继续导出，${missingTasks.length} 个缺失章节将写入占位说明。`);
+            dependencies.log({
+                code: "missing-chapter-export-with-placeholders",
+                params: { count: missingTasks.length }
+            });
             return true;
         }
 
-        dependencies.log(`正在再次补抓 ${missingTasks.length} 个缺失章节...`);
+        dependencies.log({ code: "missing-chapter-retry-started", params: { count: missingTasks.length } });
         if (!(await retryMissingChapters(missingTasks, ctx))) {
             return false;
         }
         transition(ctx, "flushing-cache");
-        dependencies.log("再次补抓完成，正在保存下载进度...");
+        dependencies.log({ code: "missing-chapter-retry-saved" });
         const saved = await ctx.cacheBuffer.flush();
         if (runtime.isCancellationRequested()) {
             await finishCancellation(ctx);
@@ -952,12 +1083,12 @@ async function performCancellation(ctx: DownloadContext): Promise<void> {
     let cacheResult: CancellationCacheFlushResult = "discarded";
     if (!lockOwned) {
         ctx.cacheBuffer.discard();
-        dependencies.log("下载任务锁已失效，跳过缓存写入。");
+        dependencies.log({ code: "cancellation-cache-write-skipped-lock-lost" });
     } else if (discardCache) {
         ctx.cacheBuffer.discard();
-        dependencies.log("停止请求要求清理缓存，将在释放任务锁前统一处理。");
+        dependencies.log({ code: "cancellation-cache-discard-requested" });
     } else {
-        dependencies.log("正在写入 IndexedDB...");
+        dependencies.log({ code: "cancellation-cache-write-started" });
         cacheResult = await ctx.cacheBuffer.flushForCancellation();
     }
     runtime.updateCacheSession({
@@ -978,18 +1109,19 @@ async function performCancellation(ctx: DownloadContext): Promise<void> {
     const storageFailure = getStorageFailure(ctx);
     updateSnapshot(ctx, { cancellationOutcome, storageFailure });
     transition(ctx, "cancelled");
-    const resultMessage = !lockOwned
-        ? "任务锁已失效，当前任务已停止。"
-        : discardCache
-          ? "任务已停止，正在清理缓存。"
-          : cacheResult === "saved"
-            ? "任务已手动取消，进度已保存。"
-            : cacheResult === "timed-out"
-              ? "任务已停止，但进度保存超时，部分最新进度可能未保存。"
-              : storageFailure
-                ? `任务已手动取消，但缓存写入失败：${storageFailure.message}`
-                : "任务已手动取消，但缓存写入失败。";
-    dependencies.log(resultMessage);
+    dependencies.log({
+        code: "cancellation-finished",
+        params: {
+            outcome: cancellationOutcome,
+            ...(storageFailure
+                ? {
+                      storageReason: storageFailure.reason,
+                      storageOperation: storageFailure.operation,
+                      detail: storageFailure.params?.detail || storageFailure.message
+                  }
+                : {})
+        }
+    });
     await dependencies.scheduler.sleep(800);
     dependencies.ui.cleanup();
     if (cancellationOutcome !== "saved" && cancellationOutcome !== "discarded") {
@@ -1081,7 +1213,10 @@ export async function runDownload(options: DownloadOptions, dependencies: Downlo
         dependencies.ui.prepare();
         dependencies.runtime.startCacheSession(cacheMeta, options.taskId, dependencies.runtime.chapters.size);
         if (dependencies.runtime.chapters.size > 0) {
-            dependencies.log(`💾 读取到 ${dependencies.runtime.chapters.size} 章缓存，正在校验...`);
+            dependencies.log({
+                code: "cache-restore-started",
+                params: { count: dependencies.runtime.chapters.size }
+            });
         }
         transition(ctx, "restoring-cache");
         if (!(await normalizeRestoredChapters(ctx))) {
@@ -1098,7 +1233,7 @@ export async function runDownload(options: DownloadOptions, dependencies: Downlo
         transition(ctx, "downloading");
         updateProgress(ctx);
         const remainingTasks = options.tasks.filter((task) => !dependencies.runtime.chapters.has(task.index));
-        dependencies.log(`启动 ${ctx.concurrency} 个并发线程...`);
+        dependencies.log({ code: "download-started", params: { concurrency: ctx.concurrency } });
         const protectedConsumer = consumeProtectedChapters(ctx);
         let workerFailure: unknown;
         try {
@@ -1128,7 +1263,7 @@ export async function runDownload(options: DownloadOptions, dependencies: Downlo
 
         // 主抓取的脏章节落盘后才能进入完整性扫描和补抓
         transition(ctx, "flushing-cache");
-        dependencies.log("主抓取完成，正在保存下载进度...");
+        dependencies.log({ code: "download-main-flush-started" });
         const initialFlushSaved = await cacheBuffer.flush();
         if (dependencies.runtime.isCancellationRequested()) {
             await finishCancellation(ctx);
@@ -1146,7 +1281,7 @@ export async function runDownload(options: DownloadOptions, dependencies: Downlo
 
         // 补抓产生的脏章节落盘后才能清理缓存并发布导出数据
         transition(ctx, "flushing-cache");
-        dependencies.log("完整性检查完成，正在保存下载进度...");
+        dependencies.log({ code: "download-integrity-flush-started" });
         const finalFlushSaved = await cacheBuffer.flush();
         if (dependencies.runtime.isCancellationRequested()) {
             await finishCancellation(ctx);
@@ -1160,7 +1295,7 @@ export async function runDownload(options: DownloadOptions, dependencies: Downlo
             return;
         }
         transition(ctx, "preparing-export");
-        dependencies.log("正在准备导出...");
+        dependencies.log({ code: "export-preparation-started" });
         const cover = await coverPromise;
         if (dependencies.runtime.isCancellationRequested()) {
             await finishCancellation(ctx);
@@ -1220,7 +1355,7 @@ export async function runDownload(options: DownloadOptions, dependencies: Downlo
             hasExportData: true
         });
         transition(ctx, "export-ready");
-        dependencies.log("✅ 所有任务处理完毕");
+        dependencies.log({ code: "download-completed" });
         dependencies.ui.cleanup();
         dependencies.ui.showFormatChoice();
     } catch (error) {
@@ -1234,13 +1369,32 @@ export async function runDownload(options: DownloadOptions, dependencies: Downlo
         if (reportedError instanceof StorageError) {
             const storageFailure = toStorageFailure(reportedError);
             updateSnapshot(ctx, { storageFailure });
-            dependencies.log(`❌ 下载进度未保存：${storageFailure.message}`);
+            dependencies.log({
+                code: "download-storage-failed",
+                params: {
+                    reason: storageFailure.reason,
+                    operation: storageFailure.operation,
+                    detail: storageFailure.params?.detail || storageFailure.message
+                }
+            });
         }
         cacheBuffer.discard();
         if (ctx.machine.snapshot.phase !== "failed" && ctx.machine.snapshot.phase !== "cancelled") {
             transition(ctx, "failed");
         }
-        dependencies.events.emit({ type: "download-failed", error: reportedError, snapshot: ctx.machine.snapshot });
+        const failureDetails = getErrorDetails(reportedError);
+        const storageFailure = ctx.machine.snapshot.storageFailure;
+        dependencies.events.emit({
+            type: "download-failed",
+            code: storageFailure?.reason || failureDetails.name || "download-failed",
+            params: storageFailure
+                ? {
+                      operation: storageFailure.operation,
+                      ...(storageFailure.params || {})
+                  }
+                : { errorName: failureDetails.name, detail: failureDetails.message },
+            snapshot: ctx.machine.snapshot
+        });
         // coordinator 统一清理进度弹窗并发布终态提示
         dependencies.ui.cleanup();
         if (reportedError instanceof MappingFontError && ctx.mappingFailures.size > 0) {

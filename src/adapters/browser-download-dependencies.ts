@@ -251,12 +251,12 @@ const coverFetcher: CoverFetcherPort = {
             );
             const blob = await response.blob();
             if (blob.size < 1000) {
-                log("⚠ 封面文件过小，已忽略");
+                log("⚠️ 封面文件过小，已忽略");
                 return null;
             }
             const normalized = await normalizeImageBlob(blob);
             if (!normalized || (normalized.extension !== "jpg" && normalized.extension !== "png")) {
-                log("⚠ 无法识别封面的实际 JPEG/PNG 格式，已忽略");
+                log("⚠️ 无法识别封面的实际 JPEG/PNG 格式，已忽略");
                 return null;
             }
             log("✅ 封面下载完成");
@@ -266,7 +266,7 @@ const coverFetcher: CoverFetcherPort = {
                 mediaType: normalized.extension === "png" ? "image/png" : "image/jpeg"
             };
         } catch (error) {
-            log(`⚠ 封面下载跳过: ${getErrorMessage(error)}`);
+            log(`⚠️ 封面下载跳过: ${getErrorMessage(error)}`);
             return null;
         }
     }
