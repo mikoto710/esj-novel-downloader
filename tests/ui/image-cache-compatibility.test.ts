@@ -1,7 +1,12 @@
-import { describe, expect, it } from "vitest";
+// @vitest-environment jsdom
+
+import { beforeEach, describe, expect, it } from "vitest";
 import { getImageCacheConfirmHint } from "../../src/ui/image-cache-compatibility";
+import { setInterfaceLocalePreference } from "../../src/core/config";
 
 describe("image cache compatibility messages", () => {
+    beforeEach(() => setInterfaceLocalePreference("zh-CN"));
+
     it("describes reusable cache when settings match", () => {
         expect(getImageCacheConfirmHint(12, true, true)).toContain("12 章兼容缓存");
     });

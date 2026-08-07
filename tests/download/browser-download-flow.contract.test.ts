@@ -10,6 +10,7 @@ import {
 } from "../support/browser-download-harness";
 import { createChapter, createDeferred } from "../support";
 import { createProtectedChapterFixture } from "../support/fixtures";
+import { publishInterfaceLocaleChange } from "../../src/ui/locale";
 
 const mocks = getBrowserDownloadMocks();
 let runtime: BrowserDownloadRuntime;
@@ -159,5 +160,26 @@ describe("browser download flow contracts", () => {
         await download;
 
         expect(mocks.updateTrayText.mock.calls.flat()).toContain("全本下载 (0/1)");
+    });
+
+    it("refreshes the active download status in place when the interface locale changes", async () => {
+        const decision = createDeferred<{ action: "skip-current" }>();
+        document.body.innerHTML = '<div id="esj-popup"><span id="esj-title"></span><div id="esj-progress"></div></div>';
+        mocks.fetchWithTimeout.mockResolvedValueOnce({
+            text: vi.fn().mockResolvedValue(createProtectedChapterFixture())
+        });
+        mocks.promptProtectedChapterPassword.mockImplementationOnce(() => decision.promise);
+
+        const download = runtime.batchDownload(createBrowserDownloadOptions(createBrowserDownloadTasks(1)));
+        await vi.waitFor(() => expect(mocks.promptProtectedChapterPassword).toHaveBeenCalledOnce());
+        const popup = document.querySelector("#esj-popup");
+
+        mocks.getInterfaceLocalePreference.mockReturnValue("zh-TW");
+        publishInterfaceLocaleChange();
+
+        expect(document.querySelector("#esj-popup")).toBe(popup);
+        expect(document.querySelector("#esj-title")?.textContent).toContain("正文完成 0/1｜密碼待處理 1｜正在抓取");
+        decision.resolve({ action: "skip-current" });
+        await download;
     });
 });

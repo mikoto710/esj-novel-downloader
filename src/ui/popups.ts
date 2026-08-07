@@ -32,7 +32,7 @@ import { createCommonHeader } from "./popup-components";
 import { recordBrowserDiagnosticExport, recordBrowserDiagnosticFailure } from "../adapters/browser-diagnostics";
 import { createDiagnosticPopup } from "./diagnostics";
 import { listActiveBookDownloadLocks } from "../core/book-lock";
-import { t } from "./locale";
+import { bindInterfaceText, publishInterfaceLocaleChange, t } from "./locale";
 
 /**
  * 锁定/解锁页面上的设置按钮
@@ -403,7 +403,7 @@ export function promptProtectedChapterPassword(
                         className: "esj-protected-action esj-protected-action-default",
                         onclick: () => finishOrNotify({ action: "cancel" })
                     },
-                    ["取消任务"]
+                    [t("download.action.cancelTask")]
                 ),
                 el(
                     "button",
@@ -423,7 +423,7 @@ export function promptProtectedChapterPassword(
                         className: "esj-protected-action esj-protected-action-default",
                         onclick: () => finishOrNotify({ action: "skip-current" })
                     },
-                    ["跳过本章"]
+                    [t("download.action.skipChapter")]
                 ),
                 el(
                     "button",
@@ -489,7 +489,7 @@ export function confirmIncompleteChapters(
         if (detection.missingTasks.length > preview.length) {
             preview.push(
                 el("li", { style: "color:#8a5a00;" }, [
-                    `另有 ${detection.missingTasks.length - preview.length} 章未列出。`
+                    t("download.missing.remaining", { count: detection.missingTasks.length - preview.length })
                 ])
             );
         }
@@ -503,16 +503,14 @@ export function confirmIncompleteChapters(
                 style: "position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:560px;max-width:calc(100vw - 32px);max-height:calc(100vh - 32px);background:#fff;border:1px solid #aaa;border-radius:8px;box-shadow:0 0 18px rgba(0,0,0,.28);z-index:1000001;display:flex;flex-direction:column;"
             },
             [
-                createCommonHeader("⚠️ 仍有章节缺失", () => finish("cancel")),
+                createCommonHeader(t("download.missing.title"), () => finish("cancel")),
                 el("div", { style: "padding:16px;font-size:15px;line-height:1.7;min-height:0;overflow:auto;" }, [
                     el(
                         "div",
                         {
                             style: "padding:10px 12px;border:1px solid #e6a23c;background:#fff7e6;color:#8a5a00;border-radius:6px;"
                         },
-                        [
-                            `自动补抓后仍有 ${detection.missingTasks.length} 个章节缺失。请选择再次补抓、使用占位说明继续导出，或取消并保留当前缓存。`
-                        ]
+                        [t("download.missing.message", { count: detection.missingTasks.length })]
                     ),
                     el("ol", { style: "margin:12px 0 0;padding-left:28px;" }, preview)
                 ]),
@@ -529,7 +527,7 @@ export function confirmIncompleteChapters(
                                 style: "padding:8px 12px;background:#eee;border:1px solid #ccc;border-radius:6px;cursor:pointer;",
                                 onclick: () => finish("cancel")
                             },
-                            ["取消并保留缓存"]
+                            [t("download.action.cancelKeepCache")]
                         ),
                         el(
                             "button",
@@ -538,7 +536,7 @@ export function confirmIncompleteChapters(
                                 style: "padding:8px 12px;background:#fff7e6;color:#8a5a00;border:1px solid #e6a23c;border-radius:6px;cursor:pointer;",
                                 onclick: () => finish("export-with-placeholders")
                             },
-                            ["仍然导出（写入占位）"]
+                            [t("download.action.exportPlaceholder")]
                         ),
                         el(
                             "button",
@@ -547,7 +545,7 @@ export function confirmIncompleteChapters(
                                 style: "padding:8px 12px;background:#2b9bd7;color:#fff;border:1px solid #2b9bd7;border-radius:6px;cursor:pointer;font-weight:bold;",
                                 onclick: () => finish("retry")
                             },
-                            ["只重试缺失章节"]
+                            [t("download.action.retryMissing")]
                         )
                     ]
                 )
@@ -648,7 +646,7 @@ export function confirmMappingFontExport(format: "EPUB" | "HTML", summary: Mappi
 export function showBookDownloadInProgressPopup(lock: BookDownloadLock): void {
     document.querySelector("#esj-book-lock")?.remove();
 
-    const sourceText = lock.sourcePageType === "detail" ? "详情页" : "论坛页";
+    const sourceText = t(lock.sourcePageType === "detail" ? "download.conflict.detail" : "download.conflict.forum");
     const closeAction = () => document.querySelector("#esj-book-lock")?.remove();
     const popup = el(
         "div",
@@ -657,9 +655,9 @@ export function showBookDownloadInProgressPopup(lock: BookDownloadLock): void {
             style: "position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:380px;background:#fff;border:1px solid #aaa;border-radius:8px;box-shadow:0 0 18px rgba(0,0,0,0.28);z-index:1000000;display:flex;flex-direction:column;"
         },
         [
-            createCommonHeader("📘 下载任务进行中", closeAction),
+            createCommonHeader(t("download.conflict.title"), closeAction),
             el("div", { style: "padding:16px;font-size:14px;line-height:1.7;color:#333;" }, [
-                `该书正在由${sourceText}发起全本下载，请等待任务完成或取消后再试。`
+                t("download.conflict.message", { source: sourceText })
             ]),
             el("div", { style: "padding:12px;display:flex;justify-content:flex-end;" }, [
                 el(
@@ -668,7 +666,7 @@ export function showBookDownloadInProgressPopup(lock: BookDownloadLock): void {
                         style: "padding:8px 12px;background:#2b9bd7;color:#fff;border:none;border-radius:6px;cursor:pointer;",
                         onclick: closeAction
                     },
-                    ["知道了"]
+                    [t("download.conflict.acknowledge")]
                 )
             ])
         ]
@@ -692,10 +690,10 @@ export function createDownloadPopup(): HTMLElement {
         const btn = document.querySelector("#esj-cancel") as HTMLButtonElement;
         if (btn) {
             btn.disabled = true;
-            btn.textContent = "正在保存...";
+            btn.textContent = t("download.popup.saving");
             btn.style.backgroundColor = "#999";
         }
-        log("🛑 正在停止任务，请稍候...");
+        log(t("download.popup.stoppingLog"));
     }
 
     function onClose() {
@@ -710,12 +708,16 @@ export function createDownloadPopup(): HTMLElement {
         }
 
         const headerTitle = popup?.querySelector(".esj-common-header span")?.textContent || "";
-        const statusText = headerTitle.replace(/^📘\s*/, "").trim() || "下载中...";
+        const statusText = headerTitle.replace(/^📘\s*/, "").trim() || t("download.popup.running");
 
         createMinimizedTray(statusText);
     }
 
-    const header = createCommonHeader("📘 全本下载任务", onClose, onMinimize);
+    const header = createCommonHeader(t("download.popup.title"), onClose, onMinimize);
+    const headerLabel = header.querySelector("span");
+    if (headerLabel instanceof HTMLElement) {
+        bindInterfaceText(headerLabel, "download.popup.title");
+    }
 
     // 找到里面的 span 加 ID，方便后续更新进度
     const span = header.querySelector("span");
@@ -740,8 +742,9 @@ export function createDownloadPopup(): HTMLElement {
             style: "padding:8px 12px;background:#d9534f;color:#fff;border:none;border-radius:6px;cursor:pointer;",
             onclick: onCancel
         },
-        ["取消任务"]
+        [t("download.action.cancelTask")]
     );
+    bindInterfaceText(btnCancel, "download.action.cancelTask");
 
     const popup = el(
         "div",
@@ -752,7 +755,7 @@ export function createDownloadPopup(): HTMLElement {
         [
             header,
             el("div", { style: "padding:12px;" }, [
-                el("div", { style: "font-size:13px;margin-bottom:8px;" }, ["进度："]),
+                bindInterfaceText(el("div", { style: "font-size:13px;margin-bottom:8px;" }), "download.popup.progress"),
                 el("div", { style: "width:100%;height:14px;background:#eee;border-radius:8px;overflow:hidden;" }, [
                     progressBar
                 ])
@@ -908,9 +911,7 @@ export function showFormatChoice(): void {
             ]);
         } else {
             // 开启了开关但没抓到任何图
-            imageStatus = el("div", { style: "color:#999; font-size:12px; margin-top:4px;" }, [
-                t("export.imagesNone")
-            ]);
+            imageStatus = el("div", { style: "color:#999; font-size:12px; margin-top:4px;" }, [t("export.imagesNone")]);
         }
     }
 
@@ -1002,7 +1003,7 @@ export function showFormatChoice(): void {
     );
     const txtDisabledReason = hasMappedChapters
         ? el("div", { style: "padding:0 20px 16px;color:#a45b00;font-size:12px;line-height:1.5;" }, [
-              "TXT 已禁用：映射正文尚未恢复为真实 Unicode。"
+              t("download.export.txtDisabled")
           ])
         : "";
 
@@ -1200,6 +1201,8 @@ export function createSettingsPanel(): void {
                 const value = (e.target as HTMLSelectElement).value;
                 if (isInterfaceLocalePreference(value)) {
                     setInterfaceLocalePreference(value);
+                    publishInterfaceLocaleChange();
+                    createSettingsPanel();
                 }
             }
         },
@@ -1312,7 +1315,11 @@ export function createSettingsPanel(): void {
             }
             setImageDownloadSetting(checked);
             // 已有章节由后续任务按 imageEnabled 逐书判断，不在设置变更时全局清理
-            log(`正文图片下载已${checked ? "开启" : "关闭"}`);
+            log(
+                t("settings.log.image", {
+                    state: t(checked ? "diagnostics.summary.enabled" : "diagnostics.summary.disabled")
+                })
+            );
         }
     });
 
@@ -1334,7 +1341,11 @@ export function createSettingsPanel(): void {
                 state.cachedData.epubBlob = null;
             }
 
-            log(`EPUB 标签页已${checked ? "开启" : "关闭"}`);
+            log(
+                t("settings.log.epubTag", {
+                    state: t(checked ? "diagnostics.summary.enabled" : "diagnostics.summary.disabled")
+                })
+            );
         }
     });
 
@@ -1343,7 +1354,12 @@ export function createSettingsPanel(): void {
         el("span", { className: "esj-slider" })
     ]);
 
-    log(`初始化参数：并发数=${currentConcurrency}，图片下载=${isImageEnabled}`);
+    log(
+        t("settings.log.initialized", {
+            concurrency: currentConcurrency,
+            imageEnabled: isImageEnabled
+        })
+    );
 
     // 创建分隔线
     const createDivider = () => el("hr", { style: "margin: 15px 0; border: 0; border-top: 1px solid #eee;" });

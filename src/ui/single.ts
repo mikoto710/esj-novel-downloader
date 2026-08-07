@@ -4,7 +4,7 @@ import { downloadCurrentPage } from "../scrapers/single";
 import { parseChapterHtml } from "../core/parser";
 import { MappingFontError, normalizeChapterMappingFont } from "../core/mapping-font";
 import { isProtectedChapterHtml } from "../adapters/browser-protected-chapter";
-import { t } from "./locale";
+import { bindInterfaceAttribute, subscribeInterfaceLocaleChange, t } from "./locale";
 
 const CUSTOMIZER_REFRESH_DELAY_MS = 150;
 
@@ -125,11 +125,7 @@ async function updateSinglePageMappingUi(version: number): Promise<void> {
             return;
         }
         disableSingleExport(elements.txtButton, t("mapping.single.txtDisabled"));
-        replaceSingleMappingNotice(
-            elements.container,
-            t("mapping.single.warning"),
-            "#a45b00"
-        );
+        replaceSingleMappingNotice(elements.container, t("mapping.single.warning"), "#a45b00");
     } catch (error) {
         if (
             version !== mappingUiRefreshVersion ||
@@ -300,6 +296,8 @@ export function injectSinglePageButton(): void {
         },
         [el("i", { className: "icon-code" })]
     );
+    bindInterfaceAttribute(btnTxt, "title", "mapping.single.txtTitle");
+    bindInterfaceAttribute(btnHtml, "title", "mapping.single.htmlTitle");
 
     // 插入到 "回整合" 按钮后面
     container.appendChild(btnTxt);
@@ -307,3 +305,9 @@ export function injectSinglePageButton(): void {
     installSinglePageMappingUiLifecycle();
     scheduleSinglePageMappingUiRefresh();
 }
+
+subscribeInterfaceLocaleChange(() => {
+    if (document.querySelector("#btn-download-single")) {
+        scheduleSinglePageMappingUiRefresh();
+    }
+});

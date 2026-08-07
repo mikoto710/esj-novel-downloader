@@ -44,7 +44,7 @@ export async function downloadCurrentPage(format: "txt" | "html" = "txt"): Promi
     );
 
     try {
-        log(`开始抓取当前单章 (${format.toUpperCase()})...`);
+        log(t("single.log.started", { format: format.toUpperCase() }));
 
         let metaHeader = "";
         let bookNamePrefix = "";
@@ -52,7 +52,7 @@ export async function downloadCurrentPage(format: "txt" | "html" = "txt"): Promi
 
         if (viewAllBtn && viewAllBtn.href) {
             try {
-                log("正在获取书籍信息...");
+                log(t("single.log.metadata"));
                 const resp = await fetch(viewAllBtn.href);
                 const html = await resp.text();
                 const doc = new DOMParser().parseFromString(html, "text/html");
@@ -169,7 +169,7 @@ export async function downloadCurrentPage(format: "txt" | "html" = "txt"): Promi
             return;
         } else {
             if (imageEnabled) {
-                log("正在下载并处理插图...");
+                log(t("single.log.images"));
                 try {
                     const processed = await processHtmlImages(contentHtml, 0);
 
@@ -196,7 +196,7 @@ export async function downloadCurrentPage(format: "txt" | "html" = "txt"): Promi
                             diagnosticTaskId
                         );
                     });
-                    log(`已嵌入 ${processed.images.length} 张图片`);
+                    log(t("single.log.imagesEmbedded", { count: processed.images.length }));
                 } catch (imgErr: any) {
                     imageFailureCount = (contentHtml.match(/<img\s/gi) || []).length;
                     console.error(imgErr);
@@ -213,7 +213,7 @@ export async function downloadCurrentPage(format: "txt" | "html" = "txt"): Promi
                             diagnosticTaskId
                         );
                     }
-                    log(`⚠️ 图片处理失败，将保留原链接`);
+                    log(t("single.log.imagesFailed"));
                 }
             }
 
@@ -305,7 +305,7 @@ export async function downloadCurrentPage(format: "txt" | "html" = "txt"): Promi
                 pageUrl: location.href
             });
 
-            log(`✔ 单章下载完成 (${format.toUpperCase()})`);
+            log(t("single.log.completed", { format: format.toUpperCase() }));
             diagnosticResult = "success";
         }
     } catch (e: any) {

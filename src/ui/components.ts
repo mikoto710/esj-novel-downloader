@@ -1,14 +1,14 @@
 import { el } from "../utils/dom";
 import { state } from "../core/state";
 import { showFormatChoice, createSettingsPanel } from "./popups";
-import { t } from "./locale";
+import { bindInterfaceAttribute, bindInterfaceText, t } from "./locale";
 
 /**
  * 创建通用的设置按钮
  * @param customClass 额外的 CSS 类 (如 "m-b-10")
  */
 export function createSettingButton(customClass: string = ""): HTMLElement {
-    return el(
+    const button = el(
         "button",
         {
             className: `btn btn-primary esj-settings-trigger ${customClass}`,
@@ -30,6 +30,9 @@ export function createSettingButton(customClass: string = ""): HTMLElement {
         },
         [el("i", { className: "icon-settings" })]
     );
+    bindInterfaceAttribute(button, "title", "button.settings");
+    bindInterfaceAttribute(button, "aria-label", "button.settings");
+    return button;
 }
 
 /**
@@ -98,7 +101,13 @@ export function createDownloadButton(
                 }
             }
         },
-        [el("i", { className: "icon-download" }), " " + text]
+        [
+            el("i", { className: "icon-download" }),
+            " ",
+            text === t("button.downloadAll")
+                ? bindInterfaceText(el("span"), "button.downloadAll")
+                : el("span", {}, [text])
+        ]
     );
 
     return btn;

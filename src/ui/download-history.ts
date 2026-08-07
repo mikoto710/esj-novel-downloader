@@ -9,7 +9,13 @@ import { el, enableDrag } from "../utils/dom";
 import { t } from "./locale";
 
 function sourceLabel(source: SourcePageType): string {
-    return t(source === "detail" ? "history.source.detail" : source === "forum" ? "history.source.forum" : "history.source.single");
+    return t(
+        source === "detail"
+            ? "history.source.detail"
+            : source === "forum"
+              ? "history.source.forum"
+              : "history.source.single"
+    );
 }
 
 function formatTime(timestamp: number): string {

@@ -20,7 +20,7 @@ const STORAGE_FAILURE_KEYS = {
 function storageFailureSummary(reason: string): string {
     const key = STORAGE_FAILURE_KEYS[reason as keyof typeof STORAGE_FAILURE_KEYS];
     return key ? t(key) : reason;
-};
+}
 
 function formatStorageFailureText(reason: string, detail = ""): string {
     const summary = storageFailureSummary(reason);
@@ -51,8 +51,10 @@ function formatChapterProcessed(message: DownloadLog): string {
         title: value(message, "title"),
         url: value(message, "url")
     };
-    const base = t(message.params?.retry ? "download.log.chapterProcessedRetry" : "download.log.chapterProcessed", params)
-        .split("\nURL:")[0];
+    const base = t(
+        message.params?.retry ? "download.log.chapterProcessedRetry" : "download.log.chapterProcessed",
+        params
+    ).split("\nURL:")[0];
     if (message.code === "chapter-processed-with-image-failures") {
         const imageErrors = Number(message.params?.imageErrors || 0);
         const imageCount = Number(message.params?.imageCount || 0);
@@ -77,10 +79,10 @@ function formatIntegrityRetry(message: DownloadLog): string {
     const reason = value(message, "reason");
     const suffix =
         reason === "missing"
-            ? "缺失"
+            ? t("download.log.integrityReasonMissing")
             : reason === "invalid-image-media-type"
-              ? "图片格式无效"
-              : `图片失败 ${value(message, "imageErrors")} 张`;
+              ? t("download.log.integrityReasonInvalidImage")
+              : t("download.log.integrityReasonImageFailures", { count: value(message, "imageErrors") });
     return t("download.log.integrityRetry", {
         index: value(message, "index"),
         total: value(message, "total"),
@@ -114,31 +116,51 @@ export function formatDownloadLog(message: DownloadLog): string {
         case "cover-cache-hit":
             return t("download.log.coverCacheHit");
         case "cover-cache-read-failed":
-            return t("download.log.coverCacheReadFailed", { detail: value(message, "message") || value(message, "detail") });
+            return t("download.log.coverCacheReadFailed", {
+                detail: value(message, "message") || value(message, "detail")
+            });
         case "cover-cache-saved":
             return t("download.log.coverCacheSaved");
         case "cover-cache-write-ownership-lost":
             return t("download.log.coverCacheOwnershipLost");
         case "cover-cache-write-failed":
-            return t("download.log.coverCacheWriteFailed", { detail: value(message, "message") || value(message, "detail") });
+            return t("download.log.coverCacheWriteFailed", {
+                detail: value(message, "message") || value(message, "detail")
+            });
         case "restored-mapping-font-invalid":
-            return `⚠️ 旧缓存映射字体无效，将重新抓取 (${value(message, "title")}): ${value(message, "detail")}`;
+            return t("download.log.mappingCacheInvalid", {
+                title: value(message, "title"),
+                detail: value(message, "detail")
+            });
         case "cache-restored":
             return t("download.log.cacheRestored", { count: value(message, "count") });
         case "cache-restored-with-invalidated":
-            return t("download.log.cacheRestoredInvalidated", { count: value(message, "count"), invalidatedCount: value(message, "invalidatedCount") });
+            return t("download.log.cacheRestoredInvalidated", {
+                count: value(message, "count"),
+                invalidatedCount: value(message, "invalidatedCount")
+            });
         case "cache-write-retry":
             return t("download.log.cacheWriteRetry", { detail: storageFailureText(message) });
         case "chapter-fetch-failed":
-            return t("download.log.chapterFetchFailed", { title: value(message, "title"), detail: value(message, "detail") });
+            return t("download.log.chapterFetchFailed", {
+                title: value(message, "title"),
+                detail: value(message, "detail")
+            });
         case "chapter-mapping-font-failed":
-            return `❌ 映射字体解析失败: ${value(message, "detail")} (${value(message, "title")})`;
+            return t("download.log.mappingFailed", {
+                detail: value(message, "detail"),
+                title: value(message, "title")
+            });
         case "chapter-processed":
         case "chapter-processed-with-images":
         case "chapter-processed-with-image-failures":
             return formatChapterProcessed(message);
         case "chapter-skipped-non-site":
-            return t("download.log.chapterSkippedNonSite", { completed: value(message, "completed"), total: value(message, "total"), title: value(message, "title") });
+            return t("download.log.chapterSkippedNonSite", {
+                completed: value(message, "completed"),
+                total: value(message, "total"),
+                title: value(message, "title")
+            });
         case "protected-chapter-retry-skipped":
             return t("protected.log.retrySkipped", { chapter: chapterTitle(message) });
         case "protected-chapter-redetected":

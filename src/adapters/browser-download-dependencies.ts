@@ -49,7 +49,7 @@ import { browserDiagnosticEvents, browserDiagnosticLog, recordBrowserDiagnosticF
 import { showDownloadTerminalFailure } from "../ui/download-terminal-notices";
 import { createBrowserProtectedChapterAuth, isProtectedChapterHtml } from "./browser-protected-chapter";
 import { BrowserRequestGate } from "./browser-request-gate";
-import { t } from "../ui/locale";
+import { subscribeInterfaceLocaleChange, t } from "../ui/locale";
 
 // 下载核心的浏览器实现边界
 // DOM、全局 state、网络、解析、图片、缓存和锁实现均限制在本模块中
@@ -105,6 +105,8 @@ function updateDownloadStatus(status: string): void {
     updateTrayText(status);
 }
 
+let lastDownloadSnapshot: DownloadSnapshot | null = null;
+
 // 下载核心只发布快照，所有标题、进度条、托盘和弹窗更新在此落到 DOM
 const ui: DownloadUiPort = {
     prepare() {
@@ -113,6 +115,7 @@ const ui: DownloadUiPort = {
         }
     },
     update(snapshot) {
+        lastDownloadSnapshot = snapshot;
         if (snapshot.phase === "cancelling" || snapshot.phase === "cancelled") {
             const cancelled = snapshot.phase === "cancelled";
             const status = t(cancelled ? "download.status.stopped" : "download.status.stopping");
@@ -192,6 +195,12 @@ const ui: DownloadUiPort = {
     cleanup: () => fullCleanup(state.originalTitle),
     showFormatChoice
 };
+
+subscribeInterfaceLocaleChange(() => {
+    if (lastDownloadSnapshot && document.querySelector("#esj-popup")) {
+        ui.update(lastDownloadSnapshot);
+    }
+});
 
 const protectedChapterDetector = { isProtected: isProtectedChapterHtml };
 

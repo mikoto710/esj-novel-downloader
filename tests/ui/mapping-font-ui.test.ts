@@ -110,6 +110,7 @@ describe("mapped font export UI", () => {
 
 describe("incomplete chapter decision UI", () => {
     beforeEach(() => {
+        setInterfaceLocalePreference("zh-CN");
         document.body.innerHTML = "";
     });
 

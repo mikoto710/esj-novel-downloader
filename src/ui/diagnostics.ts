@@ -21,7 +21,10 @@ import { t } from "./locale";
 const DIAGNOSTIC_AUTO_REFRESH_INTERVAL_MS = 3000;
 let disposeActiveDiagnosticPopup: (() => void) | null = null;
 
-const resultPresentation: Record<DiagnosticSessionPresentation, { icon: string; key: Parameters<typeof t>[0]; color: string }> = {
+const resultPresentation: Record<
+    DiagnosticSessionPresentation,
+    { icon: string; key: Parameters<typeof t>[0]; color: string }
+> = {
     running: { icon: "🔄", key: "diagnostics.result.running", color: "#2b9bd7" },
     success: { icon: "✅", key: "diagnostics.result.success", color: "#2e7d32" },
     cancelled: { icon: "🛑", key: "diagnostics.result.cancelled", color: "#777" },
@@ -260,9 +263,7 @@ export function createDiagnosticPopup(): void {
                 {
                     style: "padding:10px 12px;border:1px solid #e6a23c;background:#fff7e6;color:#8a5a00;border-radius:6px;line-height:1.6;margin-bottom:12px;"
                 },
-                [
-                    t("diagnostics.privacy")
-                ]
+                [t("diagnostics.privacy")]
             ),
             el(
                 "pre",
@@ -288,7 +289,9 @@ export function createDiagnosticPopup(): void {
         }
         list.replaceChildren();
         if (sessions.length === 0) {
-            list.appendChild(el("div", { style: "padding:40px 12px;text-align:center;color:#777;" }, [t("diagnostics.empty")]));
+            list.appendChild(
+                el("div", { style: "padding:40px 12px;text-align:center;color:#777;" }, [t("diagnostics.empty")])
+            );
         } else {
             const appendSection = (title: string, items: DiagnosticSessionView[]) => {
                 if (items.length === 0) {

@@ -2,9 +2,11 @@ import { injectDetailButton } from "./ui/detail";
 import { injectSinglePageButton } from "./ui/single";
 import { injectForumButton } from "./ui/forum";
 import { injectStyles } from "./ui/styles";
+import { installRuntimeInterfaceLocaleSync } from "./ui/locale";
 
 (function init() {
     injectStyles();
+    installRuntimeInterfaceLocaleSync();
     const url = location.href;
 
     // 路由

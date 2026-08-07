@@ -7,6 +7,7 @@ import { createDownloadButton, createSettingButton } from "../../src/ui/componen
 import { showMessagePopup } from "../../src/ui/message-popup";
 import { createCommonHeader } from "../../src/ui/popup-components";
 import { createConfirmPopup, createSettingsPanel } from "../../src/ui/popups";
+import { installRuntimeInterfaceLocaleSync } from "../../src/ui/locale";
 
 describe("shared locale UI", () => {
     beforeEach(() => {
@@ -38,7 +39,9 @@ describe("shared locale UI", () => {
         expect(popup.querySelector("#esj-message-close")?.textContent).toBe("關閉");
     });
 
-    it("persists the selected interface language from settings", () => {
+    it("persists the selected interface language from settings and refreshes the open UI", () => {
+        const settingButton = createSettingButton();
+        document.body.appendChild(settingButton);
         createSettingsPanel();
 
         const popup = document.querySelector("#esj-settings") as HTMLElement;
@@ -55,6 +58,29 @@ describe("shared locale UI", () => {
         language.dispatchEvent(new Event("change", { bubbles: true }));
 
         expect(getInterfaceLocalePreference()).toBe("zh-CN");
+        expect(document.querySelector("#esj-settings")?.textContent).toContain("界面语言");
+        expect(settingButton.getAttribute("aria-label")).toBe("脚本设置");
+    });
+
+    it("follows website simplified and traditional switching without reinjecting buttons", async () => {
+        setInterfaceLocalePreference("auto");
+        document.body.innerHTML =
+            '<div class="customizer-text-switch"><button class="trans active" data-encode="0">原</button></div>';
+        const settingButton = createSettingButton();
+        const downloadButton = createDownloadButton("runtime-download", undefined, async () => undefined);
+        document.body.append(settingButton, downloadButton);
+        const dispose = installRuntimeInterfaceLocaleSync();
+
+        expect(downloadButton.textContent).toContain("全本下載");
+        const websiteSwitch = document.querySelector(".customizer-text-switch .trans") as HTMLElement;
+        websiteSwitch.dataset.encode = "1";
+        await Promise.resolve();
+        await Promise.resolve();
+
+        expect(document.querySelector("#runtime-download")).toBe(downloadButton);
+        expect(downloadButton.textContent).toContain("全本下载");
+        expect(settingButton.getAttribute("aria-label")).toBe("脚本设置");
+        dispose();
     });
 
     it("uses locale keys for the common download confirmation", () => {
