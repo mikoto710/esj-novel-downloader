@@ -20,6 +20,7 @@ import { log, triggerDownload } from "../utils/index";
 const DIAGNOSTIC_STORAGE_KEY = "esj_diagnostic_sessions_v1";
 
 class GmDiagnosticRepository implements DiagnosticRepository {
+    // 版本或结构不兼容时回退为空存储，避免旧数据阻断诊断流程
     load(): DiagnosticStore {
         try {
             const stored = GM_getValue<DiagnosticStore | null>(DIAGNOSTIC_STORAGE_KEY, null);
@@ -54,12 +55,18 @@ let currentTaskId: string | null = null;
 let lastTaskId: string | null = null;
 const closeObserverCleanups = new Map<string, () => void>();
 
+/**
+ * 停止指定任务的 pagehide 监听，并移除该任务登记的清理回调
+ */
 function stopBrowserDiagnosticCloseObserver(taskId: string): void {
     const cleanup = closeObserverCleanups.get(taskId);
     closeObserverCleanups.delete(taskId);
     cleanup?.();
 }
 
+/**
+ * 为诊断会话监听真实的 pagehide；bfcache 挂起不视为页面关闭，监听由任务收尾或全量清理路径移除
+ */
 function observeBrowserDiagnosticPageClose(taskId: string): void {
     stopBrowserDiagnosticCloseObserver(taskId);
     const onPageHide = (event: PageTransitionEvent) => {
@@ -90,6 +97,9 @@ function getApplicationInfo(): StartDiagnosticSessionInput["application"] {
     };
 }
 
+/**
+ * 创建浏览器侧诊断会话，固定本次任务的应用和设置快照，并维护当前任务及后续失败回写引用
+ */
 export function startBrowserDiagnosticSession(
     input: Omit<StartDiagnosticSessionInput, "application" | "settings"> & {
         imageEnabled: boolean;
@@ -115,13 +125,16 @@ export function startBrowserDiagnosticSession(
     return session;
 }
 
+/**
+ * 在下载锁建立前为预检失败创建独立短生命周期会话，并立即写入失败终态
+ */
 export function recordBrowserPreflightDiagnosticFailure(
     input: Omit<StartDiagnosticSessionInput, "taskId" | "application" | "settings"> & {
         imageEnabled: boolean;
         failure: RecordDiagnosticFailureInput;
     }
 ): DiagnosticSession {
-    // 缓存预读失败发生在下载锁创建前，使用短生命周期的独立会话保留错误弹窗所需诊断
+    // 缓存预读失败发生在下载锁创建前，不能依赖正常下载任务的 taskId
     const taskId = `preflight-${input.bookId}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     startBrowserDiagnosticSession({ ...input, taskId });
     manager.recordFailure(taskId, input.failure);
@@ -141,6 +154,9 @@ export function updateBrowserDiagnosticSessionMetadata(
     manager.updateSession(taskId, options);
 }
 
+/**
+ * 完成全本诊断会话并移除页面关闭监听；仅释放 currentTaskId，保留 lastTaskId 供导出失败回写
+ */
 export function finishBrowserDiagnosticSession(taskId: string, result: Exclude<DiagnosticResult, "running">): void {
     stopBrowserDiagnosticCloseObserver(taskId);
     manager.finish(taskId, result);
@@ -149,6 +165,9 @@ export function finishBrowserDiagnosticSession(taskId: string, result: Exclude<D
     }
 }
 
+/**
+ * 完成单章诊断会话，将结果映射为单章阶段和计数摘要，并释放当前任务引用
+ */
 export function finishBrowserSingleChapterDiagnosticSession(
     taskId: string,
     result: Exclude<DiagnosticResult, "running">
@@ -168,6 +187,9 @@ export function finishBrowserSingleChapterDiagnosticSession(
     }
 }
 
+/**
+ * 将失败写回诊断会话；未显式传入 taskId 时按当前任务、最后任务和最近会话依次回退
+ */
 export function recordBrowserDiagnosticFailure(input: RecordDiagnosticFailureInput, taskId = currentTaskId): void {
     const targetTaskId = taskId || lastTaskId || getLatestBrowserDiagnosticSession()?.taskId;
     if (targetTaskId) {
@@ -175,6 +197,9 @@ export function recordBrowserDiagnosticFailure(input: RecordDiagnosticFailureInp
     }
 }
 
+/**
+ * 将导出结果写回诊断会话；未显式传入 taskId 时沿用失败记录的任务回退顺序
+ */
 export function recordBrowserDiagnosticExport(input: RecordDiagnosticExportInput, taskId = currentTaskId): void {
     const targetTaskId = taskId || lastTaskId || getLatestBrowserDiagnosticSession()?.taskId;
     if (targetTaskId) {
@@ -224,6 +249,9 @@ export function removeBrowserDiagnosticSession(sessionId: string): void {
     manager.remove(sessionId);
 }
 
+/**
+ * 清理所有页面关闭监听和诊断存储，并重置当前任务与后续失败回写使用的任务引用
+ */
 export function clearBrowserDiagnosticSessions(): void {
     for (const cleanup of closeObserverCleanups.values()) {
         cleanup();
@@ -234,6 +262,9 @@ export function clearBrowserDiagnosticSessions(): void {
     lastTaskId = null;
 }
 
+/**
+ * 返回更新时间最新的 active 会话；没有 active 会话时回退到最近一条历史记录
+ */
 export function getLatestBrowserDiagnosticSession(): DiagnosticSession | null {
     const store = manager.list();
     return store.active.sort((a, b) => b.updatedAt - a.updatedAt)[0] || store.history[0] || null;
@@ -278,6 +309,9 @@ function formatPresentation(presentation: DiagnosticSessionPresentation): string
     return presentation;
 }
 
+/**
+ * 生成用户可见的诊断摘要，最多保留最近 10 条失败，并包含密码章节统计和导出结果
+ */
 export function formatBrowserDiagnosticSummary(
     session: DiagnosticSession,
     presentation: DiagnosticSessionPresentation = session.result

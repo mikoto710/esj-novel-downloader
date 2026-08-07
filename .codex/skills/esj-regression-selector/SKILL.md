@@ -10,7 +10,8 @@ description: Select, implement, and run focused regression coverage for ESJ Nove
 1. Read `references/test-matrix.md` and classify the changed behavior, not merely the edited folder.
 2. Run the smallest targeted tests while iterating; then run every required command in the selected row before completion.
 3. Add or update a regression test at the actual business boundary. Keep test titles about externally observable outcomes.
-4. Report commands run, unrun checks, and remaining manual-browser risk.
+4. For protected chapter changes, cover authorization, password rejection, request ordering, skip/cancel finalization, and full-book versus single-chapter behavior across the relevant infrastructure, download, UI, and export tests. Run `npm run test:stress` for queue, lock, cancellation, or lifecycle changes, and report browser/userscript-manager validation separately.
+5. Report commands run, unrun checks, and remaining manual-browser risk.
 
 ## Preserve test isolation
 
