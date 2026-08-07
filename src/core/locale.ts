@@ -3,6 +3,27 @@
  */
 export type InterfaceLocale = "zh-CN" | "zh-TW";
 
+export const INTERFACE_LOCALE_PREFERENCES = ["auto", "zh-CN", "zh-TW"] as const;
+export type InterfaceLocalePreference = (typeof INTERFACE_LOCALE_PREFERENCES)[number];
+
+/**
+ * 检查界面语言偏好是否有效
+ */
+export function isInterfaceLocalePreference(value: unknown): value is InterfaceLocalePreference {
+    return INTERFACE_LOCALE_PREFERENCES.some((preference) => preference === value);
+}
+
+/**
+ * 按优先级解析界面语言
+ */
+export function resolveInterfaceLocale(
+    preference: InterfaceLocalePreference,
+    websiteLocale: InterfaceLocale | null,
+    browserLocale: InterfaceLocale
+): InterfaceLocale {
+    return preference === "auto" ? (websiteLocale ?? browserLocale) : preference;
+}
+
 export type LocaleMessageValue = string | number | boolean;
 export type LocaleMessageParams = Readonly<Record<string, LocaleMessageValue>>;
 export type LocaleCatalog = Readonly<Record<string, string>>;

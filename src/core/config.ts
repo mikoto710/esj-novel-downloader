@@ -1,4 +1,5 @@
 import { log } from "../utils/index";
+import { isInterfaceLocalePreference, type InterfaceLocalePreference } from "./locale";
 
 // 默认配置
 const DEFAULT_CONFIG = {
@@ -6,6 +7,9 @@ const DEFAULT_CONFIG = {
     enableImageDownload: false,
     enableEpubTagPage: false
 };
+
+export const INTERFACE_LOCALE_PREFERENCE_KEY = "interface_locale_preference";
+const DEFAULT_INTERFACE_LOCALE_PREFERENCE: InterfaceLocalePreference = "auto";
 
 /**
  * 获取并发数
@@ -60,4 +64,19 @@ export function getEpubTagPageSetting(): boolean {
  */
 export function setEpubTagPageSetting(val: boolean): void {
     GM_setValue("enable_epub_tag_page", val);
+}
+
+/**
+ * 读取界面语言偏好
+ */
+export function getInterfaceLocalePreference(): InterfaceLocalePreference {
+    const stored = GM_getValue<unknown>(INTERFACE_LOCALE_PREFERENCE_KEY, DEFAULT_INTERFACE_LOCALE_PREFERENCE);
+    return isInterfaceLocalePreference(stored) ? stored : DEFAULT_INTERFACE_LOCALE_PREFERENCE;
+}
+
+/**
+ * 保存界面语言偏好
+ */
+export function setInterfaceLocalePreference(preference: InterfaceLocalePreference): void {
+    GM_setValue(INTERFACE_LOCALE_PREFERENCE_KEY, preference);
 }
