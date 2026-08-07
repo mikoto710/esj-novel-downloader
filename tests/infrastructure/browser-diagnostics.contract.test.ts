@@ -16,9 +16,11 @@ import {
     updateBrowserDiagnosticSession
 } from "../../src/adapters/browser-diagnostics";
 import { createInitialDownloadSnapshot } from "../../src/core/download/state-machine";
+import { setInterfaceLocalePreference } from "../../src/core/config";
 
 describe("browser diagnostic persistence", () => {
     beforeEach(() => {
+        setInterfaceLocalePreference("zh-CN");
         clearBrowserDiagnosticSessions();
     });
 

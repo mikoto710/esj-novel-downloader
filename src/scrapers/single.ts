@@ -112,8 +112,8 @@ export async function downloadCurrentPage(format: "txt" | "html" = "txt"): Promi
                 );
                 showMessagePopup({
                     tone: "error",
-                    title: "映射字体解析失败",
-                    message: "本章检测到映射字体，但无法完成解析，已阻止导出。",
+                    title: t("mapping.failure.title"),
+                    message: t("single.mappingFailure.message"),
                     details: error.message
                 });
                 return;
@@ -124,8 +124,8 @@ export async function downloadCurrentPage(format: "txt" | "html" = "txt"): Promi
             diagnosticResult = "cancelled";
             showMessagePopup({
                 tone: "warning",
-                title: "TXT 导出不可用",
-                message: "本章使用自定义映射字体，正文尚未恢复为真实 Unicode，无法导出正确 TXT。"
+                title: t("mapping.single.txtUnavailable"),
+                message: t("single.txtUnavailable.message")
             });
             return;
         }
@@ -161,7 +161,11 @@ export async function downloadCurrentPage(format: "txt" | "html" = "txt"): Promi
                 },
                 diagnosticTaskId
             );
-            showMessagePopup({ tone: "warning", title: "未找到正文", message: "当前页面没有可导出的正文内容。" });
+            showMessagePopup({
+                tone: "warning",
+                title: t("single.bodyMissing.title"),
+                message: t("single.bodyMissing.message")
+            });
             return;
         } else {
             if (imageEnabled) {
@@ -322,8 +326,8 @@ export async function downloadCurrentPage(format: "txt" | "html" = "txt"): Promi
         );
         showMessagePopup({
             tone: "error",
-            title: "单章下载失败",
-            message: "下载当前章节时发生错误。",
+            title: t("single.downloadFailed.title"),
+            message: t("single.downloadFailed.message"),
             details: e?.message || String(e)
         });
     } finally {

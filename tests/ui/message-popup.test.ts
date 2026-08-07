@@ -1,10 +1,13 @@
 // @vitest-environment jsdom
 
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import { showMessagePopup } from "../../src/ui/message-popup";
 import { showMappingFontFailure } from "../../src/ui/popups";
+import { setInterfaceLocalePreference } from "../../src/core/config";
 
 describe("message popup UI", () => {
+    beforeEach(() => setInterfaceLocalePreference("zh-CN"));
+
     it.each([
         ["info", "ℹ️"],
         ["warning", "⚠️"],

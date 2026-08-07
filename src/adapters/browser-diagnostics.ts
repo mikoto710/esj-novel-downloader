@@ -17,6 +17,7 @@ import type { DownloadEventSink, DownloadLog, DownloadOptions } from "../core/do
 import { getConcurrency, getEpubTagPageSetting } from "../core/config";
 import { log, triggerDownload } from "../utils/index";
 import { formatDownloadLog } from "./browser-download-messages";
+import { t } from "../ui/locale";
 
 const DIAGNOSTIC_STORAGE_KEY = "esj_diagnostic_sessions_v1";
 
@@ -269,13 +270,13 @@ export function downloadBrowserDiagnosticSession(session: DiagnosticSession): vo
 
 function formatPresentation(presentation: DiagnosticSessionPresentation): string {
     if (presentation === "closed-unconfirmed") {
-        return "页面已关闭，结果未确认";
+        return t("diagnostics.summary.closed");
     }
     if (presentation === "superseded") {
-        return "已由新的续传任务接替，旧结果未确认";
+        return t("diagnostics.summary.superseded");
     }
     if (presentation === "interrupted") {
-        return "异常中断（结果未确认）";
+        return t("diagnostics.summary.interrupted");
     }
     return presentation;
 }
@@ -286,38 +287,65 @@ export function formatBrowserDiagnosticSummary(
 ): string {
     const failureLines = session.failures.slice(-10).map((failure) => {
         const chapter = failure.chapter
-            ? `；章节 ${failure.chapter.index}「${failure.chapter.title}」 ${failure.chapter.url}`
+            ? t("diagnostics.summary.chapterFailure", {
+                  index: failure.chapter.index,
+                  title: failure.chapter.title,
+                  url: failure.chapter.url
+              })
             : "";
-        const imageCount = failure.imageFailureCount === undefined ? "" : `；失败插图：${failure.imageFailureCount} 张`;
+        const imageCount =
+            failure.imageFailureCount === undefined
+                ? ""
+                : t("diagnostics.summary.imageFailure", { count: failure.imageFailureCount });
         return `- [${failure.code}] ${failure.message}${imageCount}${chapter}`;
     });
     const exportLines = (session.exports || []).map((item) => {
-        const format = `${item.scope === "single" ? "单章 " : ""}${item.format.toUpperCase()}`;
+        const format = `${item.scope === "single" ? t("diagnostics.summary.singlePrefix") : ""}${item.format.toUpperCase()}`;
         if (item.outcome === "cancelled") {
-            return `- ${format}：用户取消`;
+            return t("diagnostics.summary.exportCancelled", { format });
         }
         if (item.outcome === "success") {
-            return `- ${format}：生成成功，已触发浏览器下载`;
+            return t("diagnostics.summary.exportSuccess", { format });
         }
         return item.failureStage === "generate"
-            ? `- ${format}：生成失败，未触发浏览器下载`
-            : `- ${format}：生成成功，浏览器下载触发失败`;
+            ? t("diagnostics.summary.generateFailed", { format })
+            : t("diagnostics.summary.downloadFailed", { format });
     });
     const presentationLine =
         presentation === session.result
             ? null
-            : `诊断视图：${formatPresentation(presentation)}；原始结果：${session.result}`;
+            : t("diagnostics.summary.presentation", {
+                  presentation: formatPresentation(presentation),
+                  result: session.result
+              });
     return [
         `ESJ Novel Downloader ${session.application.version}`,
         `${session.application.browser} / ${session.application.userscriptManager}`,
-        `作品：${session.book.title}（${session.book.bookId}）`,
-        `链接：${session.book.url}`,
+        t("diagnostics.summary.book", { title: session.book.title, bookId: session.book.bookId }),
+        t("diagnostics.summary.link", { url: session.book.url }),
         ...(presentationLine ? [presentationLine] : []),
-        `结果：${session.result}；阶段：${session.task.phase}`,
-        `章节：${session.task.completedChapters}/${session.task.totalChapters}；缓存恢复：${session.task.restoredChapters}；失败：${session.task.failedChapters}`,
-        `密码章节：发现 ${session.task.protectedDetectedChapters}；待处理 ${session.task.protectedPendingChapters}；已解锁 ${session.task.protectedResolvedChapters}；已跳过 ${session.task.protectedSkippedChapters}`,
-        `插图：${session.settings.imageEnabled ? "开启" : "关闭"}；并发：${session.settings.concurrency}`,
-        exportLines.length > 0 ? `导出记录：\n${exportLines.join("\n")}` : "导出记录：无",
-        failureLines.length > 0 ? `失败摘要：\n${failureLines.join("\n")}` : "失败摘要：无"
+        t("diagnostics.summary.result", { result: session.result, phase: session.task.phase }),
+        t("diagnostics.summary.chapters", {
+            completed: session.task.completedChapters,
+            total: session.task.totalChapters,
+            restored: session.task.restoredChapters,
+            failed: session.task.failedChapters
+        }),
+        t("diagnostics.summary.protected", {
+            detected: session.task.protectedDetectedChapters,
+            pending: session.task.protectedPendingChapters,
+            resolved: session.task.protectedResolvedChapters,
+            skipped: session.task.protectedSkippedChapters
+        }),
+        t("diagnostics.summary.images", {
+            enabled: t(session.settings.imageEnabled ? "diagnostics.summary.enabled" : "diagnostics.summary.disabled"),
+            concurrency: session.settings.concurrency
+        }),
+        t("diagnostics.summary.exports", {
+            records: exportLines.length > 0 ? `\n${exportLines.join("\n")}` : t("diagnostics.summary.none")
+        }),
+        t("diagnostics.summary.failures", {
+            records: failureLines.length > 0 ? `\n${failureLines.join("\n")}` : t("diagnostics.summary.none")
+        })
     ].join("\n");
 }

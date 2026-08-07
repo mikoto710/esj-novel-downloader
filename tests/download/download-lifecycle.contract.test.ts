@@ -2,6 +2,7 @@
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createBookLock, createDeferred, createDetailPageFixture, installDocumentFixture } from "../support";
+import { setInterfaceLocalePreference } from "../../src/core/config";
 
 const mocks = vi.hoisted(() => ({
     batchDownload: vi.fn(),
@@ -70,6 +71,7 @@ describe("download lifecycle contracts", () => {
     const lock = createBookLock();
 
     beforeEach(() => {
+        setInterfaceLocalePreference("zh-CN");
         vi.clearAllMocks();
         window.history.replaceState({}, "", "/detail/100.html");
         installDocumentFixture(createDetailPageFixture({ bookId: "100", chapterCount: 2 }));

@@ -121,7 +121,7 @@ function getExportErrorDetails(error: unknown): string {
     if (details.length <= MAX_EXPORT_ERROR_DETAIL_LENGTH) {
         return details;
     }
-    return `${details.slice(0, MAX_EXPORT_ERROR_DETAIL_LENGTH)}\n…（详情已截断）`;
+    return `${details.slice(0, MAX_EXPORT_ERROR_DETAIL_LENGTH)}\n${t("export.failure.truncated")}`;
 }
 
 function showExportFailure(format: "TXT" | "EPUB" | "HTML", stage: "生成" | "下载", error: unknown): void {
@@ -142,8 +142,8 @@ function showExportFailure(format: "TXT" | "EPUB" | "HTML", stage: "生成" | "�
     });
     showMessagePopup({
         tone: "error",
-        title: `${format} ${stage}失败`,
-        message: `无法${stage}${format}文件。`,
+        title: t("export.failure.title", { format, stage }),
+        message: t("export.failure.message", { format, stage }),
         details
     });
 }
@@ -164,7 +164,10 @@ export function updateMappingFontWarning(summary: MappingFontSummary): void {
         });
         popup.querySelector("#esj-log")?.before(warning);
     }
-    warning.textContent = `⚠️ 已检测到 ${summary.chapterCount} 个映射章节，字体共 ${formatMappingFontBytes(summary.fontBytes)}。TXT 导出已禁用，HTML/EPUB 仅保证视觉显示。`;
+    warning.textContent = t("mapping.warning", {
+        count: summary.chapterCount,
+        bytes: formatMappingFontBytes(summary.fontBytes)
+    });
 }
 
 /**
@@ -187,12 +190,15 @@ export function confirmMappingFontDownload(detection: MappingFontDetection, sign
             resolve(confirmed);
         };
         const onAbort = () => finish(false);
-        const header = createCommonHeader("⚠️ 检测到自定义映射字体", () => finish(false));
+        const header = createCommonHeader(t("mapping.detected.title"), () => finish(false));
         const body = el("div", { style: "padding:16px;font-size:14px;line-height:1.7;color:#333;" }, [
             el("div", { style: "font-weight:bold;margin-bottom:8px;" }, [detection.task.title]),
-            "该章节使用专属映射字体。继续下载后只能导出 HTML 或 EPUB；复制、搜索和朗读可能不正确，缓存及导出文件也会明显增大。",
+            t("mapping.detected.message"),
             el("div", { style: "margin-top:8px;color:#8a5a00;font-size:13px;" }, [
-                `当前检测到 ${detection.chapterCount} 章，字体 ${formatMappingFontBytes(detection.fontBytes)}。`
+                t("mapping.detected.summary", {
+                    count: detection.chapterCount,
+                    bytes: formatMappingFontBytes(detection.fontBytes)
+                })
             ]),
             el(
                 "div",
@@ -202,8 +208,8 @@ export function confirmMappingFontDownload(detection: MappingFontDetection, sign
                 },
                 [
                     detection.inFlightLimit > 0
-                        ? `已停止领取新章节。已经发出的请求仍会收尾，进度最多还可能增加 ${detection.inFlightLimit} 章；这不表示任务仍在继续领取章节。`
-                        : "尚未发出新的章节请求；确认期间不会继续下载。"
+                        ? t("mapping.detected.inflight", { count: detection.inFlightLimit })
+                        : t("mapping.detected.paused")
                 ]
             )
         ]);
@@ -215,7 +221,7 @@ export function confirmMappingFontDownload(detection: MappingFontDetection, sign
                     style: "padding:8px 12px;background:#eee;border:1px solid #ccc;border-radius:6px;cursor:pointer;",
                     onclick: () => finish(false)
                 },
-                ["停止下载"]
+                [t("mapping.stop")]
             ),
             el(
                 "button",
@@ -224,7 +230,7 @@ export function confirmMappingFontDownload(detection: MappingFontDetection, sign
                     style: "padding:8px 12px;background:#2b9bd7;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:bold;",
                     onclick: () => finish(true)
                 },
-                ["继续下载（仅 HTML/EPUB）"]
+                [t("mapping.continue")]
             )
         ]);
         const popup = el(
@@ -571,11 +577,11 @@ export function showMappingFontFailure(failures: ReadonlyArray<{ task: { title: 
         .slice(0, 5)
         .map((failure) => `• ${failure.task.title}: ${failure.message}`)
         .join("\n");
-    const remaining = failures.length > 5 ? `另有 ${failures.length - 5} 章未列出。` : "";
+    const remaining = failures.length > 5 ? t("mapping.failure.remaining", { count: failures.length - 5 }) : "";
     showMessagePopup({
         tone: "error",
-        title: "映射字体解析失败",
-        message: `有 ${failures.length} 个章节的映射字体无法解析，已阻止导出。`,
+        title: t("mapping.failure.title"),
+        message: t("mapping.failure.message", { count: failures.length }),
         details: [preview, remaining].filter(Boolean)
     });
 }
@@ -601,9 +607,13 @@ export function confirmMappingFontExport(format: "EPUB" | "HTML", summary: Mappi
                 style: "position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:440px;max-width:calc(100vw - 32px);background:#fff;border:1px solid #aaa;border-radius:8px;box-shadow:0 0 18px rgba(0,0,0,.28);z-index:1000001;display:flex;flex-direction:column;"
             },
             [
-                createCommonHeader(`⚠️ 确认生成 ${format}`, () => finish(false)),
+                createCommonHeader(t("mapping.export.title", { format }), () => finish(false)),
                 el("div", { style: "padding:16px;font-size:14px;line-height:1.7;color:#333;" }, [
-                    `将嵌入 ${summary.chapterCount} 个章节字体，共 ${formatMappingFontBytes(summary.fontBytes)}。${format} 只能保证视觉显示，复制、搜索和朗读可能不正确。`
+                    t("mapping.export.message", {
+                        count: summary.chapterCount,
+                        bytes: formatMappingFontBytes(summary.fontBytes),
+                        format
+                    })
                 ]),
                 el("div", { style: "padding:12px;display:flex;justify-content:flex-end;gap:8px;" }, [
                     el(
@@ -612,7 +622,7 @@ export function confirmMappingFontExport(format: "EPUB" | "HTML", summary: Mappi
                             style: "padding:8px 12px;background:#eee;border:1px solid #ccc;border-radius:6px;cursor:pointer;",
                             onclick: () => finish(false)
                         },
-                        ["返回"]
+                        [t("mapping.export.back")]
                     ),
                     el(
                         "button",
@@ -621,7 +631,7 @@ export function confirmMappingFontExport(format: "EPUB" | "HTML", summary: Mappi
                             style: "padding:8px 12px;background:#2b9bd7;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:bold;",
                             onclick: () => finish(true)
                         },
-                        [`继续生成 ${format}`]
+                        [t("mapping.export.continue", { format })]
                     )
                 ])
             ]
@@ -838,7 +848,7 @@ export function createConfirmPopup(onOk: () => void, onCancel?: () => void, cach
  */
 export function showFormatChoice(): void {
     if (!state.cachedData) {
-        showMessagePopup({ tone: "info", title: "暂无可导出内容", message: "当前没有已完成的下载数据。" });
+        showMessagePopup({ tone: "info", title: t("export.none.title"), message: t("export.none.message") });
         return;
     }
 
@@ -862,11 +872,11 @@ export function showFormatChoice(): void {
         toggleDownloadLock(false);
     };
 
-    const header = createCommonHeader("💾 导出选项", closeAction);
+    const header = createCommonHeader(t("export.title"), closeAction);
 
     const coverStatus = data.metadata.coverBlob
-        ? el("div", { style: "color:green;font-size:12px;margin-top:4px;" }, ["✔  封面已就绪"])
-        : el("div", { style: "color:red;font-size:12px;margin-top:4px;" }, ["✖  无封面"]);
+        ? el("div", { style: "color:green;font-size:12px;margin-top:4px;" }, [t("export.coverReady")])
+        : el("div", { style: "color:red;font-size:12px;margin-top:4px;" }, [t("export.coverMissing")]);
 
     // 正文插图统计
     let imageStatus: HTMLElement | string = "";
@@ -891,22 +901,24 @@ export function showFormatChoice(): void {
         if (totalCount > 0) {
             // 有图片处理记录，失败显示橙色，全成功显示蓝色
             const color = failCount > 0 ? "#e6a23c" : "#2b9bd7";
-            const errorHint = failCount > 0 ? ` (失败 ${failCount} 张，原因见 F12)` : "";
+            const errorHint = failCount > 0 ? t("export.imagesFailed", { count: failCount }) : "";
 
             imageStatus = el("div", { style: `color:${color}; font-size:12px; margin-top:4px;` }, [
-                `🖼️ 正文插图: ${successCount} / ${totalCount} 张${errorHint}`
+                `${t("export.images", { success: successCount, total: totalCount })}${errorHint}`
             ]);
         } else {
             // 开启了开关但没抓到任何图
             imageStatus = el("div", { style: "color:#999; font-size:12px; margin-top:4px;" }, [
-                "🖼️ 正文插图: 未检测到图片"
+                t("export.imagesNone")
             ]);
         }
     }
 
     const infoBody = el("div", { style: "padding:20px;font-size:14px;line-height:1.5;" }, [
-        el("div", {}, [`《${data.metadata.title}》内容已就绪。`]),
-        el("div", { style: "color:#666;font-size:12px;margin-top:4px;" }, [`共 ${data.chapters.length} 章`]),
+        el("div", {}, [t("export.bookReady", { title: data.metadata.title })]),
+        el("div", { style: "color:#666;font-size:12px;margin-top:4px;" }, [
+            t("export.chapterCount", { count: data.chapters.length })
+        ]),
         coverStatus,
         imageStatus,
         hasMappedChapters
@@ -917,7 +929,10 @@ export function showFormatChoice(): void {
                       style: "margin-top:10px;padding:10px;border:1px solid #e6a23c;background:#fff7e6;color:#8a5a00;border-radius:6px;font-size:12px;line-height:1.6;"
                   },
                   [
-                      `⚠️ 检测到 ${mappingSummary.chapterCount} 个映射章节，字体共 ${formatMappingFontBytes(mappingSummary.fontBytes)}。TXT 已禁用；HTML/EPUB 仅保证视觉显示，复制、搜索和朗读可能不正确。`
+                      t("export.mappingWarning", {
+                          count: mappingSummary.chapterCount,
+                          bytes: formatMappingFontBytes(mappingSummary.fontBytes)
+                      })
                   ]
               )
             : ""
@@ -932,7 +947,7 @@ export function showFormatChoice(): void {
             id: "esj-txt",
             disabled: hasMappedChapters,
             "aria-disabled": hasMappedChapters ? "true" : "false",
-            title: hasMappedChapters ? "映射正文尚未恢复为真实 Unicode，无法生成正确 TXT" : "下载 TXT",
+            title: hasMappedChapters ? t("export.txtBlocked") : t("export.downloadTxt"),
             style: `flex:1;padding:10px 0;border:1px solid #ccc;background:#f0f0f0;border-radius:6px;cursor:${hasMappedChapters ? "not-allowed" : "pointer"};font-weight:bold;color:${hasMappedChapters ? "#999" : "#333"};`,
             onclick: hasMappedChapters
                 ? undefined
@@ -955,7 +970,7 @@ export function showFormatChoice(): void {
                       }
                   }
         },
-        [hasMappedChapters ? "TXT 不可用" : "⬇ TXT 下载"]
+        [hasMappedChapters ? t("export.txtDisabled") : t("export.downloadTxt")]
     );
 
     const btnEpub = el(
@@ -965,7 +980,7 @@ export function showFormatChoice(): void {
             style: "flex:1;padding:10px 0;border:none;background:#2b9bd7;color:#fff;border-radius:6px;cursor:pointer;font-weight:bold;",
             onclick: async () => handleEpubDownload()
         },
-        ["⬇ EPUB 下载"]
+        [t("export.downloadEpub")]
     );
 
     const btnHtml = el(
@@ -975,7 +990,7 @@ export function showFormatChoice(): void {
             style: "flex:1;padding:10px 0;border:none;background:#999;color:#fff;border-radius:6px;cursor:pointer;font-weight:bold;",
             onclick: async () => handleHtmlDownload()
         },
-        ["⬇ HTML 下载"]
+        [t("export.downloadHtml")]
     );
 
     const footer = el(
@@ -1035,10 +1050,10 @@ export function showFormatChoice(): void {
                 return;
             }
 
-            btn.innerText = "生成中...";
+            btn.innerText = t("export.generating");
             btn.style.background = "#7ab8d6";
 
-            document.title = "[生成 EPUB] " + oldTitle;
+            document.title = t("export.documentTitle", { title: oldTitle });
 
             let blob: Blob;
             try {
@@ -1082,7 +1097,7 @@ export function showFormatChoice(): void {
                 recordCancelledExport("html");
                 return;
             }
-            btn.innerText = "生成中...";
+            btn.innerText = t("export.generating");
 
             let blob: Blob;
             try {

@@ -16,18 +16,19 @@ import {
 } from "../core/diagnostics";
 import { el, enableDrag } from "../utils/dom";
 import { createCommonHeader } from "./popup-components";
+import { t } from "./locale";
 
 const DIAGNOSTIC_AUTO_REFRESH_INTERVAL_MS = 3000;
 let disposeActiveDiagnosticPopup: (() => void) | null = null;
 
-const resultPresentation: Record<DiagnosticSessionPresentation, { icon: string; label: string; color: string }> = {
-    running: { icon: "🔄", label: "进行中", color: "#2b9bd7" },
-    success: { icon: "✅", label: "下载完成", color: "#2e7d32" },
-    cancelled: { icon: "🛑", label: "用户取消", color: "#777" },
-    failed: { icon: "❌", label: "任务失败", color: "#c62828" },
-    interrupted: { icon: "⚠️", label: "异常中断（结果未确认）", color: "#a05a00" },
-    "closed-unconfirmed": { icon: "⏳", label: "页面已关闭，结果未确认", color: "#a05a00" },
-    superseded: { icon: "↪️", label: "已由新的续传任务接替", color: "#56708a" }
+const resultPresentation: Record<DiagnosticSessionPresentation, { icon: string; key: Parameters<typeof t>[0]; color: string }> = {
+    running: { icon: "🔄", key: "diagnostics.result.running", color: "#2b9bd7" },
+    success: { icon: "✅", key: "diagnostics.result.success", color: "#2e7d32" },
+    cancelled: { icon: "🛑", key: "diagnostics.result.cancelled", color: "#777" },
+    failed: { icon: "❌", key: "diagnostics.result.failed", color: "#c62828" },
+    interrupted: { icon: "⚠️", key: "diagnostics.result.interrupted", color: "#a05a00" },
+    "closed-unconfirmed": { icon: "⏳", key: "diagnostics.result.closed", color: "#a05a00" },
+    superseded: { icon: "↪️", key: "diagnostics.result.superseded", color: "#56708a" }
 };
 
 function formatTime(timestamp: number): string {
@@ -40,23 +41,24 @@ function formatBytes(bytes: number): string {
 
 function sessionResult(view: DiagnosticSessionView): { icon: string; label: string; color: string } {
     if (view.session.failures.some((failure) => failure.scope === "export") && view.presentation === "success") {
-        return { icon: "⚠️", label: "导出异常", color: "#a05a00" };
+        return { icon: "⚠️", label: t("diagnostics.result.exportFailed"), color: "#a05a00" };
     }
     if (view.presentation === "running" && view.session.task.protectedPendingChapters > 0) {
-        return { icon: "🔒", label: "等待输入密码", color: "#a05a00" };
+        return { icon: "🔒", label: t("diagnostics.result.passwordPending"), color: "#a05a00" };
     }
-    return resultPresentation[view.presentation];
+    const presentation = resultPresentation[view.presentation];
+    return { icon: presentation.icon, label: t(presentation.key), color: presentation.color };
 }
 
 function sessionPresentationHint(view: DiagnosticSessionView): string | null {
     if (view.presentation === "closed-unconfirmed") {
-        return "页面关闭事件已被记录，但尚未收到下载完成、用户取消或任务失败的终态回执。";
+        return t("diagnostics.reason.closed");
     }
     if (view.presentation === "superseded") {
-        return "随后已有同一本书的全本任务进入下载流程；此旧会话不再视为进行中，原始结果仍未确认。";
+        return t("diagnostics.reason.superseded");
     }
     if (view.presentation === "interrupted" && view.session.result === "running") {
-        return "页面关闭后超过 30 分钟仍未收到终态回执。此为诊断视图判断，不会改变下载、缓存或取消状态。";
+        return t("diagnostics.reason.interrupted");
     }
     return null;
 }
@@ -124,7 +126,7 @@ export function createDiagnosticPopup(): void {
         dispose();
         popup.remove();
     };
-    const header = createCommonHeader("🩺 诊断日志", close);
+    const header = createCommonHeader(t("diagnostics.title"), close);
     const list = el("div", {
         id: "esj-diagnostic-list",
         style: "width:280px;min-width:280px;border-right:1px solid #ddd;overflow:auto;background:#fafafa;"
@@ -141,7 +143,7 @@ export function createDiagnosticPopup(): void {
             style: `${buttonStyle}background:#eee;margin-right:auto;`,
             onclick: () => render({ preserveScroll: true })
         },
-        ["刷新"]
+        [t("cache.action.refresh")]
     ) as HTMLButtonElement;
     const downloadButton = el(
         "button",
@@ -155,7 +157,7 @@ export function createDiagnosticPopup(): void {
                 }
             }
         },
-        ["下载诊断日志"]
+        [t("diagnostics.action.download")]
     ) as HTMLButtonElement;
     const copyButton = el(
         "button",
@@ -174,7 +176,7 @@ export function createDiagnosticPopup(): void {
                 }
             }
         },
-        ["复制摘要"]
+        [t("diagnostics.action.copy")]
     ) as HTMLButtonElement;
     const clearButton = el(
         "button",
@@ -190,7 +192,7 @@ export function createDiagnosticPopup(): void {
                 render();
             }
         },
-        ["清除全部"]
+        [t("diagnostics.action.clearAll")]
     ) as HTMLButtonElement;
     const deleteButton = el(
         "button",
@@ -207,7 +209,7 @@ export function createDiagnosticPopup(): void {
                 render();
             }
         },
-        ["删除记录"]
+        [t("diagnostics.action.delete")]
     ) as HTMLButtonElement;
 
     const findSelectedView = (): DiagnosticSessionView | null => {
@@ -225,7 +227,7 @@ export function createDiagnosticPopup(): void {
         deleteButton.disabled = !view;
         if (!view) {
             detail.appendChild(
-                el("div", { style: "padding:50px 12px;text-align:center;color:#777;" }, ["暂无诊断记录"])
+                el("div", { style: "padding:50px 12px;text-align:center;color:#777;" }, [t("diagnostics.empty")])
             );
             return;
         }
@@ -259,7 +261,7 @@ export function createDiagnosticPopup(): void {
                     style: "padding:10px 12px;border:1px solid #e6a23c;background:#fff7e6;color:#8a5a00;border-radius:6px;line-height:1.6;margin-bottom:12px;"
                 },
                 [
-                    "诊断文件包含作品名称、作品链接和失败章节信息，但不包含小说正文、登录凭据、图片或字体内容。请确认后再公开分享。"
+                    t("diagnostics.privacy")
                 ]
             ),
             el(
@@ -270,7 +272,7 @@ export function createDiagnosticPopup(): void {
                 [formatBrowserDiagnosticSummary(session, view.presentation)]
             ),
             el("div", { style: "margin-top:10px;color:#777;font-size:12px;overflow-wrap:anywhere;" }, [
-                `文件：${exported.filename}`
+                t("diagnostics.file", { filename: exported.filename })
             ])
         );
     };
@@ -286,7 +288,7 @@ export function createDiagnosticPopup(): void {
         }
         list.replaceChildren();
         if (sessions.length === 0) {
-            list.appendChild(el("div", { style: "padding:40px 12px;text-align:center;color:#777;" }, ["暂无记录"]));
+            list.appendChild(el("div", { style: "padding:40px 12px;text-align:center;color:#777;" }, [t("diagnostics.empty")]));
         } else {
             const appendSection = (title: string, items: DiagnosticSessionView[]) => {
                 if (items.length === 0) {
@@ -329,9 +331,9 @@ export function createDiagnosticPopup(): void {
                     list.appendChild(row);
                 });
             };
-            appendSection("进行中", view.active);
-            appendSection("结果待确认", view.unconfirmed);
-            appendSection(`最近任务（最多 ${DIAGNOSTIC_HISTORY_LIMIT} 条）`, view.history);
+            appendSection(t("diagnostics.section.active"), view.active);
+            appendSection(t("diagnostics.section.unconfirmed"), view.unconfirmed);
+            appendSection(t("diagnostics.section.recent", { limit: DIAGNOSTIC_HISTORY_LIMIT }), view.history);
         }
         renderDetail(sessions.find((item) => item.session.id === selectedId) || null);
         if (preserveScroll) {
@@ -383,7 +385,12 @@ export function createDiagnosticPopup(): void {
                     style: "padding:8px 12px;background:#f7f7f7;border-bottom:1px solid #ddd;color:#666;font-size:12px;"
                 },
                 [
-                    `历史最多 ${DIAGNOSTIC_HISTORY_LIMIT} 条 / ${Math.round(DIAGNOSTIC_RETENTION_MS / 86400000)} 天；单条 ${formatBytes(DIAGNOSTIC_SESSION_BYTES_LIMIT)}，总计 ${formatBytes(DIAGNOSTIC_TOTAL_BYTES_LIMIT)}`
+                    t("diagnostics.retention", {
+                        limit: DIAGNOSTIC_HISTORY_LIMIT,
+                        days: Math.round(DIAGNOSTIC_RETENTION_MS / 86400000),
+                        single: formatBytes(DIAGNOSTIC_SESSION_BYTES_LIMIT),
+                        total: formatBytes(DIAGNOSTIC_TOTAL_BYTES_LIMIT)
+                    })
                 ]
             ),
             el("div", { style: "display:flex;flex:1;min-height:0;" }, [list, detail]),
@@ -425,9 +432,9 @@ export function createDiagnosticPopup(): void {
                     style: "position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:380px;max-width:calc(100vw - 32px);background:#fff;border:1px solid #aaa;border-radius:8px;box-shadow:0 0 18px rgba(0,0,0,.28);z-index:1000004;display:flex;flex-direction:column;"
                 },
                 [
-                    createCommonHeader("🗑️ 清除确认", () => finish(false)),
+                    createCommonHeader(t("diagnostics.confirm.title"), () => finish(false)),
                     el("div", { style: "padding:16px;font-size:15px;line-height:1.7;color:#333;" }, [
-                        "确定清除全部诊断记录吗？这也会清除其他页面的进行中记录，且无法恢复。"
+                        t("diagnostics.confirm.message")
                     ]),
                     el("div", { style: "padding:12px;display:flex;justify-content:flex-end;gap:8px;" }, [
                         el(
@@ -437,7 +444,7 @@ export function createDiagnosticPopup(): void {
                                 style: "padding:8px 12px;background:#eee;border:1px solid #ccc;border-radius:6px;cursor:pointer;",
                                 onclick: () => finish(false)
                             },
-                            ["取消"]
+                            [t("common.cancel")]
                         ),
                         el(
                             "button",
@@ -446,7 +453,7 @@ export function createDiagnosticPopup(): void {
                                 style: "padding:8px 12px;background:#d9534f;color:#fff;border:1px solid #d9534f;border-radius:6px;cursor:pointer;",
                                 onclick: () => finish(true)
                             },
-                            ["清除"]
+                            [t("cache.action.clear")]
                         )
                     ])
                 ]

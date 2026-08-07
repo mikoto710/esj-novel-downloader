@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { state } from "../../src/core/state";
 import { confirmIncompleteChapters, confirmMappingFontDownload, showFormatChoice } from "../../src/ui/popups";
 import { createCachedData, createChapter, createDownloadTask } from "../support";
+import { setInterfaceLocalePreference } from "../../src/core/config";
 
 function createMappedChapter() {
     return createChapter(0, {
@@ -19,6 +20,7 @@ function createMappedChapter() {
 
 describe("mapped font export UI", () => {
     beforeEach(() => {
+        setInterfaceLocalePreference("zh-CN");
         state.cachedData = null;
         state.originalTitle = "ESJZone Test";
     });

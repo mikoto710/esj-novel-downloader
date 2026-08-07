@@ -6,9 +6,10 @@ import {
 } from "../core/download-history";
 import { DownloadFormat, DownloadHistoryItem, SourcePageType } from "../types";
 import { el, enableDrag } from "../utils/dom";
+import { t } from "./locale";
 
 function sourceLabel(source: SourcePageType): string {
-    return source === "detail" ? "详情页" : source === "forum" ? "论坛页" : "单章页";
+    return t(source === "detail" ? "history.source.detail" : source === "forum" ? "history.source.forum" : "history.source.single");
 }
 
 function formatTime(timestamp: number): string {
@@ -18,10 +19,10 @@ function formatTime(timestamp: number): string {
     yesterday.setDate(today.getDate() - 1);
     const time = date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
     if (date.toDateString() === today.toDateString()) {
-        return `今天 ${time}`;
+        return t("history.today", { time });
     }
     if (date.toDateString() === yesterday.toDateString()) {
-        return `昨天 ${time}`;
+        return t("history.yesterday", { time });
     }
     return date.toLocaleString();
 }
@@ -35,18 +36,18 @@ function imageStatusText(item: DownloadHistoryItem): string {
         return "—";
     }
     if (!item.imageInfo) {
-        return item.imageEnabled === undefined ? "—" : "旧记录";
+        return item.imageEnabled === undefined ? "—" : t("history.image.legacy");
     }
     if (!item.imageInfo.enabled) {
-        return "未启用";
+        return t("history.image.disabled");
     }
     const total = item.imageInfo.successCount + item.imageInfo.failureCount;
     if (total === 0) {
-        return "无插图";
+        return t("history.image.none");
     }
     return item.imageInfo.failureCount === 0
-        ? `${item.imageInfo.successCount} 张`
-        : `${item.imageInfo.successCount} / ${total} 张`;
+        ? t("history.image.count", { count: item.imageInfo.successCount })
+        : t("history.image.progress", { success: item.imageInfo.successCount, total });
 }
 
 // 显示清空下载记录确认弹窗
@@ -65,11 +66,11 @@ function showHistoryClearConfirm(): Promise<boolean> {
                 style: "padding:10px;background:#2b9bd7;color:#fff;display:flex;justify-content:space-between;align-items:center;cursor:move;border-radius:8px 8px 0 0;"
             },
             [
-                el("span", { style: "font-weight:bold;" }, ["🗑️ 清空确认"]),
+                el("span", { style: "font-weight:bold;" }, [t("history.confirm.title")]),
                 el(
                     "button",
                     {
-                        title: "关闭",
+                        title: t("common.close"),
                         style: "border:none;background:#ef5350;color:#fff;padding:4px 10px;border-radius:6px;cursor:pointer;font-weight:bold;",
                         onclick: () => cleanup(false)
                     },
@@ -83,7 +84,7 @@ function showHistoryClearConfirm(): Promise<boolean> {
                 style: "padding:8px 12px;background:#eee;border:1px solid #ccc;border-radius:6px;cursor:pointer;",
                 onclick: () => cleanup(false)
             },
-            ["取消"]
+            [t("common.cancel")]
         );
         const confirmButton = el(
             "button",
@@ -91,7 +92,7 @@ function showHistoryClearConfirm(): Promise<boolean> {
                 style: "padding:8px 12px;background:#d9534f;color:#fff;border:none;border-radius:6px;cursor:pointer;",
                 onclick: () => cleanup(true)
             },
-            ["清空"]
+            [t("history.action.clear")]
         );
         const popup = el(
             "div",
@@ -102,7 +103,7 @@ function showHistoryClearConfirm(): Promise<boolean> {
             [
                 header,
                 el("div", { style: "padding:16px;font-size:14px;line-height:1.7;color:#333;" }, [
-                    "确定清空全部下载记录吗？此操作无法恢复。"
+                    t("history.confirm.message")
                 ]),
                 el("div", { style: "padding:12px;display:flex;justify-content:flex-end;gap:8px;" }, [
                     cancelButton,
@@ -135,11 +136,11 @@ export function createDownloadHistoryPopup(): void {
             style: "padding:10px;background:#2b9bd7;color:#fff;display:flex;justify-content:space-between;align-items:center;cursor:move;border-radius:8px 8px 0 0;"
         },
         [
-            el("span", { style: "font-weight:bold;" }, ["⬇️ 下载记录"]),
+            el("span", { style: "font-weight:bold;" }, [t("history.title")]),
             el(
                 "button",
                 {
-                    title: "关闭",
+                    title: t("common.close"),
                     style: "border:none;background:#ef5350;color:#fff;padding:4px 10px;border-radius:6px;cursor:pointer;font-weight:bold;",
                     onclick: close
                 },
@@ -152,16 +153,16 @@ export function createDownloadHistoryPopup(): void {
         "select",
         { style: "padding:6px;border:1px solid #ccc;border-radius:5px;" },
         selectOptions([
-            ["all", "全部类型"],
-            ["book", "全本"],
-            ["single", "单章"]
+            ["all", t("history.filter.allType")],
+            ["book", t("history.filter.book")],
+            ["single", t("history.filter.single")]
         ])
     );
     const formatSelect = el(
         "select",
         { style: "padding:6px;border:1px solid #ccc;border-radius:5px;" },
         selectOptions([
-            ["all", "全部格式"],
+            ["all", t("history.filter.allFormat")],
             ["txt", "TXT"],
             ["epub", "EPUB"],
             ["html", "HTML"]
@@ -171,10 +172,10 @@ export function createDownloadHistoryPopup(): void {
         "select",
         { style: "padding:6px;border:1px solid #ccc;border-radius:5px;" },
         selectOptions([
-            ["all", "全部来源"],
-            ["detail", "详情页"],
-            ["forum", "论坛页"],
-            ["single", "单章页"]
+            ["all", t("history.filter.allSource")],
+            ["detail", t("history.source.detail")],
+            ["forum", t("history.source.forum")],
+            ["single", t("history.source.single")]
         ])
     );
     const summary = el("span", { style: "margin-left:auto;color:#666;font-size:12px;" });
@@ -185,15 +186,15 @@ export function createDownloadHistoryPopup(): void {
                 "tr",
                 {},
                 [
-                    ["书名", "21%"],
-                    ["作者", "12%"],
-                    ["导出类型", "9%"],
-                    ["格式", "8%"],
-                    ["来源", "8%"],
-                    ["章节", "14%"],
-                    ["插图", "9%"],
-                    ["时间", "12%"],
-                    ["操作", "7%"]
+                    [t("history.column.book"), "21%"],
+                    [t("history.column.author"), "12%"],
+                    [t("history.column.type"), "9%"],
+                    [t("history.column.format"), "8%"],
+                    [t("history.column.source"), "8%"],
+                    [t("history.column.chapter"), "14%"],
+                    [t("history.column.image"), "9%"],
+                    [t("history.column.time"), "12%"],
+                    [t("history.column.action"), "7%"]
                 ].map(([text, width], index) =>
                     el(
                         "th",
@@ -222,12 +223,16 @@ export function createDownloadHistoryPopup(): void {
                 (format === "all" || item.format === format) &&
                 (source === "all" || item.sourcePageType === source)
         );
-        summary.textContent = `显示 ${filtered.length} / 共 ${items.length} 条，最多保留 ${DOWNLOAD_HISTORY_LIMIT} 条`;
+        summary.textContent = t("history.summary", {
+            shown: filtered.length,
+            total: items.length,
+            limit: DOWNLOAD_HISTORY_LIMIT
+        });
         tableBody.replaceChildren();
         if (filtered.length === 0) {
             tableBody.appendChild(
                 el("tr", {}, [
-                    el("td", { colspan: 9, style: "padding:48px;text-align:center;color:#777;" }, ["暂无下载记录"])
+                    el("td", { colspan: 9, style: "padding:48px;text-align:center;color:#777;" }, [t("history.empty")])
                 ])
             );
             return;
@@ -245,16 +250,16 @@ export function createDownloadHistoryPopup(): void {
             const openButton = el(
                 "button",
                 {
-                    title: "打开原页",
+                    title: t("history.action.open"),
                     style: "border:0;background:none;color:#2b9bd7;cursor:pointer;padding:2px 4px;",
                     onclick: () => window.open(item.pageUrl, "_blank", "noopener")
                 },
-                ["来源"]
+                [t("history.column.source")]
             );
             const deleteButton = el(
                 "button",
                 {
-                    title: "删除记录",
+                    title: t("history.action.delete"),
                     style: "border:0;background:none;color:#d9534f;cursor:pointer;padding:2px 4px;",
                     onclick: async () => {
                         await removeDownloadHistory(item.id);
@@ -262,13 +267,13 @@ export function createDownloadHistoryPopup(): void {
                         render();
                     }
                 },
-                ["删除"]
+                [t("history.action.delete")]
             );
             tableBody.appendChild(
                 el("tr", {}, [
                     cell(item.bookName),
                     cell(item.author || "—"),
-                    cell(item.sourcePageType === "single" ? "单章" : "全本"),
+                    cell(t(item.sourcePageType === "single" ? "history.type.single" : "history.type.book")),
                     cell(item.format.toUpperCase()),
                     cell(sourceLabel(item.sourcePageType)),
                     cell(item.chapterInfo || "—"),
@@ -303,7 +308,7 @@ export function createDownloadHistoryPopup(): void {
                 render();
             }
         },
-        ["清空全部记录"]
+        [t("history.action.clearAll")]
     );
     const refreshButton = el(
         "button",
@@ -316,7 +321,7 @@ export function createDownloadHistoryPopup(): void {
                 });
             }
         },
-        ["刷新"]
+        [t("cache.action.refresh")]
     );
     const popup = el(
         "div",
@@ -344,7 +349,7 @@ export function createDownloadHistoryPopup(): void {
                             style: "padding:8px 12px;background:#eee;border:1px solid #ccc;border-radius:6px;cursor:pointer;",
                             onclick: close
                         },
-                        ["关闭"]
+                        [t("common.close")]
                     )
                 ]
             )

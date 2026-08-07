@@ -17,11 +17,13 @@ vi.mock("../../src/utils/index", () => ({ log: mocks.log, triggerDownload: mocks
 vi.mock("../../src/core/download-history", () => ({ addDownloadHistory: mocks.addDownloadHistory }));
 
 describe("full-book export recovery contracts", () => {
-    beforeEach(() => {
+    beforeEach(async () => {
         vi.resetModules();
         vi.clearAllMocks();
         document.body.innerHTML = "";
         document.title = "ESJZone Test";
+        const { setInterfaceLocalePreference } = await import("../../src/core/config");
+        setInterfaceLocalePreference("zh-CN");
         mocks.buildEpub.mockResolvedValue(new Blob(["epub"], { type: "application/epub+zip" }));
         mocks.buildHtml.mockResolvedValue(new Blob(["html"], { type: "text/html" }));
         vi.spyOn(console, "error").mockImplementation(() => undefined);
