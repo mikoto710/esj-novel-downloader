@@ -1,35 +1,10 @@
-import type { StorageFailure } from "../core/cache/storage-error";
 import type { DownloadLog } from "../core/download/contracts";
 import { t } from "../ui/locale";
+import { formatStorageFailureText } from "../ui/storage-failure-messages";
 
 function value(message: DownloadLog, key: string, fallback = ""): string {
     const entry = message.params?.[key];
     return entry === undefined ? fallback : String(entry);
-}
-
-const STORAGE_FAILURE_KEYS = {
-    "quota-exceeded": "download.storage.quotaExceeded",
-    "ownership-lost": "download.storage.ownershipLost",
-    "transaction-aborted": "download.storage.transactionAborted",
-    "database-unavailable": "download.storage.databaseUnavailable",
-    "migration-failed": "download.storage.migrationFailed",
-    "flush-timeout": "download.storage.flushTimeout",
-    "unknown-storage-error": "download.storage.unknown"
-} as const;
-
-function storageFailureSummary(reason: string): string {
-    const key = STORAGE_FAILURE_KEYS[reason as keyof typeof STORAGE_FAILURE_KEYS];
-    return key ? t(key) : reason;
-}
-
-function formatStorageFailureText(reason: string, detail = ""): string {
-    const summary = storageFailureSummary(reason);
-    return detail && detail !== summary ? `${summary}：${detail}` : summary;
-}
-
-export function formatStorageFailure(failure: StorageFailure): string {
-    const detail = typeof failure.params?.detail === "string" ? failure.params.detail : "";
-    return formatStorageFailureText(failure.reason, detail);
 }
 
 function storageFailureText(message: DownloadLog): string {

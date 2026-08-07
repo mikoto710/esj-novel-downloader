@@ -19,7 +19,7 @@ import { normalizeStorageError, StorageError, toStorageFailure } from "../core/c
 import { getImageDownloadSetting } from "../core/config";
 import { getImageCacheConfirmHint } from "../ui/image-cache-compatibility";
 import { showCacheDiscardFailure, showDownloadTerminalFailure } from "../ui/download-terminal-notices";
-import { formatStorageFailure } from "../adapters/browser-download-messages";
+import { formatStorageFailure } from "../ui/storage-failure-messages";
 import {
     browserDiagnosticLog as log,
     finishBrowserDiagnosticSession,
