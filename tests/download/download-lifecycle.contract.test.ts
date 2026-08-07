@@ -138,7 +138,7 @@ describe("download lifecycle contracts", () => {
     it("shows cache preparation before claiming the writer", async () => {
         await scrapeDetail();
 
-        expect(mocks.log).toHaveBeenCalledWith("正在准备本地缓存...");
+        expect(mocks.log).toHaveBeenCalledWith("正在准备本地缓存…");
         expect(mocks.claimCache).toHaveBeenCalledWith("100", lock.taskId, false, expect.any(AbortSignal));
         expect(mocks.log.mock.invocationCallOrder[0]).toBeLessThan(mocks.claimCache.mock.invocationCallOrder[0]);
     });

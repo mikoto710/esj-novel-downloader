@@ -66,7 +66,7 @@ describe("protected chapter password UI", () => {
         expect(input.disabled).toBe(true);
         expect(remember.disabled).toBe(true);
         expect((document.querySelector("#esj-protected-submit") as HTMLButtonElement).disabled).toBe(true);
-        expect((document.querySelector("#esj-protected-submit") as HTMLButtonElement).textContent).toBe("正在验证...");
+        expect((document.querySelector("#esj-protected-submit") as HTMLButtonElement).textContent).toBe("正在验证…");
         expect((document.querySelector("#esj-protected-skip") as HTMLButtonElement).disabled).toBe(true);
         expect((document.querySelector("#esj-protected-skip-all") as HTMLButtonElement).disabled).toBe(true);
         expect((document.querySelector("#esj-protected-cancel") as HTMLButtonElement).disabled).toBe(false);

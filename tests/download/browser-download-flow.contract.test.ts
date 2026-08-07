@@ -24,12 +24,12 @@ describe("browser download flow contracts", () => {
         await runtime.batchDownload(createBrowserDownloadOptions(createBrowserDownloadTasks(1)));
 
         const trayMessages = mocks.updateTrayText.mock.calls.flat();
-        expect(trayMessages).toContain("全本下载 (1/1)");
+        expect(trayMessages).toContain("全本下载（1/1）");
         expect(trayMessages.join("\n")).not.toContain("密码待处理 0");
-        expect(trayMessages).toContain("正在保存下载进度 (1/1)");
-        expect(trayMessages).toContain("正在检查章节完整性 (1/1)");
-        expect(trayMessages).toContain("正在准备导出 (1/1)");
-        expect(trayMessages).toContain("导出准备完成 (1/1)");
+        expect(trayMessages).toContain("正在保存下载进度（1/1）");
+        expect(trayMessages).toContain("正在检查章节完整性（1/1）");
+        expect(trayMessages).toContain("正在准备导出（1/1）");
+        expect(trayMessages).toContain("导出准备完成（1/1）");
     });
 
     it("shows cache validation before restored chapters finish normalizing", async () => {
@@ -45,8 +45,8 @@ describe("browser download flow contracts", () => {
         const downloadPromise = runtime.batchDownload(createBrowserDownloadOptions(createBrowserDownloadTasks(1)));
         await validationStarted.promise;
 
-        expect(document.querySelector("#esj-title")?.textContent).toBe("📘 正在校验本地缓存 (1 章)");
-        expect(mocks.log).toHaveBeenCalledWith("💾 读取到 1 章缓存，正在校验...");
+        expect(document.querySelector("#esj-title")?.textContent).toBe("📘 正在校验本地缓存（1 章）");
+        expect(mocks.log).toHaveBeenCalledWith("💾 读取到 1 章缓存，正在校验…");
 
         continueValidation.resolve();
         await downloadPromise;
@@ -159,7 +159,7 @@ describe("browser download flow contracts", () => {
         decision.resolve({ action: "skip-current" });
         await download;
 
-        expect(mocks.updateTrayText.mock.calls.flat()).toContain("全本下载 (0/1)");
+        expect(mocks.updateTrayText.mock.calls.flat()).toContain("全本下载（0/1）");
     });
 
     it("refreshes the active download status in place when the interface locale changes", async () => {
@@ -178,7 +178,7 @@ describe("browser download flow contracts", () => {
         publishInterfaceLocaleChange();
 
         expect(document.querySelector("#esj-popup")).toBe(popup);
-        expect(document.querySelector("#esj-title")?.textContent).toContain("正文完成 0/1｜密碼待處理 1｜正在抓取");
+        expect(document.querySelector("#esj-title")?.textContent).toContain("內文完成 0/1｜密碼待處理 1｜正在擷取");
         decision.resolve({ action: "skip-current" });
         await download;
     });

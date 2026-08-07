@@ -1,6 +1,38 @@
-import type { DownloadLog } from "../core/download/contracts";
+import type { DownloadLog, DownloadLogCode } from "../core/download/contracts";
+import type { LocaleKey } from "../core/locale";
 import { t } from "../ui/locale";
 import { formatStorageFailureText } from "../ui/storage-failure-messages";
+
+const DIRECT_LOG_KEYS = {
+    "cover-cache-hit": "download.log.coverCacheHit",
+    "cover-cache-saved": "download.log.coverCacheSaved",
+    "cover-cache-write-ownership-lost": "download.log.coverCacheOwnershipLost",
+    "restored-mapping-font-invalid": "download.log.mappingCacheInvalid",
+    "cache-restored": "download.log.cacheRestored",
+    "cache-restored-with-invalidated": "download.log.cacheRestoredInvalidated",
+    "chapter-fetch-failed": "download.log.chapterFetchFailed",
+    "chapter-mapping-font-failed": "download.log.mappingFailed",
+    "chapter-skipped-non-site": "download.log.chapterSkippedNonSite",
+    "integrity-check-started": "download.log.integrityStarted",
+    "integrity-check-passed": "download.log.integrityPassed",
+    "integrity-check-failed": "download.log.integrityFailed",
+    "missing-chapter-retry": "download.log.missingRetry",
+    "missing-chapter-export-with-placeholders": "download.log.missingPlaceholder",
+    "missing-chapter-retry-started": "download.log.missingRetryStarted",
+    "missing-chapter-retry-saved": "download.log.missingRetrySaved",
+    "cancellation-cache-write-skipped-lock-lost": "download.log.lockLost",
+    "cancellation-cache-discard-requested": "download.log.discardRequested",
+    "cancellation-cache-write-started": "download.log.cacheWriteStarted",
+    "cache-restore-started": "download.log.cacheRestoreStarted",
+    "download-started": "download.log.started",
+    "download-main-flush-started": "download.log.mainFlush",
+    "download-integrity-flush-started": "download.log.integrityFlush",
+    "export-preparation-started": "download.log.exportPreparing",
+    "download-completed": "download.log.completed"
+} as const satisfies Partial<Record<DownloadLogCode, LocaleKey>>;
+
+type DirectDownloadLogCode = keyof typeof DIRECT_LOG_KEYS;
+type ComplexDownloadLogCode = Exclude<DownloadLogCode, DirectDownloadLogCode>;
 
 function value(message: DownloadLog, key: string, fallback = ""): string {
     const entry = message.params?.[key];
@@ -27,9 +59,9 @@ function formatChapterProcessed(message: DownloadLog): string {
         url: value(message, "url")
     };
     const base = t(
-        message.params?.retry ? "download.log.chapterProcessedRetry" : "download.log.chapterProcessed",
+        message.params?.retry ? "download.log.chapterProcessedRetryBase" : "download.log.chapterProcessedBase",
         params
-    ).split("\nURL:")[0];
+    );
     if (message.code === "chapter-processed-with-image-failures") {
         const imageErrors = Number(message.params?.imageErrors || 0);
         const imageCount = Number(message.params?.imageCount || 0);
@@ -83,59 +115,33 @@ function formatCancellation(message: DownloadLog): string {
     return t("download.log.cancelledSaveFailed", { detail: detail ? `：${detail}` : "。" });
 }
 
-/**
- * 暂时将无语言核心日志映射为现有界面文案，后续由 locale 字典替换
- */
+function formatUnhandledDownloadLog(code: never, message: DownloadLog): string {
+    return `${String(code)}${message.params ? ` ${JSON.stringify(message.params)}` : ""}`;
+}
+
+// 下载核心只产生稳定消息码，浏览器展示层在输出时按当前界面语言格式化
 export function formatDownloadLog(message: DownloadLog): string {
-    switch (message.code) {
-        case "cover-cache-hit":
-            return t("download.log.coverCacheHit");
+    const directKey = DIRECT_LOG_KEYS[message.code as DirectDownloadLogCode];
+    if (directKey) {
+        return t(directKey, message.params);
+    }
+
+    const code = message.code as ComplexDownloadLogCode;
+    switch (code) {
         case "cover-cache-read-failed":
             return t("download.log.coverCacheReadFailed", {
                 detail: value(message, "message") || value(message, "detail")
             });
-        case "cover-cache-saved":
-            return t("download.log.coverCacheSaved");
-        case "cover-cache-write-ownership-lost":
-            return t("download.log.coverCacheOwnershipLost");
         case "cover-cache-write-failed":
             return t("download.log.coverCacheWriteFailed", {
                 detail: value(message, "message") || value(message, "detail")
             });
-        case "restored-mapping-font-invalid":
-            return t("download.log.mappingCacheInvalid", {
-                title: value(message, "title"),
-                detail: value(message, "detail")
-            });
-        case "cache-restored":
-            return t("download.log.cacheRestored", { count: value(message, "count") });
-        case "cache-restored-with-invalidated":
-            return t("download.log.cacheRestoredInvalidated", {
-                count: value(message, "count"),
-                invalidatedCount: value(message, "invalidatedCount")
-            });
         case "cache-write-retry":
             return t("download.log.cacheWriteRetry", { detail: storageFailureText(message) });
-        case "chapter-fetch-failed":
-            return t("download.log.chapterFetchFailed", {
-                title: value(message, "title"),
-                detail: value(message, "detail")
-            });
-        case "chapter-mapping-font-failed":
-            return t("download.log.mappingFailed", {
-                detail: value(message, "detail"),
-                title: value(message, "title")
-            });
         case "chapter-processed":
         case "chapter-processed-with-images":
         case "chapter-processed-with-image-failures":
             return formatChapterProcessed(message);
-        case "chapter-skipped-non-site":
-            return t("download.log.chapterSkippedNonSite", {
-                completed: value(message, "completed"),
-                total: value(message, "total"),
-                title: value(message, "title")
-            });
         case "protected-chapter-retry-skipped":
             return t("protected.log.retrySkipped", { chapter: chapterTitle(message) });
         case "protected-chapter-redetected":
@@ -154,47 +160,15 @@ export function formatDownloadLog(message: DownloadLog): string {
             return t("protected.log.protocolFailed", { chapter: chapterTitle(message) });
         case "protected-chapter-unlocked":
             return t("protected.log.unlocked", { chapter: chapterTitle(message) });
-        case "integrity-check-started":
-            return t("download.log.integrityStarted");
-        case "integrity-check-passed":
-            return t("download.log.integrityPassed");
-        case "integrity-check-failed":
-            return t("download.log.integrityFailed", { count: value(message, "count") });
         case "chapter-integrity-retry":
             return formatIntegrityRetry(message);
-        case "missing-chapter-retry":
-            return t("download.log.missingRetry", { index: value(message, "index"), total: value(message, "total") });
-        case "missing-chapter-export-with-placeholders":
-            return t("download.log.missingPlaceholder", { count: value(message, "count") });
-        case "missing-chapter-retry-started":
-            return t("download.log.missingRetryStarted", { count: value(message, "count") });
-        case "missing-chapter-retry-saved":
-            return t("download.log.missingRetrySaved");
-        case "cancellation-cache-write-skipped-lock-lost":
-            return t("download.log.lockLost");
-        case "cancellation-cache-discard-requested":
-            return t("download.log.discardRequested");
-        case "cancellation-cache-write-started":
-            return t("download.log.cacheWriteStarted");
         case "cancellation-finished":
             return formatCancellation(message);
-        case "cache-restore-started":
-            return t("download.log.cacheRestoreStarted", { count: value(message, "count") });
-        case "download-started":
-            return t("download.log.started", { concurrency: value(message, "concurrency") });
-        case "download-main-flush-started":
-            return t("download.log.mainFlush");
-        case "download-integrity-flush-started":
-            return t("download.log.integrityFlush");
-        case "export-preparation-started":
-            return t("download.log.exportPreparing");
-        case "download-completed":
-            return t("download.log.completed");
         case "download-storage-failed":
             return t("download.log.storageFailed", { detail: storageFailureText(message) });
         case "cache-discard-failed":
             return t("download.log.discardFailed", { detail: storageFailureText(message) });
         default:
-            return `${message.code}${message.params ? ` ${JSON.stringify(message.params)}` : ""}`;
+            return formatUnhandledDownloadLog(code, message);
     }
 }

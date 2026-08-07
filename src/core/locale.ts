@@ -104,6 +104,8 @@ export const LOCALE_KEYS = [
     "download.log.cacheRestoredInvalidated",
     "download.log.cacheWriteRetry",
     "download.log.chapterFetchFailed",
+    "download.log.chapterProcessedBase",
+    "download.log.chapterProcessedRetryBase",
     "download.log.chapterProcessed",
     "download.log.chapterProcessedRetry",
     "download.log.chapterProcessedImages",

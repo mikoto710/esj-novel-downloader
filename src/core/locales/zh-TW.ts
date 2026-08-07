@@ -68,6 +68,8 @@ export const ZH_TW_MESSAGES = Object.freeze({
     "download.log.cacheRestoredInvalidated": "💾 已恢復 {count} 章快取，{invalidatedCount} 章需要重新擷取",
     "download.log.cacheWriteRetry": "⚠️ 快取寫入失敗，正在安全地重試一次：{detail}",
     "download.log.chapterFetchFailed": "❌ 章節取得失敗（{title}）：{detail}",
+    "download.log.chapterProcessedBase": "✅ 擷取（{completed}/{total}）：{title}",
+    "download.log.chapterProcessedRetryBase": "♻️ 重新擷取（{completed}/{total}）：{title}",
     "download.log.chapterProcessed": "✅ 擷取（{completed}/{total}）：{title}\nURL: {url}",
     "download.log.chapterProcessedRetry": "♻️ 重新擷取（{completed}/{total}）：{title}\nURL: {url}",
     "download.log.chapterProcessedImages": "{base}（{count} 張圖片）\nURL: {url}",

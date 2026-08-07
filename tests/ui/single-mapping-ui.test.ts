@@ -124,7 +124,7 @@ describe("single-page mapped font UI", () => {
             const buttons = getButtons();
             expect(buttons.txt.dataset.esjProtected).toBeUndefined();
             expect(buttons.html.dataset.esjProtected).toBeUndefined();
-            expect(buttons.txt.getAttribute("title")).toBe("下载本章 (TXT)");
+            expect(buttons.txt.getAttribute("title")).toBe("下载本章（TXT）");
             expect(document.querySelector("#esj-single-mapping-warning")).toBeNull();
         });
     });
