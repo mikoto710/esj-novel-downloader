@@ -66,6 +66,14 @@ npm run check
 
 `npm run check` 包含 TypeScript 检查和普通测试，但不包含 `tests/stress/`。
 
+只需快速生成本地迭代用 userscript 时，可以执行：
+
+```bash
+npm run build:fast
+```
+
+`npm run build:fast` 只执行 TypeScript 检查和 Rollup，不运行自动化测试、ESLint 或格式检查，因此不属于提交、CI 或发布完成口径。
+
 修改下载调度、缓存、迁移、锁、跨页面同步、并发或取消时，额外执行：
 
 ```bash

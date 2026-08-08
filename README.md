@@ -109,10 +109,13 @@ npm run watch
 # 3. 使用 Prettier 格式化源码、测试和受管理文档
 npm run format
 
-# 4. 类型检查、自动化测试并生成最终 userscript
+# 4. 类型检查并快速生成本地迭代用 userscript
+npm run build:fast
+
+# 5. 类型检查、自动化测试并生成最终 userscript
 npm run build
 ```
 
-`npm run format` 会直接修改文件，执行后应检查差异。构建产物位于 `dist/esj-novel-downloader.user.js`。
+`npm run build:fast` 只执行 TypeScript 类型检查和 Rollup，不运行自动化测试、ESLint 或格式检查，不能代替提交、CI 或发布前的完整 `npm run build`。`npm run format` 会直接修改文件，执行后应检查差异。构建产物位于 `dist/esj-novel-downloader.user.js`。
 
 贡献流程、代码规范和发布要求见 [`CONTRIBUTING.md`](CONTRIBUTING.md)，测试目录与隔离约定见 [`tests/README.md`](tests/README.md)。
