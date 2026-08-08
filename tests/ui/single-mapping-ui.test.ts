@@ -130,6 +130,7 @@ describe("single-page mapped font UI", () => {
     });
 
     it("keeps both exports disabled when the final mapped structure is invalid", async () => {
+        setInterfaceLocalePreference("zh-TW");
         installSinglePage(`<section style="font-family: '1', sans-serif;"><p>Invalid mapped body</p></section>`);
 
         injectSinglePageButton();
@@ -138,7 +139,10 @@ describe("single-page mapped font UI", () => {
             const buttons = getButtons();
             expect(buttons.txt.getAttribute("aria-disabled")).toBe("true");
             expect(buttons.html.getAttribute("aria-disabled")).toBe("true");
-            expect(document.querySelector("#esj-single-mapping-warning")?.textContent).toContain("映射字体解析失败");
+            const warning = document.querySelector("#esj-single-mapping-warning")?.textContent;
+            expect(warning).toContain("映射字型解析失敗");
+            expect(warning).toContain("章節結構無效");
+            expect(warning).not.toContain("structure-invalid");
         });
     });
 

@@ -15,7 +15,12 @@ describe("download terminal notices", () => {
     });
 
     it("uses the common popup for an unexpected download failure", () => {
-        showDownloadTerminalFailure({ kind: "download", message: "parser failed", storageFailure: null });
+        showDownloadTerminalFailure({
+            kind: "download",
+            code: "Error",
+            params: { errorName: "Error", detail: "parser failed" },
+            storageFailure: null
+        });
 
         const popup = document.querySelector("#esj-message-popup") as HTMLElement;
         expect(popup.dataset.tone).toBe("error");

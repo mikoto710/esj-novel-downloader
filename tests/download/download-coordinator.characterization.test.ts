@@ -136,7 +136,7 @@ describe("runDownload characterization", () => {
         harness.dependencies.protectedChapterAuth.unlock = vi
             .fn()
             .mockResolvedValueOnce({ kind: "password-rejected", message: "密码不正确" })
-            .mockResolvedValueOnce({ kind: "protocol-error", code: "token-invalid", message: "授权响应异常" })
+            .mockResolvedValueOnce({ kind: "protocol-error", code: "token-invalid" })
             .mockResolvedValueOnce({ kind: "unlocked", html: "<p>unlocked body</p>" });
 
         await runDownload(createOptions(tasks), harness.dependencies);
@@ -148,7 +148,7 @@ describe("runDownload characterization", () => {
         });
         expect(harness.ui.promptProtectedChapterPassword.mock.calls[1][0]).not.toHaveProperty("initialPassword");
         expect(harness.ui.promptProtectedChapterPassword.mock.calls[2][0]).toMatchObject({
-            message: "授权响应异常",
+            messageCode: "token-invalid",
             retryConnection: true
         });
         expect(harness.events.ofType("protected-chapter-password-rejected")).toEqual([
@@ -455,16 +455,23 @@ describe("runDownload characterization", () => {
         const tasks = [createDownloadTask(0)];
         const harness = createHarness(tasks);
         harness.dependencies.chapterProcessor.process = async () => {
-            throw new MappingFontError("woff2-invalid", "invalid test font");
+            throw new MappingFontError("woff2-invalid", "woff2-signature-invalid");
         };
 
-        await expect(runDownload(createOptions(tasks), harness.dependencies)).rejects.toThrow(
-            "1 个章节的映射字体无法解析"
-        );
+        await expect(runDownload(createOptions(tasks), harness.dependencies)).rejects.toMatchObject({
+            code: "font-source-invalid",
+            reason: "chapter-structure-invalid",
+            params: { count: 1 }
+        });
 
         expect(harness.ui.showMappingFontFailure).toHaveBeenCalledOnce();
         expect(harness.ui.showMappingFontFailure).toHaveBeenCalledWith([
-            expect.objectContaining({ task: tasks[0], message: expect.stringContaining("invalid test font") })
+            expect.objectContaining({
+                task: tasks[0],
+                code: "woff2-invalid",
+                reason: "woff2-signature-invalid",
+                params: {}
+            })
         ]);
         expect(harness.ui.cleanup.mock.invocationCallOrder[0]).toBeLessThan(
             harness.ui.showMappingFontFailure.mock.invocationCallOrder[0]
@@ -511,7 +518,8 @@ describe("runDownload characterization", () => {
         });
         expect(harness.ui.showTerminalFailure).toHaveBeenCalledWith({
             kind: "download",
-            message: expect.any(String),
+            code: "ownership-lost",
+            params: { operation: "write" },
             storageFailure: expect.objectContaining({ reason: "ownership-lost", operation: "write" })
         });
         expect(harness.ui.cleanup.mock.invocationCallOrder[0]).toBeLessThan(
@@ -611,17 +619,24 @@ describe("runDownload characterization", () => {
             .mockRejectedValueOnce(new Error("automatic 3"))
             .mockResolvedValue("<p>mapped</p>");
         harness.dependencies.chapterProcessor.process = async () => {
-            throw new MappingFontError("woff2-invalid", "invalid retry font");
+            throw new MappingFontError("woff2-invalid", "woff2-signature-invalid");
         };
         harness.ui.confirmIncompleteChapters.mockResolvedValue("retry");
 
-        await expect(runDownload(createOptions(tasks), harness.dependencies)).rejects.toThrow(
-            "1 个章节的映射字体无法解析"
-        );
+        await expect(runDownload(createOptions(tasks), harness.dependencies)).rejects.toMatchObject({
+            code: "font-source-invalid",
+            reason: "chapter-structure-invalid",
+            params: { count: 1 }
+        });
 
         expect(harness.ui.confirmIncompleteChapters).toHaveBeenCalledOnce();
         expect(harness.ui.showMappingFontFailure).toHaveBeenCalledWith([
-            expect.objectContaining({ task: tasks[0], message: expect.stringContaining("invalid retry font") })
+            expect.objectContaining({
+                task: tasks[0],
+                code: "woff2-invalid",
+                reason: "woff2-signature-invalid",
+                params: {}
+            })
         ]);
         expect(harness.ui.showFormatChoice).not.toHaveBeenCalled();
     });
@@ -732,8 +747,7 @@ function createHarness(tasks: DownloadTask[], chapters = new Map<number, Chapter
         unlock: vi.fn(
             async (): Promise<ProtectedChapterUnlockResult> => ({
                 kind: "protocol-error",
-                code: "response-invalid",
-                message: "unused"
+                code: "response-invalid"
             })
         )
     };

@@ -35,7 +35,11 @@ export function showDownloadTerminalFailure(failure: DownloadTerminalFailure): v
             tone: "error",
             title: t("download.terminal.failed.title"),
             message: t("download.terminal.failed.message"),
-            details: failure.message
+            details: [
+                `${t("download.terminal.code")}：${failure.code}`,
+                ...(failure.params.errorName ? [`${t("download.terminal.reason")}：${failure.params.errorName}`] : []),
+                ...(failure.params.detail ? [String(failure.params.detail)] : [])
+            ].join("\n")
         });
         return;
     }
@@ -63,7 +67,9 @@ export function showDownloadTerminalFailure(failure: DownloadTerminalFailure): v
     );
 }
 
-/** 停止并清除已完成任务收尾，但缓存未能清除时保留明确提示。 */
+/**
+ * 停止并清除已完成任务收尾，但缓存未能清除时保留明确提示。
+ */
 export function showCacheDiscardFailure(failure: StorageFailure): void {
     showStorageFailure(
         t("download.terminal.discardFailed.title"),

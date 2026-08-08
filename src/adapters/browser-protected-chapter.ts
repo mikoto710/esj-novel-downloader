@@ -6,7 +6,6 @@ import type {
 } from "../core/download/contracts";
 import { fetchWithTimeout } from "../utils/index";
 import { BrowserRequestGate } from "./browser-request-gate";
-import { t } from "../ui/locale";
 
 type ProtectedChapterRequest = (
     url: string,
@@ -43,8 +42,11 @@ export function isProtectedChapterHtml(html: string): boolean {
     return hasProtectedChapterMarkers(parseHtml(html));
 }
 
-function protocolError(code: ProtectedChapterProtocolErrorCode, message: string): ProtectedChapterUnlockResult {
-    return { kind: "protocol-error", code, message };
+function protocolError(
+    code: ProtectedChapterProtocolErrorCode,
+    params?: Readonly<Record<string, string | number | boolean>>
+): ProtectedChapterUnlockResult {
+    return { kind: "protocol-error", code, ...(params ? { params } : {}) };
 }
 
 export function extractProtectedChapterToken(responseText: string): string | null {
@@ -74,30 +76,25 @@ export function replaceProtectedChapterContent(pageHtml: string, contentHtml: st
 
 export function classifyProtectedChapterResponse(pageHtml: string, payload: unknown): ProtectedChapterUnlockResult {
     if (!payload || typeof payload !== "object" || typeof (payload as PasswordResponsePayload).status !== "number") {
-        return protocolError("response-invalid", t("protected.protocol.responseInvalid"));
+        return protocolError("response-invalid");
     }
 
     const response = payload as PasswordResponsePayload;
     if (response.status === 206) {
         return {
             kind: "password-rejected",
-            message:
-                typeof response.msg === "string" && response.msg.trim()
-                    ? response.msg.trim()
-                    : t("protected.protocol.passwordRejected")
+            ...(typeof response.msg === "string" && response.msg.trim() ? { message: response.msg.trim() } : {})
         };
     }
     if (response.status !== 200) {
-        return protocolError("unknown-status", t("protected.protocol.unknownStatus", { status: response.status }));
+        return protocolError("unknown-status", { status: response.status });
     }
     if (typeof response.html !== "string") {
-        return protocolError("content-invalid", t("protected.protocol.contentInvalid"));
+        return protocolError("content-invalid");
     }
 
     const html = replaceProtectedChapterContent(pageHtml, response.html);
-    return html
-        ? { kind: "unlocked", html }
-        : protocolError("content-invalid", t("protected.protocol.contentStillProtected"));
+    return html ? { kind: "unlocked", html } : protocolError("content-invalid", { stillProtected: true });
 }
 
 function parsePasswordResponse(text: string): unknown {
@@ -140,7 +137,7 @@ export function createBrowserProtectedChapterAuth(
                 );
                 const token = extractProtectedChapterToken(await tokenResponse.text());
                 if (!token) {
-                    return protocolError("token-invalid", t("protected.protocol.tokenInvalid"));
+                    return protocolError("token-invalid");
                 }
 
                 const passwordResponse = await request(

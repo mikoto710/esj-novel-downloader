@@ -10,6 +10,7 @@ import type {
 } from "../../types";
 import type { DomainMessage, DomainMessageParams } from "../messages";
 import type { StorageFailure } from "../cache/storage-error";
+import type { MappingFontErrorCode, MappingFontErrorReason } from "../mapping-font";
 
 /**
  * 下载核心接收的单章任务
@@ -76,10 +77,15 @@ export type ProtectedChapterProtocolErrorCode =
     | "unknown-status"
     | "content-invalid";
 
+export type ProtectedChapterPromptMessageCode =
+    | "connection-failed"
+    | "password-rejected"
+    | ProtectedChapterProtocolErrorCode;
+
 export type ProtectedChapterUnlockResult =
     | { kind: "unlocked"; html: string }
-    | { kind: "password-rejected"; message: string }
-    | { kind: "protocol-error"; code: ProtectedChapterProtocolErrorCode; message: string };
+    | { kind: "password-rejected"; message?: string }
+    | { kind: "protocol-error"; code: ProtectedChapterProtocolErrorCode; params?: DomainMessageParams };
 
 /**
  * 站点密码授权由浏览器 adapter 实现；核心只编排结构化结果，不接触密码协议和 DOM
@@ -101,7 +107,10 @@ export interface ProtectedChapterPrompt {
     task: DownloadTask;
     totalChapters: number;
     pendingCount: number;
+    // 仅保留 ESJZone status 206 返回的原始站点提示
     message?: string;
+    messageCode?: ProtectedChapterPromptMessageCode;
+    messageParams?: DomainMessageParams;
     initialPassword?: string;
     rememberPassword?: boolean;
     retryConnection?: boolean;
@@ -160,7 +169,8 @@ export type DownloadCancellationOutcome = "saved" | "save-failed" | "save-timed-
 export type DownloadTerminalFailure =
     | {
           kind: "download";
-          message: string;
+          code: DownloadChapterFailureCode;
+          params: DomainMessageParams;
           storageFailure: StorageFailure | null;
       }
     | {
@@ -212,6 +222,13 @@ export interface MappingFontDetection extends MappingFontSummary {
     task: DownloadTask;
     // 弹窗出现后仍可能完成的最大在途章节数；缓存恢复阶段尚未发出请求，因此为 0
     inFlightLimit: number;
+}
+
+export interface MappingFontFailure {
+    task: DownloadTask;
+    code: MappingFontErrorCode;
+    reason: MappingFontErrorReason;
+    params: DomainMessageParams;
 }
 
 export type IncompleteChapterDecision = "retry" | "export-with-placeholders" | "cancel";
@@ -294,7 +311,7 @@ export interface DownloadUiPort {
     ): Promise<ProtectedChapterDecision>;
     closeProtectedChapterPrompt(): void;
     updateMappingFontWarning(summary: MappingFontSummary): void;
-    showMappingFontFailure(failures: ReadonlyArray<{ task: DownloadTask; message: string }>): void;
+    showMappingFontFailure(failures: readonly MappingFontFailure[]): void;
     showTerminalFailure(failure: DownloadTerminalFailure): void;
     cleanup(): void;
     showFormatChoice(): void;

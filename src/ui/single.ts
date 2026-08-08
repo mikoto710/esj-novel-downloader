@@ -5,6 +5,7 @@ import { parseChapterHtml } from "../core/parser";
 import { MappingFontError, normalizeChapterMappingFont } from "../core/mapping-font";
 import { isProtectedChapterHtml } from "../adapters/browser-protected-chapter";
 import { bindInterfaceAttribute, subscribeInterfaceLocaleChange, t } from "./locale";
+import { formatMappingFontError } from "./mapping-font-messages";
 
 const CUSTOMIZER_REFRESH_DELAY_MS = 150;
 
@@ -92,7 +93,7 @@ async function updateSinglePageMappingUi(version: number): Promise<void> {
     }
     try {
         if (!document.querySelector(".forum-content")) {
-            throw new Error("未找到章节正文，无法完成映射字体检测");
+            throw new Error(t("single.bodyMissing.message"));
         }
         if (isProtectedChapterHtml(document.documentElement.outerHTML)) {
             if (
@@ -135,7 +136,10 @@ async function updateSinglePageMappingUi(version: number): Promise<void> {
             return;
         }
         if (error instanceof MappingFontError) {
-            showSingleMappingFailure(elements, t("mapping.single.failure", { detail: error.message }));
+            showSingleMappingFailure(
+                elements,
+                t("mapping.single.failure", { detail: formatMappingFontError(error.code) })
+            );
         } else {
             console.error(error);
             showSingleMappingFailure(

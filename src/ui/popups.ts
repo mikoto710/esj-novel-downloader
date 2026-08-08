@@ -22,17 +22,21 @@ import { addDownloadHistory } from "../core/download-history";
 import type {
     IncompleteChapterDecision,
     IncompleteChapterDetection,
+    MappingFontFailure,
     MappingFontDetection,
     MappingFontSummary,
     ProtectedChapterDecision,
-    ProtectedChapterPrompt
+    ProtectedChapterPrompt,
+    ProtectedChapterPromptMessageCode
 } from "../core/download/contracts";
+import { MappingFontError } from "../core/mapping-font";
 import { showMessagePopup } from "./message-popup";
 import { createCommonHeader } from "./popup-components";
 import { recordBrowserDiagnosticExport, recordBrowserDiagnosticFailure } from "../adapters/browser-diagnostics";
 import { createDiagnosticPopup } from "./diagnostics";
 import { listActiveBookDownloadLocks } from "../core/book-lock";
 import { bindInterfaceText, publishInterfaceLocaleChange, t } from "./locale";
+import { formatMappingFontError } from "./mapping-font-messages";
 
 /**
  * 锁定/解锁页面上的设置按钮
@@ -118,7 +122,12 @@ function confirmImageSettingChange(activeTaskCount: number): Promise<boolean> {
 }
 
 function getExportErrorDetails(error: unknown): string {
-    const details = error instanceof Error ? error.message : String(error);
+    const details =
+        error instanceof MappingFontError
+            ? formatMappingFontError(error.code)
+            : error instanceof Error
+              ? error.message
+              : String(error);
     if (details.length <= MAX_EXPORT_ERROR_DETAIL_LENGTH) {
         return details;
     }
@@ -289,6 +298,32 @@ export function setProtectedChapterPromptBusy(message = t("protected.busy")): vo
     }
 }
 
+function formatProtectedPromptMessage(prompt: ProtectedChapterPrompt): string {
+    if (prompt.message) {
+        return prompt.message;
+    }
+    const code = prompt.messageCode;
+    if (!code) {
+        return t("protected.notice");
+    }
+    const keys: Record<Exclude<ProtectedChapterPromptMessageCode, "content-invalid">, Parameters<typeof t>[0]> = {
+        "connection-failed": "protected.connectionFailed",
+        "password-rejected": "protected.protocol.passwordRejected",
+        "token-invalid": "protected.protocol.tokenInvalid",
+        "response-invalid": "protected.protocol.responseInvalid",
+        "unknown-status": "protected.protocol.unknownStatus"
+    };
+    if (code === "content-invalid") {
+        return t(
+            prompt.messageParams?.stillProtected
+                ? "protected.protocol.contentStillProtected"
+                : "protected.protocol.contentInvalid",
+            prompt.messageParams
+        );
+    }
+    return t(keys[code], prompt.messageParams);
+}
+
 /**
  * 提交密码时保留弹窗，授权结果可以在同一弹窗内继续显示；跳过或取消才结束当前交互
  */
@@ -329,11 +364,12 @@ export function promptProtectedChapterPassword(
             }
             finish(decision);
         };
+        const hasFailureMessage = Boolean(prompt.message || prompt.messageCode);
         const error = el("div", {
             id: "esj-protected-error",
-            style: `min-height:20px;margin-top:8px;color:${prompt.message ? "#c62828" : "#666"};font-size:13px;`
+            style: `min-height:20px;margin-top:8px;color:${hasFailureMessage ? "#c62828" : "#666"};font-size:13px;`
         });
-        error.textContent = prompt.message || t("protected.notice");
+        error.textContent = formatProtectedPromptMessage(prompt);
         const passwordInput = el("input", {
             id: "esj-protected-password",
             type: "text",
@@ -572,10 +608,10 @@ export function confirmIncompleteChapters(
 /**
  * 映射字体补抓后仍失败时给出明确摘要，禁止静默进入导出
  */
-export function showMappingFontFailure(failures: ReadonlyArray<{ task: { title: string }; message: string }>): void {
+export function showMappingFontFailure(failures: readonly MappingFontFailure[]): void {
     const preview = failures
         .slice(0, 5)
-        .map((failure) => `• ${failure.task.title}: ${failure.message}`)
+        .map((failure) => `• ${failure.task.title}: ${formatMappingFontError(failure.code)}`)
         .join("\n");
     const remaining = failures.length > 5 ? t("mapping.failure.remaining", { count: failures.length - 5 }) : "";
     showMessagePopup({

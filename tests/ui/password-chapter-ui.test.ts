@@ -149,14 +149,40 @@ describe("protected chapter password UI", () => {
             task: createDownloadTask(36),
             totalChapters: 300,
             pendingCount: 3,
-            message: "连接失败，请检查网络后重试。",
+            messageCode: "connection-failed",
             initialPassword: "remembered",
             rememberPassword: true,
             retryConnection: true
         });
+        expect(document.querySelector("#esj-protected-error")?.textContent).toBe("连接失败，请检查网络后重试。");
         expect((document.querySelector("#esj-protected-submit") as HTMLButtonElement).textContent).toBe("重试连接");
         (document.querySelector("#esj-protected-cancel") as HTMLButtonElement).click();
         await expect(reconnectDecision).resolves.toEqual({ action: "cancel" });
+    });
+
+    it("renders a stable protocol code in Taiwanese wording while preserving ESJ status 206 text", async () => {
+        setInterfaceLocalePreference("zh-TW");
+        const protocolDecision = promptProtectedChapterPassword({
+            task: createDownloadTask(36),
+            totalChapters: 300,
+            pendingCount: 1,
+            messageCode: "token-invalid",
+            retryConnection: true
+        });
+
+        expect(document.querySelector("#esj-protected-error")?.textContent).toBe("無法取得有效的密碼授權權杖");
+        (document.querySelector("#esj-protected-cancel") as HTMLButtonElement).click();
+        await expect(protocolDecision).resolves.toEqual({ action: "cancel" });
+
+        const sourceDecision = promptProtectedChapterPassword({
+            task: createDownloadTask(36),
+            totalChapters: 300,
+            pendingCount: 1,
+            message: "ESJ source message"
+        });
+        expect(document.querySelector("#esj-protected-error")?.textContent).toBe("ESJ source message");
+        (document.querySelector("#esj-protected-cancel") as HTMLButtonElement).click();
+        await expect(sourceDecision).resolves.toEqual({ action: "cancel" });
     });
 
     it("keeps cancellation active while an authorization request is pending", async () => {

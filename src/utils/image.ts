@@ -167,7 +167,7 @@ export async function processHtmlImages(
                     if (!normalized) {
                         failureStage = "format";
                         failureCode = "image-format-unrecognized";
-                        throw new Error(`无法识别图片格式 (${downloadedBlob.type || "unknown"})`);
+                        throw new Error(`image-format-unrecognized:${downloadedBlob.type || "unknown"}`);
                     }
 
                     let { blob, mediaType: mimeType, extension } = normalized;
@@ -217,15 +217,7 @@ export async function processHtmlImages(
 
         if (!downloadSuccess && !signal?.aborted) {
             failCount++;
-            const diagnosticMessage =
-                failureStage === "url"
-                    ? "图片链接无效"
-                    : failureStage === "format"
-                      ? "图片内容无法识别为支持的格式"
-                      : failureStage === "processing"
-                        ? "图片处理未完成"
-                        : "图片请求在重试后仍失败";
-            recordImageFailure(failures, failureStage, failureCode, diagnosticMessage);
+            recordImageFailure(failures, failureStage, failureCode, failureCode);
 
             // 失败后保留远程链接
             img.removeAttribute("srcset");

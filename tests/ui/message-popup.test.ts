@@ -62,8 +62,10 @@ describe("message popup UI", () => {
     it("shows a bounded mapped-font failure summary", () => {
         showMappingFontFailure(
             Array.from({ length: 7 }, (_, index) => ({
-                task: { title: `Chapter ${index + 1}` },
-                message: `Failure ${index + 1}`
+                task: { index, url: `https://example.com/${index + 1}`, title: `Chapter ${index + 1}` },
+                code: "woff2-invalid" as const,
+                reason: "woff2-signature-invalid" as const,
+                params: {}
             }))
         );
 

@@ -58,7 +58,10 @@ describe("buildHtml mapped font resources", () => {
             content: "<section style=\"font-family: '1', sans-serif;\"><p>Mapped body</p></section>"
         });
 
-        await expect(buildHtml([chapter], createBookMetadata())).rejects.toThrow("缺少已校验的映射字体");
+        await expect(buildHtml([chapter], createBookMetadata())).rejects.toMatchObject({
+            code: "structure-invalid",
+            reason: "export-font-missing"
+        });
     });
 
     it("keeps the explicit missing chapter warning and source URL", async () => {

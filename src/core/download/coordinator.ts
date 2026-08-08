@@ -7,8 +7,11 @@ import type {
     DownloadSnapshot,
     DownloadTask,
     ProtectedChapterDecision,
-    ProtectedChapterPrompt
+    ProtectedChapterPrompt,
+    ProtectedChapterPromptMessageCode,
+    MappingFontFailure
 } from "./contracts";
+import type { DomainMessageParams } from "../messages";
 import { scanChapterIntegrity, scanMissingChapterTasks, type ChapterIntegrityIssue } from "./integrity";
 import { createMissingChapterPlaceholder } from "./incomplete-chapters";
 import { DEFAULT_CHAPTER_RETRY_POLICY, runWithRetry } from "./retry-policy";
@@ -40,7 +43,7 @@ interface DownloadContext {
     mappingConsentPromise: Promise<boolean> | null;
     mappedChapterIndexes: Set<number>;
     mappedFontBytes: number;
-    mappingFailures: Map<number, { task: DownloadTask; message: string }>;
+    mappingFailures: Map<number, MappingFontFailure>;
     protectedQueue: ProtectedChapterQueue;
     decisionGate: UserDecisionGate;
     rememberedPassword: string | null;
@@ -466,15 +469,15 @@ async function processFetchedChapterHtml(
         if (!(error instanceof MappingFontError)) {
             throw error;
         }
-        const message = `映射字体解析失败: ${error.message}`;
-        ctx.mappingFailures.set(task.index, { task, message });
+        ctx.mappingFailures.set(task.index, { task, code: error.code, reason: error.reason, params: error.params });
         dependencies.log({
             code: "chapter-mapping-font-failed",
             params: {
                 index: task.index + 1,
                 title: task.title,
                 errorCode: error.code,
-                detail: error.message
+                reason: error.reason,
+                ...error.params
             }
         });
         dependencies.events.emit({
@@ -485,7 +488,8 @@ async function processFetchedChapterHtml(
             params: {
                 index: task.index + 1,
                 title: task.title,
-                detail: error.message
+                reason: error.reason,
+                ...error.params
             },
             retry: isRetry
         });
@@ -687,6 +691,8 @@ async function promptForProtectedChapter(
     item: ProtectedChapterWorkItem,
     ctx: DownloadContext,
     message?: string,
+    messageCode?: ProtectedChapterPromptMessageCode,
+    messageParams?: DomainMessageParams,
     retryConnection = false
 ): Promise<ProtectedChapterDecision> {
     const prompt: ProtectedChapterPrompt = {
@@ -696,7 +702,9 @@ async function promptForProtectedChapter(
         rememberPassword: ctx.rememberPassword,
         retryConnection,
         ...(ctx.rememberedPassword ? { initialPassword: ctx.rememberedPassword } : {}),
-        ...(message ? { message } : {})
+        ...(message ? { message } : {}),
+        ...(messageCode ? { messageCode } : {}),
+        ...(messageParams ? { messageParams } : {})
     };
     return runUserDecision(
         ctx,
@@ -717,6 +725,8 @@ async function resolveProtectedChapter(
 ): Promise<ChapterTaskResult> {
     const { dependencies } = ctx;
     let message: string | undefined;
+    let messageCode: ProtectedChapterPromptMessageCode | undefined;
+    let messageParams: DomainMessageParams | undefined;
     let useRememberedPassword = Boolean(ctx.rememberedPassword);
     let retryConnection = false;
 
@@ -724,7 +734,7 @@ async function resolveProtectedChapter(
         const decision: ProtectedChapterDecision =
             useRememberedPassword && ctx.rememberedPassword
                 ? { action: "submit", password: ctx.rememberedPassword, rememberPassword: true }
-                : await promptForProtectedChapter(item, ctx, message, retryConnection);
+                : await promptForProtectedChapter(item, ctx, message, messageCode, messageParams, retryConnection);
         useRememberedPassword = false;
 
         if (decision.action === "cancel") {
@@ -812,7 +822,9 @@ async function resolveProtectedChapter(
                 code: "protected-chapter-connection-failed",
                 params: { index: item.task.index + 1, total: ctx.total, title: item.task.title }
             });
-            message = "连接失败，请检查网络后重试。";
+            message = undefined;
+            messageCode = "connection-failed";
+            messageParams = undefined;
             retryConnection = true;
             continue;
         }
@@ -821,6 +833,8 @@ async function resolveProtectedChapter(
             ctx.rememberedPassword = null;
             ctx.rememberPassword = false;
             message = result.message;
+            messageCode = result.message ? undefined : "password-rejected";
+            messageParams = undefined;
             retryConnection = false;
             dependencies.events.emit({ type: "protected-chapter-password-rejected", task: item.task });
             dependencies.log({
@@ -838,7 +852,7 @@ async function resolveProtectedChapter(
                 params: {
                     index: item.task.index + 1,
                     total: ctx.total,
-                    detail: result.message
+                    ...(result.params || {})
                 },
                 retry: false
             });
@@ -849,10 +863,12 @@ async function resolveProtectedChapter(
                     total: ctx.total,
                     title: item.task.title,
                     errorCode: result.code,
-                    detail: result.message
+                    ...(result.params || {})
                 }
             });
-            message = result.message;
+            message = undefined;
+            messageCode = result.code;
+            messageParams = result.params;
             retryConnection = true;
             continue;
         }
@@ -899,7 +915,7 @@ function throwIfMappingFontFailed(ctx: DownloadContext): void {
         return;
     }
     const failures = Array.from(ctx.mappingFailures.values());
-    throw new MappingFontError("font-source-invalid", `${failures.length} 个章节的映射字体无法解析`);
+    throw new MappingFontError("font-source-invalid", "chapter-structure-invalid", { count: failures.length });
 }
 
 // 扫描缺失或图片不完整的章节，并按原顺序执行一次补抓
@@ -1402,7 +1418,10 @@ export async function runDownload(options: DownloadOptions, dependencies: Downlo
         } else {
             dependencies.ui.showTerminalFailure({
                 kind: "download",
-                message: getErrorDetails(reportedError).message,
+                code: storageFailure?.reason || failureDetails.name || "download-failed",
+                params: storageFailure
+                    ? { operation: storageFailure.operation, ...(storageFailure.params || {}) }
+                    : { errorName: failureDetails.name, detail: failureDetails.message },
                 storageFailure: ctx.machine.snapshot.storageFailure
             });
         }

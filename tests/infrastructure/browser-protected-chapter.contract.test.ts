@@ -61,6 +61,9 @@ describe("protected chapter browser protocol", () => {
             kind: "password-rejected",
             message: "密码错误"
         });
+        expect(classifyProtectedChapterResponse(protectedHtml, { status: 206, msg: "", html: "" })).toEqual({
+            kind: "password-rejected"
+        });
         expect(classifyProtectedChapterResponse(protectedHtml, { status: 200, html: "" })).toMatchObject({
             kind: "protocol-error",
             code: "content-invalid"
