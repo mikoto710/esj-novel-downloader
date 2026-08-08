@@ -23,6 +23,7 @@ const hoistedBrowserDownloadMocks = vi.hoisted(() => ({
     loadCoverCache: vi.fn(),
     saveCoverCache: vi.fn(),
     getConcurrency: vi.fn(),
+    getInterfaceLocalePreference: vi.fn(),
     processHtmlImages: vi.fn(),
     parseChapterHtml: vi.fn(),
     ownsLock: vi.fn(),
@@ -65,7 +66,8 @@ vi.mock("../../src/core/cache/book-cache", () => ({
     putBookCoverForTask: hoistedBrowserDownloadMocks.saveCoverCache
 }));
 vi.mock("../../src/core/config", () => ({
-    getConcurrency: hoistedBrowserDownloadMocks.getConcurrency
+    getConcurrency: hoistedBrowserDownloadMocks.getConcurrency,
+    getInterfaceLocalePreference: hoistedBrowserDownloadMocks.getInterfaceLocalePreference
 }));
 vi.mock("../../src/utils/image", () => ({ processHtmlImages: hoistedBrowserDownloadMocks.processHtmlImages }));
 vi.mock("../../src/core/parser", () => ({ parseChapterHtml: hoistedBrowserDownloadMocks.parseChapterHtml }));
@@ -110,6 +112,7 @@ export async function resetBrowserDownloadHarness(): Promise<BrowserDownloadRunt
     hoistedBrowserDownloadMocks.loadCoverCache.mockResolvedValue(null);
     hoistedBrowserDownloadMocks.saveCoverCache.mockResolvedValue(true);
     hoistedBrowserDownloadMocks.getConcurrency.mockReturnValue(1);
+    hoistedBrowserDownloadMocks.getInterfaceLocalePreference.mockReturnValue("zh-CN");
     hoistedBrowserDownloadMocks.parseChapterHtml.mockImplementation((_html: string, title: string) => ({
         title,
         author: "",

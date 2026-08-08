@@ -1,4 +1,5 @@
 import { el } from "../utils/dom";
+import { bindInterfaceAttribute, t } from "./locale";
 
 /**
  * 创建最小化托盘悬浮球
@@ -13,7 +14,7 @@ export function createMinimizedTray(progressText: string): HTMLElement {
         "div",
         {
             id: "esj-min-tray",
-            title: "点击恢复下载窗口",
+            title: t("tray.restore"),
             onclick: () => {
                 const popup = document.querySelector("#esj-popup") as HTMLElement | null;
                 if (popup) {
@@ -22,10 +23,11 @@ export function createMinimizedTray(progressText: string): HTMLElement {
                 }
             }
         },
-        [el("span", {}, ["📘"]), el("span", { id: "esj-tray-text" }, [progressText || "下载中..."])]
+        [el("span", {}, ["📘"]), el("span", { id: "esj-tray-text" }, [progressText || t("download.popup.running")])]
     );
 
     document.body.appendChild(tray);
+    bindInterfaceAttribute(tray, "title", "tray.restore");
     return tray;
 }
 

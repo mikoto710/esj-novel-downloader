@@ -10,8 +10,11 @@ import {
     setImageDownloadSetting,
     getImageDownloadSetting,
     getEpubTagPageSetting,
-    setEpubTagPageSetting
+    setEpubTagPageSetting,
+    getInterfaceLocalePreference,
+    setInterfaceLocalePreference
 } from "../core/config";
+import { isInterfaceLocalePreference } from "../core/locale";
 import { buildHtml } from "../core/html";
 import { createCacheManagerPopup } from "./cache-manager";
 import { createDownloadHistoryPopup } from "./download-history";
@@ -19,16 +22,27 @@ import { addDownloadHistory } from "../core/download-history";
 import type {
     IncompleteChapterDecision,
     IncompleteChapterDetection,
+    MappingFontFailure,
     MappingFontDetection,
     MappingFontSummary,
     ProtectedChapterDecision,
-    ProtectedChapterPrompt
+    ProtectedChapterPrompt,
+    ProtectedChapterPromptMessageCode
 } from "../core/download/contracts";
+import { MappingFontError } from "../core/mapping-font";
 import { showMessagePopup } from "./message-popup";
 import { createCommonHeader } from "./popup-components";
 import { recordBrowserDiagnosticExport, recordBrowserDiagnosticFailure } from "../adapters/browser-diagnostics";
 import { createDiagnosticPopup } from "./diagnostics";
 import { listActiveBookDownloadLocks } from "../core/book-lock";
+import {
+    bindInterfaceAttribute,
+    bindInterfaceText,
+    publishInterfaceLocaleChange,
+    subscribeInterfaceLocaleChange,
+    t
+} from "./locale";
+import { formatMappingFontError } from "./mapping-font-messages";
 
 /**
  * 锁定/解锁页面上的设置按钮
@@ -57,6 +71,9 @@ function formatMappingFontBytes(bytes: number): string {
 
 const MAX_EXPORT_ERROR_DETAIL_LENGTH = 2_000;
 const diagnosticExportFormat = { TXT: "txt", EPUB: "epub", HTML: "html" } as const;
+type ExportFailureStage = "generate" | "download";
+let disposeActiveProtectedPromptLocaleRefresh: (() => void) | null = null;
+let disposeActiveFormatLocaleRefresh: (() => void) | null = null;
 
 function confirmImageSettingChange(activeTaskCount: number): Promise<boolean> {
     document.querySelector("#esj-image-setting-task-confirm")?.remove();
@@ -80,9 +97,9 @@ function confirmImageSettingChange(activeTaskCount: number): Promise<boolean> {
                 style: "position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:440px;max-width:calc(100vw - 32px);background:#fff;border:1px solid #aaa;border-radius:8px;box-shadow:0 0 18px rgba(0,0,0,.28);z-index:1000001;display:flex;flex-direction:column;"
             },
             [
-                createCommonHeader("⚠️ 切换插图设置", () => finish(false)),
+                createCommonHeader(t("confirm.imageSettings.title"), () => finish(false)),
                 el("div", { style: "padding:16px;font-size:14px;line-height:1.7;color:#333;" }, [
-                    `当前有 ${activeTaskCount} 个全本任务正在下载。它们会继续使用启动时的插图设置，不受本次切换影响；本次更改仅对之后新启动的任务生效。`
+                    t("confirm.imageSettings.message", { count: activeTaskCount })
                 ]),
                 el("div", { style: "padding:12px;display:flex;justify-content:flex-end;gap:8px;" }, [
                     el(
@@ -92,7 +109,7 @@ function confirmImageSettingChange(activeTaskCount: number): Promise<boolean> {
                             style: "padding:8px 12px;background:#eee;border:1px solid #ccc;border-radius:6px;cursor:pointer;",
                             onclick: () => finish(false)
                         },
-                        ["取消"]
+                        [t("common.cancel")]
                     ),
                     el(
                         "button",
@@ -101,7 +118,7 @@ function confirmImageSettingChange(activeTaskCount: number): Promise<boolean> {
                             style: "padding:8px 12px;background:#2b9bd7;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:bold;",
                             onclick: () => finish(true)
                         },
-                        ["继续切换"]
+                        [t("confirm.imageSettings.continue")]
                     )
                 ])
             ]
@@ -113,33 +130,39 @@ function confirmImageSettingChange(activeTaskCount: number): Promise<boolean> {
 }
 
 function getExportErrorDetails(error: unknown): string {
-    const details = error instanceof Error ? error.message : String(error);
+    const details =
+        error instanceof MappingFontError
+            ? formatMappingFontError(error.code)
+            : error instanceof Error
+              ? error.message
+              : String(error);
     if (details.length <= MAX_EXPORT_ERROR_DETAIL_LENGTH) {
         return details;
     }
-    return `${details.slice(0, MAX_EXPORT_ERROR_DETAIL_LENGTH)}\n…（详情已截断）`;
+    return `${details.slice(0, MAX_EXPORT_ERROR_DETAIL_LENGTH)}\n${t("export.failure.truncated")}`;
 }
 
-function showExportFailure(format: "TXT" | "EPUB" | "HTML", stage: "生成" | "下载", error: unknown): void {
+function showExportFailure(format: "TXT" | "EPUB" | "HTML", stage: ExportFailureStage, error: unknown): void {
     const details = getExportErrorDetails(error);
+    const stageText = t(stage === "generate" ? "export.stage.generate" : "export.stage.download");
     recordBrowserDiagnosticExport({
         scope: "full",
         format: diagnosticExportFormat[format],
         outcome: "failed",
-        generated: stage === "下载",
+        generated: stage === "download",
         downloadTriggered: false,
-        failureStage: stage === "生成" ? "generate" : "download"
+        failureStage: stage
     });
     recordBrowserDiagnosticFailure({
         scope: "export",
-        stage: `${format.toLowerCase()}-${stage === "生成" ? "generate" : "download"}`,
+        stage: `${format.toLowerCase()}-${stage}`,
         code: error instanceof Error ? error.name || "export-failed" : "export-failed",
         message: details
     });
     showMessagePopup({
         tone: "error",
-        title: `${format} ${stage}失败`,
-        message: `无法${stage}${format}文件。`,
+        title: t("export.failure.title", { format, stage: stageText }),
+        message: t("export.failure.message", { format, stage: stageText }),
         details
     });
 }
@@ -160,7 +183,10 @@ export function updateMappingFontWarning(summary: MappingFontSummary): void {
         });
         popup.querySelector("#esj-log")?.before(warning);
     }
-    warning.textContent = `⚠ 已检测到 ${summary.chapterCount} 个映射章节，字体共 ${formatMappingFontBytes(summary.fontBytes)}。TXT 导出已禁用，HTML/EPUB 仅保证视觉显示。`;
+    warning.textContent = t("mapping.warning", {
+        count: summary.chapterCount,
+        bytes: formatMappingFontBytes(summary.fontBytes)
+    });
 }
 
 /**
@@ -183,12 +209,15 @@ export function confirmMappingFontDownload(detection: MappingFontDetection, sign
             resolve(confirmed);
         };
         const onAbort = () => finish(false);
-        const header = createCommonHeader("⚠️ 检测到自定义映射字体", () => finish(false));
+        const header = createCommonHeader(t("mapping.detected.title"), () => finish(false));
         const body = el("div", { style: "padding:16px;font-size:14px;line-height:1.7;color:#333;" }, [
             el("div", { style: "font-weight:bold;margin-bottom:8px;" }, [detection.task.title]),
-            "该章节使用专属映射字体。继续下载后只能导出 HTML 或 EPUB；复制、搜索和朗读可能不正确，缓存及导出文件也会明显增大。",
+            t("mapping.detected.message"),
             el("div", { style: "margin-top:8px;color:#8a5a00;font-size:13px;" }, [
-                `当前检测到 ${detection.chapterCount} 章，字体 ${formatMappingFontBytes(detection.fontBytes)}。`
+                t("mapping.detected.summary", {
+                    count: detection.chapterCount,
+                    bytes: formatMappingFontBytes(detection.fontBytes)
+                })
             ]),
             el(
                 "div",
@@ -198,8 +227,8 @@ export function confirmMappingFontDownload(detection: MappingFontDetection, sign
                 },
                 [
                     detection.inFlightLimit > 0
-                        ? `已停止领取新章节。已经发出的请求仍会收尾，进度最多还可能增加 ${detection.inFlightLimit} 章；这不表示任务仍在继续领取章节。`
-                        : "尚未发出新的章节请求；确认期间不会继续下载。"
+                        ? t("mapping.detected.inflight", { count: detection.inFlightLimit })
+                        : t("mapping.detected.paused")
                 ]
             )
         ]);
@@ -211,7 +240,7 @@ export function confirmMappingFontDownload(detection: MappingFontDetection, sign
                     style: "padding:8px 12px;background:#eee;border:1px solid #ccc;border-radius:6px;cursor:pointer;",
                     onclick: () => finish(false)
                 },
-                ["停止下载"]
+                [t("mapping.stop")]
             ),
             el(
                 "button",
@@ -220,7 +249,7 @@ export function confirmMappingFontDownload(detection: MappingFontDetection, sign
                     style: "padding:8px 12px;background:#2b9bd7;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:bold;",
                     onclick: () => finish(true)
                 },
-                ["继续下载（仅 HTML/EPUB）"]
+                [t("mapping.continue")]
             )
         ]);
         const popup = el(
@@ -240,15 +269,23 @@ export function confirmMappingFontDownload(detection: MappingFontDetection, sign
     });
 }
 
+/**
+ * 关闭已打开的密码章节弹窗并释放其语言切换订阅
+ */
 export function closeProtectedChapterPrompt(): void {
+    disposeActiveProtectedPromptLocaleRefresh?.();
     document.querySelector("#esj-protected-chapter")?.remove();
 }
 
-export function setProtectedChapterPromptBusy(message = "正在验证密码，请稍候..."): void {
+/**
+ * 将已打开的密码章节弹窗切换为不可交互的处理中状态，弹窗不存在时不执行操作
+ */
+export function setProtectedChapterPromptBusy(message = t("protected.busy")): void {
     const popup = document.querySelector("#esj-protected-chapter") as HTMLElement | null;
     if (!popup) {
         return;
     }
+    popup.dataset.esjProtectedMessageState = "busy";
     const passwordInput = popup.querySelector("#esj-protected-password") as HTMLInputElement | null;
     const remember = popup.querySelector("#esj-protected-remember") as HTMLInputElement | null;
     const submit = popup.querySelector("#esj-protected-submit") as HTMLButtonElement | null;
@@ -263,7 +300,7 @@ export function setProtectedChapterPromptBusy(message = "正在验证密码，�
     }
     if (submit) {
         submit.disabled = true;
-        submit.textContent = "正在验证...";
+        submit.textContent = t("protected.busyShort");
     }
     if (skip) {
         skip.disabled = true;
@@ -277,6 +314,32 @@ export function setProtectedChapterPromptBusy(message = "正在验证密码，�
     }
 }
 
+function formatProtectedPromptMessage(prompt: ProtectedChapterPrompt): string {
+    if (prompt.message) {
+        return prompt.message;
+    }
+    const code = prompt.messageCode;
+    if (!code) {
+        return t("protected.notice");
+    }
+    const keys: Record<Exclude<ProtectedChapterPromptMessageCode, "content-invalid">, Parameters<typeof t>[0]> = {
+        "connection-failed": "protected.connectionFailed",
+        "password-rejected": "protected.protocol.passwordRejected",
+        "token-invalid": "protected.protocol.tokenInvalid",
+        "response-invalid": "protected.protocol.responseInvalid",
+        "unknown-status": "protected.protocol.unknownStatus"
+    };
+    if (code === "content-invalid") {
+        return t(
+            prompt.messageParams?.stillProtected
+                ? "protected.protocol.contentStillProtected"
+                : "protected.protocol.contentInvalid",
+            prompt.messageParams
+        );
+    }
+    return t(keys[code], prompt.messageParams);
+}
+
 /**
  * 提交密码时保留弹窗，授权结果可以在同一弹窗内继续显示；跳过或取消才结束当前交互
  */
@@ -287,6 +350,7 @@ export function promptProtectedChapterPassword(
         decision: Extract<ProtectedChapterDecision, { action: "skip-current" | "skip-all" | "cancel" }>
     ) => void
 ): Promise<ProtectedChapterDecision> {
+    disposeActiveProtectedPromptLocaleRefresh?.();
     const existingPopup = document.querySelector("#esj-protected-chapter") as HTMLElement | null;
     if (signal?.aborted) {
         closeProtectedChapterPrompt();
@@ -296,6 +360,7 @@ export function promptProtectedChapterPassword(
     return new Promise((resolve) => {
         let settled = false;
         let mountedPopup: HTMLElement;
+        let disposeLocaleRefresh = () => {};
         const finish = (decision: ProtectedChapterDecision, keepOpen = false) => {
             if (settled) {
                 return;
@@ -303,6 +368,7 @@ export function promptProtectedChapterPassword(
             settled = true;
             signal?.removeEventListener("abort", onAbort);
             if (!keepOpen) {
+                disposeLocaleRefresh();
                 mountedPopup.remove();
             }
             resolve(decision);
@@ -317,11 +383,12 @@ export function promptProtectedChapterPassword(
             }
             finish(decision);
         };
+        const hasFailureMessage = Boolean(prompt.message || prompt.messageCode);
         const error = el("div", {
             id: "esj-protected-error",
-            style: `min-height:20px;margin-top:8px;color:${prompt.message ? "#c62828" : "#666"};font-size:13px;`
+            style: `min-height:20px;margin-top:8px;color:${hasFailureMessage ? "#c62828" : "#666"};font-size:13px;`
         });
-        error.textContent = prompt.message || "密码只用于本次授权，不会写入缓存或日志。";
+        error.textContent = formatProtectedPromptMessage(prompt);
         const passwordInput = el("input", {
             id: "esj-protected-password",
             type: "text",
@@ -337,7 +404,8 @@ export function promptProtectedChapterPassword(
         const submit = () => {
             const password = passwordInput.value;
             if (!password) {
-                error.textContent = "请输入密码。";
+                mountedPopup.dataset.esjProtectedMessageState = "required";
+                error.textContent = t("protected.passwordRequired");
                 error.style.color = "#c62828";
                 passwordInput.focus();
                 return;
@@ -351,11 +419,15 @@ export function promptProtectedChapterPassword(
                 submit();
             }
         };
-        const header = createCommonHeader("🔒 章节需要密码", () => finishOrNotify({ action: "cancel" }));
+        const header = createCommonHeader(t("protected.required"), () => finishOrNotify({ action: "cancel" }));
         const body = el("div", { style: "padding:16px;font-size:14px;line-height:1.6;color:#333;" }, [
             el("div", { style: "font-weight:bold;" }, [prompt.task.title]),
-            el("div", { style: "margin:4px 0 10px;color:#666;" }, [
-                `目录位置 ${prompt.task.index + 1}/${prompt.totalChapters}｜密码待处理 ${prompt.pendingCount}`
+            el("div", { id: "esj-protected-position", style: "margin:4px 0 10px;color:#666;" }, [
+                t("protected.position", {
+                    index: prompt.task.index + 1,
+                    total: prompt.totalChapters,
+                    pending: prompt.pendingCount
+                })
             ]),
             el(
                 "a",
@@ -363,14 +435,15 @@ export function promptProtectedChapterPassword(
                     href: prompt.task.url,
                     target: "_blank",
                     rel: "noopener noreferrer",
+                    id: "esj-protected-open-chapter",
                     style: "display:inline-block;margin-bottom:10px;"
                 },
-                ["打开原章节"]
+                [t("protected.openChapter")]
             ),
             passwordInput,
             el("label", { style: "display:flex;gap:7px;align-items:flex-start;margin-top:10px;cursor:pointer;" }, [
                 remember,
-                el("span", {}, ["仅在本次下载中用于后续密码章节（不会保存）"])
+                el("span", { id: "esj-protected-remember-label" }, [t("protected.remember")])
             ]),
             error
         ]);
@@ -389,7 +462,7 @@ export function promptProtectedChapterPassword(
                         className: "esj-protected-action esj-protected-action-default",
                         onclick: () => finishOrNotify({ action: "cancel" })
                     },
-                    ["取消任务"]
+                    [t("download.action.cancelTask")]
                 ),
                 el(
                     "button",
@@ -399,7 +472,7 @@ export function promptProtectedChapterPassword(
                         className: "esj-protected-action esj-protected-action-default",
                         onclick: () => finishOrNotify({ action: "skip-all" })
                     },
-                    ["跳过全部剩余密码章节"]
+                    [t("protected.skipRemaining")]
                 ),
                 el(
                     "button",
@@ -409,7 +482,7 @@ export function promptProtectedChapterPassword(
                         className: "esj-protected-action esj-protected-action-default",
                         onclick: () => finishOrNotify({ action: "skip-current" })
                     },
-                    ["跳过本章"]
+                    [t("download.action.skipChapter")]
                 ),
                 el(
                     "button",
@@ -419,7 +492,7 @@ export function promptProtectedChapterPassword(
                         className: "esj-protected-action esj-protected-action-primary",
                         onclick: submit
                     },
-                    [prompt.retryConnection ? "重试连接" : "提交密码"]
+                    [t(prompt.retryConnection ? "protected.retryConnection" : "protected.submit")]
                 )
             ]
         );
@@ -440,6 +513,73 @@ export function promptProtectedChapterPassword(
             document.body.appendChild(popup);
             mountedPopup = popup;
         }
+        mountedPopup.dataset.esjProtectedMessageState = "prompt";
+        const refreshPromptText = () => {
+            const headerLabel = mountedPopup.querySelector(".esj-common-header span");
+            const position = mountedPopup.querySelector("#esj-protected-position");
+            const openChapter = mountedPopup.querySelector("#esj-protected-open-chapter");
+            const rememberLabel = mountedPopup.querySelector("#esj-protected-remember-label");
+            const cancel = mountedPopup.querySelector("#esj-protected-cancel");
+            const skipAll = mountedPopup.querySelector("#esj-protected-skip-all");
+            const skip = mountedPopup.querySelector("#esj-protected-skip");
+            const submitButton = mountedPopup.querySelector("#esj-protected-submit") as HTMLButtonElement | null;
+            if (headerLabel) {
+                headerLabel.textContent = t("protected.required");
+            }
+            if (position) {
+                position.textContent = t("protected.position", {
+                    index: prompt.task.index + 1,
+                    total: prompt.totalChapters,
+                    pending: prompt.pendingCount
+                });
+            }
+            if (openChapter) {
+                openChapter.textContent = t("protected.openChapter");
+            }
+            if (rememberLabel) {
+                rememberLabel.textContent = t("protected.remember");
+            }
+            if (cancel) {
+                cancel.textContent = t("download.action.cancelTask");
+            }
+            if (skipAll) {
+                skipAll.textContent = t("protected.skipRemaining");
+            }
+            if (skip) {
+                skip.textContent = t("download.action.skipChapter");
+            }
+            const messageState = mountedPopup.dataset.esjProtectedMessageState;
+            if (submitButton) {
+                submitButton.textContent = t(
+                    messageState === "busy"
+                        ? "protected.busyShort"
+                        : prompt.retryConnection
+                          ? "protected.retryConnection"
+                          : "protected.submit"
+                );
+            }
+            if (messageState === "busy") {
+                error.textContent = t("protected.busy");
+            } else if (messageState === "required") {
+                error.textContent = t("protected.passwordRequired");
+            } else {
+                error.textContent = formatProtectedPromptMessage(prompt);
+            }
+        };
+        const unsubscribeLocale = subscribeInterfaceLocaleChange(() => {
+            if (!mountedPopup.isConnected) {
+                disposeLocaleRefresh();
+                return;
+            }
+            refreshPromptText();
+        });
+        disposeLocaleRefresh = () => {
+            unsubscribeLocale();
+            if (disposeActiveProtectedPromptLocaleRefresh === disposeLocaleRefresh) {
+                disposeActiveProtectedPromptLocaleRefresh = null;
+            }
+        };
+        disposeActiveProtectedPromptLocaleRefresh = disposeLocaleRefresh;
         enableDrag(mountedPopup, ".esj-common-header");
         passwordInput.focus();
         signal?.addEventListener("abort", onAbort, { once: true });
@@ -447,7 +587,7 @@ export function promptProtectedChapterPassword(
 }
 
 /**
- * 自动补抓和持久化完成后仍缺章时，要求用户明确选择后续行为
+ * 自动补抓和持久化后仍存在缺章时，要求用户选择再次补抓、使用占位导出或取消
  */
 export function confirmIncompleteChapters(
     detection: IncompleteChapterDetection,
@@ -475,7 +615,7 @@ export function confirmIncompleteChapters(
         if (detection.missingTasks.length > preview.length) {
             preview.push(
                 el("li", { style: "color:#8a5a00;" }, [
-                    `另有 ${detection.missingTasks.length - preview.length} 章未列出。`
+                    t("download.missing.remaining", { count: detection.missingTasks.length - preview.length })
                 ])
             );
         }
@@ -489,16 +629,14 @@ export function confirmIncompleteChapters(
                 style: "position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:560px;max-width:calc(100vw - 32px);max-height:calc(100vh - 32px);background:#fff;border:1px solid #aaa;border-radius:8px;box-shadow:0 0 18px rgba(0,0,0,.28);z-index:1000001;display:flex;flex-direction:column;"
             },
             [
-                createCommonHeader("⚠️ 仍有章节缺失", () => finish("cancel")),
+                createCommonHeader(t("download.missing.title"), () => finish("cancel")),
                 el("div", { style: "padding:16px;font-size:15px;line-height:1.7;min-height:0;overflow:auto;" }, [
                     el(
                         "div",
                         {
                             style: "padding:10px 12px;border:1px solid #e6a23c;background:#fff7e6;color:#8a5a00;border-radius:6px;"
                         },
-                        [
-                            `自动补抓后仍有 ${detection.missingTasks.length} 个章节缺失。请选择再次补抓、使用占位说明继续导出，或取消并保留当前缓存。`
-                        ]
+                        [t("download.missing.message", { count: detection.missingTasks.length })]
                     ),
                     el("ol", { style: "margin:12px 0 0;padding-left:28px;" }, preview)
                 ]),
@@ -515,7 +653,7 @@ export function confirmIncompleteChapters(
                                 style: "padding:8px 12px;background:#eee;border:1px solid #ccc;border-radius:6px;cursor:pointer;",
                                 onclick: () => finish("cancel")
                             },
-                            ["取消并保留缓存"]
+                            [t("download.action.cancelKeepCache")]
                         ),
                         el(
                             "button",
@@ -524,7 +662,7 @@ export function confirmIncompleteChapters(
                                 style: "padding:8px 12px;background:#fff7e6;color:#8a5a00;border:1px solid #e6a23c;border-radius:6px;cursor:pointer;",
                                 onclick: () => finish("export-with-placeholders")
                             },
-                            ["仍然导出（写入占位）"]
+                            [t("download.action.exportPlaceholder")]
                         ),
                         el(
                             "button",
@@ -533,7 +671,7 @@ export function confirmIncompleteChapters(
                                 style: "padding:8px 12px;background:#2b9bd7;color:#fff;border:1px solid #2b9bd7;border-radius:6px;cursor:pointer;font-weight:bold;",
                                 onclick: () => finish("retry")
                             },
-                            ["只重试缺失章节"]
+                            [t("download.action.retryMissing")]
                         )
                     ]
                 )
@@ -558,20 +696,23 @@ export function confirmIncompleteChapters(
 /**
  * 映射字体补抓后仍失败时给出明确摘要，禁止静默进入导出
  */
-export function showMappingFontFailure(failures: ReadonlyArray<{ task: { title: string }; message: string }>): void {
+export function showMappingFontFailure(failures: readonly MappingFontFailure[]): void {
     const preview = failures
         .slice(0, 5)
-        .map((failure) => `• ${failure.task.title}: ${failure.message}`)
+        .map((failure) => `• ${failure.task.title}: ${formatMappingFontError(failure.code)}`)
         .join("\n");
-    const remaining = failures.length > 5 ? `另有 ${failures.length - 5} 章未列出。` : "";
+    const remaining = failures.length > 5 ? t("mapping.failure.remaining", { count: failures.length - 5 }) : "";
     showMessagePopup({
         tone: "error",
-        title: "映射字体解析失败",
-        message: `有 ${failures.length} 个章节的映射字体无法解析，已阻止导出。`,
+        title: t("mapping.failure.title"),
+        message: t("mapping.failure.message", { count: failures.length }),
         details: [preview, remaining].filter(Boolean)
     });
 }
 
+/**
+ * 在 EPUB 或 HTML 导出前提示映射字型嵌入信息，关闭弹窗或选择返回时解析为 false
+ */
 export function confirmMappingFontExport(format: "EPUB" | "HTML", summary: MappingFontSummary): Promise<boolean> {
     document.querySelector("#esj-mapping-export-confirm")?.remove();
     return new Promise<boolean>((resolve) => {
@@ -593,9 +734,13 @@ export function confirmMappingFontExport(format: "EPUB" | "HTML", summary: Mappi
                 style: "position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:440px;max-width:calc(100vw - 32px);background:#fff;border:1px solid #aaa;border-radius:8px;box-shadow:0 0 18px rgba(0,0,0,.28);z-index:1000001;display:flex;flex-direction:column;"
             },
             [
-                createCommonHeader(`⚠️ 确认生成 ${format}`, () => finish(false)),
+                createCommonHeader(t("mapping.export.title", { format }), () => finish(false)),
                 el("div", { style: "padding:16px;font-size:14px;line-height:1.7;color:#333;" }, [
-                    `将嵌入 ${summary.chapterCount} 个章节字体，共 ${formatMappingFontBytes(summary.fontBytes)}。${format} 只能保证视觉显示，复制、搜索和朗读可能不正确。`
+                    t("mapping.export.message", {
+                        count: summary.chapterCount,
+                        bytes: formatMappingFontBytes(summary.fontBytes),
+                        format
+                    })
                 ]),
                 el("div", { style: "padding:12px;display:flex;justify-content:flex-end;gap:8px;" }, [
                     el(
@@ -604,7 +749,7 @@ export function confirmMappingFontExport(format: "EPUB" | "HTML", summary: Mappi
                             style: "padding:8px 12px;background:#eee;border:1px solid #ccc;border-radius:6px;cursor:pointer;",
                             onclick: () => finish(false)
                         },
-                        ["返回"]
+                        [t("mapping.export.back")]
                     ),
                     el(
                         "button",
@@ -613,7 +758,7 @@ export function confirmMappingFontExport(format: "EPUB" | "HTML", summary: Mappi
                             style: "padding:8px 12px;background:#2b9bd7;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:bold;",
                             onclick: () => finish(true)
                         },
-                        [`继续生成 ${format}`]
+                        [t("mapping.export.continue", { format })]
                     )
                 ])
             ]
@@ -630,7 +775,7 @@ export function confirmMappingFontExport(format: "EPUB" | "HTML", summary: Mappi
 export function showBookDownloadInProgressPopup(lock: BookDownloadLock): void {
     document.querySelector("#esj-book-lock")?.remove();
 
-    const sourceText = lock.sourcePageType === "detail" ? "详情页" : "论坛页";
+    const sourceText = t(lock.sourcePageType === "detail" ? "download.conflict.detail" : "download.conflict.forum");
     const closeAction = () => document.querySelector("#esj-book-lock")?.remove();
     const popup = el(
         "div",
@@ -639,9 +784,9 @@ export function showBookDownloadInProgressPopup(lock: BookDownloadLock): void {
             style: "position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:380px;background:#fff;border:1px solid #aaa;border-radius:8px;box-shadow:0 0 18px rgba(0,0,0,0.28);z-index:1000000;display:flex;flex-direction:column;"
         },
         [
-            createCommonHeader("📘 下载任务进行中", closeAction),
+            createCommonHeader(t("download.conflict.title"), closeAction),
             el("div", { style: "padding:16px;font-size:14px;line-height:1.7;color:#333;" }, [
-                `该书正在由${sourceText}发起全本下载，请等待任务完成或取消后再试。`
+                t("download.conflict.message", { source: sourceText })
             ]),
             el("div", { style: "padding:12px;display:flex;justify-content:flex-end;" }, [
                 el(
@@ -650,7 +795,7 @@ export function showBookDownloadInProgressPopup(lock: BookDownloadLock): void {
                         style: "padding:8px 12px;background:#2b9bd7;color:#fff;border:none;border-radius:6px;cursor:pointer;",
                         onclick: closeAction
                     },
-                    ["知道了"]
+                    [t("download.conflict.acknowledge")]
                 )
             ])
         ]
@@ -661,8 +806,7 @@ export function showBookDownloadInProgressPopup(lock: BookDownloadLock): void {
 }
 
 /**
- * 创建下载进度弹窗
- * 包含进度条、日志输出框、取消和最小化按钮
+ * 清理脚本已创建的弹窗和托盘后，创建并挂载下载进度弹窗
  */
 export function createDownloadPopup(): HTMLElement {
     fullCleanup(state.originalTitle);
@@ -674,10 +818,10 @@ export function createDownloadPopup(): HTMLElement {
         const btn = document.querySelector("#esj-cancel") as HTMLButtonElement;
         if (btn) {
             btn.disabled = true;
-            btn.textContent = "正在保存...";
+            btn.textContent = t("download.popup.saving");
             btn.style.backgroundColor = "#999";
         }
-        log("🛑 正在停止任务，请稍候...");
+        log(t("download.popup.stoppingLog"));
     }
 
     function onClose() {
@@ -692,12 +836,16 @@ export function createDownloadPopup(): HTMLElement {
         }
 
         const headerTitle = popup?.querySelector(".esj-common-header span")?.textContent || "";
-        const statusText = headerTitle.replace(/^📘\s*/, "").trim() || "下载中...";
+        const statusText = headerTitle.replace(/^📘\s*/, "").trim() || t("download.popup.running");
 
         createMinimizedTray(statusText);
     }
 
-    const header = createCommonHeader("📘 全本下载任务", onClose, onMinimize);
+    const header = createCommonHeader(t("download.popup.title"), onClose, onMinimize);
+    const headerLabel = header.querySelector("span");
+    if (headerLabel instanceof HTMLElement) {
+        bindInterfaceText(headerLabel, "download.popup.title");
+    }
 
     // 找到里面的 span 加 ID，方便后续更新进度
     const span = header.querySelector("span");
@@ -722,8 +870,9 @@ export function createDownloadPopup(): HTMLElement {
             style: "padding:8px 12px;background:#d9534f;color:#fff;border:none;border-radius:6px;cursor:pointer;",
             onclick: onCancel
         },
-        ["取消任务"]
+        [t("download.action.cancelTask")]
     );
+    bindInterfaceText(btnCancel, "download.action.cancelTask");
 
     const popup = el(
         "div",
@@ -734,7 +883,7 @@ export function createDownloadPopup(): HTMLElement {
         [
             header,
             el("div", { style: "padding:12px;" }, [
-                el("div", { style: "font-size:13px;margin-bottom:8px;" }, ["进度："]),
+                bindInterfaceText(el("div", { style: "font-size:13px;margin-bottom:8px;" }), "download.popup.progress"),
                 el("div", { style: "width:100%;height:14px;background:#eee;border-radius:8px;overflow:hidden;" }, [
                     progressBar
                 ])
@@ -761,9 +910,7 @@ export function createConfirmPopup(onOk: () => void, onCancel?: () => void, cach
     const cachedCount = state.globalChaptersMap.size;
     const hintText =
         cacheHint ||
-        (cachedCount > 0
-            ? `检测到已有 ${cachedCount} 章缓存，点击确定将跳过已下载章节继续下载。`
-            : "是否开始抓取该小说全部章节？");
+        (cachedCount > 0 ? t("confirm.download.cached", { count: cachedCount }) : t("confirm.download.empty"));
 
     const closeAction = () => {
         document.querySelector("#esj-confirm")?.remove();
@@ -773,7 +920,7 @@ export function createConfirmPopup(onOk: () => void, onCancel?: () => void, cach
         }
     };
 
-    const header = createCommonHeader("✔️ 确认下载", closeAction);
+    const header = createCommonHeader(t("confirm.download.title"), closeAction);
 
     const body = el("div", { style: "padding:16px;font-size:14px;" }, [hintText]);
 
@@ -790,7 +937,7 @@ export function createConfirmPopup(onOk: () => void, onCancel?: () => void, cach
                 }
             }
         },
-        ["取消"]
+        [t("common.cancel")]
     );
 
     const btnOk = el(
@@ -803,7 +950,7 @@ export function createConfirmPopup(onOk: () => void, onCancel?: () => void, cach
                 onOk();
             }
         },
-        ["确定"]
+        [t("common.confirm")]
     );
 
     const footer = el(
@@ -832,10 +979,11 @@ export function createConfirmPopup(onOk: () => void, onCancel?: () => void, cach
  */
 export function showFormatChoice(): void {
     if (!state.cachedData) {
-        showMessagePopup({ tone: "info", title: "暂无可导出内容", message: "当前没有已完成的下载数据。" });
+        showMessagePopup({ tone: "info", title: t("export.none.title"), message: t("export.none.message") });
         return;
     }
 
+    disposeActiveFormatLocaleRefresh?.();
     fullCleanup();
 
     // 禁用设置和下载按钮，防止重复操作
@@ -851,16 +999,21 @@ export function showFormatChoice(): void {
     const hasMappedChapters = mappingSummary.chapterCount > 0;
 
     const closeAction = () => {
+        disposeActiveFormatLocaleRefresh?.();
         document.querySelector("#esj-format")?.remove();
         toggleSettingsLock(false);
         toggleDownloadLock(false);
     };
 
-    const header = createCommonHeader("💾 导出选项", closeAction);
+    const header = createCommonHeader(t("export.title"), closeAction);
 
     const coverStatus = data.metadata.coverBlob
-        ? el("div", { style: "color:green;font-size:12px;margin-top:4px;" }, ["✔  封面已就绪"])
-        : el("div", { style: "color:red;font-size:12px;margin-top:4px;" }, ["✖  无封面"]);
+        ? el("div", { id: "esj-format-cover-status", style: "color:green;font-size:12px;margin-top:4px;" }, [
+              t("export.coverReady")
+          ])
+        : el("div", { id: "esj-format-cover-status", style: "color:red;font-size:12px;margin-top:4px;" }, [
+              t("export.coverMissing")
+          ]);
 
     // 正文插图统计
     let imageStatus: HTMLElement | string = "";
@@ -885,22 +1038,28 @@ export function showFormatChoice(): void {
         if (totalCount > 0) {
             // 有图片处理记录，失败显示橙色，全成功显示蓝色
             const color = failCount > 0 ? "#e6a23c" : "#2b9bd7";
-            const errorHint = failCount > 0 ? ` (失败 ${failCount} 张，原因见 F12)` : "";
+            const errorHint = failCount > 0 ? t("export.imagesFailed", { count: failCount }) : "";
 
-            imageStatus = el("div", { style: `color:${color}; font-size:12px; margin-top:4px;` }, [
-                `🖼️ 正文插图: ${successCount} / ${totalCount} 张${errorHint}`
-            ]);
+            imageStatus = el(
+                "div",
+                { id: "esj-format-image-status", style: `color:${color}; font-size:12px; margin-top:4px;` },
+                [`${t("export.images", { success: successCount, total: totalCount })}${errorHint}`]
+            );
         } else {
             // 开启了开关但没抓到任何图
-            imageStatus = el("div", { style: "color:#999; font-size:12px; margin-top:4px;" }, [
-                "🖼️ 正文插图: 未检测到图片"
-            ]);
+            imageStatus = el(
+                "div",
+                { id: "esj-format-image-status", style: "color:#999; font-size:12px; margin-top:4px;" },
+                [t("export.imagesNone")]
+            );
         }
     }
 
     const infoBody = el("div", { style: "padding:20px;font-size:14px;line-height:1.5;" }, [
-        el("div", {}, [`《${data.metadata.title}》内容已就绪。`]),
-        el("div", { style: "color:#666;font-size:12px;margin-top:4px;" }, [`共 ${data.chapters.length} 章`]),
+        el("div", { id: "esj-format-book-status" }, [t("export.bookReady", { title: data.metadata.title })]),
+        el("div", { id: "esj-format-chapter-count", style: "color:#666;font-size:12px;margin-top:4px;" }, [
+            t("export.chapterCount", { count: data.chapters.length })
+        ]),
         coverStatus,
         imageStatus,
         hasMappedChapters
@@ -911,7 +1070,10 @@ export function showFormatChoice(): void {
                       style: "margin-top:10px;padding:10px;border:1px solid #e6a23c;background:#fff7e6;color:#8a5a00;border-radius:6px;font-size:12px;line-height:1.6;"
                   },
                   [
-                      `⚠ 检测到 ${mappingSummary.chapterCount} 个映射章节，字体共 ${formatMappingFontBytes(mappingSummary.fontBytes)}。TXT 已禁用；HTML/EPUB 仅保证视觉显示，复制、搜索和朗读可能不正确。`
+                      t("export.mappingWarning", {
+                          count: mappingSummary.chapterCount,
+                          bytes: formatMappingFontBytes(mappingSummary.fontBytes)
+                      })
                   ]
               )
             : ""
@@ -926,7 +1088,7 @@ export function showFormatChoice(): void {
             id: "esj-txt",
             disabled: hasMappedChapters,
             "aria-disabled": hasMappedChapters ? "true" : "false",
-            title: hasMappedChapters ? "映射正文尚未恢复为真实 Unicode，无法生成正确 TXT" : "下载 TXT",
+            title: hasMappedChapters ? t("export.txtBlocked") : t("export.downloadTxt"),
             style: `flex:1;padding:10px 0;border:1px solid #ccc;background:#f0f0f0;border-radius:6px;cursor:${hasMappedChapters ? "not-allowed" : "pointer"};font-weight:bold;color:${hasMappedChapters ? "#999" : "#333"};`,
             onclick: hasMappedChapters
                 ? undefined
@@ -936,7 +1098,7 @@ export function showFormatChoice(): void {
                       try {
                           blob = new Blob([data.txt], { type: "text/plain;charset=utf-8" });
                       } catch (error) {
-                          showExportFailure("TXT", "生成", error);
+                          showExportFailure("TXT", "generate", error);
                           return;
                       }
                       try {
@@ -945,11 +1107,11 @@ export function showFormatChoice(): void {
                           void recordBookExport("txt");
                       } catch (error) {
                           console.error(error);
-                          showExportFailure("TXT", "下载", error);
+                          showExportFailure("TXT", "download", error);
                       }
                   }
         },
-        [hasMappedChapters ? "TXT 不可用" : "⬇ TXT 下载"]
+        [hasMappedChapters ? t("export.txtDisabled") : t("export.downloadTxt")]
     );
 
     const btnEpub = el(
@@ -959,7 +1121,7 @@ export function showFormatChoice(): void {
             style: "flex:1;padding:10px 0;border:none;background:#2b9bd7;color:#fff;border-radius:6px;cursor:pointer;font-weight:bold;",
             onclick: async () => handleEpubDownload()
         },
-        ["⬇ EPUB 下载"]
+        [t("export.downloadEpub")]
     );
 
     const btnHtml = el(
@@ -969,7 +1131,7 @@ export function showFormatChoice(): void {
             style: "flex:1;padding:10px 0;border:none;background:#999;color:#fff;border-radius:6px;cursor:pointer;font-weight:bold;",
             onclick: async () => handleHtmlDownload()
         },
-        ["⬇ HTML 下载"]
+        [t("export.downloadHtml")]
     );
 
     const footer = el(
@@ -980,9 +1142,14 @@ export function showFormatChoice(): void {
         [btnTxt, btnEpub, btnHtml]
     );
     const txtDisabledReason = hasMappedChapters
-        ? el("div", { style: "padding:0 20px 16px;color:#a45b00;font-size:12px;line-height:1.5;" }, [
-              "TXT 已禁用：映射正文尚未恢复为真实 Unicode。"
-          ])
+        ? el(
+              "div",
+              {
+                  id: "esj-format-txt-disabled-reason",
+                  style: "padding:0 20px 16px;color:#a45b00;font-size:12px;line-height:1.5;"
+              },
+              [t("download.export.txtDisabled")]
+          )
         : "";
 
     const popup = el(
@@ -997,6 +1164,61 @@ export function showFormatChoice(): void {
     document.body.appendChild(popup);
     enableDrag(popup, ".esj-common-header");
 
+    const refreshFormatChoiceText = () => {
+        const headerLabel = header.querySelector("span");
+        if (headerLabel) {
+            headerLabel.textContent = t("export.title");
+        }
+        coverStatus.textContent = t(data.metadata.coverBlob ? "export.coverReady" : "export.coverMissing");
+        const bookStatus = popup.querySelector("#esj-format-book-status");
+        const chapterCount = popup.querySelector("#esj-format-chapter-count");
+        if (bookStatus) {
+            bookStatus.textContent = t("export.bookReady", { title: data.metadata.title });
+        }
+        if (chapterCount) {
+            chapterCount.textContent = t("export.chapterCount", { count: data.chapters.length });
+        }
+        if (imageStatus instanceof HTMLElement) {
+            const successCount = data.chapters.reduce((count, chapter) => count + (chapter.images?.length || 0), 0);
+            const failCount = data.chapters.reduce((count, chapter) => count + (chapter.imageErrors || 0), 0);
+            const totalCount = successCount + failCount;
+            imageStatus.textContent =
+                totalCount > 0
+                    ? `${t("export.images", { success: successCount, total: totalCount })}${
+                          failCount > 0 ? t("export.imagesFailed", { count: failCount }) : ""
+                      }`
+                    : t("export.imagesNone");
+        }
+        const mappingWarning = popup.querySelector("#esj-format-mapping-warning");
+        if (mappingWarning) {
+            mappingWarning.textContent = t("export.mappingWarning", {
+                count: mappingSummary.chapterCount,
+                bytes: formatMappingFontBytes(mappingSummary.fontBytes)
+            });
+        }
+        btnTxt.textContent = t(hasMappedChapters ? "export.txtDisabled" : "export.downloadTxt");
+        btnTxt.title = t(hasMappedChapters ? "export.txtBlocked" : "export.downloadTxt");
+        btnEpub.textContent = t(epubExporting ? "export.generating" : "export.downloadEpub");
+        btnHtml.textContent = t(htmlExporting ? "export.generating" : "export.downloadHtml");
+        if (txtDisabledReason instanceof HTMLElement) {
+            txtDisabledReason.textContent = t("download.export.txtDisabled");
+        }
+    };
+    const unsubscribeLocale = subscribeInterfaceLocaleChange(() => {
+        if (!popup.isConnected) {
+            disposeActiveFormatLocaleRefresh?.();
+            return;
+        }
+        refreshFormatChoiceText();
+    });
+    const disposeLocaleRefresh = () => {
+        unsubscribeLocale();
+        if (disposeActiveFormatLocaleRefresh === disposeLocaleRefresh) {
+            disposeActiveFormatLocaleRefresh = null;
+        }
+    };
+    disposeActiveFormatLocaleRefresh = disposeLocaleRefresh;
+
     // 下载 EPUB
     async function handleEpubDownload() {
         if (epubExporting) {
@@ -1005,7 +1227,6 @@ export function showFormatChoice(): void {
         epubExporting = true;
         const btn = document.querySelector("#esj-epub") as HTMLButtonElement;
         const currentData = state.cachedData as CachedData;
-        const originalText = btn.innerText;
         const originalBg = btn.style.background;
         const oldTitle = document.title;
         try {
@@ -1024,22 +1245,23 @@ export function showFormatChoice(): void {
                     void recordBookExport("epub");
                 } catch (error) {
                     console.error(error);
-                    showExportFailure("EPUB", "下载", error);
+                    showExportFailure("EPUB", "download", error);
                 }
                 return;
             }
 
-            btn.innerText = "生成中...";
+            btn.innerText = t("export.generating");
             btn.style.background = "#7ab8d6";
 
-            document.title = "[生成 EPUB] " + oldTitle;
+            document.title = t("export.documentTitle", { title: oldTitle });
 
             let blob: Blob;
             try {
+                log(t("export.log.buildEpub"));
                 blob = await buildEpub(currentData.chapters, currentData.metadata, getEpubTagPageSetting());
             } catch (error) {
                 console.error(error);
-                showExportFailure("EPUB", "生成", error);
+                showExportFailure("EPUB", "generate", error);
                 return;
             }
             currentData.epubBlob = blob;
@@ -1051,14 +1273,14 @@ export function showFormatChoice(): void {
                 void recordBookExport("epub");
             } catch (error) {
                 console.error(error);
-                showExportFailure("EPUB", "下载", error);
+                showExportFailure("EPUB", "download", error);
             }
         } finally {
             epubExporting = false;
-            btn.innerText = originalText;
             btn.disabled = false;
             btn.style.background = originalBg;
             document.title = oldTitle;
+            refreshFormatChoiceText();
         }
     }
 
@@ -1069,21 +1291,21 @@ export function showFormatChoice(): void {
         }
         htmlExporting = true;
         const btn = document.querySelector("#esj-html") as HTMLButtonElement;
-        const originalText = btn.innerText;
         try {
             btn.disabled = true;
             if (hasMappedChapters && !(await confirmMappingFontExport("HTML", mappingSummary))) {
                 recordCancelledExport("html");
                 return;
             }
-            btn.innerText = "生成中...";
+            btn.innerText = t("export.generating");
 
             let blob: Blob;
             try {
+                log(t("export.log.buildHtml"));
                 blob = await buildHtml(data.chapters, data.metadata);
             } catch (error) {
                 console.error(error);
-                showExportFailure("HTML", "生成", error);
+                showExportFailure("HTML", "generate", error);
                 return;
             }
 
@@ -1094,12 +1316,12 @@ export function showFormatChoice(): void {
                 void recordBookExport("html");
             } catch (error) {
                 console.error(error);
-                showExportFailure("HTML", "下载", error);
+                showExportFailure("HTML", "download", error);
             }
         } finally {
             htmlExporting = false;
-            btn.innerText = originalText;
             btn.disabled = false;
+            refreshFormatChoiceText();
         }
     }
 
@@ -1141,7 +1363,11 @@ export function showFormatChoice(): void {
             author: data.metadata.author || "",
             format,
             sourcePageType: context?.sourcePageType || "detail",
-            chapterInfo: context?.chapterInfo || `${data.chapters.length} 章`,
+            chapterSummary: context?.chapterSummary || {
+                totalCount: data.chapters.length,
+                missingCount: data.chapters.filter((chapter) => chapter.content.includes('class="esj-missing-chapter"'))
+                    .length
+            },
             ...(imageInfo === undefined ? {} : { imageInfo }),
             pageUrl: context?.pageUrl || location.href
         });
@@ -1162,15 +1388,54 @@ export function createSettingsPanel(): void {
         toggleSettingsLock(false);
     };
 
-    const header = createCommonHeader("⚙️ 脚本设置", closeAction);
+    const header = createCommonHeader(`⚙️ ${t("settings.title")}`, closeAction);
+    const settingsHeaderLabel = header.querySelector("span");
+    if (settingsHeaderLabel instanceof HTMLElement) {
+        settingsHeaderLabel.replaceChildren("⚙️ ", bindInterfaceText(el("span"), "settings.title"));
+    }
     const installedVersion =
         typeof GM_info !== "undefined" && GM_info.script?.version?.trim()
             ? `v${GM_info.script.version.trim()}`
-            : "版本未知";
+            : t("settings.versionUnknown");
+
+    const interfaceLocalePreference = getInterfaceLocalePreference();
+    const interfaceLocaleSelect = bindInterfaceAttribute(
+        el(
+            "select",
+            {
+                id: "esj-interface-language",
+                style: "min-width: 150px; padding: 6px; border: 1px solid #ccc; border-radius: 4px;",
+                onchange: (e: Event) => {
+                    const value = (e.target as HTMLSelectElement).value;
+                    if (isInterfaceLocalePreference(value)) {
+                        setInterfaceLocalePreference(value);
+                        publishInterfaceLocaleChange();
+                    }
+                }
+            },
+            [
+                bindInterfaceText(
+                    el("option", { value: "auto", selected: interfaceLocalePreference === "auto" }),
+                    "settings.interfaceLanguage.auto"
+                ),
+                bindInterfaceText(
+                    el("option", { value: "zh-CN", selected: interfaceLocalePreference === "zh-CN" }),
+                    "settings.interfaceLanguage.simplified"
+                ),
+                bindInterfaceText(
+                    el("option", { value: "zh-TW", selected: interfaceLocalePreference === "zh-TW" }),
+                    "settings.interfaceLanguage.traditional"
+                )
+            ]
+        ),
+        "aria-label",
+        "settings.interfaceLanguage"
+    );
 
     // 并发数输入框
     const currentConcurrency = getConcurrency();
     const inputConcurrency = el("input", {
+        id: "esj-settings-concurrency",
         type: "number",
         min: 1,
         max: 10,
@@ -1195,6 +1460,7 @@ export function createSettingsPanel(): void {
             }
 
             setConcurrency(val);
+            log(t("settings.log.concurrency", { count: val }));
         },
         onblur: (e: Event) => {
             const target = e.target as HTMLInputElement;
@@ -1202,6 +1468,7 @@ export function createSettingsPanel(): void {
             if (isNaN(val) || target.value === "") {
                 target.value = currentConcurrency.toString();
                 setConcurrency(currentConcurrency);
+                log(t("settings.log.concurrency", { count: currentConcurrency }));
             }
         }
     });
@@ -1216,7 +1483,7 @@ export function createSettingsPanel(): void {
                 createCacheManagerPopup();
             }
         },
-        ["缓存管理"]
+        [bindInterfaceText(el("span"), "settings.cache")]
     );
 
     const btnDownloadHistory = el(
@@ -1229,7 +1496,7 @@ export function createSettingsPanel(): void {
                 createDownloadHistoryPopup();
             }
         },
-        ["下载记录"]
+        [bindInterfaceText(el("span"), "settings.history")]
     );
 
     const btnDiagnostics = el(
@@ -1239,13 +1506,14 @@ export function createSettingsPanel(): void {
             style: "color:white;min-width:110px;",
             onclick: () => createDiagnosticPopup()
         },
-        ["诊断日志"]
+        [bindInterfaceText(el("span"), "settings.diagnosticsButton")]
     );
 
     // 图片下载开关
     const isImageEnabled = getImageDownloadSetting();
 
     const checkboxInput = el("input", {
+        id: "esj-settings-images",
         type: "checkbox",
         checked: isImageEnabled,
         onchange: async (e: Event) => {
@@ -1264,7 +1532,11 @@ export function createSettingsPanel(): void {
             }
             setImageDownloadSetting(checked);
             // 已有章节由后续任务按 imageEnabled 逐书判断，不在设置变更时全局清理
-            log(`正文图片下载已${checked ? "开启" : "关闭"}`);
+            log(
+                t("settings.log.image", {
+                    state: t(checked ? "diagnostics.summary.enabled" : "diagnostics.summary.disabled")
+                })
+            );
         }
     });
 
@@ -1276,6 +1548,7 @@ export function createSettingsPanel(): void {
     // EPUB 标签页开关
     const isEpubTagPageEnabled = getEpubTagPageSetting();
     const checkboxEpubTagPage = el("input", {
+        id: "esj-settings-epub-tag-page",
         type: "checkbox",
         checked: isEpubTagPageEnabled,
         onchange: (e: Event) => {
@@ -1286,7 +1559,11 @@ export function createSettingsPanel(): void {
                 state.cachedData.epubBlob = null;
             }
 
-            log(`EPUB 标签页已${checked ? "开启" : "关闭"}`);
+            log(
+                t("settings.log.epubTag", {
+                    state: t(checked ? "diagnostics.summary.enabled" : "diagnostics.summary.disabled")
+                })
+            );
         }
     });
 
@@ -1295,7 +1572,12 @@ export function createSettingsPanel(): void {
         el("span", { className: "esj-slider" })
     ]);
 
-    log(`初始化参数：并发数=${currentConcurrency}，图片下载=${isImageEnabled}`);
+    log(
+        t("settings.log.initialized", {
+            concurrency: currentConcurrency,
+            imageEnabled: isImageEnabled
+        })
+    );
 
     // 创建分隔线
     const createDivider = () => el("hr", { style: "margin: 15px 0; border: 0; border-top: 1px solid #eee;" });
@@ -1304,40 +1586,54 @@ export function createSettingsPanel(): void {
     const rowStyle = "display:flex; align-items:center; justify-content:space-between;";
 
     const rowConcurrency = el("div", { style: rowStyle }, [
-        el("label", { style: "color: #333;" }, ["下载线程数 (1-10):"]),
+        bindInterfaceText(el("label", { style: "color: #333;" }), "settings.concurrency", { max: 10 }),
         inputConcurrency
     ]);
 
+    const rowInterfaceLanguage = el("div", { style: rowStyle }, [
+        bindInterfaceText(el("label", { style: "color: #333;" }), "settings.interfaceLanguage"),
+        interfaceLocaleSelect
+    ]);
+
     const rowCache = el("div", { style: rowStyle }, [
-        el("label", { style: "color: #333;" }, ["下载缓存:"]),
+        bindInterfaceText(el("label", { style: "color: #333;" }), "settings.cache"),
         btnCacheManager
     ]);
 
     const rowHistory = el("div", { style: rowStyle }, [
-        el("label", { style: "color:#333;" }, ["下载记录:"]),
+        bindInterfaceText(el("label", { style: "color:#333;" }), "settings.history"),
         btnDownloadHistory
     ]);
 
     const rowDiagnostics = el("div", { style: rowStyle }, [
         el("div", {}, [
-            el("label", { style: "color:#333;" }, ["诊断与反馈:"]),
-            el("div", { style: "font-size:12px;color:#999;margin-top:2px;" }, ["(用于导出问题排查信息)"])
+            bindInterfaceText(el("label", { style: "color:#333;" }), "settings.diagnostics"),
+            bindInterfaceText(
+                el("div", { style: "font-size:12px;color:#999;margin-top:2px;" }),
+                "settings.diagnosticsDescription"
+            )
         ]),
         btnDiagnostics
     ]);
 
     const rowImage = el("div", { style: rowStyle }, [
         el("div", {}, [
-            el("label", { style: "color: #333;" }, ["下载正文插图: "]),
-            el("div", { style: "font-size:12px; color:#999; margin-top: 2px;" }, ["(会让速度变慢、体积变大)"])
+            bindInterfaceText(el("label", { style: "color: #333;" }), "settings.imageDownload"),
+            bindInterfaceText(
+                el("div", { style: "font-size:12px; color:#999; margin-top: 2px;" }),
+                "settings.imageDownloadDescription"
+            )
         ]),
         switchToggleImage
     ]);
 
     const rowEpubTagPage = el("div", { style: rowStyle }, [
         el("div", {}, [
-            el("label", { style: "color: #333;" }, ["生成 EPUB 标签页: "]),
-            el("div", { style: "font-size:12px; color:#999; margin-top: 2px;" }, ["(关闭后标签仍会写入 EPUB 元数据)"])
+            bindInterfaceText(el("label", { style: "color: #333;" }), "settings.epubTagPage"),
+            bindInterfaceText(
+                el("div", { style: "font-size:12px; color:#999; margin-top: 2px;" }),
+                "settings.epubTagPageDescription"
+            )
         ]),
         switchToggleEpubTagPage
     ]);
@@ -1352,7 +1648,7 @@ export function createSettingsPanel(): void {
             rel: "noopener noreferrer",
             style: relatedLinkStyle + "background:#24292f;color:#fff;"
         },
-        ["GitHub 项目主页"]
+        [bindInterfaceText(el("span"), "settings.github")]
     );
     const btnGreasyFork = el(
         "a",
@@ -1362,7 +1658,7 @@ export function createSettingsPanel(): void {
             rel: "noopener noreferrer",
             style: relatedLinkStyle + "background:#8b1a1a;color:#fff;"
         },
-        ["GreasyFork 脚本页"]
+        [bindInterfaceText(el("span"), "settings.greasyFork")]
     );
     const btnIssue = el(
         "a",
@@ -1372,10 +1668,13 @@ export function createSettingsPanel(): void {
             rel: "noopener noreferrer",
             style: relatedLinkStyle + "margin-top:8px;background:#f6f8fa;border:1px solid #d0d7de;color:#24292f;"
         },
-        ["反馈问题 / Issues"]
+        [bindInterfaceText(el("span"), "settings.feedback")]
     );
     const relatedLinks = el("div", { style: "text-align:center;" }, [
-        el("div", { style: "color:#333;font-weight:bold;margin-bottom:8px;" }, ["相关链接"]),
+        bindInterfaceText(
+            el("div", { style: "color:#333;font-weight:bold;margin-bottom:8px;" }),
+            "settings.relatedLinks"
+        ),
         el("div", { style: "display:flex;gap:8px;" }, [btnGithub, btnGreasyFork]),
         btnIssue,
         el("div", { style: "margin-top:12px;color:#999;font-size:12px;" }, [
@@ -1386,6 +1685,8 @@ export function createSettingsPanel(): void {
     // 组装整体面板
     const body = el("div", { style: "padding:25px 20px;font-size:14px;overflow:auto;min-height:0;" }, [
         rowConcurrency,
+        createDivider(),
+        rowInterfaceLanguage,
         createDivider(),
         rowImage,
         createDivider(),

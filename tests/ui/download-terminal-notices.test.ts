@@ -2,6 +2,7 @@
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { showCacheDiscardFailure, showDownloadTerminalFailure } from "../../src/ui/download-terminal-notices";
+import { setInterfaceLocalePreference } from "../../src/core/config";
 
 vi.mock("../../src/adapters/browser-diagnostics", () => ({
     listBrowserDiagnosticSessions: () => ({ schemaVersion: 1, active: [], history: [] })
@@ -10,10 +11,16 @@ vi.mock("../../src/adapters/browser-diagnostics", () => ({
 describe("download terminal notices", () => {
     beforeEach(() => {
         document.body.innerHTML = "";
+        setInterfaceLocalePreference("zh-CN");
     });
 
     it("uses the common popup for an unexpected download failure", () => {
-        showDownloadTerminalFailure({ kind: "download", message: "parser failed", storageFailure: null });
+        showDownloadTerminalFailure({
+            kind: "download",
+            code: "Error",
+            params: { errorName: "Error", detail: "parser failed" },
+            storageFailure: null
+        });
 
         const popup = document.querySelector("#esj-message-popup") as HTMLElement;
         expect(popup.dataset.tone).toBe("error");
@@ -42,5 +49,18 @@ describe("download terminal notices", () => {
 
         expect(document.querySelector("#esj-message-popup")?.textContent).toContain("缓存清理失败");
         expect(document.querySelector("#esj-message-popup")?.textContent).toContain("任务已经停止");
+    });
+
+    it("renders terminal storage failures in the current traditional Chinese locale", () => {
+        setInterfaceLocalePreference("zh-TW");
+
+        showDownloadTerminalFailure({
+            kind: "cancellation",
+            outcome: "save-timed-out",
+            storageFailure: { reason: "flush-timeout", operation: "flush", message: "缓存写入超时" }
+        });
+
+        expect(document.querySelector("#esj-message-popup")?.textContent).toContain("進度儲存逾時");
+        expect(document.querySelector("#esj-message-popup")?.textContent).toContain("快取寫入逾時");
     });
 });

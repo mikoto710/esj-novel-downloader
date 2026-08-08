@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
     classifyProtectedChapterResponse,
     createBrowserProtectedChapterAuth,
@@ -8,6 +8,9 @@ import {
     isProtectedChapterHtml
 } from "../../src/adapters/browser-protected-chapter";
 import { createChapterFixture, createProtectedChapterFixture } from "../support/fixtures";
+import { setInterfaceLocalePreference } from "../../src/core/config";
+
+beforeEach(() => setInterfaceLocalePreference("zh-CN"));
 
 const task = {
     index: 1,
@@ -57,6 +60,9 @@ describe("protected chapter browser protocol", () => {
         expect(classifyProtectedChapterResponse(protectedHtml, { status: 206, msg: "密码错误", html: "" })).toEqual({
             kind: "password-rejected",
             message: "密码错误"
+        });
+        expect(classifyProtectedChapterResponse(protectedHtml, { status: 206, msg: "", html: "" })).toEqual({
+            kind: "password-rejected"
         });
         expect(classifyProtectedChapterResponse(protectedHtml, { status: 200, html: "" })).toMatchObject({
             kind: "protocol-error",

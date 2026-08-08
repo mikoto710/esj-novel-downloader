@@ -5,12 +5,13 @@ import type {
     DownloadSnapshot,
     DownloadTask
 } from "./download/contracts";
+import type { DomainMessageParams } from "./messages";
 
 // 诊断数据独立于章节缓存；容量和保留期同时限制，避免长期占用 userscript 存储
 export const DIAGNOSTIC_SCHEMA_VERSION = 1;
-export const DIAGNOSTIC_HISTORY_LIMIT = 10;
+export const DIAGNOSTIC_HISTORY_LIMIT = 30;
 export const DIAGNOSTIC_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
-export const DIAGNOSTIC_TOTAL_BYTES_LIMIT = 2 * 1024 * 1024;
+export const DIAGNOSTIC_TOTAL_BYTES_LIMIT = 4 * 1024 * 1024;
 export const DIAGNOSTIC_SESSION_BYTES_LIMIT = 256 * 1024;
 const DIAGNOSTIC_LOG_LIMIT = 500;
 const DIAGNOSTIC_EVENT_LIMIT = 500;
@@ -25,6 +26,7 @@ export type DiagnosticResult = "running" | "success" | "cancelled" | "failed" | 
 export interface DiagnosticApplicationInfo {
     version: string;
     browser: string;
+    browserVersionUnknown?: true;
     userscriptManager: string;
 }
 
@@ -67,7 +69,18 @@ export interface DiagnosticEventRecord {
 export interface DiagnosticLogRecord {
     at: number;
     level: "info" | "warning" | "error";
-    message: string;
+    // 旧版字符串日志或导出时生成的当前语言文本
+    message?: string;
+    // 新版日志持久化稳定消息码，不固化界面语言
+    code?: string;
+    params?: DomainMessageParams;
+}
+
+export interface RecordDiagnosticLogInput {
+    level: DiagnosticLogRecord["level"];
+    message?: string;
+    code?: string;
+    params?: DomainMessageParams;
 }
 
 export interface DiagnosticExportRecord {
@@ -181,6 +194,13 @@ function limitText(value: unknown): string {
     return text.length <= DIAGNOSTIC_MESSAGE_LIMIT ? text : `${text.slice(0, DIAGNOSTIC_MESSAGE_LIMIT)}…（已截断）`;
 }
 
+function getDomainMessageDetail(code: string, params: Readonly<Record<string, unknown>>): string {
+    return typeof params.detail === "string" ? params.detail : code;
+}
+
+/**
+ * 仅保留 HTTP 或 HTTPS 诊断网址的来源与路径，无效或非网络协议返回空字符串
+ */
 export function sanitizeDiagnosticUrl(value: string): string {
     try {
         const url = new URL(value, "https://www.esjzone.cc");
@@ -193,6 +213,9 @@ export function sanitizeDiagnosticUrl(value: string): string {
     }
 }
 
+/**
+ * 移除诊断文本中的查询参数、认证字段、data URI 和长编码内容
+ */
 export function sanitizeDiagnosticMessage(value: string): string {
     // 保留排障所需 URL 路径，但移除查询参数、认证字段和可能承载正文或二进制的长编码内容
     return value
@@ -202,23 +225,16 @@ export function sanitizeDiagnosticMessage(value: string): string {
         .replace(/[A-Za-z0-9+/]{128,}={0,2}/g, "[长编码内容已移除]");
 }
 
-function resultCleanupPriority(session: DiagnosticSession): number {
-    // 数字越高越应保留；容量不足时依次淘汰成功、取消、失败或异常中断记录
-    if (session.failures.length > 0 || session.result === "failed" || session.result === "interrupted") {
-        return 2;
-    }
-    return session.result === "cancelled" ? 1 : 0;
-}
-
 function trimSessionToLimit(session: DiagnosticSession): DiagnosticSession {
     const trimmed: DiagnosticSession = {
         ...session,
         failures: session.failures.map((failure) => ({ ...failure, message: limitText(failure.message) })),
         exports: (session.exports || []).slice(-DIAGNOSTIC_EXPORT_LIMIT),
         events: session.events.slice(-DIAGNOSTIC_EVENT_LIMIT),
-        logs: session.logs
-            .slice(-DIAGNOSTIC_LOG_LIMIT)
-            .map((entry) => ({ ...entry, message: limitText(entry.message) }))
+        logs: session.logs.slice(-DIAGNOSTIC_LOG_LIMIT).map((entry) => ({
+            ...entry,
+            ...(entry.message === undefined ? {} : { message: limitText(entry.message) })
+        }))
     };
     // 先牺牲普通日志和阶段事件，最后才裁剪失败定位，并始终保留至少一条失败原因
     while (stringBytes(trimmed) > DIAGNOSTIC_SESSION_BYTES_LIMIT && trimmed.logs.length > 0) {
@@ -238,7 +254,8 @@ function repairTerminalResult(session: DiagnosticSession): DiagnosticSession {
     const normalized = {
         ...session,
         task: { ...initialTaskSummary(session.task.totalChapters), ...session.task },
-        exports: Array.isArray(session.exports) ? session.exports : []
+        exports: Array.isArray(session.exports) ? session.exports : [],
+        logs: (Array.isArray(session.logs) ? session.logs : []).map(normalizeDiagnosticLogRecord)
     };
     // 早期诊断实现可能被页面 finally 将已成功的 export-ready 会话覆盖为 failed；无失败证据时安全修正
     if (
@@ -249,6 +266,26 @@ function repairTerminalResult(session: DiagnosticSession): DiagnosticSession {
         return { ...normalized, result: "success" };
     }
     return normalized;
+}
+
+function normalizeDiagnosticLogRecord(entry: DiagnosticLogRecord): DiagnosticLogRecord {
+    const level = entry.level === "warning" || entry.level === "error" ? entry.level : "info";
+    return {
+        at: typeof entry.at === "number" ? entry.at : 0,
+        level,
+        ...(typeof entry.message === "string" ? { message: limitText(entry.message) } : {}),
+        ...(typeof entry.code === "string" ? { code: limitText(entry.code) } : {}),
+        ...(entry.params ? { params: sanitizeDiagnosticParams(entry.params) } : {})
+    };
+}
+
+function sanitizeDiagnosticParams(params: DomainMessageParams): DomainMessageParams {
+    return Object.fromEntries(
+        Object.entries(params).map(([key, value]) => [
+            key,
+            typeof value === "string" ? limitText(sanitizeDiagnosticMessage(value)) : value
+        ])
+    );
 }
 
 function normalizeStore(store: DiagnosticStore, now: number): DiagnosticStore {
@@ -268,13 +305,13 @@ function normalizeStore(store: DiagnosticStore, now: number): DiagnosticStore {
         .map(trimSessionToLimit);
 
     history.sort((a, b) => (b.endedAt || b.updatedAt) - (a.endedAt || a.updatedAt));
-    // 当前任务不占历史条数；历史和全部进行中会话共同受总容量上限约束
+    // 当前任务不占历史条数；历史始终按时间保留最近记录，并与全部进行中会话共同受总容量上限约束
     while (history.length > DIAGNOSTIC_HISTORY_LIMIT) {
-        removeLowestPriorityOldest(history);
+        history.pop();
     }
     while (stringBytes({ schemaVersion: DIAGNOSTIC_SCHEMA_VERSION, active, history }) > DIAGNOSTIC_TOTAL_BYTES_LIMIT) {
         if (history.length > 0) {
-            removeLowestPriorityOldest(history);
+            history.pop();
         } else if (active.length > 0) {
             const oldest = active.reduce(
                 (candidate, session, index, all) => (session.updatedAt < all[candidate].updatedAt ? index : candidate),
@@ -339,21 +376,6 @@ export function createDiagnosticSessionView(store: DiagnosticStore, now: number)
     return { active, unconfirmed, history };
 }
 
-function removeLowestPriorityOldest(history: DiagnosticSession[]): void {
-    let candidate = 0;
-    for (let index = 1; index < history.length; index++) {
-        const currentPriority = resultCleanupPriority(history[index]);
-        const candidatePriority = resultCleanupPriority(history[candidate]);
-        if (
-            currentPriority < candidatePriority ||
-            (currentPriority === candidatePriority && history[index].updatedAt < history[candidate].updatedAt)
-        ) {
-            candidate = index;
-        }
-    }
-    history.splice(candidate, 1);
-}
-
 function initialTaskSummary(totalChapters: number): DiagnosticTaskSummary {
     return {
         phase: "idle",
@@ -410,6 +432,10 @@ export class DiagnosticManager {
         private readonly now: () => number = () => Date.now()
     ) {}
 
+    /**
+     * 创建并持久化活动诊断会话，相同 taskId 的旧活动记录会被替换
+     * 页面网址写入时只保留 HTTP 或 HTTPS 来源与路径
+     */
     start(input: StartDiagnosticSessionInput): DiagnosticSession {
         const now = this.now();
         const store = normalizeStore(this.repository.load(), now);
@@ -426,7 +452,7 @@ export class DiagnosticManager {
             application: input.application,
             book: {
                 bookId: input.bookId,
-                title: input.bookTitle || "未知作品",
+                title: input.bookTitle || "",
                 url: sanitizeDiagnosticUrl(input.pageUrl),
                 sourcePageType: input.sourcePageType
             },
@@ -442,6 +468,9 @@ export class DiagnosticManager {
         return session;
     }
 
+    /**
+     * 为 taskId 标识的活动会话记录页面关闭时间，会话不存在或已有 closeObservedAt 时不重复写入
+     */
     markCloseObserved(taskId: string): void {
         const now = this.now();
         const store = normalizeStore(this.repository.load(), now);
@@ -455,6 +484,9 @@ export class DiagnosticManager {
         this.repository.save(normalizeStore(store, now));
     }
 
+    /**
+     * 更新 taskId 标识的活动会话书籍和任务元数据，会话不存在时保持不变
+     */
     updateSession(
         taskId: string,
         options: Partial<Pick<DownloadOptions, "bookName" | "pageUrl" | "sourcePageType" | "tasks">>
@@ -475,16 +507,30 @@ export class DiagnosticManager {
         });
     }
 
-    recordLog(taskId: string, message: string): void {
+    /**
+     * 向 taskId 标识的活动会话追加脱敏日志，字符串输入按 info 级别记录
+     */
+    recordLog(taskId: string, input: string | RecordDiagnosticLogInput): void {
         this.mutateSession(taskId, (session, now) => {
-            const level = /❌|失败|异常/.test(message) ? "error" : /⚠|警告|重试/.test(message) ? "warning" : "info";
-            session.logs.push({ at: now - session.startedAt, level, message: limitText(message) });
+            const record = typeof input === "string" ? { level: "info" as const, message: input } : input;
+            session.logs.push(
+                normalizeDiagnosticLogRecord({
+                    at: now - session.startedAt,
+                    level: record.level,
+                    ...(record.message === undefined ? {} : { message: record.message }),
+                    ...(record.code === undefined ? {} : { code: record.code }),
+                    ...(record.params === undefined ? {} : { params: record.params })
+                })
+            );
             if (session.logs.length > DIAGNOSTIC_LOG_LIMIT) {
                 session.logs.shift();
             }
         });
     }
 
+    /**
+     * 向 taskId 标识的活动或历史会话追加脱敏失败记录，会话不存在时保持不变
+     */
     recordFailure(taskId: string, input: RecordDiagnosticFailureInput): void {
         this.mutateSession(
             taskId,
@@ -511,6 +557,9 @@ export class DiagnosticManager {
         );
     }
 
+    /**
+     * 向 taskId 标识的活动或历史会话追加导出结果，会话不存在时保持不变
+     */
     recordExport(taskId: string, input: RecordDiagnosticExportInput): void {
         this.mutateSession(
             taskId,
@@ -524,6 +573,9 @@ export class DiagnosticManager {
         );
     }
 
+    /**
+     * 将下载事件归并到诊断摘要，并在导出就绪、取消或失败时写入终态
+     */
     recordDownloadEvent(taskId: string, event: DownloadEvent): void {
         if (event.type === "chapter-restored" || event.type === "chapter-processed") {
             // 逐章恢复和处理只汇总到快照
@@ -577,7 +629,7 @@ export class DiagnosticManager {
                         scope: "chapter",
                         stage: event.stage,
                         code: event.code,
-                        message: limitText(event.message),
+                        message: limitText(getDomainMessageDetail(event.code, event.params)),
                         chapter: {
                             index: event.task.index + 1,
                             title: event.task.title,
@@ -604,13 +656,12 @@ export class DiagnosticManager {
                         details: { missingCount: event.missingCount, decision: event.decision }
                     });
                 } else if (event.type === "download-failed") {
-                    const error = event.error instanceof Error ? event.error : new Error(String(event.error));
                     session.failures.push({
                         at,
                         scope: event.snapshot.storageFailure ? "storage" : "download",
                         stage: event.snapshot.phase,
-                        code: event.snapshot.storageFailure?.reason || error.name || "download-failed",
-                        message: limitText(error.message)
+                        code: event.snapshot.storageFailure?.reason || event.code || "download-failed",
+                        message: limitText(getDomainMessageDetail(event.code, event.params))
                     });
                 }
                 if (session.events.length > DIAGNOSTIC_EVENT_LIMIT) {
@@ -621,6 +672,9 @@ export class DiagnosticManager {
         );
     }
 
+    /**
+     * 完成 taskId 标识的活动会话并合并可选任务摘要，任务已转入历史时不覆盖终态
+     */
     finish(taskId: string, result: Exclude<DiagnosticResult, "running">, task?: Partial<DiagnosticTaskSummary>): void {
         // 页面 finally 只负责收尾仍处于 active 的启动阶段会话，不得覆盖 coordinator 已发布的终态
         this.mutateSession(taskId, (session, now) => {
@@ -631,6 +685,9 @@ export class DiagnosticManager {
         });
     }
 
+    /**
+     * 读取经过兼容修复、保留期限和容量约束处理的快照，不将结果回写 repository
+     */
     list(): DiagnosticStore {
         // 诊断查询不回写旧快照
         return normalizeStore(this.repository.load(), this.now());

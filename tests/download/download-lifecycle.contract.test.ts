@@ -2,6 +2,7 @@
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createBookLock, createDeferred, createDetailPageFixture, installDocumentFixture } from "../support";
+import { setInterfaceLocalePreference } from "../../src/core/config";
 
 const mocks = vi.hoisted(() => ({
     batchDownload: vi.fn(),
@@ -70,6 +71,7 @@ describe("download lifecycle contracts", () => {
     const lock = createBookLock();
 
     beforeEach(() => {
+        setInterfaceLocalePreference("zh-CN");
         vi.clearAllMocks();
         window.history.replaceState({}, "", "/detail/100.html");
         installDocumentFixture(createDetailPageFixture({ bookId: "100", chapterCount: 2 }));
@@ -108,7 +110,7 @@ describe("download lifecycle contracts", () => {
         await scrapeDetail();
 
         expect(mocks.finalize).toHaveBeenCalledOnce();
-        expect(mocks.finalize).toHaveBeenCalledWith(lock, mocks.stopHeartbeat);
+        expect(mocks.finalize).toHaveBeenCalledWith(lock, mocks.stopHeartbeat, expect.any(Function));
     });
 
     it("does not remove a terminal notice owned by the download coordinator", async () => {
@@ -136,7 +138,7 @@ describe("download lifecycle contracts", () => {
     it("shows cache preparation before claiming the writer", async () => {
         await scrapeDetail();
 
-        expect(mocks.log).toHaveBeenCalledWith("正在准备本地缓存...");
+        expect(mocks.log).toHaveBeenCalledWith("正在准备本地缓存…");
         expect(mocks.claimCache).toHaveBeenCalledWith("100", lock.taskId, false, expect.any(AbortSignal));
         expect(mocks.log.mock.invocationCallOrder[0]).toBeLessThan(mocks.claimCache.mock.invocationCallOrder[0]);
     });

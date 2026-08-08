@@ -65,7 +65,7 @@ describe("processHtmlImages", () => {
             {
                 stage: "format",
                 code: "image-format-unrecognized",
-                message: "图片内容无法识别为支持的格式",
+                message: "image-format-unrecognized",
                 count: 1
             }
         ]);
@@ -85,7 +85,7 @@ describe("processHtmlImages", () => {
             {
                 stage: "request",
                 code: "image-request-failed",
-                message: "图片请求在重试后仍失败",
+                message: "image-request-failed",
                 count: 1
             }
         ]);

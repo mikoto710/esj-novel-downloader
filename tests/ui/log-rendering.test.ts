@@ -1,12 +1,16 @@
 // @vitest-environment jsdom
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { log } from "../../src/utils/index";
+import { setInterfaceLocalePreference } from "../../src/core/config";
+import { t } from "../../src/ui/locale";
+import { log, refreshUiLogTruncationText, setUiLogTruncationFormatter } from "../../src/utils/index";
 
 describe("log rendering", () => {
     beforeEach(() => {
         vi.useFakeTimers();
         document.body.innerHTML = '<pre id="esj-log"></pre>';
+        setInterfaceLocalePreference("zh-CN");
+        setUiLogTruncationFormatter((count) => t("log.truncated", { count }));
         vi.spyOn(console, "log").mockImplementation(() => undefined);
     });
 
@@ -66,5 +70,9 @@ describe("log rendering", () => {
         expect(box.textContent).not.toContain("event-4\n");
         expect(box.textContent).toContain("event-5\n");
         expect(box.textContent).toContain("event-1004\n");
+
+        setInterfaceLocalePreference("zh-TW");
+        refreshUiLogTruncationText();
+        expect(box.querySelector('[data-esj-log-truncation="true"]')?.textContent).toContain("已省略 5 筆較早紀錄");
     });
 });

@@ -6,9 +6,21 @@ import {
 } from "../core/download-history";
 import { DownloadFormat, DownloadHistoryItem, SourcePageType } from "../types";
 import { el, enableDrag } from "../utils/dom";
+import { subscribeInterfaceLocaleChange, t } from "./locale";
+
+let disposeActiveHistoryLocaleRefresh: (() => void) | null = null;
+let disposeActiveHistoryColumnResize: (() => void) | null = null;
+
+const HISTORY_MIN_COLUMN_WIDTH = 48;
 
 function sourceLabel(source: SourcePageType): string {
-    return source === "detail" ? "详情页" : source === "forum" ? "论坛页" : "单章页";
+    return t(
+        source === "detail"
+            ? "history.source.detail"
+            : source === "forum"
+              ? "history.source.forum"
+              : "history.source.single"
+    );
 }
 
 function formatTime(timestamp: number): string {
@@ -18,10 +30,10 @@ function formatTime(timestamp: number): string {
     yesterday.setDate(today.getDate() - 1);
     const time = date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
     if (date.toDateString() === today.toDateString()) {
-        return `今天 ${time}`;
+        return t("history.today", { time });
     }
     if (date.toDateString() === yesterday.toDateString()) {
-        return `昨天 ${time}`;
+        return t("history.yesterday", { time });
     }
     return date.toLocaleString();
 }
@@ -30,23 +42,104 @@ function selectOptions(values: Array<[string, string]>): HTMLElement[] {
     return values.map(([value, text]) => el("option", { value }, [text]));
 }
 
+function enableHistoryColumnResize(table: HTMLTableElement): () => void {
+    const columns = Array.from(table.querySelectorAll<HTMLTableColElement>("col"));
+    const headers = Array.from(table.querySelectorAll<HTMLTableCellElement>("thead th"));
+    const listeners: Array<{ handle: HTMLElement; onMouseDown: (event: MouseEvent) => void }> = [];
+    let finishActiveResize: (() => void) | null = null;
+
+    headers.slice(0, -1).forEach((header, index) => {
+        const handle = header.querySelector<HTMLElement>(".esj-history-column-resizer");
+        if (!handle || !columns[index] || !columns[index + 1]) {
+            return;
+        }
+        const onMouseDown = (event: MouseEvent) => {
+            if (event.button !== 0) {
+                return;
+            }
+            const tableWidth = table.getBoundingClientRect().width;
+            const columnWidths = headers.map((cell) => cell.getBoundingClientRect().width);
+            const leftStartWidth = columnWidths[index];
+            const rightStartWidth = columnWidths[index + 1];
+            if (tableWidth <= 0 || leftStartWidth <= 0 || rightStartWidth <= 0) {
+                return;
+            }
+
+            event.preventDefault();
+            event.stopPropagation();
+            finishActiveResize?.();
+            columnWidths.forEach((width, columnIndex) => {
+                columns[columnIndex].style.width = `${(width / tableWidth) * 100}%`;
+            });
+
+            const startX = event.clientX;
+            const pairMinimumWidth = Math.min(HISTORY_MIN_COLUMN_WIDTH, (leftStartWidth + rightStartWidth) / 2);
+            const previousCursor = document.body.style.cursor;
+            const previousUserSelect = document.body.style.userSelect;
+            document.body.style.cursor = "col-resize";
+            document.body.style.userSelect = "none";
+
+            const onMouseMove = (moveEvent: MouseEvent) => {
+                const requestedDelta = moveEvent.clientX - startX;
+                const boundedDelta = Math.min(
+                    Math.max(requestedDelta, pairMinimumWidth - leftStartWidth),
+                    rightStartWidth - pairMinimumWidth
+                );
+                columns[index].style.width = `${((leftStartWidth + boundedDelta) / tableWidth) * 100}%`;
+                columns[index + 1].style.width = `${((rightStartWidth - boundedDelta) / tableWidth) * 100}%`;
+            };
+            const finish = () => {
+                document.removeEventListener("mousemove", onMouseMove);
+                document.removeEventListener("mouseup", finish);
+                document.body.style.cursor = previousCursor;
+                document.body.style.userSelect = previousUserSelect;
+                if (finishActiveResize === finish) {
+                    finishActiveResize = null;
+                }
+            };
+            finishActiveResize = finish;
+            document.addEventListener("mousemove", onMouseMove);
+            document.addEventListener("mouseup", finish);
+        };
+        handle.addEventListener("mousedown", onMouseDown);
+        listeners.push({ handle, onMouseDown });
+    });
+
+    return () => {
+        finishActiveResize?.();
+        listeners.forEach(({ handle, onMouseDown }) => handle.removeEventListener("mousedown", onMouseDown));
+    };
+}
+
 function imageStatusText(item: DownloadHistoryItem): string {
     if (item.format === "txt") {
         return "—";
     }
     if (!item.imageInfo) {
-        return item.imageEnabled === undefined ? "—" : "旧记录";
+        return item.imageEnabled === undefined ? "—" : t("history.image.legacy");
     }
     if (!item.imageInfo.enabled) {
-        return "未启用";
+        return t("history.image.disabled");
     }
     const total = item.imageInfo.successCount + item.imageInfo.failureCount;
     if (total === 0) {
-        return "无插图";
+        return t("history.image.none");
     }
     return item.imageInfo.failureCount === 0
-        ? `${item.imageInfo.successCount} 张`
-        : `${item.imageInfo.successCount} / ${total} 张`;
+        ? t("history.image.count", { count: item.imageInfo.successCount })
+        : t("history.image.progress", { success: item.imageInfo.successCount, total });
+}
+
+function chapterStatusText(item: DownloadHistoryItem): string {
+    if (!item.chapterSummary) {
+        return item.chapterInfo || "—";
+    }
+    return item.chapterSummary.missingCount > 0
+        ? t("history.chapter.withMissing", {
+              total: item.chapterSummary.totalCount,
+              missing: item.chapterSummary.missingCount
+          })
+        : t("history.chapter.total", { total: item.chapterSummary.totalCount });
 }
 
 // 显示清空下载记录确认弹窗
@@ -65,11 +158,11 @@ function showHistoryClearConfirm(): Promise<boolean> {
                 style: "padding:10px;background:#2b9bd7;color:#fff;display:flex;justify-content:space-between;align-items:center;cursor:move;border-radius:8px 8px 0 0;"
             },
             [
-                el("span", { style: "font-weight:bold;" }, ["🗑️ 清空确认"]),
+                el("span", { style: "font-weight:bold;" }, [t("history.confirm.title")]),
                 el(
                     "button",
                     {
-                        title: "关闭",
+                        title: t("common.close"),
                         style: "border:none;background:#ef5350;color:#fff;padding:4px 10px;border-radius:6px;cursor:pointer;font-weight:bold;",
                         onclick: () => cleanup(false)
                     },
@@ -83,7 +176,7 @@ function showHistoryClearConfirm(): Promise<boolean> {
                 style: "padding:8px 12px;background:#eee;border:1px solid #ccc;border-radius:6px;cursor:pointer;",
                 onclick: () => cleanup(false)
             },
-            ["取消"]
+            [t("common.cancel")]
         );
         const confirmButton = el(
             "button",
@@ -91,7 +184,7 @@ function showHistoryClearConfirm(): Promise<boolean> {
                 style: "padding:8px 12px;background:#d9534f;color:#fff;border:none;border-radius:6px;cursor:pointer;",
                 onclick: () => cleanup(true)
             },
-            ["清空"]
+            [t("history.action.clear")]
         );
         const popup = el(
             "div",
@@ -102,7 +195,7 @@ function showHistoryClearConfirm(): Promise<boolean> {
             [
                 header,
                 el("div", { style: "padding:16px;font-size:14px;line-height:1.7;color:#333;" }, [
-                    "确定清空全部下载记录吗？此操作无法恢复。"
+                    t("history.confirm.message")
                 ]),
                 el("div", { style: "padding:12px;display:flex;justify-content:flex-end;gap:8px;" }, [
                     cancelButton,
@@ -119,9 +212,18 @@ function showHistoryClearConfirm(): Promise<boolean> {
  * 创建下载记录弹窗
  */
 export function createDownloadHistoryPopup(): void {
+    disposeActiveHistoryLocaleRefresh?.();
+    disposeActiveHistoryColumnResize?.();
+    disposeActiveHistoryColumnResize = null;
     document.querySelector("#esj-download-history")?.remove();
     document.querySelector("#esj-download-history-confirm")?.remove();
+    let disposeHistoryColumnResize: (() => void) | null = null;
     const close = () => {
+        disposeActiveHistoryLocaleRefresh?.();
+        disposeHistoryColumnResize?.();
+        if (disposeActiveHistoryColumnResize === disposeHistoryColumnResize) {
+            disposeActiveHistoryColumnResize = null;
+        }
         document.querySelector("#esj-download-history")?.remove();
         document.querySelector("#esj-download-history-confirm")?.remove();
         document.querySelectorAll(".esj-settings-trigger").forEach((button) => {
@@ -135,11 +237,11 @@ export function createDownloadHistoryPopup(): void {
             style: "padding:10px;background:#2b9bd7;color:#fff;display:flex;justify-content:space-between;align-items:center;cursor:move;border-radius:8px 8px 0 0;"
         },
         [
-            el("span", { style: "font-weight:bold;" }, ["⬇️ 下载记录"]),
+            el("span", { style: "font-weight:bold;" }, [t("history.title")]),
             el(
                 "button",
                 {
-                    title: "关闭",
+                    title: t("common.close"),
                     style: "border:none;background:#ef5350;color:#fff;padding:4px 10px;border-radius:6px;cursor:pointer;font-weight:bold;",
                     onclick: close
                 },
@@ -152,16 +254,16 @@ export function createDownloadHistoryPopup(): void {
         "select",
         { style: "padding:6px;border:1px solid #ccc;border-radius:5px;" },
         selectOptions([
-            ["all", "全部类型"],
-            ["book", "全本"],
-            ["single", "单章"]
+            ["all", t("history.filter.allType")],
+            ["book", t("history.filter.book")],
+            ["single", t("history.filter.single")]
         ])
     );
     const formatSelect = el(
         "select",
         { style: "padding:6px;border:1px solid #ccc;border-radius:5px;" },
         selectOptions([
-            ["all", "全部格式"],
+            ["all", t("history.filter.allFormat")],
             ["txt", "TXT"],
             ["epub", "EPUB"],
             ["html", "HTML"]
@@ -171,36 +273,53 @@ export function createDownloadHistoryPopup(): void {
         "select",
         { style: "padding:6px;border:1px solid #ccc;border-radius:5px;" },
         selectOptions([
-            ["all", "全部来源"],
-            ["detail", "详情页"],
-            ["forum", "论坛页"],
-            ["single", "单章页"]
+            ["all", t("history.filter.allSource")],
+            ["detail", t("history.source.detail")],
+            ["forum", t("history.source.forum")],
+            ["single", t("history.source.single")]
         ])
     );
     const summary = el("span", { style: "margin-left:auto;color:#666;font-size:12px;" });
     const tableBody = el("tbody");
+    const columnDefinitions: Array<[Parameters<typeof t>[0], string]> = [
+        ["history.column.book", "21%"],
+        ["history.column.author", "12%"],
+        ["history.column.type", "9%"],
+        ["history.column.format", "8%"],
+        ["history.column.source", "8%"],
+        ["history.column.chapter", "14%"],
+        ["history.column.image", "9%"],
+        ["history.column.time", "12%"],
+        ["history.column.action", "7%"]
+    ];
     const table = el("table", { style: "width:100%;border-collapse:collapse;table-layout:fixed;font-size:13px;" }, [
+        el(
+            "colgroup",
+            {},
+            columnDefinitions.map(([, width]) => el("col", { style: `width:${width};` }))
+        ),
         el("thead", { style: "position:sticky;top:0;background:#f7f7f7;z-index:1;" }, [
             el(
                 "tr",
                 {},
-                [
-                    ["书名", "21%"],
-                    ["作者", "12%"],
-                    ["导出类型", "9%"],
-                    ["格式", "8%"],
-                    ["来源", "8%"],
-                    ["章节", "14%"],
-                    ["插图", "9%"],
-                    ["时间", "12%"],
-                    ["操作", "7%"]
-                ].map(([text, width], index) =>
+                columnDefinitions.map(([key], index) =>
                     el(
                         "th",
                         {
-                            style: `width:${width};padding:10px 8px;text-align:${index === 8 ? "center" : "left"};border-bottom:1px solid #ddd;white-space:nowrap;`
+                            style: `position:relative;padding:10px 8px;text-align:${index === 8 ? "center" : "left"};border-bottom:1px solid #ddd;white-space:nowrap;`
                         },
-                        [text]
+                        [
+                            el("span", { className: "esj-history-column-label" }, [t(key)]),
+                            ...(index < columnDefinitions.length - 1
+                                ? [
+                                      el("span", {
+                                          className: "esj-history-column-resizer",
+                                          "aria-hidden": "true",
+                                          style: "position:absolute;top:0;right:-4px;width:8px;height:100%;cursor:col-resize;z-index:2;background:linear-gradient(to right,transparent 3px,#ccc 3px,#ccc 4px,transparent 4px);"
+                                      })
+                                  ]
+                                : [])
+                        ]
                     )
                 )
             )
@@ -222,12 +341,16 @@ export function createDownloadHistoryPopup(): void {
                 (format === "all" || item.format === format) &&
                 (source === "all" || item.sourcePageType === source)
         );
-        summary.textContent = `显示 ${filtered.length} / 共 ${items.length} 条，最多保留 ${DOWNLOAD_HISTORY_LIMIT} 条`;
+        summary.textContent = t("history.summary", {
+            shown: filtered.length,
+            total: items.length,
+            limit: DOWNLOAD_HISTORY_LIMIT
+        });
         tableBody.replaceChildren();
         if (filtered.length === 0) {
             tableBody.appendChild(
                 el("tr", {}, [
-                    el("td", { colspan: 9, style: "padding:48px;text-align:center;color:#777;" }, ["暂无下载记录"])
+                    el("td", { colspan: 9, style: "padding:48px;text-align:center;color:#777;" }, [t("history.empty")])
                 ])
             );
             return;
@@ -245,16 +368,16 @@ export function createDownloadHistoryPopup(): void {
             const openButton = el(
                 "button",
                 {
-                    title: "打开原页",
+                    title: t("history.action.open"),
                     style: "border:0;background:none;color:#2b9bd7;cursor:pointer;padding:2px 4px;",
                     onclick: () => window.open(item.pageUrl, "_blank", "noopener")
                 },
-                ["来源"]
+                [t("history.column.source")]
             );
             const deleteButton = el(
                 "button",
                 {
-                    title: "删除记录",
+                    title: t("history.action.delete"),
                     style: "border:0;background:none;color:#d9534f;cursor:pointer;padding:2px 4px;",
                     onclick: async () => {
                         await removeDownloadHistory(item.id);
@@ -262,16 +385,16 @@ export function createDownloadHistoryPopup(): void {
                         render();
                     }
                 },
-                ["删除"]
+                [t("history.action.deleteShort")]
             );
             tableBody.appendChild(
                 el("tr", {}, [
                     cell(item.bookName),
                     cell(item.author || "—"),
-                    cell(item.sourcePageType === "single" ? "单章" : "全本"),
+                    cell(t(item.sourcePageType === "single" ? "history.type.single" : "history.type.book")),
                     cell(item.format.toUpperCase()),
                     cell(sourceLabel(item.sourcePageType)),
-                    cell(item.chapterInfo || "—"),
+                    cell(chapterStatusText(item)),
                     cell(imageStatusText(item)),
                     cell(formatTime(item.exportedAt)),
                     el("td", { style: "padding:10px 8px;border-bottom:1px solid #eee;" }, [
@@ -292,6 +415,7 @@ export function createDownloadHistoryPopup(): void {
     const clearButton = el(
         "button",
         {
+            id: "esj-history-clear",
             style: "padding:8px 12px;background:#d9534f;color:#fff;border:0;border-radius:6px;cursor:pointer;",
             onclick: async () => {
                 const confirmed = await showHistoryClearConfirm();
@@ -303,11 +427,12 @@ export function createDownloadHistoryPopup(): void {
                 render();
             }
         },
-        ["清空全部记录"]
+        [t("history.action.clearAll")]
     );
     const refreshButton = el(
         "button",
         {
+            id: "esj-history-refresh",
             style: "padding:8px 12px;background:#f5f5f5;color:#333;border:1px solid #ccc;border-radius:6px;cursor:pointer;",
             onclick: () => {
                 void listDownloadHistory().then((result) => {
@@ -316,7 +441,7 @@ export function createDownloadHistoryPopup(): void {
                 });
             }
         },
-        ["刷新"]
+        [t("cache.action.refresh")]
     );
     const popup = el(
         "div",
@@ -341,10 +466,11 @@ export function createDownloadHistoryPopup(): void {
                     el(
                         "button",
                         {
+                            id: "esj-history-close",
                             style: "padding:8px 12px;background:#eee;border:1px solid #ccc;border-radius:6px;cursor:pointer;",
                             onclick: close
                         },
-                        ["关闭"]
+                        [t("common.close")]
                     )
                 ]
             )
@@ -352,6 +478,74 @@ export function createDownloadHistoryPopup(): void {
     );
     document.body.appendChild(popup);
     enableDrag(popup, ".esj-common-header");
+    disposeHistoryColumnResize = enableHistoryColumnResize(table);
+    disposeActiveHistoryColumnResize = disposeHistoryColumnResize;
+    const refreshLocaleText = () => {
+        const listScrollTop = listBox.scrollTop;
+        const headerLabel = header.querySelector("span");
+        const headerClose = header.querySelector("button");
+        if (headerLabel) {
+            headerLabel.textContent = t("history.title");
+        }
+        if (headerClose) {
+            headerClose.setAttribute("title", t("common.close"));
+        }
+        const optionKeys = new Map<string, Parameters<typeof t>[0]>([
+            ["all", "history.filter.allType"],
+            ["book", "history.filter.book"],
+            ["single", "history.filter.single"]
+        ]);
+        scopeSelect.querySelectorAll<HTMLOptionElement>("option").forEach((option) => {
+            const key = optionKeys.get(option.value);
+            if (key) {
+                option.textContent = t(key);
+            }
+        });
+        const allFormatOption = formatSelect.querySelector<HTMLOptionElement>('option[value="all"]');
+        if (allFormatOption) {
+            allFormatOption.textContent = t("history.filter.allFormat");
+        }
+        const sourceKeys = new Map<string, Parameters<typeof t>[0]>([
+            ["all", "history.filter.allSource"],
+            ["detail", "history.source.detail"],
+            ["forum", "history.source.forum"],
+            ["single", "history.source.single"]
+        ]);
+        sourceSelect.querySelectorAll<HTMLOptionElement>("option").forEach((option) => {
+            const key = sourceKeys.get(option.value);
+            if (key) {
+                option.textContent = t(key);
+            }
+        });
+        table.querySelectorAll<HTMLElement>(".esj-history-column-label").forEach((label, index) => {
+            const key = columnDefinitions[index]?.[0];
+            if (key) {
+                label.textContent = t(key);
+            }
+        });
+        clearButton.textContent = t("history.action.clearAll");
+        refreshButton.textContent = t("cache.action.refresh");
+        const closeButton = popup.querySelector("#esj-history-close");
+        if (closeButton) {
+            closeButton.textContent = t("common.close");
+        }
+        render();
+        listBox.scrollTop = listScrollTop;
+    };
+    const unsubscribeLocale = subscribeInterfaceLocaleChange(() => {
+        if (!popup.isConnected) {
+            disposeActiveHistoryLocaleRefresh?.();
+            return;
+        }
+        refreshLocaleText();
+    });
+    const disposeLocaleRefresh = () => {
+        unsubscribeLocale();
+        if (disposeActiveHistoryLocaleRefresh === disposeLocaleRefresh) {
+            disposeActiveHistoryLocaleRefresh = null;
+        }
+    };
+    disposeActiveHistoryLocaleRefresh = disposeLocaleRefresh;
     void listDownloadHistory().then((result) => {
         items = result;
         render();

@@ -12,17 +12,25 @@ function createAbortError(): DOMException {
 }
 
 /**
- * 普通章节请求可以并行；独占授权一旦排队，后续普通请求必须等待，避免覆盖站点的章节会话上下文
+ * 共享章节请求可以并行；独占授权排队后，新提交的共享请求必须等待，避免覆盖站点的章节会话上下文
  */
 export class BrowserRequestGate {
     private readonly queue: PendingRequest<unknown>[] = [];
     private activeShared = 0;
     private activeExclusive = false;
 
+    /**
+     * 将普通请求加入共享队列，不存在正在执行或已排队的独占请求时可与其他共享请求并行
+     * 排队期间取消会以 AbortError 拒绝；操作开始后 gate 不再代为中止，operation 应自行响应同一 signal
+     */
     runShared<T>(operation: () => Promise<T>, signal?: AbortSignal): Promise<T> {
         return this.enqueue("shared", operation, signal);
     }
 
+    /**
+     * 将授权请求加入独占队列，开始前等待正在执行的共享请求完成，并阻止其后提交的共享请求越过
+     * 排队期间取消会以 AbortError 拒绝；操作开始后 gate 不再代为中止，operation 应自行响应同一 signal
+     */
     runExclusive<T>(operation: () => Promise<T>, signal?: AbortSignal): Promise<T> {
         return this.enqueue("exclusive", operation, signal);
     }

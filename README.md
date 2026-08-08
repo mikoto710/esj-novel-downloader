@@ -2,6 +2,8 @@
 
 ![Stable](https://img.shields.io/github/v/release/mikoto710/esj-novel-downloader?label=stable) ![Pre-release](https://img.shields.io/github/v/release/mikoto710/esj-novel-downloader?include_prereleases&label=pre-release) ![License](https://img.shields.io/github/license/mikoto710/esj-novel-downloader) ![Language](https://img.shields.io/badge/language-TypeScript-blue)
 
+简体中文 | [繁體中文](README.zh-TW.md)
+
 一个用于 **ESJZone** 的 Tampermonkey 脚本。  
 支持 **TXT / EPUB / HTML 下载**，并适配多种页面类型 (小说详情页 / 单章阅读页 / 论坛列表页)。
 
@@ -70,11 +72,14 @@
 小说详情页和论坛列表页的“全本下载”按钮旁提供“设置”入口：
 
 - **下载线程数**：设置并发章节请求数量，默认为 5。
+- **界面语言**：可选择“自动（跟随网站）”“简体中文”或“繁體中文”；手动选择会保存并优先于自动判断。
 - **下载正文插图**：抓取正文图片并写入 EPUB / HTML；会增加下载时间、缓存占用和文件体积。
 - **生成 EPUB 标签页**：控制是否在 EPUB 中生成独立标签页。
 - **缓存管理**：查看或清理下载缓存，以及停止正在运行的任务。
 - **下载记录**：查看和清理全本及单章导出记录。
-- **诊断日志**：查看当前任务和最近 10 次任务的诊断记录。
+- **诊断日志**：查看当前任务和最近 7 天内最多 30 次任务的诊断记录；单次上限 256 KiB，总计上限 4 MiB。
+
+界面语言只影响脚本自身的按钮、弹窗、状态、日志和错误提示，不会转换小说正文、书籍元数据，也不会改变 TXT、EPUB 或 HTML 中的小说内容。
 
 正文插图开关不影响封面。图片抓取失败时，脚本会尽量保留原始链接并在结果中提示。部分图片可能需要脚本管理器授予跨域访问权限。
 
@@ -106,10 +111,13 @@ npm run watch
 # 3. 使用 Prettier 格式化源码、测试和受管理文档
 npm run format
 
-# 4. 类型检查、自动化测试并生成最终 userscript
+# 4. 类型检查并快速生成本地迭代用 userscript
+npm run build:fast
+
+# 5. 类型检查、自动化测试并生成最终 userscript
 npm run build
 ```
 
-`npm run format` 会直接修改文件，执行后应检查差异。构建产物位于 `dist/esj-novel-downloader.user.js`。
+`npm run build:fast` 只执行 TypeScript 类型检查和 Rollup，不运行自动化测试、ESLint 或格式检查，不能代替提交、CI 或发布前的完整 `npm run build`。`npm run format` 会直接修改文件，执行后应检查差异。构建产物位于 `dist/esj-novel-downloader.user.js`。
 
 贡献流程、代码规范和发布要求见 [`CONTRIBUTING.md`](CONTRIBUTING.md)，测试目录与隔离约定见 [`tests/README.md`](tests/README.md)。

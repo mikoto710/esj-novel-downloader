@@ -3,9 +3,9 @@ import { runDownload } from "./coordinator";
 import type { DownloadOptions } from "./contracts";
 
 /**
- * 全本下载的浏览器组合入口
- * download 核心包中仅此文件允许创建 browser dependencies，实际业务流程位于 coordinator
+ * 使用浏览器依赖启动一次全本下载
  */
 export async function batchDownload(options: DownloadOptions): Promise<void> {
+    // 浏览器能力只在组合入口创建，业务流程由 coordinator 执行
     await runDownload(options, createBrowserDownloadDependencies());
 }

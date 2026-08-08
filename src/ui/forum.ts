@@ -34,7 +34,7 @@ export function injectForumButton(): void {
         return;
     }
 
-    const downloadBtn = createDownloadButton("btn-download-forum", "全本下载", scrapeForum, "");
+    const downloadBtn = createDownloadButton("btn-download-forum", undefined, scrapeForum, "");
 
     const settingBtn = createSettingButton();
 

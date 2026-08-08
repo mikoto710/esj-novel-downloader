@@ -59,7 +59,7 @@ describe("mapped font cache normalization", () => {
             chapterProcessor: { process: vi.fn(async () => createChapter()) },
             protectedChapterDetector: { isProtected: () => false },
             protectedChapterAuth: {
-                unlock: async () => ({ kind: "protocol-error", code: "response-invalid", message: "unused" })
+                unlock: async () => ({ kind: "protocol-error", code: "response-invalid" })
             },
             coverFetcher: { fetch: async () => null },
             coverCache: { load: async () => null, put: async () => true },
@@ -154,7 +154,7 @@ describe("mapped font cache normalization", () => {
             },
             protectedChapterDetector: { isProtected: () => false },
             protectedChapterAuth: {
-                unlock: async () => ({ kind: "protocol-error", code: "response-invalid", message: "unused" })
+                unlock: async () => ({ kind: "protocol-error", code: "response-invalid" })
             },
             coverFetcher: { fetch: async () => null },
             coverCache: { load: async () => null, put: async () => true },

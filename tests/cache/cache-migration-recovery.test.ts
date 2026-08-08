@@ -1,5 +1,3 @@
-// @vitest-environment jsdom
-
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createCacheMeta, createChapter } from "../support";
 
@@ -43,6 +41,10 @@ vi.mock("../../src/core/cache/sync", () => ({
 vi.mock("../../src/core/book-lock", () => ({
     hasBookDownloadTaskPresence: vi.fn(() => false),
     listActiveBookDownloadLocks: vi.fn(async () => [])
+}));
+vi.mock("../../src/core/state", () => ({
+    resetGlobalState: vi.fn(),
+    state: { runtimeCacheSession: null }
 }));
 
 describe("v2 cache migration recovery", () => {

@@ -24,12 +24,34 @@ export type MappingFontErrorCode =
     | "woff2-invalid"
     | "hash-mismatch";
 
+export type MappingFontErrorReason =
+    | "source-not-data-url"
+    | "source-payload-missing"
+    | "source-decode-failed"
+    | "css-media-type-invalid"
+    | "chapter-structure-invalid"
+    | "css-family-mismatch"
+    | "font-source-missing"
+    | "font-media-type-invalid"
+    | "font-size-limit-exceeded"
+    | "woff2-header-too-short"
+    | "woff2-signature-invalid"
+    | "woff2-length-mismatch"
+    | "cached-font-metadata-invalid"
+    | "cached-font-family-mismatch"
+    | "cached-font-hash-mismatch"
+    | "export-font-missing"
+    | "export-font-metadata-invalid"
+    | "export-font-family-mismatch"
+    | "export-unvalidated-style";
+
 export class MappingFontError extends Error {
     constructor(
         readonly code: MappingFontErrorCode,
-        message: string
+        readonly reason: MappingFontErrorReason,
+        readonly params: Readonly<Record<string, string | number | boolean>> = {}
     ) {
-        super(message);
+        super(`${code}:${reason}`);
         this.name = "MappingFontError";
     }
 }
@@ -52,17 +74,17 @@ interface DataCssLinkLocation {
 
 function throwIfAborted(signal?: AbortSignal): void {
     if (signal?.aborted) {
-        throw new DOMException("映射字体处理已取消", "AbortError");
+        throw new DOMException("mapping-font-aborted", "AbortError");
     }
 }
 
 function parseDataUrl(value: string): ParsedDataUrl {
     if (!value.startsWith("data:")) {
-        throw new MappingFontError("font-source-invalid", "映射字体资源不是 data URL");
+        throw new MappingFontError("font-source-invalid", "source-not-data-url");
     }
     const commaIndex = value.indexOf(",");
     if (commaIndex < 0) {
-        throw new MappingFontError("font-source-invalid", "映射字体 data URL 缺少数据部分");
+        throw new MappingFontError("font-source-invalid", "source-payload-missing");
     }
 
     const metadata = value.slice(5, commaIndex);
@@ -81,14 +103,14 @@ function parseDataUrl(value: string): ParsedDataUrl {
         }
         return { mediaType, bytes: new TextEncoder().encode(decodeURIComponent(payload)) };
     } catch {
-        throw new MappingFontError("font-source-invalid", "映射字体 data URL 无法解码");
+        throw new MappingFontError("font-source-invalid", "source-decode-failed");
     }
 }
 
 function decodeCssDataUrl(value: string): string {
     const parsed = parseDataUrl(value);
     if (parsed.mediaType !== "text/css") {
-        throw new MappingFontError("css-invalid", "映射字体样式不是 text/css");
+        throw new MappingFontError("css-invalid", "css-media-type-invalid");
     }
     return new TextDecoder().decode(parsed.bytes);
 }
@@ -189,7 +211,7 @@ function extractMappingFont(contentHtml: string): ExtractedMappingFont | null {
         return null;
     }
     if (dataCss.signalCount !== 1 || dataCss.locations.length !== 1 || mappedSections.length !== 1) {
-        throw new MappingFontError("structure-invalid", "映射字体章节结构不完整或不唯一");
+        throw new MappingFontError("structure-invalid", "chapter-structure-invalid");
     }
 
     const dataCssLocation = dataCss.locations[0];
@@ -197,16 +219,16 @@ function extractMappingFont(contentHtml: string): ExtractedMappingFont | null {
     const css = decodeCssDataUrl(dataCssLocation.link.getAttribute("href") || "");
     const fontFaceBlocks = getFontFaceBlocks(css);
     if (fontFaceBlocks.length !== 1 || getCssFontFamily(fontFaceBlocks[0]) !== sectionFamily) {
-        throw new MappingFontError("css-invalid", "映射字体 family 与正文不匹配");
+        throw new MappingFontError("css-invalid", "css-family-mismatch");
     }
 
     const fontDataUrl = getCssFontDataUrl(fontFaceBlocks[0]);
     if (!fontDataUrl) {
-        throw new MappingFontError("font-source-invalid", "映射字体样式缺少内嵌字体资源");
+        throw new MappingFontError("font-source-invalid", "font-source-missing");
     }
     const parsedFont = parseDataUrl(fontDataUrl);
     if (parsedFont.mediaType !== "font/woff2") {
-        throw new MappingFontError("font-source-invalid", "映射字体资源不是 font/woff2");
+        throw new MappingFontError("font-source-invalid", "font-media-type-invalid");
     }
 
     // 页面 CSS 不进入缓存和导出，仅保留经过校验的字体及正文自身的 family 绑定
@@ -220,17 +242,19 @@ function extractMappingFont(contentHtml: string): ExtractedMappingFont | null {
 
 function validateWoff2Bytes(bytes: Uint8Array): void {
     if (bytes.byteLength > MAX_CHAPTER_MAPPING_FONT_BYTES) {
-        throw new MappingFontError("font-too-large", "映射字体超过 4 MiB 安全上限");
+        throw new MappingFontError("font-too-large", "font-size-limit-exceeded", {
+            maxBytes: MAX_CHAPTER_MAPPING_FONT_BYTES
+        });
     }
     if (bytes.byteLength < 48) {
-        throw new MappingFontError("woff2-invalid", "映射字体小于 WOFF2 头部长度");
+        throw new MappingFontError("woff2-invalid", "woff2-header-too-short");
     }
     const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
     if (view.getUint32(0, false) !== 0x774f4632) {
-        throw new MappingFontError("woff2-invalid", "映射字体缺少 WOFF2 签名");
+        throw new MappingFontError("woff2-invalid", "woff2-signature-invalid");
     }
     if (view.getUint32(8, false) !== bytes.byteLength) {
-        throw new MappingFontError("woff2-invalid", "映射字体声明长度与实际长度不一致");
+        throw new MappingFontError("woff2-invalid", "woff2-length-mismatch");
     }
 }
 
@@ -273,10 +297,10 @@ async function validateStoredMappingFont(
     signal?: AbortSignal
 ): Promise<void> {
     if (!/^\d+$/.test(font.family) || font.mediaType !== "font/woff2" || font.blob.type !== "font/woff2") {
-        throw new MappingFontError("font-source-invalid", "缓存映射字体元数据无效");
+        throw new MappingFontError("font-source-invalid", "cached-font-metadata-invalid");
     }
     if (findNormalizedMappedFamily(chapter.content) !== font.family) {
-        throw new MappingFontError("structure-invalid", "缓存映射字体与正文 family 不匹配");
+        throw new MappingFontError("structure-invalid", "cached-font-family-mismatch");
     }
     throwIfAborted(signal);
     const bytes = new Uint8Array(await font.blob.arrayBuffer());
@@ -284,7 +308,7 @@ async function validateStoredMappingFont(
     const sha256 = await getSha256(bytes);
     throwIfAborted(signal);
     if (sha256 !== font.sha256) {
-        throw new MappingFontError("hash-mismatch", "缓存映射字体完整性校验失败");
+        throw new MappingFontError("hash-mismatch", "cached-font-hash-mismatch");
     }
 }
 
@@ -329,7 +353,7 @@ export function prepareChapterMappingExport(
     const font = chapter.mappingFont;
     if (!font) {
         if (chapter.content.includes("data:text/css") || /font-family\s*:\s*['"]?\d+/i.test(chapter.content)) {
-            throw new MappingFontError("structure-invalid", `第 ${chapterIndex + 1} 章缺少已校验的映射字体`);
+            throw new MappingFontError("structure-invalid", "export-font-missing", { chapter: chapterIndex + 1 });
         }
         return null;
     }
@@ -340,14 +364,16 @@ export function prepareChapterMappingExport(
         font.blob.size === 0 ||
         !/^[a-f0-9]{64}$/.test(font.sha256)
     ) {
-        throw new MappingFontError("font-source-invalid", `第 ${chapterIndex + 1} 章的映射字体元数据无效`);
+        throw new MappingFontError("font-source-invalid", "export-font-metadata-invalid", {
+            chapter: chapterIndex + 1
+        });
     }
 
     const template = createTemplate(chapter.content);
     const elements = getDirectElements(template);
     const mappedSections = findMappedSection(elements);
     if (mappedSections.length !== 1 || getFirstFontFamily(mappedSections[0].style.fontFamily) !== font.family) {
-        throw new MappingFontError("structure-invalid", `第 ${chapterIndex + 1} 章的映射字体与正文不匹配`);
+        throw new MappingFontError("structure-invalid", "export-font-family-mismatch", { chapter: chapterIndex + 1 });
     }
     if (
         elements.some(
@@ -356,7 +382,7 @@ export function prepareChapterMappingExport(
                 (element.getAttribute("href") || "").toLowerCase().startsWith("data:text/css")
         )
     ) {
-        throw new MappingFontError("structure-invalid", `第 ${chapterIndex + 1} 章仍包含未经校验的页面字体样式`);
+        throw new MappingFontError("structure-invalid", "export-unvalidated-style", { chapter: chapterIndex + 1 });
     }
 
     const fontFamily = `esj-mapped-${chapterIndex + 1}-${font.sha256.slice(0, 12)}`;

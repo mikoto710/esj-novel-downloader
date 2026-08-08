@@ -1,10 +1,13 @@
 // @vitest-environment jsdom
 
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import { showMessagePopup } from "../../src/ui/message-popup";
 import { showMappingFontFailure } from "../../src/ui/popups";
+import { setInterfaceLocalePreference } from "../../src/core/config";
 
 describe("message popup UI", () => {
+    beforeEach(() => setInterfaceLocalePreference("zh-CN"));
+
     it.each([
         ["info", "ℹ️"],
         ["warning", "⚠️"],
@@ -36,7 +39,7 @@ describe("message popup UI", () => {
         expect(document.querySelector("#esj-message-popup")).toBeNull();
 
         showMessagePopup({ tone: "error", message: "Third message" });
-        (document.querySelector('#esj-message-popup [title="关闭"]') as HTMLButtonElement).click();
+        (document.querySelector("#esj-message-close") as HTMLButtonElement).click();
         expect(document.querySelector("#esj-message-popup")).toBeNull();
     });
 
@@ -59,8 +62,10 @@ describe("message popup UI", () => {
     it("shows a bounded mapped-font failure summary", () => {
         showMappingFontFailure(
             Array.from({ length: 7 }, (_, index) => ({
-                task: { title: `Chapter ${index + 1}` },
-                message: `Failure ${index + 1}`
+                task: { index, url: `https://example.com/${index + 1}`, title: `Chapter ${index + 1}` },
+                code: "woff2-invalid" as const,
+                reason: "woff2-signature-invalid" as const,
+                params: {}
             }))
         );
 

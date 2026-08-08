@@ -2,9 +2,15 @@ import { injectDetailButton } from "./ui/detail";
 import { injectSinglePageButton } from "./ui/single";
 import { injectForumButton } from "./ui/forum";
 import { injectStyles } from "./ui/styles";
+import { installRuntimeInterfaceLocaleSync, subscribeInterfaceLocaleChange, t } from "./ui/locale";
+import { refreshUiLogTruncationText, setUiLogTruncationFormatter } from "./utils/index";
+
+setUiLogTruncationFormatter((count) => t("log.truncated", { count }));
+subscribeInterfaceLocaleChange(() => refreshUiLogTruncationText());
 
 (function init() {
     injectStyles();
+    installRuntimeInterfaceLocaleSync();
     const url = location.href;
 
     // 路由

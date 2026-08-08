@@ -57,6 +57,11 @@ export type SourcePageType = "detail" | "forum" | "single" | "unknown";
 export type DownloadFormat = "txt" | "epub" | "html";
 
 // 已完成导出的下载记录
+export interface ChapterSummary {
+    totalCount: number;
+    missingCount: number;
+}
+
 export interface DownloadHistoryItem {
     id: string;
     bookId?: string;
@@ -64,7 +69,9 @@ export interface DownloadHistoryItem {
     author: string;
     format: DownloadFormat;
     sourcePageType: Extract<SourcePageType, "detail" | "forum" | "single">;
-    chapterInfo: string;
+    chapterSummary?: ChapterSummary;
+    // 兼容旧版下载记录，新记录改用 chapterSummary
+    chapterInfo?: string;
     imageInfo?: {
         enabled: boolean;
         successCount: number;
@@ -165,7 +172,9 @@ export interface CachedData {
         rawBookName?: string;
         pageUrl: string;
         sourcePageType: Extract<SourcePageType, "detail" | "forum">;
-        chapterInfo: string;
+        chapterSummary?: ChapterSummary;
+        // 兼容旧版运行时导出数据
+        chapterInfo?: string;
         imageEnabled: boolean;
     };
 }

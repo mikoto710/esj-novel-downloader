@@ -17,11 +17,13 @@ vi.mock("../../src/utils/index", () => ({ log: mocks.log, triggerDownload: mocks
 vi.mock("../../src/core/download-history", () => ({ addDownloadHistory: mocks.addDownloadHistory }));
 
 describe("full-book export recovery contracts", () => {
-    beforeEach(() => {
+    beforeEach(async () => {
         vi.resetModules();
         vi.clearAllMocks();
         document.body.innerHTML = "";
         document.title = "ESJZone Test";
+        const { setInterfaceLocalePreference } = await import("../../src/core/config");
+        setInterfaceLocalePreference("zh-CN");
         mocks.buildEpub.mockResolvedValue(new Blob(["epub"], { type: "application/epub+zip" }));
         mocks.buildHtml.mockResolvedValue(new Blob(["html"], { type: "text/html" }));
         vi.spyOn(console, "error").mockImplementation(() => undefined);
@@ -45,7 +47,12 @@ describe("full-book export recovery contracts", () => {
 
         expect(mocks.buildEpub).toHaveBeenCalledTimes(2);
         expect(state.cachedData?.epubBlob).toBe(epubBlob);
-        expect(mocks.addDownloadHistory).toHaveBeenCalledWith(expect.objectContaining({ format: "epub" }));
+        expect(mocks.addDownloadHistory).toHaveBeenCalledWith(
+            expect.objectContaining({
+                format: "epub",
+                chapterSummary: { totalCount: 1, missingCount: 0 }
+            })
+        );
         expect(showFormatChoice).toBeTypeOf("function");
     });
 
@@ -120,6 +127,33 @@ describe("full-book export recovery contracts", () => {
         click("#esj-html");
         await vi.waitFor(() => expect(mocks.triggerDownload).toHaveBeenCalledTimes(2));
         expect(mocks.addDownloadHistory).toHaveBeenCalledWith(expect.objectContaining({ format: "html" }));
+    });
+
+    it("renders stable export failure stages with Taiwanese wording", async () => {
+        const { setInterfaceLocalePreference } = await import("../../src/core/config");
+        setInterfaceLocalePreference("zh-TW");
+        mocks.buildHtml.mockRejectedValueOnce(new Error("archive failed"));
+        await prepareExportPopup();
+
+        click("#esj-html");
+        await waitForMessage("HTML 產生失敗");
+        expect(document.querySelector("#esj-message-summary")?.textContent).toBe("無法產生HTML檔案。");
+    });
+
+    it("refreshes an open format choice in place without replacing export controls", async () => {
+        const { setInterfaceLocalePreference } = await import("../../src/core/config");
+        const { publishInterfaceLocaleChange } = await import("../../src/ui/locale");
+        await prepareExportPopup();
+        const popup = document.querySelector("#esj-format") as HTMLElement;
+        const txtButton = popup.querySelector("#esj-txt") as HTMLButtonElement;
+
+        setInterfaceLocalePreference("zh-TW");
+        publishInterfaceLocaleChange();
+
+        expect(document.querySelector("#esj-format")).toBe(popup);
+        expect(popup.textContent).toContain("匯出選項");
+        expect(popup.querySelector("#esj-txt")).toBe(txtButton);
+        expect(txtButton.textContent).toBe("⬇ TXT 下載");
     });
 
     it("prevents duplicate HTML builds while allowing another format to export", async () => {
@@ -206,7 +240,7 @@ describe("full-book export recovery contracts", () => {
 
         click("#esj-epub");
         await vi.waitFor(() => expect(document.querySelector("#esj-mapping-export-confirm")).not.toBeNull());
-        click('#esj-mapping-export-confirm [title="关闭"]');
+        click("#esj-mapping-export-confirm .esj-common-header button");
         await vi.waitFor(() => expect((document.querySelector("#esj-epub") as HTMLButtonElement).disabled).toBe(false));
         expect(mocks.buildEpub).not.toHaveBeenCalled();
         expect(diagnostics.listBrowserDiagnosticSessions().history[0].exports).toEqual([

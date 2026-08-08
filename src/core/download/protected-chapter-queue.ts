@@ -17,7 +17,7 @@ interface QueueWaiter {
 }
 
 /**
- * 普通 worker 是多生产者，密码交互是单消费者；当前已取出的章节不受后续较小索引抢占
+ * 多个普通 worker 负责生产，单个密码交互消费者负责取出；已取出的章节不会被后来入队的较小索引替换
  */
 export class ProtectedChapterQueue {
     private readonly pending: ProtectedChapterWorkItem[] = [];
@@ -34,6 +34,9 @@ export class ProtectedChapterQueue {
         return this.skipRemaining;
     }
 
+    /**
+     * 按章节索引去重并加入密码交互队列，返回排队、重复或已跳过状态
+     */
     enqueue(item: ProtectedChapterWorkItem): ProtectedChapterEnqueueResult {
         if (this.seenIndexes.has(item.task.index)) {
             return { kind: "duplicate", item };
@@ -55,6 +58,9 @@ export class ProtectedChapterQueue {
         return { kind: "queued", item };
     }
 
+    /**
+     * 按索引顺序取得下一项，生产结束、跳过剩余或取消等待时返回 null
+     */
     take(signal?: AbortSignal): Promise<ProtectedChapterWorkItem | null> {
         const item = this.pending.shift();
         if (item) {
@@ -84,7 +90,7 @@ export class ProtectedChapterQueue {
     }
 
     /**
-     * 返回当前尚未交互的章节，调用方逐章记录跳过；未来生产的章节由 enqueue 返回 skipped
+     * 返回调用时尚未交互的章节供调用方记录跳过；此后 enqueue 的章节直接返回 skipped
      */
     skipAllRemaining(): ProtectedChapterWorkItem[] {
         this.skipRemaining = true;
@@ -93,6 +99,9 @@ export class ProtectedChapterQueue {
         return skipped;
     }
 
+    /**
+     * 标记生产端关闭，调用前已排队的工作项仍可消费，队列耗尽后等待者收到 null
+     */
     closeProducer(): void {
         this.producerClosed = true;
         if (this.pending.length === 0) {
@@ -100,6 +109,9 @@ export class ProtectedChapterQueue {
         }
     }
 
+    /**
+     * 停止生产并返回尚未交互的项目，同时让全部等待者收到 null
+     */
     cancel(): ProtectedChapterWorkItem[] {
         this.producerClosed = true;
         const cancelled = this.pending.splice(0);

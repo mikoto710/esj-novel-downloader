@@ -18,12 +18,20 @@ scrapers / ui
 - `core/cache/` owns v3 incremental cache, legacy-cache lazy migration, listing, and cross-page synchronization.
 - `ui/download-terminal-notices.ts` translates structured download, cancellation, and cache-discard failures into the common message popup after lifecycle cleanup; core code must not render DOM directly.
 
+## Localization boundary
+
+- `core/locales/` owns interface catalogs, while UI and browser adapters own translated presentation.
+- Core download and persistence code emits stable codes, parameters, or locale-neutral details; it must not read the current locale.
+- Never translate novel content, book metadata, source URLs, exported novel data, or the ESJZone `status === 206` protocol text.
+- Keep Simplified Chinese terminology consistent with existing public labels. Localize Traditional Chinese manually with Taiwanese software terms such as `下載執行緒數`, `快取`, `紀錄`, and `匯出`.
+
 ## High-risk invariants
 
 - Do not let `core/download/` access DOM, GM APIs, or browser globals.
 - Finish success, failure, and cancellation through the shared finalization path.
 - Keep the task lock, cache writer, and cancellation mode consistent.
 - Keep download cache distinct from download history.
+- Keep persisted diagnostic and history records locale-neutral when they are rendered in the current interface language.
 - Define migration, backward-compatibility, or explicit invalidation for cache/config format changes.
 
 ## Useful module locations
@@ -37,3 +45,4 @@ scrapers / ui
 | Export and images                       | `src/core/epub.ts`, `src/core/html.ts`                                       | `tests/export/`                                 |
 | Mapping fonts                           | `src/core/mapping-font.ts`                                                   | `tests/mapping-font/`                           |
 | Page behavior                           | `src/ui/`, `src/scrapers/`                                                   | `tests/ui/`                                     |
+| Interface localization                  | `src/core/locales/`, `src/ui/locale.ts`                                      | `tests/ui/`                                     |

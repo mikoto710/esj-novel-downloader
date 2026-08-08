@@ -9,15 +9,17 @@ import {
 import { fullCleanup } from "../utils/dom";
 import { createConfirmPopup, createDownloadPopup, showBookDownloadInProgressPopup } from "../ui/popups";
 import { showMessagePopup } from "../ui/message-popup";
+import { t } from "../ui/locale";
 import { batchDownload } from "../core/download/batch-download";
 import type { DownloadTask } from "../core/download/contracts";
 import { parseBookMetadata } from "../core/parser";
 import { claimBookCache, loadBookCache } from "../core/cache/book-cache";
 import { finalizeBookDownloadTask } from "../core/download/task-finalizer";
-import { normalizeStorageError, StorageError } from "../core/cache/storage-error";
+import { normalizeStorageError, StorageError, toStorageFailure } from "../core/cache/storage-error";
 import { getImageDownloadSetting } from "../core/config";
 import { getImageCacheConfirmHint } from "../ui/image-cache-compatibility";
 import { showCacheDiscardFailure, showDownloadTerminalFailure } from "../ui/download-terminal-notices";
+import { formatStorageFailure } from "../ui/storage-failure-messages";
 import {
     browserDiagnosticLog as log,
     finishBrowserDiagnosticSession,
@@ -39,7 +41,7 @@ function getBookId(): string {
 export async function scrapeDetail(): Promise<void> {
     const bookId = getBookId();
     if (bookId === "unknown") {
-        log("无法解析书籍 ID，已取消全本下载任务。");
+        log(t("page.bookIdMissing"));
         return;
     }
 
@@ -57,8 +59,9 @@ export async function scrapeDetail(): Promise<void> {
         cacheResult = await loadBookCache(bookId);
     } catch (error) {
         const failure = normalizeStorageError(error, "read");
+        const displayMessage = formatStorageFailure(toStorageFailure(failure));
         console.error(failure);
-        log(`❌ 无法读取本地缓存：${failure.message}`);
+        log(t("page.cacheReadFailed", { detail: displayMessage }));
         recordBrowserPreflightDiagnosticFailure({
             bookId,
             bookTitle: document.title,
@@ -74,8 +77,8 @@ export async function scrapeDetail(): Promise<void> {
         });
         showMessagePopup({
             tone: "error",
-            title: "本地缓存不可用",
-            message: "本次任务尚未开始。请检查浏览器存储权限或剩余空间后重试。"
+            title: t("page.cacheUnavailable.title"),
+            message: t("page.cacheUnavailable.message")
         });
         return;
     }
@@ -88,7 +91,7 @@ export async function scrapeDetail(): Promise<void> {
         createConfirmPopup(
             () => resolve(true),
             () => {
-                log("用户取消确认");
+                log(t("page.userCancelled"));
                 resolve(false);
             },
             cacheHint
@@ -126,14 +129,14 @@ export async function scrapeDetail(): Promise<void> {
     let downloadStarted = false;
 
     try {
-        log("正在准备本地缓存...");
+        log(t("page.cachePreparing"));
         const claimedCache = await claimBookCache(bookId, lock.taskId, imageEnabled, state.abortController?.signal);
         state.globalChaptersMap = claimedCache.map || new Map();
         if (claimedCache.invalidatedCount > 0) {
             log(
                 claimedCache.compatibility === "unknown"
-                    ? `⚠️ 旧缓存缺少插图设置信息，已安全失效 ${claimedCache.invalidatedCount} 章并重新抓取`
-                    : `⚠️ 缓存插图设置与本次任务不同，已安全失效 ${claimedCache.invalidatedCount} 章并重新抓取`
+                    ? t("page.cacheInvalidLegacyImage", { count: claimedCache.invalidatedCount })
+                    : t("page.cacheInvalidImageMismatch", { count: claimedCache.invalidatedCount })
             );
         }
         if (state.abortFlag) {
@@ -148,15 +151,15 @@ export async function scrapeDetail(): Promise<void> {
                 {
                     scope: "page",
                     stage: "chapter-list",
-                    code: "chapter-list-missing",
-                    message: "未找到章节列表 #chapterList"
+                    code: "detail-chapter-list-missing",
+                    message: "detail-chapter-list-missing"
                 },
                 lock.taskId
             );
             showMessagePopup({
                 tone: "error",
-                title: "无法开始下载",
-                message: "未找到章节列表 #chapterList。页面结构可能已经发生变化。"
+                title: t("page.startFailed.title"),
+                message: t("page.structureChanged")
             });
             fullCleanup(state.originalTitle);
             return;
@@ -178,12 +181,12 @@ export async function scrapeDetail(): Promise<void> {
                         scope: "storage",
                         stage: "lock-start",
                         code: "ownership-lost",
-                        message: "下载任务锁在启动前已失效"
+                        message: "ownership-lost"
                     },
                     lock.taskId
                 );
             }
-            log("下载任务已取消或任务锁已失效，未启动下载。");
+            log(t("page.notStarted"));
             fullCleanup(state.originalTitle);
             if (!state.abortFlag) {
                 showDownloadTerminalFailure({
@@ -230,18 +233,23 @@ export async function scrapeDetail(): Promise<void> {
                 },
                 lock.taskId
             );
-            log(e instanceof StorageError ? `❌ 下载进度未保存：${e.message}` : "❌ 抓取流程异常: " + e.message);
+            const displayMessage = e instanceof StorageError ? formatStorageFailure(toStorageFailure(e)) : e.message;
+            log(
+                e instanceof StorageError
+                    ? t("page.progressNotSaved", { detail: displayMessage })
+                    : t("page.flowFailed", { detail: displayMessage })
+            );
             fullCleanup(state.originalTitle);
             showMessagePopup({
                 tone: "error",
-                title: "无法开始下载",
-                message: e instanceof StorageError ? e.message : "下载启动过程中发生异常，请稍后重试。",
+                title: t("page.startFailed.title"),
+                message: e instanceof StorageError ? displayMessage : t("page.startFailed.message"),
                 details: e instanceof StorageError ? undefined : e.message
             });
         }
     } finally {
         finishBrowserDiagnosticSession(lock.taskId, state.abortFlag ? "cancelled" : "failed");
-        const finalization = await finalizeBookDownloadTask(lock, stopHeartbeat);
+        const finalization = await finalizeBookDownloadTask(lock, stopHeartbeat, log);
         if (finalization.cacheClearFailure) {
             recordBrowserDiagnosticFailure(
                 {

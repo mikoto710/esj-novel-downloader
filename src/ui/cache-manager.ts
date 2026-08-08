@@ -7,15 +7,17 @@ import {
 import { CacheListItem } from "../types";
 import { subscribeCacheSync } from "../core/cache/sync";
 import { el, enableDrag } from "../utils/dom";
+import { log } from "../utils/index";
 import { showMessagePopup } from "./message-popup";
+import { bindInterfaceAttribute, subscribeInterfaceLocaleChange, t } from "./locale";
 
 let disposeActiveCacheManagerSynchronizer: (() => void) | null = null;
 
 function showCacheClearFailure(error: unknown): void {
     showMessagePopup({
         tone: "error",
-        title: "缓存清理失败",
-        message: "无法完成本地缓存清理，请检查浏览器存储状态后重试。",
+        title: t("cache.failure.title"),
+        message: t("cache.failure.message"),
         details: error instanceof Error ? error.message : String(error)
     });
 }
@@ -35,14 +37,17 @@ function createHeader(title: string, onClose: () => void): HTMLElement {
         [
             el("span", { style: "font-weight:bold;" }, [title]),
             el("div", { style: "display:flex;" }, [
-                el(
-                    "button",
-                    {
-                        title: "关闭",
-                        style: "border:none;background:#ef5350;color:#fff;padding:4px 10px;border-radius:6px;cursor:pointer;font-weight:bold;",
-                        onclick: onClose
-                    },
-                    ["✕"]
+                bindInterfaceAttribute(
+                    el(
+                        "button",
+                        {
+                            style: "border:none;background:#ef5350;color:#fff;padding:4px 10px;border-radius:6px;cursor:pointer;font-weight:bold;",
+                            onclick: onClose
+                        },
+                        ["✕"]
+                    ),
+                    "title",
+                    "common.close"
                 )
             ])
         ]
@@ -66,13 +71,13 @@ function formatProgress(item: CacheListItem): string {
 function getStatusText(item: CacheListItem): string {
     switch (item.status) {
         case "downloading":
-            return "下载中";
+            return t("cache.status.downloading");
         case "cancelled":
-            return "已取消";
+            return t("cache.status.cancelled");
         case "export-ready":
-            return "可导出";
+            return t("cache.status.exportReady");
         default:
-            return item.isLegacy ? "旧缓存" : "已缓存";
+            return t(item.isLegacy ? "cache.status.legacy" : "cache.status.cached");
     }
 }
 
@@ -105,7 +110,7 @@ function showCacheConfirm(options: { title?: string; message: string; danger?: b
             resolve(result);
         };
 
-        const header = createHeader(options.title || "❓ 确认操作", () => cleanup(false));
+        const header = createHeader(options.title || t("cache.confirm.title"), () => cleanup(false));
 
         const body = el("div", { style: "padding:16px;font-size:14px;line-height:1.7;color:#333;" }, [options.message]);
 
@@ -116,7 +121,7 @@ function showCacheConfirm(options: { title?: string; message: string; danger?: b
                 style: "padding:8px 12px;background:#eee;border:1px solid #ccc;border-radius:6px;cursor:pointer;",
                 onclick: () => cleanup(false)
             },
-            ["取消"]
+            [t("common.cancel")]
         );
 
         const btnOk = el(
@@ -128,7 +133,7 @@ function showCacheConfirm(options: { title?: string; message: string; danger?: b
                 }color:#fff;border:none;border-radius:6px;cursor:pointer;`,
                 onclick: () => cleanup(true)
             },
-            ["清理"]
+            [t("cache.action.clear")]
         );
 
         const footer = el(
@@ -170,7 +175,7 @@ function showCacheProtectionNotice(message: string): Promise<void> {
                 style: "position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:380px;background:#fff;border:1px solid #aaa;border-radius:8px;box-shadow:0 0 18px rgba(0,0,0,0.28);z-index:1000000;display:flex;flex-direction:column;"
             },
             [
-                createHeader("🛡️ 下载任务保护", cleanup),
+                createHeader(t("cache.protection.title"), cleanup),
                 el("div", { style: "padding:16px;font-size:14px;line-height:1.7;color:#333;" }, [message]),
                 el("div", { style: "padding:12px;display:flex;justify-content:flex-end;" }, [
                     el(
@@ -179,7 +184,7 @@ function showCacheProtectionNotice(message: string): Promise<void> {
                             style: "padding:8px 12px;background:#eee;border:1px solid #ccc;border-radius:6px;cursor:pointer;",
                             onclick: cleanup
                         },
-                        ["关闭"]
+                        [t("common.close")]
                     )
                 ])
             ]
@@ -200,9 +205,11 @@ export function createCacheManagerPopup(): void {
     toggleSettingsLock(true);
 
     let stopSynchronizing: () => void = () => {};
+    let stopLocaleRefresh: () => void = () => {};
     let refreshTimer: number | null = null;
     const disposeSynchronizer = () => {
         stopSynchronizing();
+        stopLocaleRefresh();
         if (refreshTimer !== null) {
             window.clearTimeout(refreshTimer);
             refreshTimer = null;
@@ -228,18 +235,22 @@ export function createCacheManagerPopup(): void {
         style: "padding:12px;display:flex;justify-content:space-between;gap:8px;border-top:1px solid #eee;background:#fff;border-radius:0 0 8px 8px;"
     });
 
+    const header = createHeader(t("cache.title"), closeAction);
     const popup = el(
         "div",
         {
             id: "esj-cache-manager",
             style: "position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:620px;height:min(520px,calc(100vh - 32px));background:#fff;border:1px solid #aaa;border-radius:8px;box-shadow:0 0 18px rgba(0,0,0,0.28);z-index:999999;display:flex;flex-direction:column;"
         },
-        [createHeader("🗂️ 缓存管理", closeAction), listBox, footer]
+        [header, listBox, footer]
     );
 
     // 重新读取合并后的缓存列表并重建操作区域
     async function renderList() {
         const items = await listManagedCaches();
+        if (!popup.isConnected) {
+            return;
+        }
         listBox.replaceChildren();
         footer.replaceChildren();
 
@@ -247,17 +258,17 @@ export function createCacheManagerPopup(): void {
         const rightActions = el("div", { style: "display:flex;gap:8px;flex-wrap:wrap;" });
 
         leftActions.appendChild(
-            createActionButton("刷新", async () => {
+            createActionButton(t("cache.action.refresh"), async () => {
                 await renderList();
             })
         );
 
         if (items.length > 0) {
             rightActions.appendChild(
-                createActionButton("清理全部持久缓存", async () => {
+                createActionButton(t("cache.action.clearPersistent"), async () => {
                     const confirmed = await showCacheConfirm({
-                        title: "🗑️ 清理确认",
-                        message: "确定清理全部 IndexedDB 持久缓存吗？",
+                        title: `🗑️ ${t("cache.action.clear")}${t("common.confirm")}`,
+                        message: t("cache.confirm.clearPersistent"),
                         danger: true
                     });
                     if (!confirmed) {
@@ -272,20 +283,21 @@ export function createCacheManagerPopup(): void {
                     }
                     if (result.protectedBookIds.length > 0) {
                         await showCacheProtectionNotice(
-                            `已保留 ${result.protectedBookIds.length} 本下载中的书籍缓存。`
+                            t("cache.protectedCount", { count: result.protectedBookIds.length })
                         );
                     }
+                    log(t("cache.log.clearCompleted"));
                     await renderList();
                 })
             );
 
             rightActions.appendChild(
                 createActionButton(
-                    "清理全部缓存",
+                    t("cache.action.clearAll"),
                     async () => {
                         const confirmed = await showCacheConfirm({
-                            title: "🗑️ 清理确认",
-                            message: "确定清理全部缓存吗？这会同时移除当前页会话缓存。",
+                            title: `🗑️ ${t("cache.action.clear")}${t("common.confirm")}`,
+                            message: t("cache.confirm.clearAll"),
                             danger: true
                         });
                         if (!confirmed) {
@@ -300,9 +312,10 @@ export function createCacheManagerPopup(): void {
                         }
                         if (result.protectedBookIds.length > 0) {
                             await showCacheProtectionNotice(
-                                `已保留 ${result.protectedBookIds.length} 本下载中的书籍缓存。`
+                                t("cache.protectedCount", { count: result.protectedBookIds.length })
                             );
                         }
+                        log(t("cache.log.clearCompleted"));
                         await renderList();
                     },
                     "danger"
@@ -319,7 +332,7 @@ export function createCacheManagerPopup(): void {
                     {
                         style: "height:100%;display:flex;align-items:center;justify-content:center;color:#666;font-size:14px;"
                     },
-                    ["当前没有可管理的缓存。"]
+                    [t("cache.empty")]
                 )
             );
             return;
@@ -348,6 +361,20 @@ export function createCacheManagerPopup(): void {
 
     document.body.appendChild(popup);
     enableDrag(popup, ".esj-common-header");
+    stopLocaleRefresh = subscribeInterfaceLocaleChange(() => {
+        if (!popup.isConnected) {
+            disposeSynchronizer();
+            return;
+        }
+        const listScrollTop = listBox.scrollTop;
+        const headerLabel = header.querySelector("span");
+        if (headerLabel) {
+            headerLabel.textContent = t("cache.title");
+        }
+        void renderList().then(() => {
+            listBox.scrollTop = listScrollTop;
+        });
+    });
     void renderList();
 }
 
@@ -362,17 +389,17 @@ function createCacheItem(item: CacheListItem, rerender: () => Promise<void>): HT
         badges.appendChild(createBadge("IndexedDB"));
     }
     if (item.sources.includes("runtime")) {
-        badges.appendChild(createBadge("会话内存", "runtime"));
+        badges.appendChild(createBadge(t("cache.badge.runtime"), "runtime"));
     }
     badges.appendChild(createBadge(getStatusText(item), "status"));
     if (item.activeTask) {
-        badges.appendChild(createBadge("跨页面任务", "runtime"));
+        badges.appendChild(createBadge(t("cache.badge.crossPage"), "runtime"));
     }
     if (item.hasExportData) {
-        badges.appendChild(createBadge("可重复导出", "ready"));
+        badges.appendChild(createBadge(t("cache.badge.reexport"), "ready"));
     }
     if (item.isLegacy) {
-        badges.appendChild(createBadge("旧缓存", "legacy"));
+        badges.appendChild(createBadge(t("cache.status.legacy"), "legacy"));
     }
 
     const percent =
@@ -395,11 +422,11 @@ function createCacheItem(item: CacheListItem, rerender: () => Promise<void>): HT
     if (item.activeTask) {
         actions.appendChild(
             createActionButton(
-                "停止并清除",
+                t("cache.action.stopClear"),
                 async () => {
                     const confirmed = await showCacheConfirm({
-                        title: "🛑 停止并清除",
-                        message: `确定停止《${item.bookName}》的下载任务并清除其缓存吗？`,
+                        title: `🛑 ${t("cache.action.stopClear")}`,
+                        message: t("cache.confirm.stopClear", { book: item.bookName }),
                         danger: true
                     });
                     if (!confirmed) {
@@ -408,12 +435,12 @@ function createCacheItem(item: CacheListItem, rerender: () => Promise<void>): HT
 
                     const result = await stopAndClearManagedCache(item.bookId);
                     const resultMessage: Record<typeof result.status, string> = {
-                        "not-active": "该下载任务已结束，无需停止。",
-                        cleared: "下载任务已停止，缓存已清理。",
-                        "cleanup-failed": "下载任务已停止，但缓存清理失败，请刷新后手动清理。",
-                        replaced: "原任务已结束，但检测到新的下载任务，未清理缓存。",
-                        stale: "下载页面已失联，未自动清理缓存，请刷新后手动清理。",
-                        timeout: "已请求任务停止，但任务暂未响应，缓存未清理。"
+                        "not-active": t("cache.stop.notActive"),
+                        cleared: t("cache.stop.cleared"),
+                        "cleanup-failed": t("cache.stop.cleanupFailed"),
+                        replaced: t("cache.stop.replaced"),
+                        stale: t("cache.stop.stale"),
+                        timeout: t("cache.stop.timeout")
                     };
                     await showCacheProtectionNotice(resultMessage[result.status]);
                     await rerender();
@@ -423,10 +450,10 @@ function createCacheItem(item: CacheListItem, rerender: () => Promise<void>): HT
         );
     } else if (item.sources.includes("indexeddb")) {
         actions.appendChild(
-            createActionButton("清理 IndexedDB", async () => {
+            createActionButton(t("cache.action.clearIndexedDb"), async () => {
                 const confirmed = await showCacheConfirm({
-                    title: "🗑️ 清理确认",
-                    message: `确定清理《${item.bookName}》的 IndexedDB 缓存吗？`,
+                    title: `🗑️ ${t("cache.action.clear")}${t("common.confirm")}`,
+                    message: t("cache.confirm.clearIndexedDb", { book: item.bookName }),
                     danger: true
                 });
                 if (!confirmed) {
@@ -434,7 +461,9 @@ function createCacheItem(item: CacheListItem, rerender: () => Promise<void>): HT
                 }
                 const result = await clearManagedCache(item.bookId, "indexeddb");
                 if (result.protectedBookIds.length > 0) {
-                    await showCacheProtectionNotice("该书正在下载，缓存未被清理。");
+                    await showCacheProtectionNotice(t("cache.protected"));
+                } else {
+                    log(t("cache.log.cleared", { book: item.bookName }));
                 }
                 await rerender();
             })
@@ -443,10 +472,10 @@ function createCacheItem(item: CacheListItem, rerender: () => Promise<void>): HT
 
     if (!item.activeTask && item.sources.includes("runtime")) {
         actions.appendChild(
-            createActionButton("清理会话缓存", async () => {
+            createActionButton(t("cache.action.clearRuntime"), async () => {
                 const confirmed = await showCacheConfirm({
-                    title: "🗑️ 清理确认",
-                    message: `确定清理《${item.bookName}》的当前页会话缓存吗？`,
+                    title: `🗑️ ${t("cache.action.clear")}${t("common.confirm")}`,
+                    message: t("cache.confirm.clearRuntime", { book: item.bookName }),
                     danger: true
                 });
                 if (!confirmed) {
@@ -454,7 +483,9 @@ function createCacheItem(item: CacheListItem, rerender: () => Promise<void>): HT
                 }
                 const result = await clearManagedCache(item.bookId, "runtime");
                 if (result.protectedBookIds.length > 0) {
-                    await showCacheProtectionNotice("该书正在下载，缓存未被清理。");
+                    await showCacheProtectionNotice(t("cache.protected"));
+                } else {
+                    log(t("cache.log.cleared", { book: item.bookName }));
                 }
                 await rerender();
             })
@@ -464,11 +495,11 @@ function createCacheItem(item: CacheListItem, rerender: () => Promise<void>): HT
     if (!item.activeTask && item.sources.length > 1) {
         actions.appendChild(
             createActionButton(
-                "全部清理",
+                t("cache.action.clearItemAll"),
                 async () => {
                     const confirmed = await showCacheConfirm({
-                        title: "🗑️ 清理确认",
-                        message: `确定清理《${item.bookName}》的全部缓存吗？`,
+                        title: `🗑️ ${t("cache.action.clear")}${t("common.confirm")}`,
+                        message: t("cache.confirm.clearItemAll", { book: item.bookName }),
                         danger: true
                     });
                     if (!confirmed) {
@@ -476,7 +507,9 @@ function createCacheItem(item: CacheListItem, rerender: () => Promise<void>): HT
                     }
                     const result = await clearManagedCache(item.bookId, "all");
                     if (result.protectedBookIds.length > 0) {
-                        await showCacheProtectionNotice("该书正在下载，缓存未被清理。");
+                        await showCacheProtectionNotice(t("cache.protected"));
+                    } else {
+                        log(t("cache.log.cleared", { book: item.bookName }));
                     }
                     await rerender();
                 },
@@ -496,13 +529,16 @@ function createCacheItem(item: CacheListItem, rerender: () => Promise<void>): HT
                 el("div", { style: "flex:1;min-width:0;" }, [
                     el("div", { style: "font-weight:bold;color:#333;word-break:break-word;" }, [item.bookName]),
                     el("div", { style: "margin-top:6px;font-size:12px;color:#666;word-break:break-word;" }, [
-                        `作者: ${item.author || "-"} | Book ID: ${item.bookId}`
+                        t("cache.item.author", { author: item.author || "-", bookId: item.bookId })
                     ]),
                     el("div", { style: "margin-top:4px;font-size:12px;color:#666;" }, [
-                        `进度: ${formatProgress(item)} | 更新时间: ${formatTime(item.updatedAt)}`
+                        t("cache.item.progress", { progress: formatProgress(item), time: formatTime(item.updatedAt) })
                     ]),
                     el("div", { style: "margin-top:4px;font-size:12px;color:#666;word-break:break-word;" }, [
-                        `来源页: ${item.sourcePageType}${item.pageUrl ? ` | ${item.pageUrl}` : ""}`
+                        t("cache.item.source", {
+                            source: item.sourcePageType,
+                            url: item.pageUrl ? ` | ${item.pageUrl}` : ""
+                        })
                     ]),
                     badges,
                     progressTrack,

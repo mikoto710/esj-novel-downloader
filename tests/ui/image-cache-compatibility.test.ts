@@ -1,5 +1,13 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { getImageCacheConfirmHint } from "../../src/ui/image-cache-compatibility";
+
+vi.mock("../../src/ui/locale", async () => {
+    const locale = await vi.importActual<typeof import("../../src/core/locale")>("../../src/core/locale");
+    return {
+        t: (key: Parameters<typeof locale.translate>[1], params?: Parameters<typeof locale.translate>[2]) =>
+            locale.translate("zh-CN", key, params)
+    };
+});
 
 describe("image cache compatibility messages", () => {
     it("describes reusable cache when settings match", () => {

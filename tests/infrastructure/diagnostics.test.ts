@@ -7,6 +7,7 @@ import {
     DIAGNOSTIC_HISTORY_LIMIT,
     DIAGNOSTIC_RETENTION_MS,
     DIAGNOSTIC_SESSION_BYTES_LIMIT,
+    DIAGNOSTIC_TOTAL_BYTES_LIMIT,
     sanitizeDiagnosticMessage,
     sanitizeDiagnosticUrl,
     type DiagnosticRepository,
@@ -178,29 +179,26 @@ describe("diagnostic session retention", () => {
         );
     });
 
-    it("keeps ten completed sessions and evicts older successful sessions first", () => {
+    it("keeps the thirty most recent completed sessions regardless of result", () => {
         const repository = new MemoryDiagnosticRepository();
         let now = 1_000;
         const manager = new DiagnosticManager(repository, () => now);
 
-        for (let index = 0; index < 8; index++) {
-            manager.start(createInput(`failed-${index}`));
-            manager.finish(`failed-${index}`, "failed");
+        for (let index = 0; index < DIAGNOSTIC_HISTORY_LIMIT; index++) {
+            const taskId = `older-${index}`;
+            const result = index % 2 === 0 ? "failed" : "cancelled";
+            manager.start(createInput(taskId));
+            manager.finish(taskId, result);
             now++;
         }
-        for (let index = 0; index < 4; index++) {
-            manager.start(createInput(`success-${index}`));
-            manager.finish(`success-${index}`, "success");
-            now++;
-        }
+        manager.start(createInput("latest-success"));
+        manager.finish("latest-success", "success");
 
         const history = manager.list().history;
         expect(history).toHaveLength(DIAGNOSTIC_HISTORY_LIMIT);
-        expect(history.filter((session) => session.result === "failed")).toHaveLength(8);
-        expect(history.filter((session) => session.result === "success").map((session) => session.taskId)).toEqual([
-            "success-3",
-            "success-2"
-        ]);
+        expect(history[0]).toEqual(expect.objectContaining({ taskId: "latest-success", result: "success" }));
+        expect(history.map((session) => session.taskId)).not.toContain("older-0");
+        expect(history.at(-1)?.taskId).toBe("older-1");
     });
 
     it("expires old history and converts stale active sessions to interrupted records", () => {
@@ -249,6 +247,60 @@ describe("diagnostic session retention", () => {
             title: "Chapter",
             url: "https://www.esjzone.cc/forum/1/5.html"
         });
+    });
+
+    it("evicts the oldest history first when the total capacity is exceeded", () => {
+        const repository = new MemoryDiagnosticRepository();
+        const manager = new DiagnosticManager(repository, () => 1_000);
+        manager.start(createInput("large-template"));
+        repository.store.active[0].logs = Array.from({ length: 80 }, (_, index) => ({
+            at: index,
+            level: "info" as const,
+            message: `${index}-${"诊断".repeat(1_000)}`
+        }));
+        manager.finish("large-template", "success");
+
+        const template = repository.store.history[0];
+        repository.store.history = Array.from({ length: DIAGNOSTIC_HISTORY_LIMIT }, (_, index) => ({
+            ...structuredClone(template),
+            id: `session-${index}`,
+            taskId: `task-${index}`,
+            startedAt: index,
+            updatedAt: index,
+            endedAt: index
+        }));
+
+        const store = manager.list();
+        expect(new TextEncoder().encode(JSON.stringify(store)).byteLength).toBeLessThanOrEqual(
+            DIAGNOSTIC_TOTAL_BYTES_LIMIT
+        );
+        expect(store.history.length).toBeLessThan(DIAGNOSTIC_HISTORY_LIMIT);
+        expect(store.history.map((session) => session.taskId)).toEqual(
+            Array.from({ length: store.history.length }, (_, index) => `task-${DIAGNOSTIC_HISTORY_LIMIT - 1 - index}`)
+        );
+    });
+
+    it("persists explicit log levels without inferring severity from localized words", () => {
+        const repository = new MemoryDiagnosticRepository();
+        const manager = new DiagnosticManager(repository, () => 1_000);
+        manager.start(createInput("structured-logs"));
+
+        manager.recordLog("structured-logs", "失败后重试");
+        manager.recordLog("structured-logs", {
+            level: "warning",
+            code: "chapter-fetch-failed",
+            params: { chapter: "Chapter 1", retry: 2 }
+        });
+
+        expect(manager.list().active[0].logs).toEqual([
+            { at: 0, level: "info", message: "失败后重试" },
+            {
+                at: 0,
+                level: "warning",
+                code: "chapter-fetch-failed",
+                params: { chapter: "Chapter 1", retry: 2 }
+            }
+        ]);
     });
 
     it("records bounded multi-format export outcomes after a task completes", () => {

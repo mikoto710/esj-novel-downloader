@@ -175,7 +175,11 @@ describe("full-book and single-chapter export isolation", () => {
         installDocumentFixture(fixture);
         document.title = "Protected chapter - ESJZone";
 
-        const { downloadCurrentPage } = await import("../../src/scrapers/single");
+        const [{ downloadCurrentPage }, { setInterfaceLocalePreference }] = await Promise.all([
+            import("../../src/scrapers/single"),
+            import("../../src/core/config")
+        ]);
+        setInterfaceLocalePreference("zh-CN");
         await downloadCurrentPage("txt");
 
         expect(document.querySelector("#esj-protected-chapter")).toBeNull();

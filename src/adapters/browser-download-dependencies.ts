@@ -49,6 +49,7 @@ import { browserDiagnosticEvents, browserDiagnosticLog, recordBrowserDiagnosticF
 import { showDownloadTerminalFailure } from "../ui/download-terminal-notices";
 import { createBrowserProtectedChapterAuth, isProtectedChapterHtml } from "./browser-protected-chapter";
 import { BrowserRequestGate } from "./browser-request-gate";
+import { subscribeInterfaceLocaleChange, t } from "../ui/locale";
 
 // 下载核心的浏览器实现边界
 // DOM、全局 state、网络、解析、图片、缓存和锁实现均限制在本模块中
@@ -104,6 +105,8 @@ function updateDownloadStatus(status: string): void {
     updateTrayText(status);
 }
 
+let lastDownloadSnapshot: DownloadSnapshot | null = null;
+
 // 下载核心只发布快照，所有标题、进度条、托盘和弹窗更新在此落到 DOM
 const ui: DownloadUiPort = {
     prepare() {
@@ -112,9 +115,10 @@ const ui: DownloadUiPort = {
         }
     },
     update(snapshot) {
+        lastDownloadSnapshot = snapshot;
         if (snapshot.phase === "cancelling" || snapshot.phase === "cancelled") {
             const cancelled = snapshot.phase === "cancelled";
-            const status = cancelled ? "任务已停止" : "正在停止任务...";
+            const status = t(cancelled ? "download.status.stopped" : "download.status.stopping");
             const titleEl = document.querySelector("#esj-title") as HTMLElement | null;
             const cancelButton = document.querySelector("#esj-cancel") as HTMLButtonElement | null;
             if (titleEl) {
@@ -123,25 +127,37 @@ const ui: DownloadUiPort = {
             if (cancelButton) {
                 cancelButton.disabled = true;
                 cancelButton.textContent = cancelled
-                    ? "已停止"
+                    ? t("download.action.stopped")
                     : state.cancellationMode === "discard"
-                      ? "正在停止..."
-                      : "正在保存...";
+                      ? t("download.action.stopping")
+                      : t("download.action.saving");
                 cancelButton.style.backgroundColor = "#999";
             }
             updateTrayText(status);
             return;
         }
         const phaseStatus: Partial<Record<DownloadSnapshot["phase"], string>> = {
-            preparing: "正在初始化下载任务...",
+            preparing: t("download.status.initializing"),
             "restoring-cache":
                 snapshot.cachedChapterCount > 0
-                    ? `正在校验本地缓存 (${snapshot.cachedChapterCount} 章)`
-                    : "正在准备本地缓存...",
-            "flushing-cache": `正在保存下载进度 (${snapshot.readyChapterCount}/${snapshot.scheduledCount})`,
-            "checking-integrity": `正在检查章节完整性 (${snapshot.readyChapterCount}/${snapshot.scheduledCount})`,
-            "preparing-export": `正在准备导出 (${snapshot.readyChapterCount}/${snapshot.scheduledCount})`,
-            "export-ready": `导出准备完成 (${snapshot.readyChapterCount}/${snapshot.scheduledCount})`
+                    ? t("download.status.validatingCache", { count: snapshot.cachedChapterCount })
+                    : t("download.status.preparingCache"),
+            "flushing-cache": t("download.status.savingProgress", {
+                ready: snapshot.readyChapterCount,
+                total: snapshot.scheduledCount
+            }),
+            "checking-integrity": t("download.status.checkingIntegrity", {
+                ready: snapshot.readyChapterCount,
+                total: snapshot.scheduledCount
+            }),
+            "preparing-export": t("download.status.preparingExport", {
+                ready: snapshot.readyChapterCount,
+                total: snapshot.scheduledCount
+            }),
+            "export-ready": t("download.status.exportReady", {
+                ready: snapshot.readyChapterCount,
+                total: snapshot.scheduledCount
+            })
         };
         const status = phaseStatus[snapshot.phase];
         if (status) {
@@ -160,11 +176,11 @@ const ui: DownloadUiPort = {
         const { readyChapterCount: count, scheduledCount: total, protectedPendingCount: pending } = snapshot;
         const downloadStatus =
             pending > 0
-                ? `正文完成 ${count}/${total}｜密码待处理 ${pending}｜正在抓取`
-                : `全本下载 (${count}/${total}) `;
+                ? t("download.status.runningProtected", { ready: count, total, pending })
+                : t("download.status.running", { ready: count, total });
         const progressEl = document.querySelector("#esj-progress") as HTMLElement | null;
         updateDownloadStatus(downloadStatus);
-        document.title = `[${count}/${total}${pending > 0 ? `｜密码${pending}` : ""}] ${state.originalTitle}`;
+        document.title = `[${count}/${total}${pending > 0 ? t("download.status.protectedTitle", { pending }) : ""}] ${state.originalTitle}`;
         if (progressEl) {
             progressEl.style.width = (count / total) * 100 + "%";
         }
@@ -179,6 +195,12 @@ const ui: DownloadUiPort = {
     cleanup: () => fullCleanup(state.originalTitle),
     showFormatChoice
 };
+
+subscribeInterfaceLocaleChange(() => {
+    if (lastDownloadSnapshot && document.querySelector("#esj-popup")) {
+        ui.update(lastDownloadSnapshot);
+    }
+});
 
 const protectedChapterDetector = { isProtected: isProtectedChapterHtml };
 
@@ -215,13 +237,18 @@ const chapterProcessor: ChapterProcessorPort = {
                         {
                             stage: "processing",
                             code: "image-processing-failed",
-                            message: "图片处理异常，正文已保留",
+                            message: t("image.processingFailure"),
                             count: imageErrors
                         }
                     ]);
                 }
                 log(
-                    `⚠️ 图片处理异常，跳过 ${imageErrors} 张图片。第 ${task.index + 1} 章 标题：${task.title}，原因：${getErrorMessage(error)}`
+                    t("image.processingLog", {
+                        count: imageErrors,
+                        chapter: task.index + 1,
+                        title: task.title,
+                        detail: getErrorMessage(error)
+                    })
                 );
             }
         } else {
@@ -242,7 +269,7 @@ const chapterProcessor: ChapterProcessorPort = {
 const coverFetcher: CoverFetcherPort = {
     async fetch(url, signal) {
         try {
-            log("启动封面下载...");
+            log(t("cover.start"));
             const response = await fetchWithTimeout(
                 url,
                 { method: "GET", referrerPolicy: "no-referrer", credentials: "omit" },
@@ -251,22 +278,22 @@ const coverFetcher: CoverFetcherPort = {
             );
             const blob = await response.blob();
             if (blob.size < 1000) {
-                log("⚠ 封面文件过小，已忽略");
+                log(t("cover.tooSmall"));
                 return null;
             }
             const normalized = await normalizeImageBlob(blob);
             if (!normalized || (normalized.extension !== "jpg" && normalized.extension !== "png")) {
-                log("⚠ 无法识别封面的实际 JPEG/PNG 格式，已忽略");
+                log(t("cover.invalidFormat"));
                 return null;
             }
-            log("✅ 封面下载完成");
+            log(t("cover.completed"));
             return {
                 blob: normalized.blob,
                 ext: normalized.extension,
                 mediaType: normalized.extension === "png" ? "image/png" : "image/jpeg"
             };
         } catch (error) {
-            log(`⚠ 封面下载跳过: ${getErrorMessage(error)}`);
+            log(t("cover.skipped", { detail: getErrorMessage(error) }));
             return null;
         }
     }

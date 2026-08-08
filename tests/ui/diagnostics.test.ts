@@ -13,6 +13,7 @@ import { createInitialDownloadSnapshot } from "../../src/core/download/state-mac
 import { createDiagnosticPopup } from "../../src/ui/diagnostics";
 import { showMessagePopup } from "../../src/ui/message-popup";
 import { createSettingsPanel } from "../../src/ui/popups";
+import { setInterfaceLocalePreference } from "../../src/core/config";
 
 function seedDiagnostic(result: "success" | "failed" = "failed"): void {
     startBrowserDiagnosticSession({
@@ -49,6 +50,7 @@ describe("diagnostic history UI", () => {
     beforeEach(() => {
         document.body.replaceChildren();
         clearBrowserDiagnosticSessions();
+        setInterfaceLocalePreference("zh-CN");
     });
 
     afterEach(() => {
@@ -65,7 +67,8 @@ describe("diagnostic history UI", () => {
 
         const popup = document.querySelector("#esj-diagnostics") as HTMLElement;
         expect(popup).not.toBeNull();
-        expect(popup.textContent).toContain("最近任务（最多 10 条）");
+        expect(popup.textContent).toContain("最近任务（最多 30 条）");
+        expect(popup.textContent).toContain("总计 4.0 MiB");
         expect(popup.textContent).toContain("Diagnostic Book");
         expect(popup.textContent).toContain("作品链接和失败章节信息");
         expect(popup.textContent).toContain("network-error");
@@ -81,6 +84,21 @@ describe("diagnostic history UI", () => {
         (document.querySelector("#esj-diagnostic-refresh") as HTMLButtonElement).click();
 
         expect(document.querySelector("#esj-diagnostic-list")?.textContent).toContain("Diagnostic Book");
+    });
+
+    it("shows a localized fallback for a diagnostic without a book title", () => {
+        startBrowserDiagnosticSession({
+            taskId: "task-untitled",
+            bookId: "unknown",
+            bookTitle: "",
+            pageUrl: "https://www.esjzone.cc/forum/1.html",
+            sourcePageType: "single",
+            imageEnabled: false
+        });
+        createDiagnosticPopup();
+
+        expect(document.querySelector("#esj-diagnostic-list")?.textContent).toContain("未知作品");
+        expect(document.querySelector("#esj-diagnostic-detail")?.textContent).toContain("未知作品");
     });
 
     it("labels a running session with protected chapters as waiting for a password", () => {

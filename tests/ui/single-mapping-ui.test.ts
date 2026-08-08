@@ -2,6 +2,7 @@
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { injectSinglePageButton } from "../../src/ui/single";
+import { setInterfaceLocalePreference } from "../../src/core/config";
 
 function createWoff2Bytes(): Uint8Array {
     const bytes = new Uint8Array(64);
@@ -37,6 +38,7 @@ function getButtons(): { txt: HTMLElement; html: HTMLElement } {
 
 describe("single-page mapped font UI", () => {
     beforeEach(() => {
+        setInterfaceLocalePreference("zh-CN");
         installSinglePage();
     });
 
@@ -122,12 +124,13 @@ describe("single-page mapped font UI", () => {
             const buttons = getButtons();
             expect(buttons.txt.dataset.esjProtected).toBeUndefined();
             expect(buttons.html.dataset.esjProtected).toBeUndefined();
-            expect(buttons.txt.getAttribute("title")).toBe("下载本章 (TXT)");
+            expect(buttons.txt.getAttribute("title")).toBe("下载本章（TXT）");
             expect(document.querySelector("#esj-single-mapping-warning")).toBeNull();
         });
     });
 
     it("keeps both exports disabled when the final mapped structure is invalid", async () => {
+        setInterfaceLocalePreference("zh-TW");
         installSinglePage(`<section style="font-family: '1', sans-serif;"><p>Invalid mapped body</p></section>`);
 
         injectSinglePageButton();
@@ -136,7 +139,10 @@ describe("single-page mapped font UI", () => {
             const buttons = getButtons();
             expect(buttons.txt.getAttribute("aria-disabled")).toBe("true");
             expect(buttons.html.getAttribute("aria-disabled")).toBe("true");
-            expect(document.querySelector("#esj-single-mapping-warning")?.textContent).toContain("映射字体解析失败");
+            const warning = document.querySelector("#esj-single-mapping-warning")?.textContent;
+            expect(warning).toContain("映射字型解析失敗");
+            expect(warning).toContain("章節結構無效");
+            expect(warning).not.toContain("structure-invalid");
         });
     });
 

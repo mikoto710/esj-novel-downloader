@@ -8,7 +8,9 @@ import type {
     RuntimeCacheSession,
     SourcePageType
 } from "../../types";
+import type { DomainMessage, DomainMessageParams } from "../messages";
 import type { StorageFailure } from "../cache/storage-error";
+import type { MappingFontErrorCode, MappingFontErrorReason } from "../mapping-font";
 
 /**
  * 下载核心接收的单章任务
@@ -19,16 +21,71 @@ export interface DownloadTask {
     title: string;
 }
 
+export type DownloadLogCode =
+    | "cover-cache-hit"
+    | "cover-cache-read-failed"
+    | "cover-cache-saved"
+    | "cover-cache-write-ownership-lost"
+    | "cover-cache-write-failed"
+    | "restored-mapping-font-invalid"
+    | "cache-restored"
+    | "cache-restored-with-invalidated"
+    | "cache-write-retry"
+    | "chapter-fetch-failed"
+    | "chapter-mapping-font-failed"
+    | "chapter-processed"
+    | "chapter-processed-with-images"
+    | "chapter-processed-with-image-failures"
+    | "chapter-skipped-non-site"
+    | "protected-chapter-retry-skipped"
+    | "protected-chapter-redetected"
+    | "protected-chapter-queued"
+    | "protected-chapter-skipped"
+    | "protected-chapter-connection-retry"
+    | "protected-chapter-connection-failed"
+    | "protected-chapter-password-rejected"
+    | "protected-chapter-protocol-failed"
+    | "protected-chapter-unlocked"
+    | "integrity-check-started"
+    | "integrity-check-passed"
+    | "integrity-check-failed"
+    | "chapter-integrity-retry"
+    | "missing-chapter-retry"
+    | "missing-chapter-export-with-placeholders"
+    | "missing-chapter-retry-started"
+    | "missing-chapter-retry-saved"
+    | "cancellation-cache-write-skipped-lock-lost"
+    | "cancellation-cache-discard-requested"
+    | "cancellation-cache-write-started"
+    | "cancellation-finished"
+    | "cache-restore-started"
+    | "download-started"
+    | "download-main-flush-started"
+    | "download-integrity-flush-started"
+    | "export-preparation-started"
+    | "download-completed"
+    | "download-storage-failed"
+    | "cache-discard-failed";
+
+export type DownloadLog = DomainMessage<DownloadLogCode>;
+
+export type DownloadChapterFailureCode = string;
+
 export type ProtectedChapterProtocolErrorCode =
     | "token-invalid"
     | "response-invalid"
     | "unknown-status"
     | "content-invalid";
 
+export type ProtectedChapterPromptMessageCode =
+    | "connection-failed"
+    | "password-rejected"
+    | ProtectedChapterProtocolErrorCode;
+
 export type ProtectedChapterUnlockResult =
     | { kind: "unlocked"; html: string }
-    | { kind: "password-rejected"; message: string }
-    | { kind: "protocol-error"; code: ProtectedChapterProtocolErrorCode; message: string };
+    | { kind: "password-rejected"; message?: string }
+    | { kind: "protocol-error"; code: ProtectedChapterProtocolErrorCode; params?: DomainMessageParams };
 
 /**
  * 站点密码授权由浏览器 adapter 实现；核心只编排结构化结果，不接触密码协议和 DOM
@@ -50,7 +107,10 @@ export interface ProtectedChapterPrompt {
     task: DownloadTask;
     totalChapters: number;
     pendingCount: number;
+    // 仅保留 ESJZone status 206 返回的原始站点提示
     message?: string;
+    messageCode?: ProtectedChapterPromptMessageCode;
+    messageParams?: DomainMessageParams;
     initialPassword?: string;
     rememberPassword?: boolean;
     retryConnection?: boolean;
@@ -109,7 +169,8 @@ export type DownloadCancellationOutcome = "saved" | "save-failed" | "save-timed-
 export type DownloadTerminalFailure =
     | {
           kind: "download";
-          message: string;
+          code: DownloadChapterFailureCode;
+          params: DomainMessageParams;
           storageFailure: StorageFailure | null;
       }
     | {
@@ -163,6 +224,13 @@ export interface MappingFontDetection extends MappingFontSummary {
     inFlightLimit: number;
 }
 
+export interface MappingFontFailure {
+    task: DownloadTask;
+    code: MappingFontErrorCode;
+    reason: MappingFontErrorReason;
+    params: DomainMessageParams;
+}
+
 export type IncompleteChapterDecision = "retry" | "export-with-placeholders" | "cancel";
 
 /**
@@ -188,8 +256,8 @@ export type DownloadEvent =
           type: "chapter-failed";
           task: DownloadTask;
           stage: "fetch" | "mapping-font" | "protected-auth";
-          code: string;
-          message: string;
+          code: DownloadChapterFailureCode;
+          params: DomainMessageParams;
           retry: boolean;
       }
     | { type: "protected-chapter-password-rejected"; task: DownloadTask }
@@ -199,7 +267,12 @@ export type DownloadEvent =
           missingCount: number;
           decision: IncompleteChapterDecision;
       }
-    | { type: "download-failed"; error: unknown; snapshot: DownloadSnapshot };
+    | {
+          type: "download-failed";
+          code: DownloadChapterFailureCode;
+          params: DomainMessageParams;
+          snapshot: DownloadSnapshot;
+      };
 
 /**
  * 当前页面运行状态的兼容边界
@@ -238,7 +311,7 @@ export interface DownloadUiPort {
     ): Promise<ProtectedChapterDecision>;
     closeProtectedChapterPrompt(): void;
     updateMappingFontWarning(summary: MappingFontSummary): void;
-    showMappingFontFailure(failures: ReadonlyArray<{ task: DownloadTask; message: string }>): void;
+    showMappingFontFailure(failures: readonly MappingFontFailure[]): void;
     showTerminalFailure(failure: DownloadTerminalFailure): void;
     cleanup(): void;
     showFormatChoice(): void;
@@ -352,5 +425,5 @@ export interface DownloadDependencies extends DownloadPorts {
     scheduler: DownloadSchedulerPort;
     settings: DownloadSettingsPort;
     environment: DownloadEnvironmentPort;
-    log(message: string): void;
+    log(message: DownloadLog): void;
 }

@@ -1,4 +1,5 @@
 import { evaluateImageCacheCompatibility } from "../core/cache/image-cache-compatibility";
+import { t } from "./locale";
 
 /**
  * 根据任务启动时的插图设置说明本次缓存恢复行为
@@ -14,10 +15,10 @@ export function getImageCacheConfirmHint(
 
     const compatibility = evaluateImageCacheCompatibility(cachedImageEnabled, requestedImageEnabled);
     if (compatibility === "compatible") {
-        return `检测到已有 ${cachedCount} 章兼容缓存，点击确定将跳过已下载章节继续下载。`;
+        return t("cache.compatible", { count: cachedCount });
     }
     if (compatibility === "unknown") {
-        return `检测到 ${cachedCount} 章旧缓存，但缺少插图设置信息。点击确定后将安全失效旧章节并重新抓取。`;
+        return t("cache.legacyImageUnknown", { count: cachedCount });
     }
-    return `检测到 ${cachedCount} 章缓存，但插图设置与本次任务不同。点击确定后将安全失效旧章节并重新抓取。`;
+    return t("cache.imageMismatch", { count: cachedCount });
 }

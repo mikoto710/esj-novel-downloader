@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
     browserDiagnosticLog,
     clearBrowserDiagnosticSessions,
@@ -16,9 +16,11 @@ import {
     updateBrowserDiagnosticSession
 } from "../../src/adapters/browser-diagnostics";
 import { createInitialDownloadSnapshot } from "../../src/core/download/state-machine";
+import { setInterfaceLocalePreference } from "../../src/core/config";
 
 describe("browser diagnostic persistence", () => {
     beforeEach(() => {
+        setInterfaceLocalePreference("zh-CN");
         clearBrowserDiagnosticSessions();
     });
 
@@ -78,6 +80,68 @@ describe("browser diagnostic persistence", () => {
         expect(exported).not.toContain("token=secret");
     });
 
+    it("persists structured logs and formats them in the locale selected at export time", () => {
+        startBrowserDiagnosticSession({
+            taskId: "task-structured-log",
+            bookId: "book-log",
+            bookTitle: "Log Book",
+            pageUrl: "https://www.esjzone.cc/detail/12.html",
+            sourcePageType: "detail",
+            imageEnabled: false
+        });
+        browserDiagnosticLog({ code: "download-started", params: { concurrency: 3 } });
+        finishBrowserDiagnosticSession("task-structured-log", "success");
+
+        const session = listBrowserDiagnosticSessions().history[0];
+        expect(session.logs).toEqual([
+            { at: expect.any(Number), level: "info", code: "download-started", params: { concurrency: 3 } }
+        ]);
+
+        setInterfaceLocalePreference("zh-TW");
+        const exported = JSON.parse(createBrowserDiagnosticExport(session).json) as { session: typeof session };
+        expect(exported.session.logs[0]).toMatchObject({
+            level: "info",
+            code: "download-started",
+            params: { concurrency: 3 },
+            message: "已啟動 3 個下載執行緒…"
+        });
+        expect(formatBrowserDiagnosticSummary(session)).toContain("已啟動 3 個下載執行緒…");
+    });
+
+    it("formats missing application and book details without persisting localized fallbacks", () => {
+        vi.stubGlobal("GM_info", {
+            script: { version: "" },
+            scriptHandler: "Tampermonkey",
+            version: ""
+        });
+        startBrowserDiagnosticSession({
+            taskId: "task-missing-details",
+            bookId: "unknown",
+            bookTitle: "",
+            pageUrl: "https://www.esjzone.cc/forum/1.html",
+            sourcePageType: "single",
+            imageEnabled: false
+        });
+
+        const session = listBrowserDiagnosticSessions().active[0];
+        expect(session.application).toEqual({
+            version: "",
+            browser: "Chrome",
+            browserVersionUnknown: true,
+            userscriptManager: "Tampermonkey"
+        });
+        expect(session.book.title).toBe("");
+        expect(JSON.stringify(session)).not.toContain("版本未知");
+        expect(JSON.stringify(session)).not.toContain("未知作品");
+
+        setInterfaceLocalePreference("zh-TW");
+        const summary = formatBrowserDiagnosticSummary(session);
+        expect(summary).toContain("ESJ Novel Downloader 版本未知");
+        expect(summary).toContain("Chrome（版本未知） / Tampermonkey");
+        expect(summary).toContain("作品：未知作品（unknown）");
+        expect(createBrowserDiagnosticExport(session).filename).toContain("esj-diagnostic-未知作品-");
+    });
+
     it("keeps failed chapter location and export failures after download completion", () => {
         startBrowserDiagnosticSession({
             taskId: "task-2",
@@ -119,6 +183,29 @@ describe("browser diagnostic persistence", () => {
             }),
             expect.objectContaining({ scope: "export", stage: "epub-download" })
         ]);
+    });
+
+    it("formats stable diagnostic failure codes in the locale selected at presentation time", () => {
+        startBrowserDiagnosticSession({
+            taskId: "task-localized-failure",
+            bookId: "book-localized-failure",
+            bookTitle: "Localized Failure",
+            pageUrl: "https://www.esjzone.cc/detail/13.html",
+            sourcePageType: "detail",
+            imageEnabled: true
+        });
+        recordBrowserDiagnosticFailure({
+            scope: "image",
+            stage: "request",
+            code: "image-request-failed",
+            message: "image-request-failed",
+            imageFailureCount: 1
+        });
+        finishBrowserDiagnosticSession("task-localized-failure", "failed");
+        const session = listBrowserDiagnosticSessions().history[0];
+
+        setInterfaceLocalePreference("zh-TW");
+        expect(formatBrowserDiagnosticSummary(session)).toContain("多次嘗試後仍無法取得圖片");
     });
 
     it("keeps inline image failures inside a successful diagnostic session", () => {
@@ -188,8 +275,8 @@ describe("browser diagnostic persistence", () => {
             type: "chapter-failed",
             task: { index: 8, title: "Broken chapter", url: "https://www.esjzone.cc/forum/9/10.html" },
             stage: "fetch",
-            code: "TimeoutError",
-            message: "request timed out",
+            code: "chapter-fetch-failed",
+            params: { detail: "request timed out" },
             retry: true
         });
         const failed = { ...downloading, phase: "failed" as const, failedCount: 1 };
@@ -201,7 +288,8 @@ describe("browser diagnostic persistence", () => {
         });
         browserDiagnosticEvents.emit({
             type: "download-failed",
-            error: new Error("download failed"),
+            code: "download-failed",
+            params: { detail: "download failed" },
             snapshot: failed
         });
 
@@ -219,10 +307,10 @@ describe("browser diagnostic persistence", () => {
         expect(session.failures).toEqual([
             expect.objectContaining({
                 scope: "chapter",
-                code: "TimeoutError",
+                code: "chapter-fetch-failed",
                 chapter: expect.objectContaining({ index: 9, title: "Broken chapter" })
             }),
-            expect.objectContaining({ scope: "download", code: "Error", message: "download failed" })
+            expect.objectContaining({ scope: "download", code: "download-failed", message: "download failed" })
         ]);
     });
 

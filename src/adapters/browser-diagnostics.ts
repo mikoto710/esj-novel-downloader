@@ -4,6 +4,7 @@ import {
     DiagnosticManager,
     DIAGNOSTIC_SCHEMA_VERSION,
     type DiagnosticRepository,
+    type DiagnosticLogRecord,
     type DiagnosticResult,
     type DiagnosticSession,
     type DiagnosticSessionPresentation,
@@ -13,9 +14,11 @@ import {
     type RecordDiagnosticExportInput,
     type StartDiagnosticSessionInput
 } from "../core/diagnostics";
-import type { DownloadEventSink, DownloadOptions } from "../core/download/contracts";
+import type { DownloadEventSink, DownloadLog, DownloadLogCode, DownloadOptions } from "../core/download/contracts";
 import { getConcurrency, getEpubTagPageSetting } from "../core/config";
 import { log, triggerDownload } from "../utils/index";
+import { formatDownloadLog } from "./browser-download-messages";
+import { t } from "../ui/locale";
 
 const DIAGNOSTIC_STORAGE_KEY = "esj_diagnostic_sessions_v1";
 
@@ -81,24 +84,26 @@ function observeBrowserDiagnosticPageClose(taskId: string): void {
     closeObserverCleanups.set(taskId, () => window.removeEventListener("pagehide", onPageHide));
 }
 
-function parseChromeVersion(): string {
+function getChromeInfo(): Pick<StartDiagnosticSessionInput["application"], "browser" | "browserVersionUnknown"> {
     const match = navigator.userAgent.match(/(?:Chrome|Chromium)\/(\d+(?:\.\d+)*)/);
-    return match ? `Chrome ${match[1]}` : "Chrome（版本未知）";
+    return match ? { browser: `Chrome ${match[1]}` } : { browser: "Chrome", browserVersionUnknown: true };
 }
 
 function getApplicationInfo(): StartDiagnosticSessionInput["application"] {
-    const scriptVersion = GM_info?.script?.version?.trim() || "版本未知";
+    const scriptVersion = GM_info?.script?.version?.trim() || "";
     const handler = GM_info?.scriptHandler?.trim() || "Tampermonkey";
     const handlerVersion = GM_info?.version?.trim();
     return {
         version: scriptVersion,
-        browser: parseChromeVersion(),
+        ...getChromeInfo(),
         userscriptManager: handlerVersion ? `${handler} ${handlerVersion}` : handler
     };
 }
 
 /**
- * 创建浏览器侧诊断会话，固定本次任务的应用和设置快照，并维护当前任务及后续失败回写引用
+ * 创建浏览器侧诊断会话并固定任务启动时的应用与设置快照
+ * @param options 控制未显式提供 taskId 的失败和导出记录是否回写到本会话，以及是否记录页面关闭
+ * @returns 已保存的活动诊断会话
  */
 export function startBrowserDiagnosticSession(
     input: Omit<StartDiagnosticSessionInput, "application" | "settings"> & {
@@ -142,11 +147,17 @@ export function recordBrowserPreflightDiagnosticFailure(
     return manager.list().history.find((session) => session.taskId === taskId)!;
 }
 
+/**
+ * 使用 options.taskId 更新全本诊断会话，并将 browserDiagnosticLog 的默认归属切换到该任务
+ */
 export function updateBrowserDiagnosticSession(options: DownloadOptions): void {
     currentTaskId = options.taskId;
     manager.updateSession(options.taskId, options);
 }
 
+/**
+ * 更新 taskId 标识的诊断会话书名、页面地址或来源页面类型
+ */
 export function updateBrowserDiagnosticSessionMetadata(
     taskId: string,
     options: Partial<Pick<DownloadOptions, "bookName" | "pageUrl" | "sourcePageType">>
@@ -155,7 +166,7 @@ export function updateBrowserDiagnosticSessionMetadata(
 }
 
 /**
- * 完成全本诊断会话并移除页面关闭监听；仅释放 currentTaskId，保留 lastTaskId 供导出失败回写
+ * 将 taskId 标识的全本诊断会话写入 result 终态并停止页面关闭观察
  */
 export function finishBrowserDiagnosticSession(taskId: string, result: Exclude<DiagnosticResult, "running">): void {
     stopBrowserDiagnosticCloseObserver(taskId);
@@ -166,7 +177,7 @@ export function finishBrowserDiagnosticSession(taskId: string, result: Exclude<D
 }
 
 /**
- * 完成单章诊断会话，将结果映射为单章阶段和计数摘要，并释放当前任务引用
+ * 完成单章诊断会话并将结果映射为单章阶段及计数摘要
  */
 export function finishBrowserSingleChapterDiagnosticSession(
     taskId: string,
@@ -188,7 +199,7 @@ export function finishBrowserSingleChapterDiagnosticSession(
 }
 
 /**
- * 将失败写回诊断会话；未显式传入 taskId 时按当前任务、最后任务和最近会话依次回退
+ * 将失败写回 taskId 标识的诊断会话；未传 taskId 时依次选择日志归属任务、导出回写任务和更新时间最新的会话
  */
 export function recordBrowserDiagnosticFailure(input: RecordDiagnosticFailureInput, taskId = currentTaskId): void {
     const targetTaskId = taskId || lastTaskId || getLatestBrowserDiagnosticSession()?.taskId;
@@ -198,7 +209,7 @@ export function recordBrowserDiagnosticFailure(input: RecordDiagnosticFailureInp
 }
 
 /**
- * 将导出结果写回诊断会话；未显式传入 taskId 时沿用失败记录的任务回退顺序
+ * 将导出结果写回 taskId 标识的诊断会话；未传 taskId 时使用与失败记录相同的会话选择规则
  */
 export function recordBrowserDiagnosticExport(input: RecordDiagnosticExportInput, taskId = currentTaskId): void {
     const targetTaskId = taskId || lastTaskId || getLatestBrowserDiagnosticSession()?.taskId;
@@ -207,12 +218,75 @@ export function recordBrowserDiagnosticExport(input: RecordDiagnosticExportInput
     }
 }
 
-export function browserDiagnosticLog(message: string): void {
+/**
+ * 将日志写入 UI 和控制台，并在存在活动会话时追加诊断记录；诊断存储失败不影响前两项输出
+ */
+export function browserDiagnosticLog(message: string | DownloadLog): void {
     // 先保持原有 UI/控制台日志，再以最佳努力写入诊断；诊断异常不得改变下载行为
-    log(message);
+    const displayMessage = typeof message === "string" ? message : formatDownloadLog(message);
+    log(displayMessage);
     if (currentTaskId) {
-        manager.recordLog(currentTaskId, message);
+        manager.recordLog(
+            currentTaskId,
+            typeof message === "string"
+                ? { level: "info", message }
+                : {
+                      level: classifyDownloadLogLevel(message.code),
+                      code: message.code,
+                      ...(message.params === undefined ? {} : { params: message.params })
+                  }
+        );
     }
+}
+
+const ERROR_LOG_CODES = new Set<DownloadLogCode>([
+    "cover-cache-write-ownership-lost",
+    "chapter-mapping-font-failed",
+    "protected-chapter-connection-failed",
+    "protected-chapter-protocol-failed",
+    "download-storage-failed",
+    "cache-discard-failed"
+]);
+
+const WARNING_LOG_CODES = new Set<DownloadLogCode>([
+    "cover-cache-read-failed",
+    "cover-cache-write-failed",
+    "restored-mapping-font-invalid",
+    "cache-write-retry",
+    "chapter-fetch-failed",
+    "chapter-skipped-non-site",
+    "protected-chapter-retry-skipped",
+    "protected-chapter-redetected",
+    "protected-chapter-queued",
+    "protected-chapter-skipped",
+    "protected-chapter-connection-retry",
+    "protected-chapter-password-rejected",
+    "integrity-check-failed",
+    "chapter-integrity-retry",
+    "missing-chapter-retry",
+    "missing-chapter-export-with-placeholders",
+    "missing-chapter-retry-started",
+    "cancellation-cache-write-skipped-lock-lost"
+]);
+
+function classifyDownloadLogLevel(code: DownloadLogCode): DiagnosticLogRecord["level"] {
+    if (ERROR_LOG_CODES.has(code)) {
+        return "error";
+    }
+    return WARNING_LOG_CODES.has(code) ? "warning" : "info";
+}
+
+/**
+ * 将结构化诊断日志按当前界面语言格式化；旧版字符串日志保持原文可读
+ */
+export function formatBrowserDiagnosticLog(entry: DiagnosticLogRecord): string {
+    if (entry.code) {
+        return formatDownloadLog({
+            code: entry.code as DownloadLogCode,
+            ...(entry.params === undefined ? {} : { params: entry.params })
+        });
+    }
+    return entry.message || entry.code || "";
 }
 
 export const browserDiagnosticEvents: DownloadEventSink = {
@@ -233,10 +307,16 @@ export const browserDiagnosticEvents: DownloadEventSink = {
     }
 };
 
+/**
+ * 读取经过兼容修复、保留期限和容量约束处理的活动诊断会话与历史记录
+ */
 export function listBrowserDiagnosticSessions(): DiagnosticStore {
     return manager.list();
 }
 
+/**
+ * 读取按当前时间计算展示状态的诊断会话视图，不改写持久终态
+ */
 export function listBrowserDiagnosticSessionView(): DiagnosticSessionViewStore {
     return createDiagnosticSessionView(manager.list(), Date.now());
 }
@@ -250,7 +330,7 @@ export function removeBrowserDiagnosticSession(sessionId: string): void {
 }
 
 /**
- * 清理所有页面关闭监听和诊断存储，并重置当前任务与后续失败回写使用的任务引用
+ * 停止全部页面关闭观察，并清空诊断存储及无 taskId 记录使用的默认会话归属
  */
 export function clearBrowserDiagnosticSessions(): void {
     for (const cleanup of closeObserverCleanups.values()) {
@@ -280,17 +360,42 @@ function safeFilenamePart(value: string): string {
     );
 }
 
+function formatDiagnosticBookTitle(session: DiagnosticSession): string {
+    return session.book.title || t("diagnostics.summary.unknownBook");
+}
+
+function formatDiagnosticBrowser(session: DiagnosticSession): string {
+    return session.application.browserVersionUnknown
+        ? t("diagnostics.summary.browserVersionUnknown", { browser: session.application.browser })
+        : session.application.browser;
+}
+
+/**
+ * 生成适合本地保存的文件名和诊断 JSON，并按调用时界面语言补充结构化日志文本
+ */
 export function createBrowserDiagnosticExport(session: DiagnosticSession): { filename: string; json: string } {
     const date = new Date(session.updatedAt)
         .toISOString()
         .replace(/[-:]/g, "")
         .replace(/\.\d{3}Z$/, "Z");
     return {
-        filename: `esj-diagnostic-${safeFilenamePart(session.book.title)}-${date}.json`,
-        json: JSON.stringify({ session }, null, 2)
+        filename: `esj-diagnostic-${safeFilenamePart(formatDiagnosticBookTitle(session))}-${date}.json`,
+        json: JSON.stringify(
+            {
+                session: {
+                    ...session,
+                    logs: session.logs.map((entry) => ({ ...entry, message: formatBrowserDiagnosticLog(entry) }))
+                }
+            },
+            null,
+            2
+        )
     };
 }
 
+/**
+ * 生成并触发传入诊断会话的 JSON 文件下载
+ */
 export function downloadBrowserDiagnosticSession(session: DiagnosticSession): void {
     const exported = createBrowserDiagnosticExport(session);
     triggerDownload(new Blob([exported.json], { type: "application/json;charset=utf-8" }), exported.filename);
@@ -298,15 +403,31 @@ export function downloadBrowserDiagnosticSession(session: DiagnosticSession): vo
 
 function formatPresentation(presentation: DiagnosticSessionPresentation): string {
     if (presentation === "closed-unconfirmed") {
-        return "页面已关闭，结果未确认";
+        return t("diagnostics.summary.closed");
     }
     if (presentation === "superseded") {
-        return "已由新的续传任务接替，旧结果未确认";
+        return t("diagnostics.summary.superseded");
     }
     if (presentation === "interrupted") {
-        return "异常中断（结果未确认）";
+        return t("diagnostics.summary.interrupted");
     }
     return presentation;
+}
+
+function formatDiagnosticFailureMessage(failure: DiagnosticSession["failures"][number]): string {
+    const keys: Partial<Record<string, Parameters<typeof t>[0]>> = {
+        "chapter-content-missing": "single.bodyMissing.message",
+        "detail-chapter-list-missing": "page.structureChanged",
+        "book-detail-chapters-missing": "page.chaptersMissing.message",
+        "chapter-list-missing": "page.chaptersMissing.message",
+        "ownership-lost": "page.lockLost",
+        "invalid-image-url": "diagnostics.failure.invalidImageUrl",
+        "image-format-unrecognized": "diagnostics.failure.imageFormatUnrecognized",
+        "image-processing-failed": "diagnostics.failure.imageProcessingFailed",
+        "image-request-failed": "diagnostics.failure.imageRequestFailed"
+    };
+    const key = keys[failure.code];
+    return key ? t(key) : failure.message;
 }
 
 /**
@@ -316,40 +437,73 @@ export function formatBrowserDiagnosticSummary(
     session: DiagnosticSession,
     presentation: DiagnosticSessionPresentation = session.result
 ): string {
+    const applicationVersion = session.application.version || t("diagnostics.summary.versionUnknown");
+    const bookTitle = formatDiagnosticBookTitle(session);
     const failureLines = session.failures.slice(-10).map((failure) => {
         const chapter = failure.chapter
-            ? `；章节 ${failure.chapter.index}「${failure.chapter.title}」 ${failure.chapter.url}`
+            ? t("diagnostics.summary.chapterFailure", {
+                  index: failure.chapter.index,
+                  title: failure.chapter.title,
+                  url: failure.chapter.url
+              })
             : "";
-        const imageCount = failure.imageFailureCount === undefined ? "" : `；失败插图：${failure.imageFailureCount} 张`;
-        return `- [${failure.code}] ${failure.message}${imageCount}${chapter}`;
+        const imageCount =
+            failure.imageFailureCount === undefined
+                ? ""
+                : t("diagnostics.summary.imageFailure", { count: failure.imageFailureCount });
+        return `- [${failure.code}] ${formatDiagnosticFailureMessage(failure)}${imageCount}${chapter}`;
     });
+    const logLines = session.logs.slice(-20).map((entry) => `- [${entry.level}] ${formatBrowserDiagnosticLog(entry)}`);
     const exportLines = (session.exports || []).map((item) => {
-        const format = `${item.scope === "single" ? "单章 " : ""}${item.format.toUpperCase()}`;
+        const format = `${item.scope === "single" ? t("diagnostics.summary.singlePrefix") : ""}${item.format.toUpperCase()}`;
         if (item.outcome === "cancelled") {
-            return `- ${format}：用户取消`;
+            return t("diagnostics.summary.exportCancelled", { format });
         }
         if (item.outcome === "success") {
-            return `- ${format}：生成成功，已触发浏览器下载`;
+            return t("diagnostics.summary.exportSuccess", { format });
         }
         return item.failureStage === "generate"
-            ? `- ${format}：生成失败，未触发浏览器下载`
-            : `- ${format}：生成成功，浏览器下载触发失败`;
+            ? t("diagnostics.summary.generateFailed", { format })
+            : t("diagnostics.summary.downloadFailed", { format });
     });
     const presentationLine =
         presentation === session.result
             ? null
-            : `诊断视图：${formatPresentation(presentation)}；原始结果：${session.result}`;
+            : t("diagnostics.summary.presentation", {
+                  presentation: formatPresentation(presentation),
+                  result: session.result
+              });
     return [
-        `ESJ Novel Downloader ${session.application.version}`,
-        `${session.application.browser} / ${session.application.userscriptManager}`,
-        `作品：${session.book.title}（${session.book.bookId}）`,
-        `链接：${session.book.url}`,
+        `ESJ Novel Downloader ${applicationVersion}`,
+        `${formatDiagnosticBrowser(session)} / ${session.application.userscriptManager}`,
+        t("diagnostics.summary.book", { title: bookTitle, bookId: session.book.bookId }),
+        t("diagnostics.summary.link", { url: session.book.url }),
         ...(presentationLine ? [presentationLine] : []),
-        `结果：${session.result}；阶段：${session.task.phase}`,
-        `章节：${session.task.completedChapters}/${session.task.totalChapters}；缓存恢复：${session.task.restoredChapters}；失败：${session.task.failedChapters}`,
-        `密码章节：发现 ${session.task.protectedDetectedChapters}；待处理 ${session.task.protectedPendingChapters}；已解锁 ${session.task.protectedResolvedChapters}；已跳过 ${session.task.protectedSkippedChapters}`,
-        `插图：${session.settings.imageEnabled ? "开启" : "关闭"}；并发：${session.settings.concurrency}`,
-        exportLines.length > 0 ? `导出记录：\n${exportLines.join("\n")}` : "导出记录：无",
-        failureLines.length > 0 ? `失败摘要：\n${failureLines.join("\n")}` : "失败摘要：无"
+        t("diagnostics.summary.result", { result: session.result, phase: session.task.phase }),
+        t("diagnostics.summary.chapters", {
+            completed: session.task.completedChapters,
+            total: session.task.totalChapters,
+            restored: session.task.restoredChapters,
+            failed: session.task.failedChapters
+        }),
+        t("diagnostics.summary.protected", {
+            detected: session.task.protectedDetectedChapters,
+            pending: session.task.protectedPendingChapters,
+            resolved: session.task.protectedResolvedChapters,
+            skipped: session.task.protectedSkippedChapters
+        }),
+        t("diagnostics.summary.images", {
+            enabled: t(session.settings.imageEnabled ? "diagnostics.summary.enabled" : "diagnostics.summary.disabled"),
+            concurrency: session.settings.concurrency
+        }),
+        t("diagnostics.summary.exports", {
+            records: exportLines.length > 0 ? `\n${exportLines.join("\n")}` : t("diagnostics.summary.none")
+        }),
+        t("diagnostics.summary.logs", {
+            records: logLines.length > 0 ? `\n${logLines.join("\n")}` : t("diagnostics.summary.none")
+        }),
+        t("diagnostics.summary.failures", {
+            records: failureLines.length > 0 ? `\n${failureLines.join("\n")}` : t("diagnostics.summary.none")
+        })
     ].join("\n");
 }

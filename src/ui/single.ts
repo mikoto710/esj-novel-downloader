@@ -4,10 +4,9 @@ import { downloadCurrentPage } from "../scrapers/single";
 import { parseChapterHtml } from "../core/parser";
 import { MappingFontError, normalizeChapterMappingFont } from "../core/mapping-font";
 import { isProtectedChapterHtml } from "../adapters/browser-protected-chapter";
+import { bindInterfaceAttribute, subscribeInterfaceLocaleChange, t } from "./locale";
+import { formatMappingFontError } from "./mapping-font-messages";
 
-const TXT_TITLE = "下载本章 (TXT)";
-const HTML_TITLE = "下载本章 (HTML)";
-const MAPPING_CHECK_PENDING = "正在检测章节是否使用映射字体";
 const CUSTOMIZER_REFRESH_DELAY_MS = 150;
 
 let mappingUiRefreshVersion = 0;
@@ -49,11 +48,11 @@ function guideSingleProtectedExport(elements: SingleExportElements): void {
     for (const button of [elements.txtButton, elements.htmlButton]) {
         button.dataset.esjProtected = "true";
         button.setAttribute("aria-disabled", "false");
-        button.setAttribute("title", "请先在正文区域输入章节密码");
+        button.setAttribute("title", t("protected.single.buttonTitle"));
         button.style.opacity = "";
         button.style.cursor = "pointer";
     }
-    replaceSingleMappingNotice(elements.container, "🔒 本章需要密码，请先解锁后再下载。", "#a45b00");
+    replaceSingleMappingNotice(elements.container, t("protected.single.notice"), "#a45b00");
 }
 
 function replaceSingleMappingNotice(container: HTMLElement, text: string, color: string): void {
@@ -75,15 +74,16 @@ function showSingleMappingPending(): void {
     if (!elements) {
         return;
     }
-    disableSingleExport(elements.txtButton, MAPPING_CHECK_PENDING);
-    disableSingleExport(elements.htmlButton, MAPPING_CHECK_PENDING);
-    replaceSingleMappingNotice(elements.container, `⏳ ${MAPPING_CHECK_PENDING}...`, "#666");
+    const pending = t("mapping.single.pending");
+    disableSingleExport(elements.txtButton, pending);
+    disableSingleExport(elements.htmlButton, pending);
+    replaceSingleMappingNotice(elements.container, `⏳ ${pending}...`, "#666");
 }
 
 function showSingleMappingFailure(elements: SingleExportElements, reason: string): void {
     disableSingleExport(elements.txtButton, reason);
     disableSingleExport(elements.htmlButton, reason);
-    replaceSingleMappingNotice(elements.container, `⚠ ${reason}，已阻止导出。`, "#c62828");
+    replaceSingleMappingNotice(elements.container, t("mapping.single.blocked", { reason }), "#c62828");
 }
 
 async function updateSinglePageMappingUi(version: number): Promise<void> {
@@ -93,7 +93,7 @@ async function updateSinglePageMappingUi(version: number): Promise<void> {
     }
     try {
         if (!document.querySelector(".forum-content")) {
-            throw new Error("未找到章节正文，无法完成映射字体检测");
+            throw new Error(t("single.bodyMissing.message"));
         }
         if (isProtectedChapterHtml(document.documentElement.outerHTML)) {
             if (
@@ -119,18 +119,14 @@ async function updateSinglePageMappingUi(version: number): Promise<void> {
         ) {
             return;
         }
-        enableSingleExport(elements.txtButton, TXT_TITLE);
-        enableSingleExport(elements.htmlButton, HTML_TITLE);
+        enableSingleExport(elements.txtButton, t("mapping.single.txtTitle"));
+        enableSingleExport(elements.htmlButton, t("mapping.single.htmlTitle"));
         elements.container.querySelector("#esj-single-mapping-warning")?.remove();
         if (normalized.kind !== "mapped") {
             return;
         }
-        disableSingleExport(elements.txtButton, "映射正文尚未恢复为真实 Unicode，无法生成正确 TXT");
-        replaceSingleMappingNotice(
-            elements.container,
-            "⚠ 本章使用自定义映射字体，TXT 已禁用；HTML 仅保证视觉显示。",
-            "#a45b00"
-        );
+        disableSingleExport(elements.txtButton, t("mapping.single.txtDisabled"));
+        replaceSingleMappingNotice(elements.container, t("mapping.single.warning"), "#a45b00");
     } catch (error) {
         if (
             version !== mappingUiRefreshVersion ||
@@ -140,12 +136,15 @@ async function updateSinglePageMappingUi(version: number): Promise<void> {
             return;
         }
         if (error instanceof MappingFontError) {
-            showSingleMappingFailure(elements, `映射字体解析失败：${error.message}`);
+            showSingleMappingFailure(
+                elements,
+                t("mapping.single.failure", { detail: formatMappingFontError(error.code) })
+            );
         } else {
             console.error(error);
             showSingleMappingFailure(
                 elements,
-                error instanceof Error ? error.message : "映射字体检测失败，请刷新页面重试"
+                error instanceof Error ? error.message : t("mapping.single.failureFallback")
             );
         }
     }
@@ -222,8 +221,8 @@ function handleProtectedSingleExport(button: HTMLElement): boolean {
     }
     showMessagePopup({
         tone: "warning",
-        title: "章节尚未解锁",
-        message: "请先输入密码解锁该章节。"
+        title: t("protected.single.title"),
+        message: t("protected.single.message")
     });
     return true;
 }
@@ -255,7 +254,7 @@ export function injectSinglePageButton(): void {
             id: "btn-download-single",
             className: "btn btn-outline-secondary view-all",
             style: "margin-left: 5px; cursor: pointer;",
-            title: TXT_TITLE,
+            title: t("mapping.single.txtTitle"),
             onclick: (e: Event) => {
                 e.preventDefault();
                 if (handleProtectedSingleExport(btnTxt)) {
@@ -264,8 +263,8 @@ export function injectSinglePageButton(): void {
                 if (btnTxt.getAttribute("aria-disabled") === "true") {
                     showMessagePopup({
                         tone: "warning",
-                        title: "TXT 导出不可用",
-                        message: btnTxt.getAttribute("title") || "TXT 导出不可用"
+                        title: t("mapping.single.txtUnavailable"),
+                        message: btnTxt.getAttribute("title") || t("mapping.single.txtUnavailable")
                     });
                     return;
                 }
@@ -282,7 +281,7 @@ export function injectSinglePageButton(): void {
             id: "btn-download-single-html",
             className: "btn btn-outline-secondary view-all",
             style: "margin-left: 10px; cursor: pointer;",
-            title: HTML_TITLE,
+            title: t("mapping.single.htmlTitle"),
             onclick: (e: Event) => {
                 e.preventDefault();
                 if (handleProtectedSingleExport(btnHtml)) {
@@ -291,8 +290,8 @@ export function injectSinglePageButton(): void {
                 if (btnHtml.getAttribute("aria-disabled") === "true") {
                     showMessagePopup({
                         tone: "warning",
-                        title: "HTML 导出不可用",
-                        message: btnHtml.getAttribute("title") || "HTML 导出不可用"
+                        title: t("mapping.single.htmlUnavailable"),
+                        message: btnHtml.getAttribute("title") || t("mapping.single.htmlUnavailable")
                     });
                     return;
                 }
@@ -301,6 +300,8 @@ export function injectSinglePageButton(): void {
         },
         [el("i", { className: "icon-code" })]
     );
+    bindInterfaceAttribute(btnTxt, "title", "mapping.single.txtTitle");
+    bindInterfaceAttribute(btnHtml, "title", "mapping.single.htmlTitle");
 
     // 插入到 "回整合" 按钮后面
     container.appendChild(btnTxt);
@@ -308,3 +309,9 @@ export function injectSinglePageButton(): void {
     installSinglePageMappingUiLifecycle();
     scheduleSinglePageMappingUiRefresh();
 }
+
+subscribeInterfaceLocaleChange(() => {
+    if (document.querySelector("#btn-download-single")) {
+        scheduleSinglePageMappingUiRefresh();
+    }
+});

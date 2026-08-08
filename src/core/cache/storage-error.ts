@@ -15,25 +15,19 @@ export type StorageFailureReason =
  */
 export type StorageOperation = "read" | "claim" | "migrate" | "write" | "clear" | "flush";
 
+import type { DomainMessageParams } from "../messages";
+
 /**
  * 可安全传递给 Coordinator、事件和 UI 的存储失败摘要
+ * message 仅保留稳定技术摘要，展示文案由外层决定
  */
 export interface StorageFailure {
     reason: StorageFailureReason;
     operation: StorageOperation;
     message: string;
+    params?: DomainMessageParams;
     causeReason?: Exclude<StorageFailureReason, "migration-failed">;
 }
-
-const STORAGE_FAILURE_MESSAGES: Readonly<Record<StorageFailureReason, string>> = Object.freeze({
-    "quota-exceeded": "浏览器存储空间不足",
-    "ownership-lost": "当前任务已失去缓存写入权",
-    "transaction-aborted": "IndexedDB 事务意外中止",
-    "database-unavailable": "IndexedDB 当前不可用",
-    "migration-failed": "旧版缓存迁移失败",
-    "flush-timeout": "缓存写入超时",
-    "unknown-storage-error": "缓存存储发生未知错误"
-});
 
 function getErrorName(error: unknown): string {
     return error && typeof error === "object" && "name" in error ? String(error.name) : "";
@@ -41,6 +35,21 @@ function getErrorName(error: unknown): string {
 
 function getErrorMessage(error: unknown): string {
     return error instanceof Error ? error.message : String(error);
+}
+
+function getErrorParams(error: unknown): DomainMessageParams | undefined {
+    if (error instanceof StorageError && error.params) {
+        return error.params;
+    }
+    const name = getErrorName(error);
+    const detail = getErrorMessage(error);
+    if (!name && !detail) {
+        return undefined;
+    }
+    return {
+        ...(name ? { errorName: name } : {}),
+        ...(detail ? { detail } : {})
+    };
 }
 
 function classifyBaseReason(error: unknown): Exclude<StorageFailureReason, "migration-failed"> {
@@ -67,6 +76,7 @@ function classifyBaseReason(error: unknown): Exclude<StorageFailureReason, "migr
 export class StorageError extends Error {
     readonly reason: StorageFailureReason;
     readonly operation: StorageOperation;
+    readonly params?: DomainMessageParams;
     readonly causeReason?: Exclude<StorageFailureReason, "migration-failed">;
 
     constructor(failure: StorageFailure, options?: { cause?: unknown }) {
@@ -74,6 +84,9 @@ export class StorageError extends Error {
         this.name = "StorageError";
         this.reason = failure.reason;
         this.operation = failure.operation;
+        if (failure.params !== undefined) {
+            this.params = failure.params;
+        }
         if (failure.causeReason !== undefined) {
             this.causeReason = failure.causeReason;
         }
@@ -99,13 +112,13 @@ export function normalizeStorageError(
                 : error.reason
             : classifyBaseReason(error);
     const reason = options.migration ? "migration-failed" : causeReason;
-    const detail = getErrorMessage(error);
-    const message = `${STORAGE_FAILURE_MESSAGES[reason]}${detail ? `：${detail}` : ""}`;
+    const params = getErrorParams(error);
     return new StorageError(
         {
             reason,
             operation,
-            message,
+            message: `${reason}:${operation}`,
+            ...(params === undefined ? {} : { params }),
             ...(options.migration
                 ? { causeReason: causeReason as Exclude<StorageFailureReason, "migration-failed"> }
                 : {})
@@ -118,7 +131,7 @@ export function normalizeStorageError(
  * 创建不依赖浏览器原始异常的业务存储错误
  */
 export function createStorageError(reason: StorageFailureReason, operation: StorageOperation): StorageError {
-    return new StorageError({ reason, operation, message: STORAGE_FAILURE_MESSAGES[reason] });
+    return new StorageError({ reason, operation, message: `${reason}:${operation}` });
 }
 
 /**
@@ -129,6 +142,7 @@ export function toStorageFailure(error: StorageError): StorageFailure {
         reason: error.reason,
         operation: error.operation,
         message: error.message,
+        ...(error.params === undefined ? {} : { params: error.params }),
         ...(error.causeReason === undefined ? {} : { causeReason: error.causeReason })
     };
 }

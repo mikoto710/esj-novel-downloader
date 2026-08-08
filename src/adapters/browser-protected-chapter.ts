@@ -27,6 +27,7 @@ function parseHtml(html: string): Document {
 }
 
 function hasProtectedChapterMarkers(document: Document): boolean {
+    // 三个站点标记必须同时位于正文容器内，避免把普通表单或真正的空正文误判为密码章节
     const content = document.querySelector(".forum-content");
     return Boolean(
         content?.querySelector("#oops") &&
@@ -36,16 +37,22 @@ function hasProtectedChapterMarkers(document: Document): boolean {
 }
 
 /**
- * 三个站点标记必须同时位于正文容器内，避免把普通表单或真正的空正文误判为密码章节
+ * 判断页面正文是否显示密码章节交互
  */
 export function isProtectedChapterHtml(html: string): boolean {
     return hasProtectedChapterMarkers(parseHtml(html));
 }
 
-function protocolError(code: ProtectedChapterProtocolErrorCode, message: string): ProtectedChapterUnlockResult {
-    return { kind: "protocol-error", code, message };
+function protocolError(
+    code: ProtectedChapterProtocolErrorCode,
+    params?: Readonly<Record<string, string | number | boolean>>
+): ProtectedChapterUnlockResult {
+    return { kind: "protocol-error", code, ...(params ? { params } : {}) };
 }
 
+/**
+ * 从授权响应提取唯一且非空的 JinJing 令牌，格式不完整时返回 null
+ */
 export function extractProtectedChapterToken(responseText: string): string | null {
     const matches = Array.from(responseText.matchAll(/<JinJing>([^<]+)<\/JinJing>/g));
     if (matches.length !== 1) {
@@ -55,6 +62,9 @@ export function extractProtectedChapterToken(responseText: string): string | nul
     return token || null;
 }
 
+/**
+ * 将解锁正文替换到密码章节页面，正文无效、容器缺失或替换后仍受保护时返回 null
+ */
 export function replaceProtectedChapterContent(pageHtml: string, contentHtml: string): string | null {
     if (!contentHtml.trim()) {
         return null;
@@ -71,27 +81,30 @@ export function replaceProtectedChapterContent(pageHtml: string, contentHtml: st
     return `<!doctype html>\n${document.documentElement.outerHTML}`;
 }
 
+/**
+ * 将站点密码响应归一为解锁、密码拒绝或协议错误结果，并保留 status 206 的站点消息
+ */
 export function classifyProtectedChapterResponse(pageHtml: string, payload: unknown): ProtectedChapterUnlockResult {
     if (!payload || typeof payload !== "object" || typeof (payload as PasswordResponsePayload).status !== "number") {
-        return protocolError("response-invalid", "密码章节响应格式无效");
+        return protocolError("response-invalid");
     }
 
     const response = payload as PasswordResponsePayload;
     if (response.status === 206) {
         return {
             kind: "password-rejected",
-            message: typeof response.msg === "string" && response.msg.trim() ? response.msg.trim() : "密码不正确"
+            ...(typeof response.msg === "string" && response.msg.trim() ? { message: response.msg.trim() } : {})
         };
     }
     if (response.status !== 200) {
-        return protocolError("unknown-status", `站点返回未知密码状态：${response.status}`);
+        return protocolError("unknown-status", { status: response.status });
     }
     if (typeof response.html !== "string") {
-        return protocolError("content-invalid", "密码章节正文格式无效");
+        return protocolError("content-invalid");
     }
 
     const html = replaceProtectedChapterContent(pageHtml, response.html);
-    return html ? { kind: "unlocked", html } : protocolError("content-invalid", "密码章节正文为空或仍要求输入密码");
+    return html ? { kind: "unlocked", html } : protocolError("content-invalid", { stillProtected: true });
 }
 
 function parsePasswordResponse(text: string): unknown {
@@ -102,6 +115,10 @@ function parsePasswordResponse(text: string): unknown {
     }
 }
 
+/**
+ * 创建在独占请求窗口内完成页面刷新、令牌获取和密码提交的浏览器授权端口
+ * 密码和令牌只参与一次 unlock 调用发起的请求，不写入下载核心、缓存或诊断
+ */
 export function createBrowserProtectedChapterAuth(
     request: ProtectedChapterRequest = fetchWithTimeout,
     requestGate: BrowserRequestGate = new BrowserRequestGate()
@@ -134,7 +151,7 @@ export function createBrowserProtectedChapterAuth(
                 );
                 const token = extractProtectedChapterToken(await tokenResponse.text());
                 if (!token) {
-                    return protocolError("token-invalid", "无法取得有效的密码授权 token");
+                    return protocolError("token-invalid");
                 }
 
                 const passwordResponse = await request(

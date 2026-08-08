@@ -10,7 +10,11 @@ describe("storage error classification", () => {
     it("classifies quota failures", () => {
         const error = normalizeStorageError(new DOMException("storage full", "QuotaExceededError"), "write");
 
-        expect(toStorageFailure(error)).toMatchObject({ reason: "quota-exceeded", operation: "write" });
+        expect(toStorageFailure(error)).toMatchObject({
+            reason: "quota-exceeded",
+            operation: "write",
+            params: { errorName: "QuotaExceededError", detail: "storage full" }
+        });
     });
 
     it("classifies unexpected transaction aborts", () => {

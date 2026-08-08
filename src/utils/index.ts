@@ -135,6 +135,29 @@ interface UiLogState {
     truncationMarker: HTMLElement | null;
 }
 const uiLogStates = new WeakMap<Element, UiLogState>();
+type UiLogTruncationFormatter = (count: number) => string;
+let uiLogTruncationFormatter: UiLogTruncationFormatter | null = null;
+
+/**
+ * 设置 UI 日志截断标记的展示格式，调用后需用 refreshUiLogTruncationText 更新已挂载标记
+ */
+export function setUiLogTruncationFormatter(formatter: UiLogTruncationFormatter): void {
+    uiLogTruncationFormatter = formatter;
+}
+
+function formatUiLogTruncation(count: number): string {
+    return uiLogTruncationFormatter?.(count) ?? `… ${count}\n`;
+}
+
+/**
+ * 使用当前格式化器原地刷新指定根节点内已有的日志截断标记
+ */
+export function refreshUiLogTruncationText(root: ParentNode = document): void {
+    root.querySelectorAll<HTMLElement>("[data-esj-log-truncation-count]").forEach((marker) => {
+        const count = Number(marker.dataset.esjLogTruncationCount || 0);
+        marker.textContent = formatUiLogTruncation(count);
+    });
+}
 
 function getUiLogState(box: Element): UiLogState {
     const existing = uiLogStates.get(box);
@@ -161,7 +184,8 @@ function trimUiLogs(box: Element, state: UiLogState): void {
         state.truncationMarker.dataset.esjLogTruncation = "true";
         box.prepend(state.truncationMarker);
     }
-    state.truncationMarker.textContent = `… 已省略 ${state.omittedCount} 条较早日志，可在 F12 控制台或诊断日志中查看排障信息\n`;
+    state.truncationMarker.dataset.esjLogTruncationCount = String(state.omittedCount);
+    state.truncationMarker.textContent = formatUiLogTruncation(state.omittedCount);
 }
 
 // 批量追加日志避免重复复制历史内容

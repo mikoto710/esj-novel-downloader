@@ -6,6 +6,7 @@ import { addDownloadHistory } from "../core/download-history";
 import { MappingFontError, normalizeChapterMappingFont, prepareChapterMappingExport } from "../core/mapping-font";
 import { confirmMappingFontExport } from "../ui/popups";
 import { showMessagePopup } from "../ui/message-popup";
+import { t } from "../ui/locale";
 import { isProtectedChapterHtml } from "../adapters/browser-protected-chapter";
 import {
     browserDiagnosticLog as log,
@@ -43,7 +44,7 @@ export async function downloadCurrentPage(format: "txt" | "html" = "txt"): Promi
     );
 
     try {
-        log(`开始抓取当前单章 (${format.toUpperCase()})...`);
+        log(t("single.log.started", { format: format.toUpperCase() }));
 
         let metaHeader = "";
         let bookNamePrefix = "";
@@ -51,7 +52,7 @@ export async function downloadCurrentPage(format: "txt" | "html" = "txt"): Promi
 
         if (viewAllBtn && viewAllBtn.href) {
             try {
-                log("正在获取书籍信息...");
+                log(t("single.log.metadata"));
                 const resp = await fetch(viewAllBtn.href);
                 const html = await resp.text();
                 const doc = new DOMParser().parseFromString(html, "text/html");
@@ -78,11 +79,11 @@ export async function downloadCurrentPage(format: "txt" | "html" = "txt"): Promi
         const html = document.documentElement.outerHTML;
         const defaultTitle = document.title.split(" - ")[0] || "未命名章节";
         if (isProtectedChapterHtml(html)) {
-            log(`🔒 请先在正文区域解锁章节：${defaultTitle}`);
+            log(t("protected.single.log", { title: defaultTitle }));
             showMessagePopup({
                 tone: "warning",
-                title: "章节尚未解锁",
-                message: "请先输入密码解锁该章节。"
+                title: t("protected.single.title"),
+                message: t("protected.single.message")
             });
             diagnosticResult = "cancelled";
             return;
@@ -111,8 +112,8 @@ export async function downloadCurrentPage(format: "txt" | "html" = "txt"): Promi
                 );
                 showMessagePopup({
                     tone: "error",
-                    title: "映射字体解析失败",
-                    message: "本章检测到映射字体，但无法完成解析，已阻止导出。",
+                    title: t("mapping.failure.title"),
+                    message: t("single.mappingFailure.message"),
                     details: error.message
                 });
                 return;
@@ -123,8 +124,8 @@ export async function downloadCurrentPage(format: "txt" | "html" = "txt"): Promi
             diagnosticResult = "cancelled";
             showMessagePopup({
                 tone: "warning",
-                title: "TXT 导出不可用",
-                message: "本章使用自定义映射字体，正文尚未恢复为真实 Unicode，无法导出正确 TXT。"
+                title: t("mapping.single.txtUnavailable"),
+                message: t("single.txtUnavailable.message")
             });
             return;
         }
@@ -155,16 +156,20 @@ export async function downloadCurrentPage(format: "txt" | "html" = "txt"): Promi
                     scope: "chapter",
                     stage: "parse",
                     code: "chapter-content-missing",
-                    message: "当前页面没有可导出的正文内容",
+                    message: "chapter-content-missing",
                     chapter: { index: 0, title, url: location.href }
                 },
                 diagnosticTaskId
             );
-            showMessagePopup({ tone: "warning", title: "未找到正文", message: "当前页面没有可导出的正文内容。" });
+            showMessagePopup({
+                tone: "warning",
+                title: t("single.bodyMissing.title"),
+                message: t("single.bodyMissing.message")
+            });
             return;
         } else {
             if (imageEnabled) {
-                log("正在下载并处理插图...");
+                log(t("single.log.images"));
                 try {
                     const processed = await processHtmlImages(contentHtml, 0);
 
@@ -191,7 +196,7 @@ export async function downloadCurrentPage(format: "txt" | "html" = "txt"): Promi
                             diagnosticTaskId
                         );
                     });
-                    log(`已嵌入 ${processed.images.length} 张图片`);
+                    log(t("single.log.imagesEmbedded", { count: processed.images.length }));
                 } catch (imgErr: any) {
                     imageFailureCount = (contentHtml.match(/<img\s/gi) || []).length;
                     console.error(imgErr);
@@ -201,14 +206,14 @@ export async function downloadCurrentPage(format: "txt" | "html" = "txt"): Promi
                                 scope: "image",
                                 stage: "processing",
                                 code: "image-processing-failed",
-                                message: "图片处理异常，正文已保留",
+                                message: "image-processing-failed",
                                 imageFailureCount,
                                 chapter: { index: 0, title, url: location.href }
                             },
                             diagnosticTaskId
                         );
                     }
-                    log(`⚠️ 图片处理失败，将保留原链接`);
+                    log(t("single.log.imagesFailed"));
                 }
             }
 
@@ -287,7 +292,7 @@ export async function downloadCurrentPage(format: "txt" | "html" = "txt"): Promi
                 author: htmlMeta.author || author,
                 format,
                 sourcePageType: "single",
-                chapterInfo: title,
+                chapterSummary: { totalCount: 1, missingCount: 0 },
                 ...(format === "html"
                     ? {
                           imageInfo: {
@@ -300,7 +305,7 @@ export async function downloadCurrentPage(format: "txt" | "html" = "txt"): Promi
                 pageUrl: location.href
             });
 
-            log(`✔ 单章下载完成 (${format.toUpperCase()})`);
+            log(t("single.log.completed", { format: format.toUpperCase() }));
             diagnosticResult = "success";
         }
     } catch (e: any) {
@@ -321,8 +326,8 @@ export async function downloadCurrentPage(format: "txt" | "html" = "txt"): Promi
         );
         showMessagePopup({
             tone: "error",
-            title: "单章下载失败",
-            message: "下载当前章节时发生错误。",
+            title: t("single.downloadFailed.title"),
+            message: t("single.downloadFailed.message"),
             details: e?.message || String(e)
         });
     } finally {

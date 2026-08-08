@@ -3,6 +3,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { closeProtectedChapterPrompt, promptProtectedChapterPassword } from "../../src/ui/popups";
 import { createDownloadTask } from "../support";
+import { setInterfaceLocalePreference } from "../../src/core/config";
+import { publishInterfaceLocaleChange } from "../../src/ui/locale";
 
 function prompt(signal?: AbortSignal) {
     return promptProtectedChapterPassword(
@@ -16,7 +18,10 @@ function prompt(signal?: AbortSignal) {
 }
 
 describe("protected chapter password UI", () => {
-    beforeEach(() => closeProtectedChapterPrompt());
+    beforeEach(() => {
+        closeProtectedChapterPrompt();
+        setInterfaceLocalePreference("zh-CN");
+    });
 
     it("shows the exact chapter identity, queue count, link, and memory scope", async () => {
         const decision = prompt();
@@ -28,6 +33,38 @@ describe("protected chapter password UI", () => {
         expect((popup.querySelector("a") as HTMLAnchorElement).href).toBe("https://www.esjzone.cc/forum/100/37.html");
         expect((popup.querySelector("#esj-protected-remember") as HTMLInputElement).checked).toBe(false);
 
+        (popup.querySelector("#esj-protected-cancel") as HTMLButtonElement).click();
+        await expect(decision).resolves.toEqual({ action: "cancel" });
+    });
+
+    it("renders the password prompt in traditional Chinese", async () => {
+        setInterfaceLocalePreference("zh-TW");
+        const decision = prompt();
+        const popup = document.querySelector("#esj-protected-chapter") as HTMLElement;
+
+        expect(popup.textContent).toContain("章節需要密碼");
+        expect(popup.textContent).toContain("密碼待處理 3");
+        expect(popup.textContent).toContain("不會儲存");
+
+        (popup.querySelector("#esj-protected-skip") as HTMLButtonElement).click();
+        await expect(decision).resolves.toEqual({ action: "skip-current" });
+    });
+
+    it("refreshes the open prompt in place without clearing the password or remember choice", async () => {
+        const decision = prompt();
+        const popup = document.querySelector("#esj-protected-chapter") as HTMLElement;
+        const input = popup.querySelector("#esj-protected-password") as HTMLInputElement;
+        const remember = popup.querySelector("#esj-protected-remember") as HTMLInputElement;
+        input.value = "draft-password";
+        remember.checked = true;
+
+        setInterfaceLocalePreference("zh-TW");
+        publishInterfaceLocaleChange();
+
+        expect(document.querySelector("#esj-protected-chapter")).toBe(popup);
+        expect(popup.textContent).toContain("章節需要密碼");
+        expect(input.value).toBe("draft-password");
+        expect(remember.checked).toBe(true);
         (popup.querySelector("#esj-protected-cancel") as HTMLButtonElement).click();
         await expect(decision).resolves.toEqual({ action: "cancel" });
     });
@@ -49,7 +86,7 @@ describe("protected chapter password UI", () => {
         expect(input.disabled).toBe(true);
         expect(remember.disabled).toBe(true);
         expect((document.querySelector("#esj-protected-submit") as HTMLButtonElement).disabled).toBe(true);
-        expect((document.querySelector("#esj-protected-submit") as HTMLButtonElement).textContent).toBe("正在验证...");
+        expect((document.querySelector("#esj-protected-submit") as HTMLButtonElement).textContent).toBe("正在验证…");
         expect((document.querySelector("#esj-protected-skip") as HTMLButtonElement).disabled).toBe(true);
         expect((document.querySelector("#esj-protected-skip-all") as HTMLButtonElement).disabled).toBe(true);
         expect((document.querySelector("#esj-protected-cancel") as HTMLButtonElement).disabled).toBe(false);
@@ -132,14 +169,40 @@ describe("protected chapter password UI", () => {
             task: createDownloadTask(36),
             totalChapters: 300,
             pendingCount: 3,
-            message: "连接失败，请检查网络后重试。",
+            messageCode: "connection-failed",
             initialPassword: "remembered",
             rememberPassword: true,
             retryConnection: true
         });
+        expect(document.querySelector("#esj-protected-error")?.textContent).toBe("连接失败，请检查网络后重试。");
         expect((document.querySelector("#esj-protected-submit") as HTMLButtonElement).textContent).toBe("重试连接");
         (document.querySelector("#esj-protected-cancel") as HTMLButtonElement).click();
         await expect(reconnectDecision).resolves.toEqual({ action: "cancel" });
+    });
+
+    it("renders a stable protocol code in Taiwanese wording while preserving ESJ status 206 text", async () => {
+        setInterfaceLocalePreference("zh-TW");
+        const protocolDecision = promptProtectedChapterPassword({
+            task: createDownloadTask(36),
+            totalChapters: 300,
+            pendingCount: 1,
+            messageCode: "token-invalid",
+            retryConnection: true
+        });
+
+        expect(document.querySelector("#esj-protected-error")?.textContent).toBe("無法取得有效的密碼授權權杖");
+        (document.querySelector("#esj-protected-cancel") as HTMLButtonElement).click();
+        await expect(protocolDecision).resolves.toEqual({ action: "cancel" });
+
+        const sourceDecision = promptProtectedChapterPassword({
+            task: createDownloadTask(36),
+            totalChapters: 300,
+            pendingCount: 1,
+            message: "ESJ source message"
+        });
+        expect(document.querySelector("#esj-protected-error")?.textContent).toBe("ESJ source message");
+        (document.querySelector("#esj-protected-cancel") as HTMLButtonElement).click();
+        await expect(sourceDecision).resolves.toEqual({ action: "cancel" });
     });
 
     it("keeps cancellation active while an authorization request is pending", async () => {

@@ -1,16 +1,19 @@
 import { el } from "../utils/dom";
 import { state } from "../core/state";
 import { showFormatChoice, createSettingsPanel } from "./popups";
+import { bindInterfaceAttribute, bindInterfaceText, t } from "./locale";
 
 /**
  * 创建通用的设置按钮
  * @param customClass 额外的 CSS 类 (如 "m-b-10")
  */
 export function createSettingButton(customClass: string = ""): HTMLElement {
-    return el(
+    const button = el(
         "button",
         {
             className: `btn btn-primary esj-settings-trigger ${customClass}`,
+            title: t("button.settings"),
+            "aria-label": t("button.settings"),
             style: "color: white; cursor: pointer; margin-left: 10px",
             onclick: (e: Event) => {
                 e.preventDefault();
@@ -27,6 +30,9 @@ export function createSettingButton(customClass: string = ""): HTMLElement {
         },
         [el("i", { className: "icon-settings" })]
     );
+    bindInterfaceAttribute(button, "title", "button.settings");
+    bindInterfaceAttribute(button, "aria-label", "button.settings");
+    return button;
 }
 
 /**
@@ -38,7 +44,7 @@ export function createSettingButton(customClass: string = ""): HTMLElement {
  */
 export function createDownloadButton(
     id: string,
-    text: string = "全本下载",
+    text: string = t("button.downloadAll"),
     scrapeFn: () => Promise<void>,
     customClass: string = ""
 ): HTMLElement {
@@ -78,7 +84,7 @@ export function createDownloadButton(
 
                 // 执行抓取任务，进入 loading
                 btn.disabled = true;
-                btn.innerHTML = '<i class="icon-refresh fa-spin"></i> 准备中...';
+                btn.innerHTML = `<i class="icon-refresh fa-spin"></i> ${t("common.preparing")}`;
 
                 try {
                     await scrapeFn();
@@ -95,7 +101,13 @@ export function createDownloadButton(
                 }
             }
         },
-        [el("i", { className: "icon-download" }), " " + text]
+        [
+            el("i", { className: "icon-download" }),
+            " ",
+            text === t("button.downloadAll")
+                ? bindInterfaceText(el("span"), "button.downloadAll")
+                : el("span", {}, [text])
+        ]
     );
 
     return btn;
