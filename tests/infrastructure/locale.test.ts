@@ -41,6 +41,9 @@ describe("locale infrastructure", () => {
         expect(translate("zh-TW", "common.cancel")).toBe("取消");
         expect(translate("zh-CN", "download.progress", { completed: 2, total: 5 })).toBe("进度：2/5");
         expect(translate("zh-TW", "download.progress", { completed: 2, total: 5 })).toBe("進度：2/5");
+        expect(translate("zh-TW", "settings.concurrency", { max: 10 })).toBe("下載執行緒數（1-10）：");
+        expect(translate("zh-TW", "common.viewDiagnostics")).toBe("檢視診斷紀錄");
+        expect(translate("zh-TW", "cache.action.refresh")).toBe("重新整理");
     });
 
     it("supports repeated and non-string interpolation values", () => {

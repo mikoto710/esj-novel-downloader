@@ -7,6 +7,7 @@ import {
 import { CacheListItem } from "../types";
 import { subscribeCacheSync } from "../core/cache/sync";
 import { el, enableDrag } from "../utils/dom";
+import { log } from "../utils/index";
 import { showMessagePopup } from "./message-popup";
 import { t } from "./locale";
 
@@ -276,6 +277,7 @@ export function createCacheManagerPopup(): void {
                             t("cache.protectedCount", { count: result.protectedBookIds.length })
                         );
                     }
+                    log(t("cache.log.clearCompleted"));
                     await renderList();
                 })
             );
@@ -304,6 +306,7 @@ export function createCacheManagerPopup(): void {
                                 t("cache.protectedCount", { count: result.protectedBookIds.length })
                             );
                         }
+                        log(t("cache.log.clearCompleted"));
                         await renderList();
                     },
                     "danger"
@@ -436,6 +439,8 @@ function createCacheItem(item: CacheListItem, rerender: () => Promise<void>): HT
                 const result = await clearManagedCache(item.bookId, "indexeddb");
                 if (result.protectedBookIds.length > 0) {
                     await showCacheProtectionNotice(t("cache.protected"));
+                } else {
+                    log(t("cache.log.cleared", { book: item.bookName }));
                 }
                 await rerender();
             })
@@ -456,6 +461,8 @@ function createCacheItem(item: CacheListItem, rerender: () => Promise<void>): HT
                 const result = await clearManagedCache(item.bookId, "runtime");
                 if (result.protectedBookIds.length > 0) {
                     await showCacheProtectionNotice(t("cache.protected"));
+                } else {
+                    log(t("cache.log.cleared", { book: item.bookName }));
                 }
                 await rerender();
             })
@@ -478,6 +485,8 @@ function createCacheItem(item: CacheListItem, rerender: () => Promise<void>): HT
                     const result = await clearManagedCache(item.bookId, "all");
                     if (result.protectedBookIds.length > 0) {
                         await showCacheProtectionNotice(t("cache.protected"));
+                    } else {
+                        log(t("cache.log.cleared", { book: item.bookName }));
                     }
                     await rerender();
                 },

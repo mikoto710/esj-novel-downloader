@@ -1,4 +1,4 @@
-import { fetchWithTimeout, log, sleepWithAbort } from "./index";
+import { fetchWithTimeout, sleepWithAbort } from "./index";
 import { normalizeImageBlob, resolveImageUrl } from "./image-format";
 import type { ChapterImage } from "../types";
 
@@ -127,7 +127,6 @@ export async function processHtmlImages(
 
         let downloadSuccess = false;
 
-        let errorMsg = "未知错误";
         let failureStage: ImageFailureStage = "url";
         let failureCode = "invalid-image-url";
 
@@ -138,7 +137,6 @@ export async function processHtmlImages(
             img.setAttribute("src", src);
         } else {
             console.warn(`非法 URL: ${src}`);
-            errorMsg = "URL 格式错误";
         }
 
         if (resolvedSrc) {
@@ -208,7 +206,6 @@ export async function processHtmlImages(
                     if (e.message === "User Aborted" || signal?.aborted) {
                         break;
                     }
-                    errorMsg = e.message;
                     // 如果还没到最后一次，等待后重试
                     if (attempt < MAX_RETRIES) {
                         console.warn(`⚠️ 图片下载波动，重试 (${attempt}/${MAX_RETRIES}): ${src}`);
@@ -230,7 +227,6 @@ export async function processHtmlImages(
                         : "图片请求在重试后仍失败";
             recordImageFailure(failures, failureStage, failureCode, diagnosticMessage);
 
-            log(`❌ 插图获取失败，序列${chapterIndex + 1}: ${src} \n失败原因： ${errorMsg}`);
             // 失败后保留远程链接
             img.removeAttribute("srcset");
             img.removeAttribute("loading");

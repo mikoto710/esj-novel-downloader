@@ -1,4 +1,3 @@
-import { log } from "../utils/index";
 import { isInterfaceLocalePreference, type InterfaceLocalePreference } from "./locale";
 
 // 默认配置
@@ -35,7 +34,6 @@ export function setConcurrency(num: number): void {
         num = 1;
     }
     GM_setValue("concurrency", num);
-    log(`并发数已更新为: ${num}`);
 }
 
 /**

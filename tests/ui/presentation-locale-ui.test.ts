@@ -31,7 +31,7 @@ describe("cache, history, and diagnostic locale presentation", () => {
             .querySelector("#esj-download-history .esj-common-header button")
             ?.dispatchEvent(new MouseEvent("click"));
         createDiagnosticPopup();
-        expect(document.querySelector("#esj-diagnostics")?.textContent).toContain("診斷日誌");
+        expect(document.querySelector("#esj-diagnostics")?.textContent).toContain("診斷紀錄");
         expect(document.querySelector("#esj-diagnostics")?.textContent).toContain("暫無紀錄");
     });
 });

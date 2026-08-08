@@ -1,13 +1,11 @@
 import { Chapter, BookMetadata } from "../types";
-import { blobToBase64, log } from "../utils/index";
+import { blobToBase64 } from "../utils/index";
 import { prepareChapterMappingExport } from "./mapping-font";
 
 /**
  * 构建单文件 HTML
  */
 export async function buildHtml(chapters: Chapter[], metadata: BookMetadata): Promise<Blob> {
-    log("正在构建 HTML 文件...");
-
     const imgMap = new Map<string, string>();
     const mappingExports = chapters.map((chapter, index) => prepareChapterMappingExport(chapter, index));
     const mappingFontStyles: string[] = [];

@@ -135,6 +135,23 @@ interface UiLogState {
     truncationMarker: HTMLElement | null;
 }
 const uiLogStates = new WeakMap<Element, UiLogState>();
+type UiLogTruncationFormatter = (count: number) => string;
+let uiLogTruncationFormatter: UiLogTruncationFormatter | null = null;
+
+export function setUiLogTruncationFormatter(formatter: UiLogTruncationFormatter): void {
+    uiLogTruncationFormatter = formatter;
+}
+
+function formatUiLogTruncation(count: number): string {
+    return uiLogTruncationFormatter?.(count) ?? `… ${count}\n`;
+}
+
+export function refreshUiLogTruncationText(root: ParentNode = document): void {
+    root.querySelectorAll<HTMLElement>("[data-esj-log-truncation-count]").forEach((marker) => {
+        const count = Number(marker.dataset.esjLogTruncationCount || 0);
+        marker.textContent = formatUiLogTruncation(count);
+    });
+}
 
 function getUiLogState(box: Element): UiLogState {
     const existing = uiLogStates.get(box);
@@ -161,7 +178,8 @@ function trimUiLogs(box: Element, state: UiLogState): void {
         state.truncationMarker.dataset.esjLogTruncation = "true";
         box.prepend(state.truncationMarker);
     }
-    state.truncationMarker.textContent = `… 已省略 ${state.omittedCount} 条较早日志，可在 F12 控制台或诊断日志中查看排障信息\n`;
+    state.truncationMarker.dataset.esjLogTruncationCount = String(state.omittedCount);
+    state.truncationMarker.textContent = formatUiLogTruncation(state.omittedCount);
 }
 
 // 批量追加日志避免重复复制历史内容

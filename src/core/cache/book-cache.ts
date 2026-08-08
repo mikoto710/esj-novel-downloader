@@ -1,5 +1,4 @@
 import type { BookCover, CacheMeta, Chapter, PersistentCacheEntry } from "../../types";
-import { log } from "../../utils/index";
 import { hasBookDownloadTaskPresence, listActiveBookDownloadLocks } from "../book-lock";
 import { resetGlobalState, state } from "../state";
 import {
@@ -274,7 +273,6 @@ export async function clearBookCacheForTask(bookId: string, taskId: string, sign
         const cleared = await clearCacheV3ForTask(bookId, taskId, signal);
         if (cleared) {
             await deleteLegacyCacheAfterMigration(bookId);
-            log("🗑️ 已清理当前下载任务缓存:" + bookId);
             publishCacheSyncEvent({ type: "cache-cleared", bookId });
         }
         return cleared;
@@ -329,7 +327,6 @@ export async function clearBookCache(bookId: string): Promise<boolean> {
         }
 
         await deleteLegacyCacheAfterMigration(bookId);
-        log("🗑️ 已清理本地缓存:" + bookId);
         publishCacheSyncEvent({ type: "cache-cleared", bookId });
         return true;
     } catch (error) {

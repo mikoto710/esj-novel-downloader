@@ -124,6 +124,17 @@ describe("full-book export recovery contracts", () => {
         expect(mocks.addDownloadHistory).toHaveBeenCalledWith(expect.objectContaining({ format: "html" }));
     });
 
+    it("renders stable export failure stages with Taiwanese wording", async () => {
+        const { setInterfaceLocalePreference } = await import("../../src/core/config");
+        setInterfaceLocalePreference("zh-TW");
+        mocks.buildHtml.mockRejectedValueOnce(new Error("archive failed"));
+        await prepareExportPopup();
+
+        click("#esj-html");
+        await waitForMessage("HTML 產生失敗");
+        expect(document.querySelector("#esj-message-summary")?.textContent).toBe("無法產生HTML檔案。");
+    });
+
     it("prevents duplicate HTML builds while allowing another format to export", async () => {
         const htmlBuild = createDeferred<Blob>();
         mocks.buildHtml.mockReturnValue(htmlBuild.promise);

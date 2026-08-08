@@ -61,6 +61,7 @@ function formatMappingFontBytes(bytes: number): string {
 
 const MAX_EXPORT_ERROR_DETAIL_LENGTH = 2_000;
 const diagnosticExportFormat = { TXT: "txt", EPUB: "epub", HTML: "html" } as const;
+type ExportFailureStage = "generate" | "download";
 
 function confirmImageSettingChange(activeTaskCount: number): Promise<boolean> {
     document.querySelector("#esj-image-setting-task-confirm")?.remove();
@@ -124,26 +125,27 @@ function getExportErrorDetails(error: unknown): string {
     return `${details.slice(0, MAX_EXPORT_ERROR_DETAIL_LENGTH)}\n${t("export.failure.truncated")}`;
 }
 
-function showExportFailure(format: "TXT" | "EPUB" | "HTML", stage: "生成" | "下载", error: unknown): void {
+function showExportFailure(format: "TXT" | "EPUB" | "HTML", stage: ExportFailureStage, error: unknown): void {
     const details = getExportErrorDetails(error);
+    const stageText = t(stage === "generate" ? "export.stage.generate" : "export.stage.download");
     recordBrowserDiagnosticExport({
         scope: "full",
         format: diagnosticExportFormat[format],
         outcome: "failed",
-        generated: stage === "下载",
+        generated: stage === "download",
         downloadTriggered: false,
-        failureStage: stage === "生成" ? "generate" : "download"
+        failureStage: stage
     });
     recordBrowserDiagnosticFailure({
         scope: "export",
-        stage: `${format.toLowerCase()}-${stage === "生成" ? "generate" : "download"}`,
+        stage: `${format.toLowerCase()}-${stage}`,
         code: error instanceof Error ? error.name || "export-failed" : "export-failed",
         message: details
     });
     showMessagePopup({
         tone: "error",
-        title: t("export.failure.title", { format, stage }),
-        message: t("export.failure.message", { format, stage }),
+        title: t("export.failure.title", { format, stage: stageText }),
+        message: t("export.failure.message", { format, stage: stageText }),
         details
     });
 }
@@ -958,7 +960,7 @@ export function showFormatChoice(): void {
                       try {
                           blob = new Blob([data.txt], { type: "text/plain;charset=utf-8" });
                       } catch (error) {
-                          showExportFailure("TXT", "生成", error);
+                          showExportFailure("TXT", "generate", error);
                           return;
                       }
                       try {
@@ -967,7 +969,7 @@ export function showFormatChoice(): void {
                           void recordBookExport("txt");
                       } catch (error) {
                           console.error(error);
-                          showExportFailure("TXT", "下载", error);
+                          showExportFailure("TXT", "download", error);
                       }
                   }
         },
@@ -1046,7 +1048,7 @@ export function showFormatChoice(): void {
                     void recordBookExport("epub");
                 } catch (error) {
                     console.error(error);
-                    showExportFailure("EPUB", "下载", error);
+                    showExportFailure("EPUB", "download", error);
                 }
                 return;
             }
@@ -1058,10 +1060,11 @@ export function showFormatChoice(): void {
 
             let blob: Blob;
             try {
+                log(t("export.log.buildEpub"));
                 blob = await buildEpub(currentData.chapters, currentData.metadata, getEpubTagPageSetting());
             } catch (error) {
                 console.error(error);
-                showExportFailure("EPUB", "生成", error);
+                showExportFailure("EPUB", "generate", error);
                 return;
             }
             currentData.epubBlob = blob;
@@ -1073,7 +1076,7 @@ export function showFormatChoice(): void {
                 void recordBookExport("epub");
             } catch (error) {
                 console.error(error);
-                showExportFailure("EPUB", "下载", error);
+                showExportFailure("EPUB", "download", error);
             }
         } finally {
             epubExporting = false;
@@ -1102,10 +1105,11 @@ export function showFormatChoice(): void {
 
             let blob: Blob;
             try {
+                log(t("export.log.buildHtml"));
                 blob = await buildHtml(data.chapters, data.metadata);
             } catch (error) {
                 console.error(error);
-                showExportFailure("HTML", "生成", error);
+                showExportFailure("HTML", "generate", error);
                 return;
             }
 
@@ -1116,7 +1120,7 @@ export function showFormatChoice(): void {
                 void recordBookExport("html");
             } catch (error) {
                 console.error(error);
-                showExportFailure("HTML", "下载", error);
+                showExportFailure("HTML", "download", error);
             }
         } finally {
             htmlExporting = false;
@@ -1246,6 +1250,7 @@ export function createSettingsPanel(): void {
             }
 
             setConcurrency(val);
+            log(t("settings.log.concurrency", { count: val }));
         },
         onblur: (e: Event) => {
             const target = e.target as HTMLInputElement;
@@ -1253,6 +1258,7 @@ export function createSettingsPanel(): void {
             if (isNaN(val) || target.value === "") {
                 target.value = currentConcurrency.toString();
                 setConcurrency(currentConcurrency);
+                log(t("settings.log.concurrency", { count: currentConcurrency }));
             }
         }
     });
