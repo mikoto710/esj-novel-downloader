@@ -1,12 +1,15 @@
-// @vitest-environment jsdom
-
-import { beforeEach, describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { getImageCacheConfirmHint } from "../../src/ui/image-cache-compatibility";
-import { setInterfaceLocalePreference } from "../../src/core/config";
+
+vi.mock("../../src/ui/locale", async () => {
+    const locale = await vi.importActual<typeof import("../../src/core/locale")>("../../src/core/locale");
+    return {
+        t: (key: Parameters<typeof locale.translate>[1], params?: Parameters<typeof locale.translate>[2]) =>
+            locale.translate("zh-CN", key, params)
+    };
+});
 
 describe("image cache compatibility messages", () => {
-    beforeEach(() => setInterfaceLocalePreference("zh-CN"));
-
     it("describes reusable cache when settings match", () => {
         expect(getImageCacheConfirmHint(12, true, true)).toContain("12 章兼容缓存");
     });
