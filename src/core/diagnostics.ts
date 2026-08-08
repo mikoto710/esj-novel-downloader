@@ -26,6 +26,7 @@ export type DiagnosticResult = "running" | "success" | "cancelled" | "failed" | 
 export interface DiagnosticApplicationInfo {
     version: string;
     browser: string;
+    browserVersionUnknown?: true;
     userscriptManager: string;
 }
 
@@ -451,7 +452,7 @@ export class DiagnosticManager {
             application: input.application,
             book: {
                 bookId: input.bookId,
-                title: input.bookTitle || "未知作品",
+                title: input.bookTitle || "",
                 url: sanitizeDiagnosticUrl(input.pageUrl),
                 sourcePageType: input.sourcePageType
             },

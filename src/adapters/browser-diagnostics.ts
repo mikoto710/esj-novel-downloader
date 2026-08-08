@@ -84,18 +84,18 @@ function observeBrowserDiagnosticPageClose(taskId: string): void {
     closeObserverCleanups.set(taskId, () => window.removeEventListener("pagehide", onPageHide));
 }
 
-function parseChromeVersion(): string {
+function getChromeInfo(): Pick<StartDiagnosticSessionInput["application"], "browser" | "browserVersionUnknown"> {
     const match = navigator.userAgent.match(/(?:Chrome|Chromium)\/(\d+(?:\.\d+)*)/);
-    return match ? `Chrome ${match[1]}` : "Chrome（版本未知）";
+    return match ? { browser: `Chrome ${match[1]}` } : { browser: "Chrome", browserVersionUnknown: true };
 }
 
 function getApplicationInfo(): StartDiagnosticSessionInput["application"] {
-    const scriptVersion = GM_info?.script?.version?.trim() || "版本未知";
+    const scriptVersion = GM_info?.script?.version?.trim() || "";
     const handler = GM_info?.scriptHandler?.trim() || "Tampermonkey";
     const handlerVersion = GM_info?.version?.trim();
     return {
         version: scriptVersion,
-        browser: parseChromeVersion(),
+        ...getChromeInfo(),
         userscriptManager: handlerVersion ? `${handler} ${handlerVersion}` : handler
     };
 }
@@ -360,6 +360,16 @@ function safeFilenamePart(value: string): string {
     );
 }
 
+function formatDiagnosticBookTitle(session: DiagnosticSession): string {
+    return session.book.title || t("diagnostics.summary.unknownBook");
+}
+
+function formatDiagnosticBrowser(session: DiagnosticSession): string {
+    return session.application.browserVersionUnknown
+        ? t("diagnostics.summary.browserVersionUnknown", { browser: session.application.browser })
+        : session.application.browser;
+}
+
 /**
  * 生成适合本地保存的文件名和诊断 JSON，并按调用时界面语言补充结构化日志文本
  */
@@ -369,7 +379,7 @@ export function createBrowserDiagnosticExport(session: DiagnosticSession): { fil
         .replace(/[-:]/g, "")
         .replace(/\.\d{3}Z$/, "Z");
     return {
-        filename: `esj-diagnostic-${safeFilenamePart(session.book.title)}-${date}.json`,
+        filename: `esj-diagnostic-${safeFilenamePart(formatDiagnosticBookTitle(session))}-${date}.json`,
         json: JSON.stringify(
             {
                 session: {
@@ -427,6 +437,8 @@ export function formatBrowserDiagnosticSummary(
     session: DiagnosticSession,
     presentation: DiagnosticSessionPresentation = session.result
 ): string {
+    const applicationVersion = session.application.version || t("diagnostics.summary.versionUnknown");
+    const bookTitle = formatDiagnosticBookTitle(session);
     const failureLines = session.failures.slice(-10).map((failure) => {
         const chapter = failure.chapter
             ? t("diagnostics.summary.chapterFailure", {
@@ -462,9 +474,9 @@ export function formatBrowserDiagnosticSummary(
                   result: session.result
               });
     return [
-        `ESJ Novel Downloader ${session.application.version}`,
-        `${session.application.browser} / ${session.application.userscriptManager}`,
-        t("diagnostics.summary.book", { title: session.book.title, bookId: session.book.bookId }),
+        `ESJ Novel Downloader ${applicationVersion}`,
+        `${formatDiagnosticBrowser(session)} / ${session.application.userscriptManager}`,
+        t("diagnostics.summary.book", { title: bookTitle, bookId: session.book.bookId }),
         t("diagnostics.summary.link", { url: session.book.url }),
         ...(presentationLine ? [presentationLine] : []),
         t("diagnostics.summary.result", { result: session.result, phase: session.task.phase }),

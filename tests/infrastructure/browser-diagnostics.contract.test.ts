@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
     browserDiagnosticLog,
     clearBrowserDiagnosticSessions,
@@ -106,6 +106,40 @@ describe("browser diagnostic persistence", () => {
             message: "已啟動 3 個下載執行緒…"
         });
         expect(formatBrowserDiagnosticSummary(session)).toContain("已啟動 3 個下載執行緒…");
+    });
+
+    it("formats missing application and book details without persisting localized fallbacks", () => {
+        vi.stubGlobal("GM_info", {
+            script: { version: "" },
+            scriptHandler: "Tampermonkey",
+            version: ""
+        });
+        startBrowserDiagnosticSession({
+            taskId: "task-missing-details",
+            bookId: "unknown",
+            bookTitle: "",
+            pageUrl: "https://www.esjzone.cc/forum/1.html",
+            sourcePageType: "single",
+            imageEnabled: false
+        });
+
+        const session = listBrowserDiagnosticSessions().active[0];
+        expect(session.application).toEqual({
+            version: "",
+            browser: "Chrome",
+            browserVersionUnknown: true,
+            userscriptManager: "Tampermonkey"
+        });
+        expect(session.book.title).toBe("");
+        expect(JSON.stringify(session)).not.toContain("版本未知");
+        expect(JSON.stringify(session)).not.toContain("未知作品");
+
+        setInterfaceLocalePreference("zh-TW");
+        const summary = formatBrowserDiagnosticSummary(session);
+        expect(summary).toContain("ESJ Novel Downloader 版本未知");
+        expect(summary).toContain("Chrome（版本未知） / Tampermonkey");
+        expect(summary).toContain("作品：未知作品（unknown）");
+        expect(createBrowserDiagnosticExport(session).filename).toContain("esj-diagnostic-未知作品-");
     });
 
     it("keeps failed chapter location and export failures after download completion", () => {

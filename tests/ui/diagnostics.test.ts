@@ -86,6 +86,21 @@ describe("diagnostic history UI", () => {
         expect(document.querySelector("#esj-diagnostic-list")?.textContent).toContain("Diagnostic Book");
     });
 
+    it("shows a localized fallback for a diagnostic without a book title", () => {
+        startBrowserDiagnosticSession({
+            taskId: "task-untitled",
+            bookId: "unknown",
+            bookTitle: "",
+            pageUrl: "https://www.esjzone.cc/forum/1.html",
+            sourcePageType: "single",
+            imageEnabled: false
+        });
+        createDiagnosticPopup();
+
+        expect(document.querySelector("#esj-diagnostic-list")?.textContent).toContain("未知作品");
+        expect(document.querySelector("#esj-diagnostic-detail")?.textContent).toContain("未知作品");
+    });
+
     it("labels a running session with protected chapters as waiting for a password", () => {
         startBrowserDiagnosticSession({
             taskId: "task-protected-waiting",

@@ -21,6 +21,10 @@ import { subscribeInterfaceLocaleChange, t } from "./locale";
 const DIAGNOSTIC_AUTO_REFRESH_INTERVAL_MS = 3000;
 let disposeActiveDiagnosticPopup: (() => void) | null = null;
 
+function formatDiagnosticBookTitle(session: DiagnosticSessionView["session"]): string {
+    return session.book.title || t("diagnostics.summary.unknownBook");
+}
+
 const resultPresentation: Record<
     DiagnosticSessionPresentation,
     { icon: string; key: Parameters<typeof t>[0]; color: string }
@@ -249,12 +253,13 @@ export function createDiagnosticPopup(): void {
             return;
         }
         const session = view.session;
+        const bookTitle = formatDiagnosticBookTitle(session);
         const presentation = sessionResult(view);
         const presentationHint = sessionPresentationHint(view);
         const exported = createBrowserDiagnosticExport(session);
         detail.append(
             el("div", { style: "font-size:18px;font-weight:bold;margin-bottom:6px;overflow-wrap:anywhere;" }, [
-                session.book.title
+                bookTitle
             ]),
             el("div", { style: `color:${presentation.color};font-weight:bold;margin-bottom:12px;` }, [
                 `${presentation.icon} ${presentation.label}`
@@ -316,6 +321,7 @@ export function createDiagnosticPopup(): void {
                 );
                 items.forEach((item) => {
                     const session = item.session;
+                    const bookTitle = formatDiagnosticBookTitle(session);
                     const presentation = sessionResult(item);
                     const selected = session.id === selectedId;
                     const row = el(
@@ -335,10 +341,10 @@ export function createDiagnosticPopup(): void {
                             el(
                                 "div",
                                 {
-                                    title: session.book.title,
+                                    title: bookTitle,
                                     style: "margin-top:3px;color:#333;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
                                 },
-                                [session.book.title]
+                                [bookTitle]
                             ),
                             el("div", { style: "margin-top:2px;color:#888;font-size:11px;" }, [
                                 formatTime(session.updatedAt)
