@@ -100,11 +100,18 @@ export class DownloadStateMachine {
         this.current = createInitialDownloadSnapshot(scheduledCount, restoredCount);
     }
 
+    /**
+     * 返回当前下载快照的副本，调用方修改不会影响状态机
+     */
     get snapshot(): DownloadSnapshot {
         // 始终返回副本，避免 UI 或事件观察者修改状态机内部数据
         return { ...this.current };
     }
 
+    /**
+     * 校验并应用业务阶段转换，阶段变化时发布事件且非法转换抛出错误
+     * 相同阶段只返回当前快照，不重复发布阶段事件
+     */
     transition(phase: DownloadPhase): DownloadSnapshot {
         const previous = this.current.phase;
         if (!canTransitionDownloadPhase(previous, phase)) {
@@ -118,6 +125,9 @@ export class DownloadStateMachine {
         return this.snapshot;
     }
 
+    /**
+     * 合并不含阶段的进度字段，发布快照事件并返回新副本
+     */
     update(progress: Partial<Omit<DownloadSnapshot, "phase">>): DownloadSnapshot {
         this.current = { ...this.current, ...progress };
         const snapshot = this.snapshot;

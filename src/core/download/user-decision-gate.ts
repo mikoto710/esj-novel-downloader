@@ -17,6 +17,10 @@ export class UserDecisionGate {
     private readonly queue: PendingDecision<unknown>[] = [];
     private active = false;
 
+    /**
+     * 按调用顺序串行执行阻塞式用户决策
+     * 排队期间取消会以 AbortError 拒绝，已开始的操作由调用方自行响应 signal
+     */
     run<T>(operation: () => Promise<T>, signal?: AbortSignal): Promise<T> {
         if (signal?.aborted) {
             return Promise.reject(createAbortError());

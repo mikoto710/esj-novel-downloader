@@ -34,6 +34,9 @@ export class ProtectedChapterQueue {
         return this.skipRemaining;
     }
 
+    /**
+     * 按章节索引去重并加入密码交互队列，返回排队、重复或已跳过状态
+     */
     enqueue(item: ProtectedChapterWorkItem): ProtectedChapterEnqueueResult {
         if (this.seenIndexes.has(item.task.index)) {
             return { kind: "duplicate", item };
@@ -55,6 +58,9 @@ export class ProtectedChapterQueue {
         return { kind: "queued", item };
     }
 
+    /**
+     * 按索引顺序取得下一项，生产结束、跳过剩余或取消等待时返回 null
+     */
     take(signal?: AbortSignal): Promise<ProtectedChapterWorkItem | null> {
         const item = this.pending.shift();
         if (item) {
@@ -93,6 +99,9 @@ export class ProtectedChapterQueue {
         return skipped;
     }
 
+    /**
+     * 标记不再产生新项目，已排队项目仍可消费且耗尽后等待者收到 null
+     */
     closeProducer(): void {
         this.producerClosed = true;
         if (this.pending.length === 0) {
@@ -100,6 +109,9 @@ export class ProtectedChapterQueue {
         }
     }
 
+    /**
+     * 停止生产并返回尚未交互的项目，同时让全部等待者收到 null
+     */
     cancel(): ProtectedChapterWorkItem[] {
         this.producerClosed = true;
         const cancelled = this.pending.splice(0);

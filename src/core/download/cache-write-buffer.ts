@@ -91,6 +91,10 @@ export class ChapterCacheWriteBuffer {
         return this.storageFailure ? { ...this.storageFailure } : null;
     }
 
+    /**
+     * 将章节合并到待写批次，并在达到数量或容量阈值时等待立即刷新
+     * 返回 false 表示缓冲区已拒绝、丢弃或无法继续持久化
+     */
     async add(index: number, chapter: Chapter): Promise<boolean> {
         if (this.rejected || this.discarded) {
             return false;
@@ -110,6 +114,10 @@ export class ChapterCacheWriteBuffer {
         return true;
     }
 
+    /**
+     * 串行写入当前待处理批次，没有新章节时等待既有写入链完成
+     * 返回 false 表示批次未保存且后续写入已被拒绝
+     */
     async flush(): Promise<boolean> {
         if (this.discarded || this.cancellationTimedOut) {
             return false;
@@ -175,6 +183,9 @@ export class ChapterCacheWriteBuffer {
         return currentWrite;
     }
 
+    /**
+     * 在取消收尾期限内刷新待写章节，并区分保存、失败、超时和主动丢弃结果
+     */
     async flushForCancellation(): Promise<CancellationCacheFlushResult> {
         if (this.discarded) {
             return "discarded";
@@ -195,6 +206,9 @@ export class ChapterCacheWriteBuffer {
         return result;
     }
 
+    /**
+     * 永久丢弃待写章节、取消定时刷新并中止活动写入，调用后不能恢复
+     */
     discard(): void {
         this.discarded = true;
         this.rejected = true;
@@ -204,6 +218,9 @@ export class ChapterCacheWriteBuffer {
         this.abortActiveWrite();
     }
 
+    /**
+     * 停止定时器并取消取消事件订阅，不主动刷新或丢弃现有批次
+     */
     dispose(): void {
         this.cancelTimer();
         this.cancelCancellationTimer();

@@ -19,10 +19,18 @@ export class BrowserRequestGate {
     private activeShared = 0;
     private activeExclusive = false;
 
+    /**
+     * 将普通请求加入共享队列，没有活动或已排队的独占请求时可与其他共享请求并行
+     * 排队期间取消会以 AbortError 拒绝，已开始的操作由调用方自行响应 signal
+     */
     runShared<T>(operation: () => Promise<T>, signal?: AbortSignal): Promise<T> {
         return this.enqueue("shared", operation, signal);
     }
 
+    /**
+     * 将授权请求加入独占队列，开始前等待共享请求完成并阻止后续共享请求越过
+     * 排队期间取消会以 AbortError 拒绝，已开始的操作由调用方自行响应 signal
+     */
     runExclusive<T>(operation: () => Promise<T>, signal?: AbortSignal): Promise<T> {
         return this.enqueue("exclusive", operation, signal);
     }
