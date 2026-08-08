@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { closeProtectedChapterPrompt, promptProtectedChapterPassword } from "../../src/ui/popups";
 import { createDownloadTask } from "../support";
 import { setInterfaceLocalePreference } from "../../src/core/config";
+import { publishInterfaceLocaleChange } from "../../src/ui/locale";
 
 function prompt(signal?: AbortSignal) {
     return promptProtectedChapterPassword(
@@ -47,6 +48,25 @@ describe("protected chapter password UI", () => {
 
         (popup.querySelector("#esj-protected-skip") as HTMLButtonElement).click();
         await expect(decision).resolves.toEqual({ action: "skip-current" });
+    });
+
+    it("refreshes the open prompt in place without clearing the password or remember choice", async () => {
+        const decision = prompt();
+        const popup = document.querySelector("#esj-protected-chapter") as HTMLElement;
+        const input = popup.querySelector("#esj-protected-password") as HTMLInputElement;
+        const remember = popup.querySelector("#esj-protected-remember") as HTMLInputElement;
+        input.value = "draft-password";
+        remember.checked = true;
+
+        setInterfaceLocalePreference("zh-TW");
+        publishInterfaceLocaleChange();
+
+        expect(document.querySelector("#esj-protected-chapter")).toBe(popup);
+        expect(popup.textContent).toContain("章節需要密碼");
+        expect(input.value).toBe("draft-password");
+        expect(remember.checked).toBe(true);
+        (popup.querySelector("#esj-protected-cancel") as HTMLButtonElement).click();
+        await expect(decision).resolves.toEqual({ action: "cancel" });
     });
 
     it("submits a password and explicit task-only reuse choice", async () => {

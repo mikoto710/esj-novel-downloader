@@ -6,7 +6,9 @@ import {
 } from "../core/download-history";
 import { DownloadFormat, DownloadHistoryItem, SourcePageType } from "../types";
 import { el, enableDrag } from "../utils/dom";
-import { t } from "./locale";
+import { subscribeInterfaceLocaleChange, t } from "./locale";
+
+let disposeActiveHistoryLocaleRefresh: (() => void) | null = null;
 
 function sourceLabel(source: SourcePageType): string {
     return t(
@@ -138,9 +140,11 @@ function showHistoryClearConfirm(): Promise<boolean> {
  * 创建下载记录弹窗
  */
 export function createDownloadHistoryPopup(): void {
+    disposeActiveHistoryLocaleRefresh?.();
     document.querySelector("#esj-download-history")?.remove();
     document.querySelector("#esj-download-history-confirm")?.remove();
     const close = () => {
+        disposeActiveHistoryLocaleRefresh?.();
         document.querySelector("#esj-download-history")?.remove();
         document.querySelector("#esj-download-history-confirm")?.remove();
         document.querySelectorAll(".esj-settings-trigger").forEach((button) => {
@@ -315,6 +319,7 @@ export function createDownloadHistoryPopup(): void {
     const clearButton = el(
         "button",
         {
+            id: "esj-history-clear",
             style: "padding:8px 12px;background:#d9534f;color:#fff;border:0;border-radius:6px;cursor:pointer;",
             onclick: async () => {
                 const confirmed = await showHistoryClearConfirm();
@@ -331,6 +336,7 @@ export function createDownloadHistoryPopup(): void {
     const refreshButton = el(
         "button",
         {
+            id: "esj-history-refresh",
             style: "padding:8px 12px;background:#f5f5f5;color:#333;border:1px solid #ccc;border-radius:6px;cursor:pointer;",
             onclick: () => {
                 void listDownloadHistory().then((result) => {
@@ -364,6 +370,7 @@ export function createDownloadHistoryPopup(): void {
                     el(
                         "button",
                         {
+                            id: "esj-history-close",
                             style: "padding:8px 12px;background:#eee;border:1px solid #ccc;border-radius:6px;cursor:pointer;",
                             onclick: close
                         },
@@ -375,6 +382,83 @@ export function createDownloadHistoryPopup(): void {
     );
     document.body.appendChild(popup);
     enableDrag(popup, ".esj-common-header");
+    const refreshLocaleText = () => {
+        const listScrollTop = listBox.scrollTop;
+        const headerLabel = header.querySelector("span");
+        const headerClose = header.querySelector("button");
+        if (headerLabel) {
+            headerLabel.textContent = t("history.title");
+        }
+        if (headerClose) {
+            headerClose.setAttribute("title", t("common.close"));
+        }
+        const optionKeys = new Map<string, Parameters<typeof t>[0]>([
+            ["all", "history.filter.allType"],
+            ["book", "history.filter.book"],
+            ["single", "history.filter.single"]
+        ]);
+        scopeSelect.querySelectorAll<HTMLOptionElement>("option").forEach((option) => {
+            const key = optionKeys.get(option.value);
+            if (key) {
+                option.textContent = t(key);
+            }
+        });
+        const allFormatOption = formatSelect.querySelector<HTMLOptionElement>('option[value="all"]');
+        if (allFormatOption) {
+            allFormatOption.textContent = t("history.filter.allFormat");
+        }
+        const sourceKeys = new Map<string, Parameters<typeof t>[0]>([
+            ["all", "history.filter.allSource"],
+            ["detail", "history.source.detail"],
+            ["forum", "history.source.forum"],
+            ["single", "history.source.single"]
+        ]);
+        sourceSelect.querySelectorAll<HTMLOptionElement>("option").forEach((option) => {
+            const key = sourceKeys.get(option.value);
+            if (key) {
+                option.textContent = t(key);
+            }
+        });
+        const columnKeys: Parameters<typeof t>[0][] = [
+            "history.column.book",
+            "history.column.author",
+            "history.column.type",
+            "history.column.format",
+            "history.column.source",
+            "history.column.chapter",
+            "history.column.image",
+            "history.column.time",
+            "history.column.action"
+        ];
+        table.querySelectorAll("th").forEach((cell, index) => {
+            const key = columnKeys[index];
+            if (key) {
+                cell.textContent = t(key);
+            }
+        });
+        clearButton.textContent = t("history.action.clearAll");
+        refreshButton.textContent = t("cache.action.refresh");
+        const closeButton = popup.querySelector("#esj-history-close");
+        if (closeButton) {
+            closeButton.textContent = t("common.close");
+        }
+        render();
+        listBox.scrollTop = listScrollTop;
+    };
+    const unsubscribeLocale = subscribeInterfaceLocaleChange(() => {
+        if (!popup.isConnected) {
+            disposeActiveHistoryLocaleRefresh?.();
+            return;
+        }
+        refreshLocaleText();
+    });
+    const disposeLocaleRefresh = () => {
+        unsubscribeLocale();
+        if (disposeActiveHistoryLocaleRefresh === disposeLocaleRefresh) {
+            disposeActiveHistoryLocaleRefresh = null;
+        }
+    };
+    disposeActiveHistoryLocaleRefresh = disposeLocaleRefresh;
     void listDownloadHistory().then((result) => {
         items = result;
         render();

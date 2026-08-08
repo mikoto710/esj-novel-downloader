@@ -35,7 +35,13 @@ import { createCommonHeader } from "./popup-components";
 import { recordBrowserDiagnosticExport, recordBrowserDiagnosticFailure } from "../adapters/browser-diagnostics";
 import { createDiagnosticPopup } from "./diagnostics";
 import { listActiveBookDownloadLocks } from "../core/book-lock";
-import { bindInterfaceText, publishInterfaceLocaleChange, t } from "./locale";
+import {
+    bindInterfaceAttribute,
+    bindInterfaceText,
+    publishInterfaceLocaleChange,
+    subscribeInterfaceLocaleChange,
+    t
+} from "./locale";
 import { formatMappingFontError } from "./mapping-font-messages";
 
 /**
@@ -66,6 +72,8 @@ function formatMappingFontBytes(bytes: number): string {
 const MAX_EXPORT_ERROR_DETAIL_LENGTH = 2_000;
 const diagnosticExportFormat = { TXT: "txt", EPUB: "epub", HTML: "html" } as const;
 type ExportFailureStage = "generate" | "download";
+let disposeActiveProtectedPromptLocaleRefresh: (() => void) | null = null;
+let disposeActiveFormatLocaleRefresh: (() => void) | null = null;
 
 function confirmImageSettingChange(activeTaskCount: number): Promise<boolean> {
     document.querySelector("#esj-image-setting-task-confirm")?.remove();
@@ -262,6 +270,7 @@ export function confirmMappingFontDownload(detection: MappingFontDetection, sign
 }
 
 export function closeProtectedChapterPrompt(): void {
+    disposeActiveProtectedPromptLocaleRefresh?.();
     document.querySelector("#esj-protected-chapter")?.remove();
 }
 
@@ -270,6 +279,7 @@ export function setProtectedChapterPromptBusy(message = t("protected.busy")): vo
     if (!popup) {
         return;
     }
+    popup.dataset.esjProtectedMessageState = "busy";
     const passwordInput = popup.querySelector("#esj-protected-password") as HTMLInputElement | null;
     const remember = popup.querySelector("#esj-protected-remember") as HTMLInputElement | null;
     const submit = popup.querySelector("#esj-protected-submit") as HTMLButtonElement | null;
@@ -334,6 +344,7 @@ export function promptProtectedChapterPassword(
         decision: Extract<ProtectedChapterDecision, { action: "skip-current" | "skip-all" | "cancel" }>
     ) => void
 ): Promise<ProtectedChapterDecision> {
+    disposeActiveProtectedPromptLocaleRefresh?.();
     const existingPopup = document.querySelector("#esj-protected-chapter") as HTMLElement | null;
     if (signal?.aborted) {
         closeProtectedChapterPrompt();
@@ -343,6 +354,7 @@ export function promptProtectedChapterPassword(
     return new Promise((resolve) => {
         let settled = false;
         let mountedPopup: HTMLElement;
+        let disposeLocaleRefresh = () => {};
         const finish = (decision: ProtectedChapterDecision, keepOpen = false) => {
             if (settled) {
                 return;
@@ -350,6 +362,7 @@ export function promptProtectedChapterPassword(
             settled = true;
             signal?.removeEventListener("abort", onAbort);
             if (!keepOpen) {
+                disposeLocaleRefresh();
                 mountedPopup.remove();
             }
             resolve(decision);
@@ -385,6 +398,7 @@ export function promptProtectedChapterPassword(
         const submit = () => {
             const password = passwordInput.value;
             if (!password) {
+                mountedPopup.dataset.esjProtectedMessageState = "required";
                 error.textContent = t("protected.passwordRequired");
                 error.style.color = "#c62828";
                 passwordInput.focus();
@@ -402,7 +416,7 @@ export function promptProtectedChapterPassword(
         const header = createCommonHeader(t("protected.required"), () => finishOrNotify({ action: "cancel" }));
         const body = el("div", { style: "padding:16px;font-size:14px;line-height:1.6;color:#333;" }, [
             el("div", { style: "font-weight:bold;" }, [prompt.task.title]),
-            el("div", { style: "margin:4px 0 10px;color:#666;" }, [
+            el("div", { id: "esj-protected-position", style: "margin:4px 0 10px;color:#666;" }, [
                 t("protected.position", {
                     index: prompt.task.index + 1,
                     total: prompt.totalChapters,
@@ -415,6 +429,7 @@ export function promptProtectedChapterPassword(
                     href: prompt.task.url,
                     target: "_blank",
                     rel: "noopener noreferrer",
+                    id: "esj-protected-open-chapter",
                     style: "display:inline-block;margin-bottom:10px;"
                 },
                 [t("protected.openChapter")]
@@ -422,7 +437,7 @@ export function promptProtectedChapterPassword(
             passwordInput,
             el("label", { style: "display:flex;gap:7px;align-items:flex-start;margin-top:10px;cursor:pointer;" }, [
                 remember,
-                el("span", {}, [t("protected.remember")])
+                el("span", { id: "esj-protected-remember-label" }, [t("protected.remember")])
             ]),
             error
         ]);
@@ -492,6 +507,73 @@ export function promptProtectedChapterPassword(
             document.body.appendChild(popup);
             mountedPopup = popup;
         }
+        mountedPopup.dataset.esjProtectedMessageState = "prompt";
+        const refreshPromptText = () => {
+            const headerLabel = mountedPopup.querySelector(".esj-common-header span");
+            const position = mountedPopup.querySelector("#esj-protected-position");
+            const openChapter = mountedPopup.querySelector("#esj-protected-open-chapter");
+            const rememberLabel = mountedPopup.querySelector("#esj-protected-remember-label");
+            const cancel = mountedPopup.querySelector("#esj-protected-cancel");
+            const skipAll = mountedPopup.querySelector("#esj-protected-skip-all");
+            const skip = mountedPopup.querySelector("#esj-protected-skip");
+            const submitButton = mountedPopup.querySelector("#esj-protected-submit") as HTMLButtonElement | null;
+            if (headerLabel) {
+                headerLabel.textContent = t("protected.required");
+            }
+            if (position) {
+                position.textContent = t("protected.position", {
+                    index: prompt.task.index + 1,
+                    total: prompt.totalChapters,
+                    pending: prompt.pendingCount
+                });
+            }
+            if (openChapter) {
+                openChapter.textContent = t("protected.openChapter");
+            }
+            if (rememberLabel) {
+                rememberLabel.textContent = t("protected.remember");
+            }
+            if (cancel) {
+                cancel.textContent = t("download.action.cancelTask");
+            }
+            if (skipAll) {
+                skipAll.textContent = t("protected.skipRemaining");
+            }
+            if (skip) {
+                skip.textContent = t("download.action.skipChapter");
+            }
+            const messageState = mountedPopup.dataset.esjProtectedMessageState;
+            if (submitButton) {
+                submitButton.textContent = t(
+                    messageState === "busy"
+                        ? "protected.busyShort"
+                        : prompt.retryConnection
+                          ? "protected.retryConnection"
+                          : "protected.submit"
+                );
+            }
+            if (messageState === "busy") {
+                error.textContent = t("protected.busy");
+            } else if (messageState === "required") {
+                error.textContent = t("protected.passwordRequired");
+            } else {
+                error.textContent = formatProtectedPromptMessage(prompt);
+            }
+        };
+        const unsubscribeLocale = subscribeInterfaceLocaleChange(() => {
+            if (!mountedPopup.isConnected) {
+                disposeLocaleRefresh();
+                return;
+            }
+            refreshPromptText();
+        });
+        disposeLocaleRefresh = () => {
+            unsubscribeLocale();
+            if (disposeActiveProtectedPromptLocaleRefresh === disposeLocaleRefresh) {
+                disposeActiveProtectedPromptLocaleRefresh = null;
+            }
+        };
+        disposeActiveProtectedPromptLocaleRefresh = disposeLocaleRefresh;
         enableDrag(mountedPopup, ".esj-common-header");
         passwordInput.focus();
         signal?.addEventListener("abort", onAbort, { once: true });
@@ -893,6 +975,7 @@ export function showFormatChoice(): void {
         return;
     }
 
+    disposeActiveFormatLocaleRefresh?.();
     fullCleanup();
 
     // 禁用设置和下载按钮，防止重复操作
@@ -908,6 +991,7 @@ export function showFormatChoice(): void {
     const hasMappedChapters = mappingSummary.chapterCount > 0;
 
     const closeAction = () => {
+        disposeActiveFormatLocaleRefresh?.();
         document.querySelector("#esj-format")?.remove();
         toggleSettingsLock(false);
         toggleDownloadLock(false);
@@ -916,8 +1000,12 @@ export function showFormatChoice(): void {
     const header = createCommonHeader(t("export.title"), closeAction);
 
     const coverStatus = data.metadata.coverBlob
-        ? el("div", { style: "color:green;font-size:12px;margin-top:4px;" }, [t("export.coverReady")])
-        : el("div", { style: "color:red;font-size:12px;margin-top:4px;" }, [t("export.coverMissing")]);
+        ? el("div", { id: "esj-format-cover-status", style: "color:green;font-size:12px;margin-top:4px;" }, [
+              t("export.coverReady")
+          ])
+        : el("div", { id: "esj-format-cover-status", style: "color:red;font-size:12px;margin-top:4px;" }, [
+              t("export.coverMissing")
+          ]);
 
     // 正文插图统计
     let imageStatus: HTMLElement | string = "";
@@ -944,18 +1032,24 @@ export function showFormatChoice(): void {
             const color = failCount > 0 ? "#e6a23c" : "#2b9bd7";
             const errorHint = failCount > 0 ? t("export.imagesFailed", { count: failCount }) : "";
 
-            imageStatus = el("div", { style: `color:${color}; font-size:12px; margin-top:4px;` }, [
-                `${t("export.images", { success: successCount, total: totalCount })}${errorHint}`
-            ]);
+            imageStatus = el(
+                "div",
+                { id: "esj-format-image-status", style: `color:${color}; font-size:12px; margin-top:4px;` },
+                [`${t("export.images", { success: successCount, total: totalCount })}${errorHint}`]
+            );
         } else {
             // 开启了开关但没抓到任何图
-            imageStatus = el("div", { style: "color:#999; font-size:12px; margin-top:4px;" }, [t("export.imagesNone")]);
+            imageStatus = el(
+                "div",
+                { id: "esj-format-image-status", style: "color:#999; font-size:12px; margin-top:4px;" },
+                [t("export.imagesNone")]
+            );
         }
     }
 
     const infoBody = el("div", { style: "padding:20px;font-size:14px;line-height:1.5;" }, [
-        el("div", {}, [t("export.bookReady", { title: data.metadata.title })]),
-        el("div", { style: "color:#666;font-size:12px;margin-top:4px;" }, [
+        el("div", { id: "esj-format-book-status" }, [t("export.bookReady", { title: data.metadata.title })]),
+        el("div", { id: "esj-format-chapter-count", style: "color:#666;font-size:12px;margin-top:4px;" }, [
             t("export.chapterCount", { count: data.chapters.length })
         ]),
         coverStatus,
@@ -1040,9 +1134,14 @@ export function showFormatChoice(): void {
         [btnTxt, btnEpub, btnHtml]
     );
     const txtDisabledReason = hasMappedChapters
-        ? el("div", { style: "padding:0 20px 16px;color:#a45b00;font-size:12px;line-height:1.5;" }, [
-              t("download.export.txtDisabled")
-          ])
+        ? el(
+              "div",
+              {
+                  id: "esj-format-txt-disabled-reason",
+                  style: "padding:0 20px 16px;color:#a45b00;font-size:12px;line-height:1.5;"
+              },
+              [t("download.export.txtDisabled")]
+          )
         : "";
 
     const popup = el(
@@ -1057,6 +1156,61 @@ export function showFormatChoice(): void {
     document.body.appendChild(popup);
     enableDrag(popup, ".esj-common-header");
 
+    const refreshFormatChoiceText = () => {
+        const headerLabel = header.querySelector("span");
+        if (headerLabel) {
+            headerLabel.textContent = t("export.title");
+        }
+        coverStatus.textContent = t(data.metadata.coverBlob ? "export.coverReady" : "export.coverMissing");
+        const bookStatus = popup.querySelector("#esj-format-book-status");
+        const chapterCount = popup.querySelector("#esj-format-chapter-count");
+        if (bookStatus) {
+            bookStatus.textContent = t("export.bookReady", { title: data.metadata.title });
+        }
+        if (chapterCount) {
+            chapterCount.textContent = t("export.chapterCount", { count: data.chapters.length });
+        }
+        if (imageStatus instanceof HTMLElement) {
+            const successCount = data.chapters.reduce((count, chapter) => count + (chapter.images?.length || 0), 0);
+            const failCount = data.chapters.reduce((count, chapter) => count + (chapter.imageErrors || 0), 0);
+            const totalCount = successCount + failCount;
+            imageStatus.textContent =
+                totalCount > 0
+                    ? `${t("export.images", { success: successCount, total: totalCount })}${
+                          failCount > 0 ? t("export.imagesFailed", { count: failCount }) : ""
+                      }`
+                    : t("export.imagesNone");
+        }
+        const mappingWarning = popup.querySelector("#esj-format-mapping-warning");
+        if (mappingWarning) {
+            mappingWarning.textContent = t("export.mappingWarning", {
+                count: mappingSummary.chapterCount,
+                bytes: formatMappingFontBytes(mappingSummary.fontBytes)
+            });
+        }
+        btnTxt.textContent = t(hasMappedChapters ? "export.txtDisabled" : "export.downloadTxt");
+        btnTxt.title = t(hasMappedChapters ? "export.txtBlocked" : "export.downloadTxt");
+        btnEpub.textContent = t(epubExporting ? "export.generating" : "export.downloadEpub");
+        btnHtml.textContent = t(htmlExporting ? "export.generating" : "export.downloadHtml");
+        if (txtDisabledReason instanceof HTMLElement) {
+            txtDisabledReason.textContent = t("download.export.txtDisabled");
+        }
+    };
+    const unsubscribeLocale = subscribeInterfaceLocaleChange(() => {
+        if (!popup.isConnected) {
+            disposeActiveFormatLocaleRefresh?.();
+            return;
+        }
+        refreshFormatChoiceText();
+    });
+    const disposeLocaleRefresh = () => {
+        unsubscribeLocale();
+        if (disposeActiveFormatLocaleRefresh === disposeLocaleRefresh) {
+            disposeActiveFormatLocaleRefresh = null;
+        }
+    };
+    disposeActiveFormatLocaleRefresh = disposeLocaleRefresh;
+
     // 下载 EPUB
     async function handleEpubDownload() {
         if (epubExporting) {
@@ -1065,7 +1219,6 @@ export function showFormatChoice(): void {
         epubExporting = true;
         const btn = document.querySelector("#esj-epub") as HTMLButtonElement;
         const currentData = state.cachedData as CachedData;
-        const originalText = btn.innerText;
         const originalBg = btn.style.background;
         const oldTitle = document.title;
         try {
@@ -1116,10 +1269,10 @@ export function showFormatChoice(): void {
             }
         } finally {
             epubExporting = false;
-            btn.innerText = originalText;
             btn.disabled = false;
             btn.style.background = originalBg;
             document.title = oldTitle;
+            refreshFormatChoiceText();
         }
     }
 
@@ -1130,7 +1283,6 @@ export function showFormatChoice(): void {
         }
         htmlExporting = true;
         const btn = document.querySelector("#esj-html") as HTMLButtonElement;
-        const originalText = btn.innerText;
         try {
             btn.disabled = true;
             if (hasMappedChapters && !(await confirmMappingFontExport("HTML", mappingSummary))) {
@@ -1160,8 +1312,8 @@ export function showFormatChoice(): void {
             }
         } finally {
             htmlExporting = false;
-            btn.innerText = originalText;
             btn.disabled = false;
+            refreshFormatChoiceText();
         }
     }
 
@@ -1229,43 +1381,53 @@ export function createSettingsPanel(): void {
     };
 
     const header = createCommonHeader(`⚙️ ${t("settings.title")}`, closeAction);
+    const settingsHeaderLabel = header.querySelector("span");
+    if (settingsHeaderLabel instanceof HTMLElement) {
+        settingsHeaderLabel.replaceChildren("⚙️ ", bindInterfaceText(el("span"), "settings.title"));
+    }
     const installedVersion =
         typeof GM_info !== "undefined" && GM_info.script?.version?.trim()
             ? `v${GM_info.script.version.trim()}`
             : t("settings.versionUnknown");
 
     const interfaceLocalePreference = getInterfaceLocalePreference();
-    const interfaceLocaleSelect = el(
-        "select",
-        {
-            id: "esj-interface-language",
-            "aria-label": t("settings.interfaceLanguage"),
-            style: "min-width: 150px; padding: 6px; border: 1px solid #ccc; border-radius: 4px;",
-            onchange: (e: Event) => {
-                const value = (e.target as HTMLSelectElement).value;
-                if (isInterfaceLocalePreference(value)) {
-                    setInterfaceLocalePreference(value);
-                    publishInterfaceLocaleChange();
-                    createSettingsPanel();
+    const interfaceLocaleSelect = bindInterfaceAttribute(
+        el(
+            "select",
+            {
+                id: "esj-interface-language",
+                style: "min-width: 150px; padding: 6px; border: 1px solid #ccc; border-radius: 4px;",
+                onchange: (e: Event) => {
+                    const value = (e.target as HTMLSelectElement).value;
+                    if (isInterfaceLocalePreference(value)) {
+                        setInterfaceLocalePreference(value);
+                        publishInterfaceLocaleChange();
+                    }
                 }
-            }
-        },
-        [
-            el("option", { value: "auto", selected: interfaceLocalePreference === "auto" }, [
-                t("settings.interfaceLanguage.auto")
-            ]),
-            el("option", { value: "zh-CN", selected: interfaceLocalePreference === "zh-CN" }, [
-                t("settings.interfaceLanguage.simplified")
-            ]),
-            el("option", { value: "zh-TW", selected: interfaceLocalePreference === "zh-TW" }, [
-                t("settings.interfaceLanguage.traditional")
-            ])
-        ]
+            },
+            [
+                bindInterfaceText(
+                    el("option", { value: "auto", selected: interfaceLocalePreference === "auto" }),
+                    "settings.interfaceLanguage.auto"
+                ),
+                bindInterfaceText(
+                    el("option", { value: "zh-CN", selected: interfaceLocalePreference === "zh-CN" }),
+                    "settings.interfaceLanguage.simplified"
+                ),
+                bindInterfaceText(
+                    el("option", { value: "zh-TW", selected: interfaceLocalePreference === "zh-TW" }),
+                    "settings.interfaceLanguage.traditional"
+                )
+            ]
+        ),
+        "aria-label",
+        "settings.interfaceLanguage"
     );
 
     // 并发数输入框
     const currentConcurrency = getConcurrency();
     const inputConcurrency = el("input", {
+        id: "esj-settings-concurrency",
         type: "number",
         min: 1,
         max: 10,
@@ -1313,7 +1475,7 @@ export function createSettingsPanel(): void {
                 createCacheManagerPopup();
             }
         },
-        [t("settings.cache")]
+        [bindInterfaceText(el("span"), "settings.cache")]
     );
 
     const btnDownloadHistory = el(
@@ -1326,7 +1488,7 @@ export function createSettingsPanel(): void {
                 createDownloadHistoryPopup();
             }
         },
-        [t("settings.history")]
+        [bindInterfaceText(el("span"), "settings.history")]
     );
 
     const btnDiagnostics = el(
@@ -1336,13 +1498,14 @@ export function createSettingsPanel(): void {
             style: "color:white;min-width:110px;",
             onclick: () => createDiagnosticPopup()
         },
-        [t("settings.diagnosticsButton")]
+        [bindInterfaceText(el("span"), "settings.diagnosticsButton")]
     );
 
     // 图片下载开关
     const isImageEnabled = getImageDownloadSetting();
 
     const checkboxInput = el("input", {
+        id: "esj-settings-images",
         type: "checkbox",
         checked: isImageEnabled,
         onchange: async (e: Event) => {
@@ -1377,6 +1540,7 @@ export function createSettingsPanel(): void {
     // EPUB 标签页开关
     const isEpubTagPageEnabled = getEpubTagPageSetting();
     const checkboxEpubTagPage = el("input", {
+        id: "esj-settings-epub-tag-page",
         type: "checkbox",
         checked: isEpubTagPageEnabled,
         onchange: (e: Event) => {
@@ -1414,47 +1578,54 @@ export function createSettingsPanel(): void {
     const rowStyle = "display:flex; align-items:center; justify-content:space-between;";
 
     const rowConcurrency = el("div", { style: rowStyle }, [
-        el("label", { style: "color: #333;" }, [t("settings.concurrency", { max: 10 })]),
+        bindInterfaceText(el("label", { style: "color: #333;" }), "settings.concurrency", { max: 10 }),
         inputConcurrency
     ]);
 
     const rowInterfaceLanguage = el("div", { style: rowStyle }, [
-        el("label", { style: "color: #333;" }, [t("settings.interfaceLanguage")]),
+        bindInterfaceText(el("label", { style: "color: #333;" }), "settings.interfaceLanguage"),
         interfaceLocaleSelect
     ]);
 
     const rowCache = el("div", { style: rowStyle }, [
-        el("label", { style: "color: #333;" }, [t("settings.cache")]),
+        bindInterfaceText(el("label", { style: "color: #333;" }), "settings.cache"),
         btnCacheManager
     ]);
 
     const rowHistory = el("div", { style: rowStyle }, [
-        el("label", { style: "color:#333;" }, [t("settings.history")]),
+        bindInterfaceText(el("label", { style: "color:#333;" }), "settings.history"),
         btnDownloadHistory
     ]);
 
     const rowDiagnostics = el("div", { style: rowStyle }, [
         el("div", {}, [
-            el("label", { style: "color:#333;" }, [t("settings.diagnostics")]),
-            el("div", { style: "font-size:12px;color:#999;margin-top:2px;" }, [t("settings.diagnosticsDescription")])
+            bindInterfaceText(el("label", { style: "color:#333;" }), "settings.diagnostics"),
+            bindInterfaceText(
+                el("div", { style: "font-size:12px;color:#999;margin-top:2px;" }),
+                "settings.diagnosticsDescription"
+            )
         ]),
         btnDiagnostics
     ]);
 
     const rowImage = el("div", { style: rowStyle }, [
         el("div", {}, [
-            el("label", { style: "color: #333;" }, [t("settings.imageDownload")]),
-            el("div", { style: "font-size:12px; color:#999; margin-top: 2px;" }, [
-                t("settings.imageDownloadDescription")
-            ])
+            bindInterfaceText(el("label", { style: "color: #333;" }), "settings.imageDownload"),
+            bindInterfaceText(
+                el("div", { style: "font-size:12px; color:#999; margin-top: 2px;" }),
+                "settings.imageDownloadDescription"
+            )
         ]),
         switchToggleImage
     ]);
 
     const rowEpubTagPage = el("div", { style: rowStyle }, [
         el("div", {}, [
-            el("label", { style: "color: #333;" }, [t("settings.epubTagPage")]),
-            el("div", { style: "font-size:12px; color:#999; margin-top: 2px;" }, [t("settings.epubTagPageDescription")])
+            bindInterfaceText(el("label", { style: "color: #333;" }), "settings.epubTagPage"),
+            bindInterfaceText(
+                el("div", { style: "font-size:12px; color:#999; margin-top: 2px;" }),
+                "settings.epubTagPageDescription"
+            )
         ]),
         switchToggleEpubTagPage
     ]);
@@ -1469,7 +1640,7 @@ export function createSettingsPanel(): void {
             rel: "noopener noreferrer",
             style: relatedLinkStyle + "background:#24292f;color:#fff;"
         },
-        [t("settings.github")]
+        [bindInterfaceText(el("span"), "settings.github")]
     );
     const btnGreasyFork = el(
         "a",
@@ -1479,7 +1650,7 @@ export function createSettingsPanel(): void {
             rel: "noopener noreferrer",
             style: relatedLinkStyle + "background:#8b1a1a;color:#fff;"
         },
-        [t("settings.greasyFork")]
+        [bindInterfaceText(el("span"), "settings.greasyFork")]
     );
     const btnIssue = el(
         "a",
@@ -1489,10 +1660,13 @@ export function createSettingsPanel(): void {
             rel: "noopener noreferrer",
             style: relatedLinkStyle + "margin-top:8px;background:#f6f8fa;border:1px solid #d0d7de;color:#24292f;"
         },
-        [t("settings.feedback")]
+        [bindInterfaceText(el("span"), "settings.feedback")]
     );
     const relatedLinks = el("div", { style: "text-align:center;" }, [
-        el("div", { style: "color:#333;font-weight:bold;margin-bottom:8px;" }, [t("settings.relatedLinks")]),
+        bindInterfaceText(
+            el("div", { style: "color:#333;font-weight:bold;margin-bottom:8px;" }),
+            "settings.relatedLinks"
+        ),
         el("div", { style: "display:flex;gap:8px;" }, [btnGithub, btnGreasyFork]),
         btnIssue,
         el("div", { style: "margin-top:12px;color:#999;font-size:12px;" }, [

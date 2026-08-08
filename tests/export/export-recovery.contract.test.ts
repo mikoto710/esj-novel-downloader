@@ -140,6 +140,22 @@ describe("full-book export recovery contracts", () => {
         expect(document.querySelector("#esj-message-summary")?.textContent).toBe("無法產生HTML檔案。");
     });
 
+    it("refreshes an open format choice in place without replacing export controls", async () => {
+        const { setInterfaceLocalePreference } = await import("../../src/core/config");
+        const { publishInterfaceLocaleChange } = await import("../../src/ui/locale");
+        await prepareExportPopup();
+        const popup = document.querySelector("#esj-format") as HTMLElement;
+        const txtButton = popup.querySelector("#esj-txt") as HTMLButtonElement;
+
+        setInterfaceLocalePreference("zh-TW");
+        publishInterfaceLocaleChange();
+
+        expect(document.querySelector("#esj-format")).toBe(popup);
+        expect(popup.textContent).toContain("匯出選項");
+        expect(popup.querySelector("#esj-txt")).toBe(txtButton);
+        expect(txtButton.textContent).toBe("⬇ TXT 下載");
+    });
+
     it("prevents duplicate HTML builds while allowing another format to export", async () => {
         const htmlBuild = createDeferred<Blob>();
         mocks.buildHtml.mockReturnValue(htmlBuild.promise);

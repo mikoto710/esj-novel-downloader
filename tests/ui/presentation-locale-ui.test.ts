@@ -5,6 +5,7 @@ import { setInterfaceLocalePreference } from "../../src/core/config";
 import { createCacheManagerPopup } from "../../src/ui/cache-manager";
 import { createDiagnosticPopup } from "../../src/ui/diagnostics";
 import { createDownloadHistoryPopup } from "../../src/ui/download-history";
+import { publishInterfaceLocaleChange } from "../../src/ui/locale";
 
 describe("cache, history, and diagnostic locale presentation", () => {
     beforeEach(() => {
@@ -33,5 +34,27 @@ describe("cache, history, and diagnostic locale presentation", () => {
         createDiagnosticPopup();
         expect(document.querySelector("#esj-diagnostics")?.textContent).toContain("診斷紀錄");
         expect(document.querySelector("#esj-diagnostics")?.textContent).toContain("暫無紀錄");
+    });
+
+    it("refreshes open cache and diagnostic views without replacing their popup roots", async () => {
+        createCacheManagerPopup();
+        const cachePopup = document.querySelector("#esj-cache-manager") as HTMLElement;
+        await vi.waitFor(() => expect(cachePopup.textContent).toContain("快取管理"));
+
+        setInterfaceLocalePreference("zh-CN");
+        publishInterfaceLocaleChange();
+        await vi.waitFor(() => expect(cachePopup.textContent).toContain("缓存管理"));
+        expect(document.querySelector("#esj-cache-manager")).toBe(cachePopup);
+
+        cachePopup.querySelector(".esj-common-header button")?.dispatchEvent(new MouseEvent("click"));
+        setInterfaceLocalePreference("zh-TW");
+        createDiagnosticPopup();
+        const diagnosticPopup = document.querySelector("#esj-diagnostics") as HTMLElement;
+
+        setInterfaceLocalePreference("zh-CN");
+        publishInterfaceLocaleChange();
+
+        expect(document.querySelector("#esj-diagnostics")).toBe(diagnosticPopup);
+        expect(diagnosticPopup.textContent).toContain("诊断日志");
     });
 });

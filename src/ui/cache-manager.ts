@@ -9,7 +9,7 @@ import { subscribeCacheSync } from "../core/cache/sync";
 import { el, enableDrag } from "../utils/dom";
 import { log } from "../utils/index";
 import { showMessagePopup } from "./message-popup";
-import { t } from "./locale";
+import { bindInterfaceAttribute, subscribeInterfaceLocaleChange, t } from "./locale";
 
 let disposeActiveCacheManagerSynchronizer: (() => void) | null = null;
 
@@ -37,14 +37,17 @@ function createHeader(title: string, onClose: () => void): HTMLElement {
         [
             el("span", { style: "font-weight:bold;" }, [title]),
             el("div", { style: "display:flex;" }, [
-                el(
-                    "button",
-                    {
-                        title: t("common.close"),
-                        style: "border:none;background:#ef5350;color:#fff;padding:4px 10px;border-radius:6px;cursor:pointer;font-weight:bold;",
-                        onclick: onClose
-                    },
-                    ["✕"]
+                bindInterfaceAttribute(
+                    el(
+                        "button",
+                        {
+                            style: "border:none;background:#ef5350;color:#fff;padding:4px 10px;border-radius:6px;cursor:pointer;font-weight:bold;",
+                            onclick: onClose
+                        },
+                        ["✕"]
+                    ),
+                    "title",
+                    "common.close"
                 )
             ])
         ]
@@ -202,9 +205,11 @@ export function createCacheManagerPopup(): void {
     toggleSettingsLock(true);
 
     let stopSynchronizing: () => void = () => {};
+    let stopLocaleRefresh: () => void = () => {};
     let refreshTimer: number | null = null;
     const disposeSynchronizer = () => {
         stopSynchronizing();
+        stopLocaleRefresh();
         if (refreshTimer !== null) {
             window.clearTimeout(refreshTimer);
             refreshTimer = null;
@@ -230,18 +235,22 @@ export function createCacheManagerPopup(): void {
         style: "padding:12px;display:flex;justify-content:space-between;gap:8px;border-top:1px solid #eee;background:#fff;border-radius:0 0 8px 8px;"
     });
 
+    const header = createHeader(t("cache.title"), closeAction);
     const popup = el(
         "div",
         {
             id: "esj-cache-manager",
             style: "position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:620px;height:min(520px,calc(100vh - 32px));background:#fff;border:1px solid #aaa;border-radius:8px;box-shadow:0 0 18px rgba(0,0,0,0.28);z-index:999999;display:flex;flex-direction:column;"
         },
-        [createHeader(t("cache.title"), closeAction), listBox, footer]
+        [header, listBox, footer]
     );
 
     // 重新读取合并后的缓存列表并重建操作区域
     async function renderList() {
         const items = await listManagedCaches();
+        if (!popup.isConnected) {
+            return;
+        }
         listBox.replaceChildren();
         footer.replaceChildren();
 
@@ -352,6 +361,20 @@ export function createCacheManagerPopup(): void {
 
     document.body.appendChild(popup);
     enableDrag(popup, ".esj-common-header");
+    stopLocaleRefresh = subscribeInterfaceLocaleChange(() => {
+        if (!popup.isConnected) {
+            disposeSynchronizer();
+            return;
+        }
+        const listScrollTop = listBox.scrollTop;
+        const headerLabel = header.querySelector("span");
+        if (headerLabel) {
+            headerLabel.textContent = t("cache.title");
+        }
+        void renderList().then(() => {
+            listBox.scrollTop = listScrollTop;
+        });
+    });
     void renderList();
 }
 

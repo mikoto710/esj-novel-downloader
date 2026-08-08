@@ -1,5 +1,5 @@
 import { el } from "../utils/dom";
-import { t } from "./locale";
+import { bindInterfaceAttribute } from "./locale";
 
 /**
  * 创建弹窗公共标题栏
@@ -12,29 +12,41 @@ export function createCommonHeader(title: string, onClose: () => void, onMinimiz
 
     if (onMinimize) {
         buttons.push(
-            el(
-                "button",
-                {
-                    title: t("common.minimize"),
-                    "aria-label": t("common.minimize"),
-                    style: "border:none;background:#81d4fa;color:#000;padding:4px 10px;border-radius:6px;cursor:pointer;font-weight:bold;margin-right:5px;",
-                    onclick: onMinimize
-                },
-                ["＿"]
+            bindInterfaceAttribute(
+                bindInterfaceAttribute(
+                    el(
+                        "button",
+                        {
+                            style: "border:none;background:#81d4fa;color:#000;padding:4px 10px;border-radius:6px;cursor:pointer;font-weight:bold;margin-right:5px;",
+                            onclick: onMinimize
+                        },
+                        ["＿"]
+                    ),
+                    "title",
+                    "common.minimize"
+                ),
+                "aria-label",
+                "common.minimize"
             )
         );
     }
 
     buttons.push(
-        el(
-            "button",
-            {
-                title: t("common.close"),
-                "aria-label": t("common.close"),
-                style: "border:none;background:#ef5350;color:#fff;padding:4px 10px;border-radius:6px;cursor:pointer;font-weight:bold;",
-                onclick: onClose
-            },
-            ["✕"]
+        bindInterfaceAttribute(
+            bindInterfaceAttribute(
+                el(
+                    "button",
+                    {
+                        style: "border:none;background:#ef5350;color:#fff;padding:4px 10px;border-radius:6px;cursor:pointer;font-weight:bold;",
+                        onclick: onClose
+                    },
+                    ["✕"]
+                ),
+                "title",
+                "common.close"
+            ),
+            "aria-label",
+            "common.close"
         )
     );
 

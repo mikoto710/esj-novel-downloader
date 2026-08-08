@@ -46,6 +46,8 @@ describe("shared locale UI", () => {
 
         const popup = document.querySelector("#esj-settings") as HTMLElement;
         const language = popup.querySelector("#esj-interface-language") as HTMLSelectElement;
+        const concurrency = popup.querySelector("#esj-settings-concurrency") as HTMLInputElement;
+        const images = popup.querySelector("#esj-settings-images") as HTMLInputElement;
         expect(popup.textContent).toContain("介面語言");
         expect(language.value).toBe("zh-TW");
         expect(Array.from(language.options).map((option) => option.textContent)).toEqual([
@@ -54,11 +56,18 @@ describe("shared locale UI", () => {
             "繁體中文"
         ]);
 
+        concurrency.value = "7";
+        const toggledImageState = !images.checked;
+        images.checked = toggledImageState;
+
         language.value = "zh-CN";
         language.dispatchEvent(new Event("change", { bubbles: true }));
 
         expect(getInterfaceLocalePreference()).toBe("zh-CN");
-        expect(document.querySelector("#esj-settings")?.textContent).toContain("界面语言");
+        expect(document.querySelector("#esj-settings")).toBe(popup);
+        expect(popup.textContent).toContain("界面语言");
+        expect(concurrency.value).toBe("7");
+        expect(images.checked).toBe(toggledImageState);
         expect(settingButton.getAttribute("aria-label")).toBe("脚本设置");
     });
 

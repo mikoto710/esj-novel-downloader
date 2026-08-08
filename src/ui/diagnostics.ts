@@ -16,7 +16,7 @@ import {
 } from "../core/diagnostics";
 import { el, enableDrag } from "../utils/dom";
 import { createCommonHeader } from "./popup-components";
-import { t } from "./locale";
+import { subscribeInterfaceLocaleChange, t } from "./locale";
 
 const DIAGNOSTIC_AUTO_REFRESH_INTERVAL_MS = 3000;
 let disposeActiveDiagnosticPopup: (() => void) | null = null;
@@ -95,6 +95,7 @@ export function createDiagnosticPopup(): void {
     let selectedId: string | null = null;
     let refreshTimer: number | null = null;
     let removalObserver: MutationObserver | null = null;
+    let stopLocaleRefresh: () => void = () => {};
     let disposed = false;
     const toggleSettingsLock = (locked: boolean) => {
         document.querySelectorAll(".esj-settings-trigger").forEach((button) => {
@@ -114,6 +115,7 @@ export function createDiagnosticPopup(): void {
             refreshTimer = null;
         }
         document.removeEventListener("visibilitychange", onVisibilityChange);
+        stopLocaleRefresh();
         removalObserver?.disconnect();
         removalObserver = null;
         document.querySelector("#esj-diagnostic-clear-confirm")?.remove();
@@ -130,6 +132,18 @@ export function createDiagnosticPopup(): void {
         popup.remove();
     };
     const header = createCommonHeader(t("diagnostics.title"), close);
+    const retentionNotice = el("div", {
+        style: "padding:8px 12px;background:#f7f7f7;border-bottom:1px solid #ddd;color:#666;font-size:12px;"
+    });
+    const refreshRetentionNotice = () => {
+        retentionNotice.textContent = t("diagnostics.retention", {
+            limit: DIAGNOSTIC_HISTORY_LIMIT,
+            days: Math.round(DIAGNOSTIC_RETENTION_MS / 86400000),
+            single: formatBytes(DIAGNOSTIC_SESSION_BYTES_LIMIT),
+            total: formatBytes(DIAGNOSTIC_TOTAL_BYTES_LIMIT)
+        });
+    };
+    refreshRetentionNotice();
     const list = el("div", {
         id: "esj-diagnostic-list",
         style: "width:280px;min-width:280px;border-right:1px solid #ddd;overflow:auto;background:#fafafa;"
@@ -382,20 +396,7 @@ export function createDiagnosticPopup(): void {
         },
         [
             header,
-            el(
-                "div",
-                {
-                    style: "padding:8px 12px;background:#f7f7f7;border-bottom:1px solid #ddd;color:#666;font-size:12px;"
-                },
-                [
-                    t("diagnostics.retention", {
-                        limit: DIAGNOSTIC_HISTORY_LIMIT,
-                        days: Math.round(DIAGNOSTIC_RETENTION_MS / 86400000),
-                        single: formatBytes(DIAGNOSTIC_SESSION_BYTES_LIMIT),
-                        total: formatBytes(DIAGNOSTIC_TOTAL_BYTES_LIMIT)
-                    })
-                ]
-            ),
+            retentionNotice,
             el("div", { style: "display:flex;flex:1;min-height:0;" }, [list, detail]),
             el(
                 "div",
@@ -408,6 +409,23 @@ export function createDiagnosticPopup(): void {
     document.body.appendChild(popup);
     enableDrag(popup, ".esj-common-header");
     render();
+    stopLocaleRefresh = subscribeInterfaceLocaleChange(() => {
+        if (!popup.isConnected) {
+            dispose();
+            return;
+        }
+        const headerLabel = header.querySelector("span");
+        if (headerLabel) {
+            headerLabel.textContent = t("diagnostics.title");
+        }
+        refreshRetentionNotice();
+        refreshButton.textContent = t("cache.action.refresh");
+        downloadButton.textContent = t("diagnostics.action.download");
+        copyButton.textContent = t("diagnostics.action.copy");
+        clearButton.textContent = t("diagnostics.action.clearAll");
+        deleteButton.textContent = t("diagnostics.action.delete");
+        render({ preserveScroll: true });
+    });
     disposeActiveDiagnosticPopup = dispose;
     document.addEventListener("visibilitychange", onVisibilityChange);
     removalObserver = new MutationObserver(() => {
