@@ -12,6 +12,9 @@ const STORAGE_FAILURE_KEYS = {
     "unknown-storage-error": "download.storage.unknown"
 } as const satisfies Readonly<Record<StorageFailureReason, LocaleKey>>;
 
+/**
+ * 按当前界面语言格式化存储失败原因，未知原因保留原值并避免重复附加详情
+ */
 export function formatStorageFailureText(reason: string, detail = ""): string {
     const key = STORAGE_FAILURE_KEYS[reason as StorageFailureReason];
     const summary = key ? t(key) : reason;

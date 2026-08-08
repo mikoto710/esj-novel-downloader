@@ -68,7 +68,7 @@ export function showDownloadTerminalFailure(failure: DownloadTerminalFailure): v
 }
 
 /**
- * 停止并清除已完成任务收尾，但缓存未能清除时保留明确提示。
+ * 停止并清除已完成任务收尾，但缓存未能清除时保留明确提示
  */
 export function showCacheDiscardFailure(failure: StorageFailure): void {
     showStorageFailure(

@@ -269,11 +269,17 @@ export function confirmMappingFontDownload(detection: MappingFontDetection, sign
     });
 }
 
+/**
+ * 关闭当前密码章节弹窗并释放其语言切换订阅
+ */
 export function closeProtectedChapterPrompt(): void {
     disposeActiveProtectedPromptLocaleRefresh?.();
     document.querySelector("#esj-protected-chapter")?.remove();
 }
 
+/**
+ * 将已打开的密码章节弹窗切换为不可交互的处理中状态，弹窗不存在时不执行操作
+ */
 export function setProtectedChapterPromptBusy(message = t("protected.busy")): void {
     const popup = document.querySelector("#esj-protected-chapter") as HTMLElement | null;
     if (!popup) {
@@ -704,6 +710,9 @@ export function showMappingFontFailure(failures: readonly MappingFontFailure[]):
     });
 }
 
+/**
+ * 在 EPUB 或 HTML 导出前提示映射字型嵌入信息，关闭或返回时解析为 false
+ */
 export function confirmMappingFontExport(format: "EPUB" | "HTML", summary: MappingFontSummary): Promise<boolean> {
     document.querySelector("#esj-mapping-export-confirm")?.remove();
     return new Promise<boolean>((resolve) => {
@@ -797,8 +806,7 @@ export function showBookDownloadInProgressPopup(lock: BookDownloadLock): void {
 }
 
 /**
- * 创建下载进度弹窗
- * 包含进度条、日志输出框、取消和最小化按钮
+ * 清理既有浮层后创建并挂载下载进度弹窗
  */
 export function createDownloadPopup(): HTMLElement {
     fullCleanup(state.originalTitle);

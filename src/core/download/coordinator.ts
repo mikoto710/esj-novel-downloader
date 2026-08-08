@@ -1174,8 +1174,7 @@ function assembleExportChapters(ctx: DownloadContext): { text: string; chapters:
 }
 
 /**
- * 运行一次可注入的全本下载流程
- * 不直接访问 DOM、IndexedDB、GM API 或全局 state，所有环境能力由 dependencies 提供
+ * 使用调用方提供的环境依赖运行全本下载，并统一处理恢复、下载、缓存、取消与导出准备
  */
 export async function runDownload(options: DownloadOptions, dependencies: DownloadDependencies): Promise<void> {
     const total = options.tasks.length;

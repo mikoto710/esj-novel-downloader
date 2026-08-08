@@ -119,8 +119,11 @@ function formatUnhandledDownloadLog(code: never, message: DownloadLog): string {
     return `${String(code)}${message.params ? ` ${JSON.stringify(message.params)}` : ""}`;
 }
 
-// 下载核心只产生稳定消息码，浏览器展示层在输出时按当前界面语言格式化
+/**
+ * 按当前界面语言格式化稳定下载日志消息
+ */
 export function formatDownloadLog(message: DownloadLog): string {
+    // 下载核心只产生稳定消息码，浏览器展示层在输出时按当前界面语言格式化
     const directKey = DIRECT_LOG_KEYS[message.code as DirectDownloadLogCode];
     if (directKey) {
         return t(directKey, message.params);

@@ -197,6 +197,9 @@ function getDomainMessageDetail(code: string, params: Readonly<Record<string, un
     return typeof params.detail === "string" ? params.detail : code;
 }
 
+/**
+ * 仅保留 HTTP 或 HTTPS 诊断网址的来源与路径，无效或非网络协议返回空字符串
+ */
 export function sanitizeDiagnosticUrl(value: string): string {
     try {
         const url = new URL(value, "https://www.esjzone.cc");
@@ -209,6 +212,9 @@ export function sanitizeDiagnosticUrl(value: string): string {
     }
 }
 
+/**
+ * 移除诊断文本中的查询参数、认证字段、data URI 和长编码内容
+ */
 export function sanitizeDiagnosticMessage(value: string): string {
     // 保留排障所需 URL 路径，但移除查询参数、认证字段和可能承载正文或二进制的长编码内容
     return value

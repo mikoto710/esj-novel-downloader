@@ -11,14 +11,18 @@ import {
 import type { DownloadLog } from "./contracts";
 
 /**
- * 收尾已取得锁的全本下载任务
- * 所有成功、失败和取消路径都必须调用本函数，确保心跳停止并最终释放任务锁
+ * 全本下载收尾时的缓存清理结果
  */
 export interface BookDownloadFinalizationResult {
     cacheDiscarded: boolean;
     cacheClearFailure: StorageFailure | null;
 }
 
+/**
+ * 统一停止任务心跳、按取消意图清理缓存并释放下载锁
+ * 所有成功、失败和取消路径都必须调用本函数
+ * @returns 缓存是否已清除及可展示的清理失败摘要
+ */
 export async function finalizeBookDownloadTask(
     lock: BookDownloadLock,
     stopHeartbeat: () => void,

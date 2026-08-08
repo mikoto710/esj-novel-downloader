@@ -138,6 +138,9 @@ const uiLogStates = new WeakMap<Element, UiLogState>();
 type UiLogTruncationFormatter = (count: number) => string;
 let uiLogTruncationFormatter: UiLogTruncationFormatter | null = null;
 
+/**
+ * 设置 UI 日志截断标记的展示格式，已存在标记需另行刷新
+ */
 export function setUiLogTruncationFormatter(formatter: UiLogTruncationFormatter): void {
     uiLogTruncationFormatter = formatter;
 }
@@ -146,6 +149,9 @@ function formatUiLogTruncation(count: number): string {
     return uiLogTruncationFormatter?.(count) ?? `… ${count}\n`;
 }
 
+/**
+ * 使用当前格式化器原地刷新指定根节点内已有的日志截断标记
+ */
 export function refreshUiLogTruncationText(root: ParentNode = document): void {
     root.querySelectorAll<HTMLElement>("[data-esj-log-truncation-count]").forEach((marker) => {
         const count = Number(marker.dataset.esjLogTruncationCount || 0);

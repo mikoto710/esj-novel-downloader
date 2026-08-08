@@ -90,11 +90,17 @@ export function refreshBoundInterfaceText(root: ParentNode = document): void {
     });
 }
 
+/**
+ * 订阅界面语言变化并返回取消订阅函数
+ */
 export function subscribeInterfaceLocaleChange(listener: InterfaceLocaleListener): () => void {
     localeListeners.add(listener);
     return () => localeListeners.delete(listener);
 }
 
+/**
+ * 重新解析当前界面语言，原地刷新已绑定文本并通知订阅者
+ */
 export function publishInterfaceLocaleChange(): void {
     const locale = getCurrentInterfaceLocale();
     lastPublishedLocale = locale;
