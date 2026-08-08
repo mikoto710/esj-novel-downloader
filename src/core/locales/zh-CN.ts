@@ -370,7 +370,7 @@ export const ZH_CN_MESSAGES = Object.freeze({
     "diagnostics.summary.result": "结果：{result}；阶段：{phase}",
     "diagnostics.summary.chapters": "章节：{completed}/{total}；缓存恢复：{restored}；失败：{failed}",
     "diagnostics.summary.protected": "密码章节：发现 {detected}；待处理 {pending}；已解锁 {resolved}；已跳过 {skipped}",
-    "diagnostics.summary.images": "插图：{enabled}；并发：{concurrency}",
+    "diagnostics.summary.images": "插图：{enabled}；下载线程数：{concurrency}",
     "diagnostics.summary.enabled": "开启",
     "diagnostics.summary.disabled": "关闭",
     "diagnostics.summary.exports": "导出记录：{records}",
@@ -425,6 +425,6 @@ export const ZH_CN_MESSAGES = Object.freeze({
     "single.log.completed": "✔ 单章下载完成（{format}）",
     "settings.log.image": "正文图片下载已{state}",
     "settings.log.epubTag": "EPUB 标签页已{state}",
-    "settings.log.concurrency": "并发数已更新为：{count}",
-    "settings.log.initialized": "初始化参数：并发数：{concurrency}；图片下载：{imageEnabled}"
+    "settings.log.concurrency": "下载线程数已更新为：{count}",
+    "settings.log.initialized": "初始化参数：下载线程数：{concurrency}；插图下载：{imageEnabled}"
 } satisfies Readonly<Record<LocaleKey, string>>);

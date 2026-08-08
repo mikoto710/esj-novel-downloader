@@ -44,6 +44,13 @@ describe("locale infrastructure", () => {
         expect(translate("zh-TW", "settings.concurrency", { max: 10 })).toBe("下載執行緒數（1-10）：");
         expect(translate("zh-TW", "common.viewDiagnostics")).toBe("檢視診斷紀錄");
         expect(translate("zh-TW", "cache.action.refresh")).toBe("重新整理");
+        expect(translate("zh-CN", "diagnostics.summary.images", { enabled: "开启", concurrency: 5 })).toBe(
+            "插图：开启；下载线程数：5"
+        );
+        expect(translate("zh-CN", "settings.log.concurrency", { count: 5 })).toBe("下载线程数已更新为：5");
+        expect(translate("zh-CN", "settings.log.initialized", { concurrency: 5, imageEnabled: false })).toBe(
+            "初始化参数：下载线程数：5；插图下载：false"
+        );
     });
 
     it("supports repeated and non-string interpolation values", () => {
