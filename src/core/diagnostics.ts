@@ -5,6 +5,7 @@ import type {
     DownloadSnapshot,
     DownloadTask
 } from "./download/contracts";
+import type { DomainMessageParams } from "./messages";
 
 // 诊断数据独立于章节缓存；容量和保留期同时限制，避免长期占用 userscript 存储
 export const DIAGNOSTIC_SCHEMA_VERSION = 1;
@@ -67,7 +68,18 @@ export interface DiagnosticEventRecord {
 export interface DiagnosticLogRecord {
     at: number;
     level: "info" | "warning" | "error";
-    message: string;
+    // 旧版字符串日志或导出时生成的当前语言文本
+    message?: string;
+    // 新版日志持久化稳定消息码，不固化界面语言
+    code?: string;
+    params?: DomainMessageParams;
+}
+
+export interface RecordDiagnosticLogInput {
+    level: DiagnosticLogRecord["level"];
+    message?: string;
+    code?: string;
+    params?: DomainMessageParams;
 }
 
 export interface DiagnosticExportRecord {
@@ -220,9 +232,10 @@ function trimSessionToLimit(session: DiagnosticSession): DiagnosticSession {
         failures: session.failures.map((failure) => ({ ...failure, message: limitText(failure.message) })),
         exports: (session.exports || []).slice(-DIAGNOSTIC_EXPORT_LIMIT),
         events: session.events.slice(-DIAGNOSTIC_EVENT_LIMIT),
-        logs: session.logs
-            .slice(-DIAGNOSTIC_LOG_LIMIT)
-            .map((entry) => ({ ...entry, message: limitText(entry.message) }))
+        logs: session.logs.slice(-DIAGNOSTIC_LOG_LIMIT).map((entry) => ({
+            ...entry,
+            ...(entry.message === undefined ? {} : { message: limitText(entry.message) })
+        }))
     };
     // 先牺牲普通日志和阶段事件，最后才裁剪失败定位，并始终保留至少一条失败原因
     while (stringBytes(trimmed) > DIAGNOSTIC_SESSION_BYTES_LIMIT && trimmed.logs.length > 0) {
@@ -242,7 +255,8 @@ function repairTerminalResult(session: DiagnosticSession): DiagnosticSession {
     const normalized = {
         ...session,
         task: { ...initialTaskSummary(session.task.totalChapters), ...session.task },
-        exports: Array.isArray(session.exports) ? session.exports : []
+        exports: Array.isArray(session.exports) ? session.exports : [],
+        logs: (Array.isArray(session.logs) ? session.logs : []).map(normalizeDiagnosticLogRecord)
     };
     // 早期诊断实现可能被页面 finally 将已成功的 export-ready 会话覆盖为 failed；无失败证据时安全修正
     if (
@@ -253,6 +267,26 @@ function repairTerminalResult(session: DiagnosticSession): DiagnosticSession {
         return { ...normalized, result: "success" };
     }
     return normalized;
+}
+
+function normalizeDiagnosticLogRecord(entry: DiagnosticLogRecord): DiagnosticLogRecord {
+    const level = entry.level === "warning" || entry.level === "error" ? entry.level : "info";
+    return {
+        at: typeof entry.at === "number" ? entry.at : 0,
+        level,
+        ...(typeof entry.message === "string" ? { message: limitText(entry.message) } : {}),
+        ...(typeof entry.code === "string" ? { code: limitText(entry.code) } : {}),
+        ...(entry.params ? { params: sanitizeDiagnosticParams(entry.params) } : {})
+    };
+}
+
+function sanitizeDiagnosticParams(params: DomainMessageParams): DomainMessageParams {
+    return Object.fromEntries(
+        Object.entries(params).map(([key, value]) => [
+            key,
+            typeof value === "string" ? limitText(sanitizeDiagnosticMessage(value)) : value
+        ])
+    );
 }
 
 function normalizeStore(store: DiagnosticStore, now: number): DiagnosticStore {
@@ -479,10 +513,18 @@ export class DiagnosticManager {
         });
     }
 
-    recordLog(taskId: string, message: string): void {
+    recordLog(taskId: string, input: string | RecordDiagnosticLogInput): void {
         this.mutateSession(taskId, (session, now) => {
-            const level = /❌|失败|异常/.test(message) ? "error" : /⚠️|警告|重试/.test(message) ? "warning" : "info";
-            session.logs.push({ at: now - session.startedAt, level, message: limitText(message) });
+            const record = typeof input === "string" ? { level: "info" as const, message: input } : input;
+            session.logs.push(
+                normalizeDiagnosticLogRecord({
+                    at: now - session.startedAt,
+                    level: record.level,
+                    ...(record.message === undefined ? {} : { message: record.message }),
+                    ...(record.code === undefined ? {} : { code: record.code }),
+                    ...(record.params === undefined ? {} : { params: record.params })
+                })
+            );
             if (session.logs.length > DIAGNOSTIC_LOG_LIMIT) {
                 session.logs.shift();
             }

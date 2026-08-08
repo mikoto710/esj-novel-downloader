@@ -151,8 +151,8 @@ export async function scrapeDetail(): Promise<void> {
                 {
                     scope: "page",
                     stage: "chapter-list",
-                    code: "chapter-list-missing",
-                    message: "未找到章节列表 #chapterList"
+                    code: "detail-chapter-list-missing",
+                    message: "detail-chapter-list-missing"
                 },
                 lock.taskId
             );
@@ -181,7 +181,7 @@ export async function scrapeDetail(): Promise<void> {
                         scope: "storage",
                         stage: "lock-start",
                         code: "ownership-lost",
-                        message: "下载任务锁在启动前已失效"
+                        message: "ownership-lost"
                     },
                     lock.taskId
                 );

@@ -4,6 +4,7 @@ import {
     DiagnosticManager,
     DIAGNOSTIC_SCHEMA_VERSION,
     type DiagnosticRepository,
+    type DiagnosticLogRecord,
     type DiagnosticResult,
     type DiagnosticSession,
     type DiagnosticSessionPresentation,
@@ -13,7 +14,7 @@ import {
     type RecordDiagnosticExportInput,
     type StartDiagnosticSessionInput
 } from "../core/diagnostics";
-import type { DownloadEventSink, DownloadLog, DownloadOptions } from "../core/download/contracts";
+import type { DownloadEventSink, DownloadLog, DownloadLogCode, DownloadOptions } from "../core/download/contracts";
 import { getConcurrency, getEpubTagPageSetting } from "../core/config";
 import { log, triggerDownload } from "../utils/index";
 import { formatDownloadLog } from "./browser-download-messages";
@@ -214,8 +215,67 @@ export function browserDiagnosticLog(message: string | DownloadLog): void {
     const displayMessage = typeof message === "string" ? message : formatDownloadLog(message);
     log(displayMessage);
     if (currentTaskId) {
-        manager.recordLog(currentTaskId, displayMessage);
+        manager.recordLog(
+            currentTaskId,
+            typeof message === "string"
+                ? { level: "info", message }
+                : {
+                      level: classifyDownloadLogLevel(message.code),
+                      code: message.code,
+                      ...(message.params === undefined ? {} : { params: message.params })
+                  }
+        );
     }
+}
+
+const ERROR_LOG_CODES = new Set<DownloadLogCode>([
+    "cover-cache-write-ownership-lost",
+    "chapter-mapping-font-failed",
+    "protected-chapter-connection-failed",
+    "protected-chapter-protocol-failed",
+    "download-storage-failed",
+    "cache-discard-failed"
+]);
+
+const WARNING_LOG_CODES = new Set<DownloadLogCode>([
+    "cover-cache-read-failed",
+    "cover-cache-write-failed",
+    "restored-mapping-font-invalid",
+    "cache-write-retry",
+    "chapter-fetch-failed",
+    "chapter-skipped-non-site",
+    "protected-chapter-retry-skipped",
+    "protected-chapter-redetected",
+    "protected-chapter-queued",
+    "protected-chapter-skipped",
+    "protected-chapter-connection-retry",
+    "protected-chapter-password-rejected",
+    "integrity-check-failed",
+    "chapter-integrity-retry",
+    "missing-chapter-retry",
+    "missing-chapter-export-with-placeholders",
+    "missing-chapter-retry-started",
+    "cancellation-cache-write-skipped-lock-lost"
+]);
+
+function classifyDownloadLogLevel(code: DownloadLogCode): DiagnosticLogRecord["level"] {
+    if (ERROR_LOG_CODES.has(code)) {
+        return "error";
+    }
+    return WARNING_LOG_CODES.has(code) ? "warning" : "info";
+}
+
+/**
+ * 将结构化诊断日志按当前界面语言格式化；旧版字符串日志保持原文可读。
+ */
+export function formatBrowserDiagnosticLog(entry: DiagnosticLogRecord): string {
+    if (entry.code) {
+        return formatDownloadLog({
+            code: entry.code as DownloadLogCode,
+            ...(entry.params === undefined ? {} : { params: entry.params })
+        });
+    }
+    return entry.message || entry.code || "";
 }
 
 export const browserDiagnosticEvents: DownloadEventSink = {
@@ -290,7 +350,16 @@ export function createBrowserDiagnosticExport(session: DiagnosticSession): { fil
         .replace(/\.\d{3}Z$/, "Z");
     return {
         filename: `esj-diagnostic-${safeFilenamePart(session.book.title)}-${date}.json`,
-        json: JSON.stringify({ session }, null, 2)
+        json: JSON.stringify(
+            {
+                session: {
+                    ...session,
+                    logs: session.logs.map((entry) => ({ ...entry, message: formatBrowserDiagnosticLog(entry) }))
+                }
+            },
+            null,
+            2
+        )
     };
 }
 
@@ -312,6 +381,22 @@ function formatPresentation(presentation: DiagnosticSessionPresentation): string
     return presentation;
 }
 
+function formatDiagnosticFailureMessage(failure: DiagnosticSession["failures"][number]): string {
+    const keys: Partial<Record<string, Parameters<typeof t>[0]>> = {
+        "chapter-content-missing": "single.bodyMissing.message",
+        "detail-chapter-list-missing": "page.structureChanged",
+        "book-detail-chapters-missing": "page.chaptersMissing.message",
+        "chapter-list-missing": "page.chaptersMissing.message",
+        "ownership-lost": "page.lockLost",
+        "invalid-image-url": "diagnostics.failure.invalidImageUrl",
+        "image-format-unrecognized": "diagnostics.failure.imageFormatUnrecognized",
+        "image-processing-failed": "diagnostics.failure.imageProcessingFailed",
+        "image-request-failed": "diagnostics.failure.imageRequestFailed"
+    };
+    const key = keys[failure.code];
+    return key ? t(key) : failure.message;
+}
+
 /**
  * 生成用户可见的诊断摘要，最多保留最近 10 条失败，并包含密码章节统计和导出结果
  */
@@ -331,8 +416,9 @@ export function formatBrowserDiagnosticSummary(
             failure.imageFailureCount === undefined
                 ? ""
                 : t("diagnostics.summary.imageFailure", { count: failure.imageFailureCount });
-        return `- [${failure.code}] ${failure.message}${imageCount}${chapter}`;
+        return `- [${failure.code}] ${formatDiagnosticFailureMessage(failure)}${imageCount}${chapter}`;
     });
+    const logLines = session.logs.slice(-20).map((entry) => `- [${entry.level}] ${formatBrowserDiagnosticLog(entry)}`);
     const exportLines = (session.exports || []).map((item) => {
         const format = `${item.scope === "single" ? t("diagnostics.summary.singlePrefix") : ""}${item.format.toUpperCase()}`;
         if (item.outcome === "cancelled") {
@@ -377,6 +463,9 @@ export function formatBrowserDiagnosticSummary(
         }),
         t("diagnostics.summary.exports", {
             records: exportLines.length > 0 ? `\n${exportLines.join("\n")}` : t("diagnostics.summary.none")
+        }),
+        t("diagnostics.summary.logs", {
+            records: logLines.length > 0 ? `\n${logLines.join("\n")}` : t("diagnostics.summary.none")
         }),
         t("diagnostics.summary.failures", {
             records: failureLines.length > 0 ? `\n${failureLines.join("\n")}` : t("diagnostics.summary.none")

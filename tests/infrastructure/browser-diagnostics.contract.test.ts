@@ -80,6 +80,34 @@ describe("browser diagnostic persistence", () => {
         expect(exported).not.toContain("token=secret");
     });
 
+    it("persists structured logs and formats them in the locale selected at export time", () => {
+        startBrowserDiagnosticSession({
+            taskId: "task-structured-log",
+            bookId: "book-log",
+            bookTitle: "Log Book",
+            pageUrl: "https://www.esjzone.cc/detail/12.html",
+            sourcePageType: "detail",
+            imageEnabled: false
+        });
+        browserDiagnosticLog({ code: "download-started", params: { concurrency: 3 } });
+        finishBrowserDiagnosticSession("task-structured-log", "success");
+
+        const session = listBrowserDiagnosticSessions().history[0];
+        expect(session.logs).toEqual([
+            { at: expect.any(Number), level: "info", code: "download-started", params: { concurrency: 3 } }
+        ]);
+
+        setInterfaceLocalePreference("zh-TW");
+        const exported = JSON.parse(createBrowserDiagnosticExport(session).json) as { session: typeof session };
+        expect(exported.session.logs[0]).toMatchObject({
+            level: "info",
+            code: "download-started",
+            params: { concurrency: 3 },
+            message: "已啟動 3 個下載執行緒…"
+        });
+        expect(formatBrowserDiagnosticSummary(session)).toContain("已啟動 3 個下載執行緒…");
+    });
+
     it("keeps failed chapter location and export failures after download completion", () => {
         startBrowserDiagnosticSession({
             taskId: "task-2",
@@ -121,6 +149,29 @@ describe("browser diagnostic persistence", () => {
             }),
             expect.objectContaining({ scope: "export", stage: "epub-download" })
         ]);
+    });
+
+    it("formats stable diagnostic failure codes in the locale selected at presentation time", () => {
+        startBrowserDiagnosticSession({
+            taskId: "task-localized-failure",
+            bookId: "book-localized-failure",
+            bookTitle: "Localized Failure",
+            pageUrl: "https://www.esjzone.cc/detail/13.html",
+            sourcePageType: "detail",
+            imageEnabled: true
+        });
+        recordBrowserDiagnosticFailure({
+            scope: "image",
+            stage: "request",
+            code: "image-request-failed",
+            message: "image-request-failed",
+            imageFailureCount: 1
+        });
+        finishBrowserDiagnosticSession("task-localized-failure", "failed");
+        const session = listBrowserDiagnosticSessions().history[0];
+
+        setInterfaceLocalePreference("zh-TW");
+        expect(formatBrowserDiagnosticSummary(session)).toContain("多次嘗試後仍無法取得圖片");
     });
 
     it("keeps inline image failures inside a successful diagnostic session", () => {

@@ -212,8 +212,8 @@ export async function scrapeForum(): Promise<void> {
                 {
                     scope: "page",
                     stage: "chapter-list",
-                    code: "chapter-list-missing",
-                    message: "书籍详情页未找到章节链接"
+                    code: "book-detail-chapters-missing",
+                    message: "book-detail-chapters-missing"
                 },
                 lock.taskId
             );
@@ -239,7 +239,7 @@ export async function scrapeForum(): Promise<void> {
                         scope: "storage",
                         stage: "lock-start",
                         code: "ownership-lost",
-                        message: "下载任务锁在启动前已失效"
+                        message: "ownership-lost"
                     },
                     lock.taskId
                 );

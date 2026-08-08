@@ -156,7 +156,7 @@ export async function downloadCurrentPage(format: "txt" | "html" = "txt"): Promi
                     scope: "chapter",
                     stage: "parse",
                     code: "chapter-content-missing",
-                    message: "当前页面没有可导出的正文内容",
+                    message: "chapter-content-missing",
                     chapter: { index: 0, title, url: location.href }
                 },
                 diagnosticTaskId
@@ -206,7 +206,7 @@ export async function downloadCurrentPage(format: "txt" | "html" = "txt"): Promi
                                 scope: "image",
                                 stage: "processing",
                                 code: "image-processing-failed",
-                                message: "图片处理异常，正文已保留",
+                                message: "image-processing-failed",
                                 imageFailureCount,
                                 chapter: { index: 0, title, url: location.href }
                             },

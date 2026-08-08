@@ -251,6 +251,29 @@ describe("diagnostic session retention", () => {
         });
     });
 
+    it("persists explicit log levels without inferring severity from localized words", () => {
+        const repository = new MemoryDiagnosticRepository();
+        const manager = new DiagnosticManager(repository, () => 1_000);
+        manager.start(createInput("structured-logs"));
+
+        manager.recordLog("structured-logs", "失败后重试");
+        manager.recordLog("structured-logs", {
+            level: "warning",
+            code: "chapter-fetch-failed",
+            params: { chapter: "Chapter 1", retry: 2 }
+        });
+
+        expect(manager.list().active[0].logs).toEqual([
+            { at: 0, level: "info", message: "失败后重试" },
+            {
+                at: 0,
+                level: "warning",
+                code: "chapter-fetch-failed",
+                params: { chapter: "Chapter 1", retry: 2 }
+            }
+        ]);
+    });
+
     it("records bounded multi-format export outcomes after a task completes", () => {
         const repository = new MemoryDiagnosticRepository();
         const manager = new DiagnosticManager(repository, () => 1_000);
