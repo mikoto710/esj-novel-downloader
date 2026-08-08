@@ -17,7 +17,7 @@ interface QueueWaiter {
 }
 
 /**
- * 普通 worker 是多生产者，密码交互是单消费者；当前已取出的章节不受后续较小索引抢占
+ * 多个普通 worker 负责生产，单个密码交互消费者负责取出；已取出的章节不会被后来入队的较小索引替换
  */
 export class ProtectedChapterQueue {
     private readonly pending: ProtectedChapterWorkItem[] = [];
@@ -90,7 +90,7 @@ export class ProtectedChapterQueue {
     }
 
     /**
-     * 返回当前尚未交互的章节，调用方逐章记录跳过；未来生产的章节由 enqueue 返回 skipped
+     * 返回调用时尚未交互的章节供调用方记录跳过；此后 enqueue 的章节直接返回 skipped
      */
     skipAllRemaining(): ProtectedChapterWorkItem[] {
         this.skipRemaining = true;
@@ -100,7 +100,7 @@ export class ProtectedChapterQueue {
     }
 
     /**
-     * 标记不再产生新项目，已排队项目仍可消费且耗尽后等待者收到 null
+     * 标记生产端关闭，调用前已排队的工作项仍可消费，队列耗尽后等待者收到 null
      */
     closeProducer(): void {
         this.producerClosed = true;

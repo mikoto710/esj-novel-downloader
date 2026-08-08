@@ -102,7 +102,7 @@ function getApplicationInfo(): StartDiagnosticSessionInput["application"] {
 
 /**
  * 创建浏览器侧诊断会话并固定任务启动时的应用与设置快照
- * @param options 控制是否将会话作为后续失败归属，以及是否观察页面关闭
+ * @param options 控制未显式提供 taskId 的失败和导出记录是否回写到本会话，以及是否记录页面关闭
  * @returns 已保存的活动诊断会话
  */
 export function startBrowserDiagnosticSession(
@@ -148,7 +148,7 @@ export function recordBrowserPreflightDiagnosticFailure(
 }
 
 /**
- * 将全本下载选项补充到对应诊断会话，并将该任务设为当前日志归属
+ * 使用 options.taskId 更新全本诊断会话，并将 browserDiagnosticLog 的默认归属切换到该任务
  */
 export function updateBrowserDiagnosticSession(options: DownloadOptions): void {
     currentTaskId = options.taskId;
@@ -156,7 +156,7 @@ export function updateBrowserDiagnosticSession(options: DownloadOptions): void {
 }
 
 /**
- * 更新指定诊断会话的书名、页面地址或来源页面类型
+ * 更新 taskId 标识的诊断会话书名、页面地址或来源页面类型
  */
 export function updateBrowserDiagnosticSessionMetadata(
     taskId: string,
@@ -166,7 +166,7 @@ export function updateBrowserDiagnosticSessionMetadata(
 }
 
 /**
- * 将全本诊断会话写入指定终态并停止该任务的页面关闭观察
+ * 将 taskId 标识的全本诊断会话写入 result 终态并停止页面关闭观察
  */
 export function finishBrowserDiagnosticSession(taskId: string, result: Exclude<DiagnosticResult, "running">): void {
     stopBrowserDiagnosticCloseObserver(taskId);
@@ -199,7 +199,7 @@ export function finishBrowserSingleChapterDiagnosticSession(
 }
 
 /**
- * 将失败写回诊断会话；未显式传入 taskId 时按当前任务、最后任务和最近会话依次回退
+ * 将失败写回 taskId 标识的诊断会话；未传 taskId 时依次选择日志归属任务、导出回写任务和更新时间最新的会话
  */
 export function recordBrowserDiagnosticFailure(input: RecordDiagnosticFailureInput, taskId = currentTaskId): void {
     const targetTaskId = taskId || lastTaskId || getLatestBrowserDiagnosticSession()?.taskId;
@@ -209,7 +209,7 @@ export function recordBrowserDiagnosticFailure(input: RecordDiagnosticFailureInp
 }
 
 /**
- * 将导出结果写回诊断会话；未显式传入 taskId 时沿用失败记录的任务回退顺序
+ * 将导出结果写回 taskId 标识的诊断会话；未传 taskId 时使用与失败记录相同的会话选择规则
  */
 export function recordBrowserDiagnosticExport(input: RecordDiagnosticExportInput, taskId = currentTaskId): void {
     const targetTaskId = taskId || lastTaskId || getLatestBrowserDiagnosticSession()?.taskId;
@@ -219,7 +219,7 @@ export function recordBrowserDiagnosticExport(input: RecordDiagnosticExportInput
 }
 
 /**
- * 将日志写入 UI 和控制台，并在存在活动会话时以最佳努力追加诊断记录
+ * 将日志写入 UI 和控制台，并在存在活动会话时追加诊断记录；诊断存储失败不影响前两项输出
  */
 export function browserDiagnosticLog(message: string | DownloadLog): void {
     // 先保持原有 UI/控制台日志，再以最佳努力写入诊断；诊断异常不得改变下载行为
@@ -308,7 +308,7 @@ export const browserDiagnosticEvents: DownloadEventSink = {
 };
 
 /**
- * 读取规范化后的活动诊断会话与历史记录
+ * 读取经过兼容修复、保留期限和容量约束处理的活动诊断会话与历史记录
  */
 export function listBrowserDiagnosticSessions(): DiagnosticStore {
     return manager.list();
@@ -330,7 +330,7 @@ export function removeBrowserDiagnosticSession(sessionId: string): void {
 }
 
 /**
- * 停止全部页面关闭观察并清空诊断会话及后续失败归属
+ * 停止全部页面关闭观察，并清空诊断存储及无 taskId 记录使用的默认会话归属
  */
 export function clearBrowserDiagnosticSessions(): void {
     for (const cleanup of closeObserverCleanups.values()) {
@@ -361,7 +361,7 @@ function safeFilenamePart(value: string): string {
 }
 
 /**
- * 生成安全文件名和可下载的诊断 JSON，并为结构化日志补充当前语言的可读文本
+ * 生成适合本地保存的文件名和诊断 JSON，并按调用时界面语言补充结构化日志文本
  */
 export function createBrowserDiagnosticExport(session: DiagnosticSession): { filename: string; json: string } {
     const date = new Date(session.updatedAt)
@@ -384,7 +384,7 @@ export function createBrowserDiagnosticExport(session: DiagnosticSession): { fil
 }
 
 /**
- * 生成并触发指定诊断会话的 JSON 文件下载
+ * 生成并触发传入诊断会话的 JSON 文件下载
  */
 export function downloadBrowserDiagnosticSession(session: DiagnosticSession): void {
     const exported = createBrowserDiagnosticExport(session);

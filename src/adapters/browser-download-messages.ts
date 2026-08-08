@@ -120,7 +120,7 @@ function formatUnhandledDownloadLog(code: never, message: DownloadLog): string {
 }
 
 /**
- * 按当前界面语言格式化稳定下载日志消息
+ * 按当前界面语言将 DownloadLog 的稳定消息码格式化为可显示文本
  */
 export function formatDownloadLog(message: DownloadLog): string {
     // 下载核心只产生稳定消息码，浏览器展示层在输出时按当前界面语言格式化

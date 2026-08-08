@@ -37,7 +37,7 @@ function hasProtectedChapterMarkers(document: Document): boolean {
 }
 
 /**
- * 判断页面正文是否仍显示密码章节交互
+ * 判断页面正文是否显示密码章节交互
  */
 export function isProtectedChapterHtml(html: string): boolean {
     return hasProtectedChapterMarkers(parseHtml(html));
@@ -117,7 +117,7 @@ function parsePasswordResponse(text: string): unknown {
 
 /**
  * 创建在独占请求窗口内完成页面刷新、令牌获取和密码提交的浏览器授权端口
- * 密码和令牌只参与当前请求，不写入下载核心、缓存或诊断
+ * 密码和令牌只参与一次 unlock 调用发起的请求，不写入下载核心、缓存或诊断
  */
 export function createBrowserProtectedChapterAuth(
     request: ProtectedChapterRequest = fetchWithTimeout,

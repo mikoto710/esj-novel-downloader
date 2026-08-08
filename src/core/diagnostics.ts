@@ -456,7 +456,7 @@ export class DiagnosticManager {
 
     /**
      * 创建并持久化活动诊断会话，相同 taskId 的旧活动记录会被替换
-     * 页面网址在写入前按诊断安全规则脱敏
+     * 页面网址写入时只保留 HTTP 或 HTTPS 来源与路径
      */
     start(input: StartDiagnosticSessionInput): DiagnosticSession {
         const now = this.now();
@@ -491,7 +491,7 @@ export class DiagnosticManager {
     }
 
     /**
-     * 记录活动会话已观察到页面关闭，会话不存在或已经记录时保持不变
+     * 为 taskId 标识的活动会话记录页面关闭时间，会话不存在或已有 closeObservedAt 时不重复写入
      */
     markCloseObserved(taskId: string): void {
         const now = this.now();
@@ -507,7 +507,7 @@ export class DiagnosticManager {
     }
 
     /**
-     * 更新活动会话的书籍和任务元数据，会话不存在时保持不变
+     * 更新 taskId 标识的活动会话书籍和任务元数据，会话不存在时保持不变
      */
     updateSession(
         taskId: string,
@@ -530,7 +530,7 @@ export class DiagnosticManager {
     }
 
     /**
-     * 向活动会话追加脱敏日志，字符串输入按 info 级别记录
+     * 向 taskId 标识的活动会话追加脱敏日志，字符串输入按 info 级别记录
      */
     recordLog(taskId: string, input: string | RecordDiagnosticLogInput): void {
         this.mutateSession(taskId, (session, now) => {
@@ -551,7 +551,7 @@ export class DiagnosticManager {
     }
 
     /**
-     * 向活动或历史会话追加脱敏失败记录，会话不存在时保持不变
+     * 向 taskId 标识的活动或历史会话追加脱敏失败记录，会话不存在时保持不变
      */
     recordFailure(taskId: string, input: RecordDiagnosticFailureInput): void {
         this.mutateSession(
@@ -580,7 +580,7 @@ export class DiagnosticManager {
     }
 
     /**
-     * 向活动或历史会话追加导出结果，会话不存在时保持不变
+     * 向 taskId 标识的活动或历史会话追加导出结果，会话不存在时保持不变
      */
     recordExport(taskId: string, input: RecordDiagnosticExportInput): void {
         this.mutateSession(
@@ -695,7 +695,7 @@ export class DiagnosticManager {
     }
 
     /**
-     * 完成仍处于活动状态的会话并合并可选任务摘要，不覆盖已转入历史的终态
+     * 完成 taskId 标识的活动会话并合并可选任务摘要，任务已转入历史时不覆盖终态
      */
     finish(taskId: string, result: Exclude<DiagnosticResult, "running">, task?: Partial<DiagnosticTaskSummary>): void {
         // 页面 finally 只负责收尾仍处于 active 的启动阶段会话，不得覆盖 coordinator 已发布的终态
@@ -708,7 +708,7 @@ export class DiagnosticManager {
     }
 
     /**
-     * 读取并规范化诊断存储快照，不将兼容修复回写仓库
+     * 读取经过兼容修复、保留期限和容量约束处理的快照，不将结果回写 repository
      */
     list(): DiagnosticStore {
         // 诊断查询不回写旧快照

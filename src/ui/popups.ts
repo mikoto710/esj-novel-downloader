@@ -270,7 +270,7 @@ export function confirmMappingFontDownload(detection: MappingFontDetection, sign
 }
 
 /**
- * 关闭当前密码章节弹窗并释放其语言切换订阅
+ * 关闭已打开的密码章节弹窗并释放其语言切换订阅
  */
 export function closeProtectedChapterPrompt(): void {
     disposeActiveProtectedPromptLocaleRefresh?.();
@@ -587,7 +587,7 @@ export function promptProtectedChapterPassword(
 }
 
 /**
- * 自动补抓和持久化完成后仍缺章时，要求用户明确选择后续行为
+ * 自动补抓和持久化后仍存在缺章时，要求用户选择再次补抓、使用占位导出或取消
  */
 export function confirmIncompleteChapters(
     detection: IncompleteChapterDetection,
@@ -711,7 +711,7 @@ export function showMappingFontFailure(failures: readonly MappingFontFailure[]):
 }
 
 /**
- * 在 EPUB 或 HTML 导出前提示映射字型嵌入信息，关闭或返回时解析为 false
+ * 在 EPUB 或 HTML 导出前提示映射字型嵌入信息，关闭弹窗或选择返回时解析为 false
  */
 export function confirmMappingFontExport(format: "EPUB" | "HTML", summary: MappingFontSummary): Promise<boolean> {
     document.querySelector("#esj-mapping-export-confirm")?.remove();
@@ -806,7 +806,7 @@ export function showBookDownloadInProgressPopup(lock: BookDownloadLock): void {
 }
 
 /**
- * 清理既有浮层后创建并挂载下载进度弹窗
+ * 清理脚本已创建的弹窗和托盘后，创建并挂载下载进度弹窗
  */
 export function createDownloadPopup(): HTMLElement {
     fullCleanup(state.originalTitle);

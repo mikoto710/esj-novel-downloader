@@ -19,7 +19,7 @@ export class UserDecisionGate {
 
     /**
      * 按调用顺序串行执行阻塞式用户决策
-     * 排队期间取消会以 AbortError 拒绝，已开始的操作由调用方自行响应 signal
+     * 排队期间取消会以 AbortError 拒绝；操作开始后 gate 不再代为中止，operation 应自行响应同一 signal
      */
     run<T>(operation: () => Promise<T>, signal?: AbortSignal): Promise<T> {
         if (signal?.aborted) {
