@@ -292,6 +292,7 @@ export const ZH_CN_MESSAGES = Object.freeze({
     "history.empty": "暂无下载记录",
     "history.action.open": "打开原页",
     "history.action.delete": "删除记录",
+    "history.action.deleteShort": "删除",
     "history.type.book": "全本",
     "history.type.single": "单章",
     "history.action.clearAll": "清空全部记录",

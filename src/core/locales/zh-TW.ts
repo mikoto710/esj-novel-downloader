@@ -294,6 +294,7 @@ export const ZH_TW_MESSAGES = Object.freeze({
     "history.empty": "暫無下載紀錄",
     "history.action.open": "開啟原始頁面",
     "history.action.delete": "刪除紀錄",
+    "history.action.deleteShort": "刪除",
     "history.type.book": "全本",
     "history.type.single": "單章",
     "history.action.clearAll": "清空全部紀錄",

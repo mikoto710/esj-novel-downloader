@@ -9,6 +9,9 @@ import { el, enableDrag } from "../utils/dom";
 import { subscribeInterfaceLocaleChange, t } from "./locale";
 
 let disposeActiveHistoryLocaleRefresh: (() => void) | null = null;
+let disposeActiveHistoryColumnResize: (() => void) | null = null;
+
+const HISTORY_MIN_COLUMN_WIDTH = 48;
 
 function sourceLabel(source: SourcePageType): string {
     return t(
@@ -37,6 +40,75 @@ function formatTime(timestamp: number): string {
 
 function selectOptions(values: Array<[string, string]>): HTMLElement[] {
     return values.map(([value, text]) => el("option", { value }, [text]));
+}
+
+function enableHistoryColumnResize(table: HTMLTableElement): () => void {
+    const columns = Array.from(table.querySelectorAll<HTMLTableColElement>("col"));
+    const headers = Array.from(table.querySelectorAll<HTMLTableCellElement>("thead th"));
+    const listeners: Array<{ handle: HTMLElement; onMouseDown: (event: MouseEvent) => void }> = [];
+    let finishActiveResize: (() => void) | null = null;
+
+    headers.slice(0, -1).forEach((header, index) => {
+        const handle = header.querySelector<HTMLElement>(".esj-history-column-resizer");
+        if (!handle || !columns[index] || !columns[index + 1]) {
+            return;
+        }
+        const onMouseDown = (event: MouseEvent) => {
+            if (event.button !== 0) {
+                return;
+            }
+            const tableWidth = table.getBoundingClientRect().width;
+            const columnWidths = headers.map((cell) => cell.getBoundingClientRect().width);
+            const leftStartWidth = columnWidths[index];
+            const rightStartWidth = columnWidths[index + 1];
+            if (tableWidth <= 0 || leftStartWidth <= 0 || rightStartWidth <= 0) {
+                return;
+            }
+
+            event.preventDefault();
+            event.stopPropagation();
+            finishActiveResize?.();
+            columnWidths.forEach((width, columnIndex) => {
+                columns[columnIndex].style.width = `${(width / tableWidth) * 100}%`;
+            });
+
+            const startX = event.clientX;
+            const pairMinimumWidth = Math.min(HISTORY_MIN_COLUMN_WIDTH, (leftStartWidth + rightStartWidth) / 2);
+            const previousCursor = document.body.style.cursor;
+            const previousUserSelect = document.body.style.userSelect;
+            document.body.style.cursor = "col-resize";
+            document.body.style.userSelect = "none";
+
+            const onMouseMove = (moveEvent: MouseEvent) => {
+                const requestedDelta = moveEvent.clientX - startX;
+                const boundedDelta = Math.min(
+                    Math.max(requestedDelta, pairMinimumWidth - leftStartWidth),
+                    rightStartWidth - pairMinimumWidth
+                );
+                columns[index].style.width = `${((leftStartWidth + boundedDelta) / tableWidth) * 100}%`;
+                columns[index + 1].style.width = `${((rightStartWidth - boundedDelta) / tableWidth) * 100}%`;
+            };
+            const finish = () => {
+                document.removeEventListener("mousemove", onMouseMove);
+                document.removeEventListener("mouseup", finish);
+                document.body.style.cursor = previousCursor;
+                document.body.style.userSelect = previousUserSelect;
+                if (finishActiveResize === finish) {
+                    finishActiveResize = null;
+                }
+            };
+            finishActiveResize = finish;
+            document.addEventListener("mousemove", onMouseMove);
+            document.addEventListener("mouseup", finish);
+        };
+        handle.addEventListener("mousedown", onMouseDown);
+        listeners.push({ handle, onMouseDown });
+    });
+
+    return () => {
+        finishActiveResize?.();
+        listeners.forEach(({ handle, onMouseDown }) => handle.removeEventListener("mousedown", onMouseDown));
+    };
 }
 
 function imageStatusText(item: DownloadHistoryItem): string {
@@ -141,10 +213,17 @@ function showHistoryClearConfirm(): Promise<boolean> {
  */
 export function createDownloadHistoryPopup(): void {
     disposeActiveHistoryLocaleRefresh?.();
+    disposeActiveHistoryColumnResize?.();
+    disposeActiveHistoryColumnResize = null;
     document.querySelector("#esj-download-history")?.remove();
     document.querySelector("#esj-download-history-confirm")?.remove();
+    let disposeHistoryColumnResize: (() => void) | null = null;
     const close = () => {
         disposeActiveHistoryLocaleRefresh?.();
+        disposeHistoryColumnResize?.();
+        if (disposeActiveHistoryColumnResize === disposeHistoryColumnResize) {
+            disposeActiveHistoryColumnResize = null;
+        }
         document.querySelector("#esj-download-history")?.remove();
         document.querySelector("#esj-download-history-confirm")?.remove();
         document.querySelectorAll(".esj-settings-trigger").forEach((button) => {
@@ -202,28 +281,45 @@ export function createDownloadHistoryPopup(): void {
     );
     const summary = el("span", { style: "margin-left:auto;color:#666;font-size:12px;" });
     const tableBody = el("tbody");
+    const columnDefinitions: Array<[Parameters<typeof t>[0], string]> = [
+        ["history.column.book", "21%"],
+        ["history.column.author", "12%"],
+        ["history.column.type", "9%"],
+        ["history.column.format", "8%"],
+        ["history.column.source", "8%"],
+        ["history.column.chapter", "14%"],
+        ["history.column.image", "9%"],
+        ["history.column.time", "12%"],
+        ["history.column.action", "7%"]
+    ];
     const table = el("table", { style: "width:100%;border-collapse:collapse;table-layout:fixed;font-size:13px;" }, [
+        el(
+            "colgroup",
+            {},
+            columnDefinitions.map(([, width]) => el("col", { style: `width:${width};` }))
+        ),
         el("thead", { style: "position:sticky;top:0;background:#f7f7f7;z-index:1;" }, [
             el(
                 "tr",
                 {},
-                [
-                    [t("history.column.book"), "21%"],
-                    [t("history.column.author"), "12%"],
-                    [t("history.column.type"), "9%"],
-                    [t("history.column.format"), "8%"],
-                    [t("history.column.source"), "8%"],
-                    [t("history.column.chapter"), "14%"],
-                    [t("history.column.image"), "9%"],
-                    [t("history.column.time"), "12%"],
-                    [t("history.column.action"), "7%"]
-                ].map(([text, width], index) =>
+                columnDefinitions.map(([key], index) =>
                     el(
                         "th",
                         {
-                            style: `width:${width};padding:10px 8px;text-align:${index === 8 ? "center" : "left"};border-bottom:1px solid #ddd;white-space:nowrap;`
+                            style: `position:relative;padding:10px 8px;text-align:${index === 8 ? "center" : "left"};border-bottom:1px solid #ddd;white-space:nowrap;`
                         },
-                        [text]
+                        [
+                            el("span", { className: "esj-history-column-label" }, [t(key)]),
+                            ...(index < columnDefinitions.length - 1
+                                ? [
+                                      el("span", {
+                                          className: "esj-history-column-resizer",
+                                          "aria-hidden": "true",
+                                          style: "position:absolute;top:0;right:-4px;width:8px;height:100%;cursor:col-resize;z-index:2;background:linear-gradient(to right,transparent 3px,#ccc 3px,#ccc 4px,transparent 4px);"
+                                      })
+                                  ]
+                                : [])
+                        ]
                     )
                 )
             )
@@ -289,7 +385,7 @@ export function createDownloadHistoryPopup(): void {
                         render();
                     }
                 },
-                [t("history.action.delete")]
+                [t("history.action.deleteShort")]
             );
             tableBody.appendChild(
                 el("tr", {}, [
@@ -382,6 +478,8 @@ export function createDownloadHistoryPopup(): void {
     );
     document.body.appendChild(popup);
     enableDrag(popup, ".esj-common-header");
+    disposeHistoryColumnResize = enableHistoryColumnResize(table);
+    disposeActiveHistoryColumnResize = disposeHistoryColumnResize;
     const refreshLocaleText = () => {
         const listScrollTop = listBox.scrollTop;
         const headerLabel = header.querySelector("span");
@@ -419,21 +517,10 @@ export function createDownloadHistoryPopup(): void {
                 option.textContent = t(key);
             }
         });
-        const columnKeys: Parameters<typeof t>[0][] = [
-            "history.column.book",
-            "history.column.author",
-            "history.column.type",
-            "history.column.format",
-            "history.column.source",
-            "history.column.chapter",
-            "history.column.image",
-            "history.column.time",
-            "history.column.action"
-        ];
-        table.querySelectorAll("th").forEach((cell, index) => {
-            const key = columnKeys[index];
+        table.querySelectorAll<HTMLElement>(".esj-history-column-label").forEach((label, index) => {
+            const key = columnDefinitions[index]?.[0];
             if (key) {
-                cell.textContent = t(key);
+                label.textContent = t(key);
             }
         });
         clearButton.textContent = t("history.action.clearAll");

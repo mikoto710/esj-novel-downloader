@@ -321,6 +321,7 @@ export const LOCALE_KEYS = [
     "history.empty",
     "history.action.open",
     "history.action.delete",
+    "history.action.deleteShort",
     "history.type.book",
     "history.type.single",
     "history.action.clearAll",
