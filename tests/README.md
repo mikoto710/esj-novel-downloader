@@ -6,7 +6,7 @@
 - `tests/cache/`：任务锁、缓存恢复、增量写入、迁移、所有权、backpressure 和存储失败。
 - `tests/mapping-font/`：映射字体检测、缓存规范化和导出绑定。
 - `tests/export/`：TXT、HTML、EPUB、图片处理及全本／单章隔离。
-- `tests/ui/`：日志、通用消息、诊断界面、缺章决策和映射字体状态。
+- `tests/ui/`：日志、通用消息、诊断界面、语言切换、缺章决策和映射字体状态。
 - `tests/infrastructure/`：共享测试设施、诊断记录和浏览器持久化边界。
 - `tests/stress/`：3000 章、高缓存命中、大 Blob、慢存储、backpressure 和取消矩阵。
 - `tests/support/`：mocks、fixtures、fakes、factories 和资源追踪工具。
@@ -24,6 +24,8 @@
 
 测试文件及 `describe` / `it` 描述统一使用英文。
 
+测试优先保护可观察的业务契约，不为提高覆盖率重复断言相同展示结果。语言目录测试应检查键集合与关键台湾用语，运行时切换测试应覆盖已打开界面的更新；不再增加与这些定向测试重叠的全量展示快照。
+
 ## 异步与时间
 
 - 使用 `createDeferred()` 控制 Promise 完成顺序。
@@ -40,6 +42,7 @@
 - IndexedDB 测试使用隔离数据库，并在结束后关闭和删除。
 - BroadcastChannel 测试使用 fake channel，并显式关闭全部实例。
 - 自动化测试不得访问实时 ESJZone、真实网络或生产 IndexedDB。
+- 纯逻辑测试默认使用 Node 环境；只有依赖 DOM、DOMParser、页面注入、HTML / EPUB 结构或浏览器 adapter 展示契约时才启用 jsdom。
 
 ## 下载生命周期覆盖
 

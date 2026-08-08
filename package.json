@@ -12,8 +12,8 @@
         "test:stress": "vitest run --config vitest.stress.config.ts",
         "test:watch": "vitest",
         "watch": "rollup -c -w",
-        "format:check": "prettier --check \"src/**/*.{ts,js,json,md}\" \"tests/**/*.{ts,md}\" README.md package.json package-lock.json",
-        "format": "prettier --write \"src/**/*.{ts,js,json,md}\" \"tests/**/*.{ts,md}\" README.md package.json package-lock.json",
+        "format:check": "prettier --check \"src/**/*.{ts,js,json,md}\" \"tests/**/*.{ts,md}\" README.md README.zh-TW.md package.json package-lock.json",
+        "format": "prettier --write \"src/**/*.{ts,js,json,md}\" \"tests/**/*.{ts,md}\" README.md README.zh-TW.md package.json package-lock.json",
         "lint:fix": "eslint src tests --fix"
     },
     "devDependencies": {
