@@ -253,9 +253,11 @@ describe("diagnostic session retention", () => {
         const repository = new MemoryDiagnosticRepository();
         const manager = new DiagnosticManager(repository, () => 1_000);
         manager.start(createInput("large-template"));
-        for (let index = 0; index < 80; index++) {
-            manager.recordLog("large-template", `${index}-${"诊断".repeat(1_000)}`);
-        }
+        repository.store.active[0].logs = Array.from({ length: 80 }, (_, index) => ({
+            at: index,
+            level: "info" as const,
+            message: `${index}-${"诊断".repeat(1_000)}`
+        }));
         manager.finish("large-template", "success");
 
         const template = repository.store.history[0];
