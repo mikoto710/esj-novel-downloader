@@ -292,7 +292,7 @@ export async function downloadCurrentPage(format: "txt" | "html" = "txt"): Promi
                 author: htmlMeta.author || author,
                 format,
                 sourcePageType: "single",
-                chapterInfo: title,
+                chapterSummary: { totalCount: 1, missingCount: 0 },
                 ...(format === "html"
                     ? {
                           imageInfo: {

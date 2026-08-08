@@ -1352,10 +1352,10 @@ export async function runDownload(options: DownloadOptions, dependencies: Downlo
                 rawBookName: options.rawBookName || options.bookName,
                 pageUrl: options.pageUrl || dependencies.environment.currentUrl(),
                 sourcePageType: options.sourcePageType === "forum" ? "forum" : "detail",
-                chapterInfo:
-                    ctx.machine.snapshot.failedCount > 0
-                        ? `共 ${assembled.chapters.length} 章（${ctx.machine.snapshot.failedCount} 章缺失占位）`
-                        : `共 ${assembled.chapters.length} 章`,
+                chapterSummary: {
+                    totalCount: assembled.chapters.length,
+                    missingCount: ctx.machine.snapshot.failedCount
+                },
                 imageEnabled
             }
         });

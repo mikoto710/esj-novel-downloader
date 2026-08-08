@@ -550,7 +550,7 @@ describe("runDownload characterization", () => {
         expect(harness.exportData?.txt).toContain("https://www.esjzone.cc/forum/100/1.html?from=%3Cunsafe%3E");
         expect(harness.exportData?.chapters[0].content).toContain("第 &lt;script&gt; 章");
         expect(harness.exportData?.chapters[0].content).not.toContain("<script>");
-        expect(harness.exportData?.exportContext?.chapterInfo).toBe("共 1 章（1 章缺失占位）");
+        expect(harness.exportData?.exportContext?.chapterSummary).toEqual({ totalCount: 1, missingCount: 1 });
         expect(harness.dependencies.runtime.chapters.size).toBe(0);
         expect(harness.ui.snapshots.at(-1)).toMatchObject({
             phase: "export-ready",

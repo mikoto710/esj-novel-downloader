@@ -47,7 +47,12 @@ describe("full-book export recovery contracts", () => {
 
         expect(mocks.buildEpub).toHaveBeenCalledTimes(2);
         expect(state.cachedData?.epubBlob).toBe(epubBlob);
-        expect(mocks.addDownloadHistory).toHaveBeenCalledWith(expect.objectContaining({ format: "epub" }));
+        expect(mocks.addDownloadHistory).toHaveBeenCalledWith(
+            expect.objectContaining({
+                format: "epub",
+                chapterSummary: { totalCount: 1, missingCount: 0 }
+            })
+        );
         expect(showFormatChoice).toBeTypeOf("function");
     });
 

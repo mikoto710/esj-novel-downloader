@@ -29,7 +29,7 @@ describe("cache and history isolation contract", () => {
             author: "测试作者",
             format: "txt",
             sourcePageType: "detail",
-            chapterInfo: "共 1 章",
+            chapterSummary: { totalCount: 1, missingCount: 0 },
             pageUrl: "https://www.esjzone.cc/detail/100.html"
         });
         await locks.releaseBookDownloadLock(acquired.lock);

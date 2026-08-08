@@ -133,7 +133,7 @@ export function createCachedData(overrides: Partial<CachedData> = {}): CachedDat
             rawBookName: "测试小说",
             pageUrl: "https://www.esjzone.cc/detail/100.html",
             sourcePageType: "detail",
-            chapterInfo: `共 ${chapters.length} 章`,
+            chapterSummary: { totalCount: chapters.length, missingCount: 0 },
             imageEnabled: false
         },
         ...overrides

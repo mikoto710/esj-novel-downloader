@@ -1203,7 +1203,11 @@ export function showFormatChoice(): void {
             author: data.metadata.author || "",
             format,
             sourcePageType: context?.sourcePageType || "detail",
-            chapterInfo: context?.chapterInfo || `${data.chapters.length} 章`,
+            chapterSummary: context?.chapterSummary || {
+                totalCount: data.chapters.length,
+                missingCount: data.chapters.filter((chapter) => chapter.content.includes('class="esj-missing-chapter"'))
+                    .length
+            },
             ...(imageInfo === undefined ? {} : { imageInfo }),
             pageUrl: context?.pageUrl || location.href
         });

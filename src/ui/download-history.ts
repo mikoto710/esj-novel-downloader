@@ -56,6 +56,18 @@ function imageStatusText(item: DownloadHistoryItem): string {
         : t("history.image.progress", { success: item.imageInfo.successCount, total });
 }
 
+function chapterStatusText(item: DownloadHistoryItem): string {
+    if (!item.chapterSummary) {
+        return item.chapterInfo || "—";
+    }
+    return item.chapterSummary.missingCount > 0
+        ? t("history.chapter.withMissing", {
+              total: item.chapterSummary.totalCount,
+              missing: item.chapterSummary.missingCount
+          })
+        : t("history.chapter.total", { total: item.chapterSummary.totalCount });
+}
+
 // 显示清空下载记录确认弹窗
 function showHistoryClearConfirm(): Promise<boolean> {
     document.querySelector("#esj-download-history-confirm")?.remove();
@@ -282,7 +294,7 @@ export function createDownloadHistoryPopup(): void {
                     cell(t(item.sourcePageType === "single" ? "history.type.single" : "history.type.book")),
                     cell(item.format.toUpperCase()),
                     cell(sourceLabel(item.sourcePageType)),
-                    cell(item.chapterInfo || "—"),
+                    cell(chapterStatusText(item)),
                     cell(imageStatusText(item)),
                     cell(formatTime(item.exportedAt)),
                     el("td", { style: "padding:10px 8px;border-bottom:1px solid #eee;" }, [
