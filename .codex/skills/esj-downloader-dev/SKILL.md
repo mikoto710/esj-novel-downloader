@@ -18,6 +18,7 @@ description: Implement, refactor, or diagnose ESJ Novel Downloader TypeScript us
 - Make the smallest focused edit; do not combine unrelated formatting, dependency, or version changes.
 - Add a regression test for a defect. Use contract tests for stable cross-boundary behavior and characterization tests before refactoring established complex behavior.
 - Use the existing shared popup components for user prompts; do not introduce `alert`.
+- Keep protected-chapter authorization in the browser adapter and expose only structured unlock results to the core. Passwords, tokens, cookies, authorization headers, and full response bodies must not enter cache, diagnostics, or logs; rejected passwords must not become ordinary retries, permanent failures, or chapter cache entries.
 - Snapshot task settings before cache claim and download startup so cross-page setting changes affect only future tasks.
 - During bulk cache recovery, aggregate diagnostics in memory instead of persisting one diagnostic update per restored chapter.
 - Production comments use Chinese and explain business invariants, lifecycle ownership, or race ordering. Do not narrate syntax; add a concise comment when correctness depends on async completion order or a non-obvious compatibility boundary.
