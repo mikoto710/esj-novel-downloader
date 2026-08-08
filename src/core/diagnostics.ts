@@ -9,9 +9,9 @@ import type { DomainMessageParams } from "./messages";
 
 // 诊断数据独立于章节缓存；容量和保留期同时限制，避免长期占用 userscript 存储
 export const DIAGNOSTIC_SCHEMA_VERSION = 1;
-export const DIAGNOSTIC_HISTORY_LIMIT = 10;
+export const DIAGNOSTIC_HISTORY_LIMIT = 30;
 export const DIAGNOSTIC_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
-export const DIAGNOSTIC_TOTAL_BYTES_LIMIT = 2 * 1024 * 1024;
+export const DIAGNOSTIC_TOTAL_BYTES_LIMIT = 4 * 1024 * 1024;
 export const DIAGNOSTIC_SESSION_BYTES_LIMIT = 256 * 1024;
 const DIAGNOSTIC_LOG_LIMIT = 500;
 const DIAGNOSTIC_EVENT_LIMIT = 500;
@@ -224,14 +224,6 @@ export function sanitizeDiagnosticMessage(value: string): string {
         .replace(/[A-Za-z0-9+/]{128,}={0,2}/g, "[长编码内容已移除]");
 }
 
-function resultCleanupPriority(session: DiagnosticSession): number {
-    // 数字越高越应保留；容量不足时依次淘汰成功、取消、失败或异常中断记录
-    if (session.failures.length > 0 || session.result === "failed" || session.result === "interrupted") {
-        return 2;
-    }
-    return session.result === "cancelled" ? 1 : 0;
-}
-
 function trimSessionToLimit(session: DiagnosticSession): DiagnosticSession {
     const trimmed: DiagnosticSession = {
         ...session,
@@ -312,13 +304,13 @@ function normalizeStore(store: DiagnosticStore, now: number): DiagnosticStore {
         .map(trimSessionToLimit);
 
     history.sort((a, b) => (b.endedAt || b.updatedAt) - (a.endedAt || a.updatedAt));
-    // 当前任务不占历史条数；历史和全部进行中会话共同受总容量上限约束
+    // 当前任务不占历史条数；历史始终按时间保留最近记录，并与全部进行中会话共同受总容量上限约束
     while (history.length > DIAGNOSTIC_HISTORY_LIMIT) {
-        removeLowestPriorityOldest(history);
+        history.pop();
     }
     while (stringBytes({ schemaVersion: DIAGNOSTIC_SCHEMA_VERSION, active, history }) > DIAGNOSTIC_TOTAL_BYTES_LIMIT) {
         if (history.length > 0) {
-            removeLowestPriorityOldest(history);
+            history.pop();
         } else if (active.length > 0) {
             const oldest = active.reduce(
                 (candidate, session, index, all) => (session.updatedAt < all[candidate].updatedAt ? index : candidate),
@@ -381,21 +373,6 @@ export function createDiagnosticSessionView(store: DiagnosticStore, now: number)
             (right.session.endedAt || right.session.updatedAt) - (left.session.endedAt || left.session.updatedAt)
     );
     return { active, unconfirmed, history };
-}
-
-function removeLowestPriorityOldest(history: DiagnosticSession[]): void {
-    let candidate = 0;
-    for (let index = 1; index < history.length; index++) {
-        const currentPriority = resultCleanupPriority(history[index]);
-        const candidatePriority = resultCleanupPriority(history[candidate]);
-        if (
-            currentPriority < candidatePriority ||
-            (currentPriority === candidatePriority && history[index].updatedAt < history[candidate].updatedAt)
-        ) {
-            candidate = index;
-        }
-    }
-    history.splice(candidate, 1);
 }
 
 function initialTaskSummary(totalChapters: number): DiagnosticTaskSummary {

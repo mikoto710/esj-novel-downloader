@@ -67,7 +67,8 @@ describe("diagnostic history UI", () => {
 
         const popup = document.querySelector("#esj-diagnostics") as HTMLElement;
         expect(popup).not.toBeNull();
-        expect(popup.textContent).toContain("最近任务（最多 10 条）");
+        expect(popup.textContent).toContain("最近任务（最多 30 条）");
+        expect(popup.textContent).toContain("总计 4.0 MiB");
         expect(popup.textContent).toContain("Diagnostic Book");
         expect(popup.textContent).toContain("作品链接和失败章节信息");
         expect(popup.textContent).toContain("network-error");
