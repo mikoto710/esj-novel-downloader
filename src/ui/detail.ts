@@ -10,17 +10,14 @@ export function injectDetailButton(): void {
         return;
     }
 
-    let settingBtn = btnGroup.querySelector<HTMLElement>(".esj-settings-trigger");
-    if (!document.querySelector("#btn-download-book")) {
-        const downloadBtn = createDownloadButton("btn-download-book", undefined, scrapeDetail, "m-b-10");
-        btnGroup.insertBefore(downloadBtn, btnGroup.firstChild);
-    }
-    if (!document.querySelector("#btn-download-book-range")) {
-        const rangeDownloadBtn = createRangeDownloadButton("btn-download-book-range", scrapeDetailRange, "m-b-10");
-        btnGroup.insertBefore(rangeDownloadBtn, settingBtn);
-    }
-    if (!settingBtn) {
-        settingBtn = createSettingButton("m-b-10");
-        btnGroup.appendChild(settingBtn);
-    }
+    const downloadBtn =
+        document.querySelector<HTMLElement>("#btn-download-book") ||
+        createDownloadButton("btn-download-book", undefined, scrapeDetail, "m-b-10");
+    const rangeDownloadBtn =
+        document.querySelector<HTMLElement>("#btn-download-book-range") ||
+        createRangeDownloadButton("btn-download-book-range", scrapeDetailRange, "m-b-10");
+    const settingBtn = btnGroup.querySelector<HTMLElement>(".esj-settings-trigger") || createSettingButton("m-b-10");
+
+    // 保留网站原生按钮顺序，只规范化脚本自身三个入口的尾部顺序
+    btnGroup.append(downloadBtn, rangeDownloadBtn, settingBtn);
 }

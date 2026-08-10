@@ -45,21 +45,25 @@ describe("range download UI", () => {
     });
 
     it("injects separate detail and forum range buttons once and in the expected order", () => {
-        document.body.innerHTML = '<div class="sp-buttons"></div>';
+        document.body.innerHTML =
+            '<div class="sp-buttons"><button id="favorite"></button><button id="edit"></button></div>';
         injectDetailButton();
         injectDetailButton();
         expect(Array.from(document.querySelectorAll(".sp-buttons button")).map((button) => button.id)).toEqual([
+            "favorite",
+            "edit",
             "btn-download-book",
             "btn-download-book-range",
             ""
         ]);
 
-        document.body.innerHTML = '<div class="forum-list-page"><div class="column"></div></div>';
+        document.body.innerHTML =
+            '<div class="forum-list-page"><div class="column"><button id="new-thread"></button></div></div>';
         injectForumButton();
         injectForumButton();
         expect(
             Array.from(document.querySelectorAll(".forum-list-page .column button")).map((button) => button.id)
-        ).toEqual(["btn-download-forum", "btn-download-forum-range", ""]);
+        ).toEqual(["new-thread", "btn-download-forum", "btn-download-forum-range", ""]);
     });
 
     it("keeps page actions locked and the range entry preparing until its flow settles", async () => {

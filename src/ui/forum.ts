@@ -29,17 +29,14 @@ export function injectForumButton(): void {
         return;
     }
 
-    let settingBtn = container.querySelector<HTMLElement>(".esj-settings-trigger");
-    if (!document.querySelector("#btn-download-forum")) {
-        const downloadBtn = createDownloadButton("btn-download-forum", undefined, scrapeForum, "");
-        container.insertBefore(downloadBtn, container.firstChild);
-    }
-    if (!document.querySelector("#btn-download-forum-range")) {
-        const rangeDownloadBtn = createRangeDownloadButton("btn-download-forum-range", scrapeForumRange);
-        container.insertBefore(rangeDownloadBtn, settingBtn);
-    }
-    if (!settingBtn) {
-        settingBtn = createSettingButton();
-        container.appendChild(settingBtn);
-    }
+    const downloadBtn =
+        document.querySelector<HTMLElement>("#btn-download-forum") ||
+        createDownloadButton("btn-download-forum", undefined, scrapeForum, "");
+    const rangeDownloadBtn =
+        document.querySelector<HTMLElement>("#btn-download-forum-range") ||
+        createRangeDownloadButton("btn-download-forum-range", scrapeForumRange);
+    const settingBtn = container.querySelector<HTMLElement>(".esj-settings-trigger") || createSettingButton();
+
+    // 保留论坛原生操作顺序，只规范化脚本自身三个入口的尾部顺序
+    container.append(downloadBtn, rangeDownloadBtn, settingBtn);
 }
