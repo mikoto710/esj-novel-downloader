@@ -255,6 +255,9 @@ export type IncompleteChapterDecision = "retry" | "export-with-placeholders" | "
 export interface IncompleteChapterDetection {
     missingTasks: readonly DownloadTask[];
     totalChapters: number;
+    sourceTotalChapters?: number;
+    selectionMode?: DownloadSelection["mode"];
+    taskOrderByIndex?: ReadonlyMap<number, number>;
 }
 
 /**

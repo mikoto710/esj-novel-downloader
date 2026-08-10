@@ -9,7 +9,8 @@ import type {
     ProtectedChapterDecision,
     ProtectedChapterPrompt,
     ProtectedChapterPromptMessageCode,
-    MappingFontFailure
+    MappingFontFailure,
+    DownloadSelection
 } from "./contracts";
 import type { DomainMessageParams } from "../messages";
 import { scanChapterIntegrity, scanMissingChapterTasks, type ChapterIntegrityIssue } from "./integrity";
@@ -27,6 +28,7 @@ import {
     toStorageFailure,
     type StorageFailure
 } from "../cache/storage-error";
+import { resolveDownloadSelection } from "./selection";
 
 // 单次下载会话共享的依赖、元数据和状态机，不持有任何浏览器全局对象
 interface DownloadContext {
@@ -35,6 +37,10 @@ interface DownloadContext {
     machine: DownloadStateMachine;
     cacheMeta: CacheMeta;
     total: number;
+    selection: DownloadSelection;
+    selectedIndexes: ReadonlySet<number>;
+    taskOrderByIndex: ReadonlyMap<number, number>;
+    persistedIndexes: Set<number>;
     imageEnabled: boolean;
     concurrency: number;
     cacheBuffer: ChapterCacheWriteBuffer;
@@ -57,6 +63,32 @@ interface DownloadContext {
 type ChapterTaskResult = "completed" | "failed" | "cancelled" | "deferred";
 
 const CACHE_RESTORE_YIELD_INTERVAL = 25;
+
+function getSelectedReadyCount(ctx: DownloadContext): number {
+    let count = 0;
+    for (const index of ctx.selectedIndexes) {
+        if (ctx.dependencies.runtime.chapters.has(index)) {
+            count++;
+        }
+    }
+    return count;
+}
+
+function getTaskOrder(ctx: DownloadContext, task: DownloadTask): number {
+    const order = ctx.taskOrderByIndex.get(task.index);
+    if (order === undefined) {
+        throw new Error(`selection-task-mismatch: ${task.index}`);
+    }
+    return order + 1;
+}
+
+function getTaskPositionParams(ctx: DownloadContext, task: DownloadTask) {
+    return {
+        index: getTaskOrder(ctx, task),
+        sourceIndex: task.index + 1,
+        total: ctx.total
+    };
+}
 
 function getErrorDetails(error: unknown): { name: string; message: string } {
     return error instanceof Error
@@ -93,7 +125,7 @@ function transition(ctx: DownloadContext, phase: DownloadSnapshot["phase"]): Dow
 function updateSnapshot(ctx: DownloadContext, progress: Partial<Omit<DownloadSnapshot, "phase">>): DownloadSnapshot {
     const snapshot = ctx.machine.update({
         ...progress,
-        readyChapterCount: ctx.dependencies.runtime.chapters.size
+        readyChapterCount: getSelectedReadyCount(ctx)
     });
     publishSnapshot(ctx, snapshot);
     return snapshot;
@@ -277,7 +309,9 @@ async function waitForMappingConsentBeforeClaim(ctx: DownloadContext): Promise<b
 async function normalizeRestoredChapters(ctx: DownloadContext): Promise<boolean> {
     const { dependencies, options } = ctx;
     const taskByIndex = new Map(options.tasks.map((task) => [task.index, task]));
-    const entries = Array.from(dependencies.runtime.chapters.entries()).sort(([left], [right]) => left - right);
+    const entries = Array.from(dependencies.runtime.chapters.entries())
+        .filter(([index]) => ctx.selectedIndexes.has(index))
+        .sort(([left], [right]) => left - right);
     const changedEntries = new Map<number, Chapter>();
     let firstMappedTask: DownloadTask | null = null;
     let invalidatedCount = 0;
@@ -311,6 +345,7 @@ async function normalizeRestoredChapters(ctx: DownloadContext): Promise<boolean>
             if (error instanceof MappingFontError) {
                 // 旧记录无法规范化时仅使该章失效，后续 worker 会重新抓取并重新验证
                 dependencies.runtime.chapters.delete(index);
+                ctx.persistedIndexes.delete(index);
                 invalidatedCount++;
                 dependencies.log({
                     code: "restored-mapping-font-invalid",
@@ -342,7 +377,8 @@ async function normalizeRestoredChapters(ctx: DownloadContext): Promise<boolean>
     updateSnapshot(ctx, {
         restoredCount: restoredTasks.length,
         completedCount: restoredTasks.length,
-        cachedChapterCount: dependencies.runtime.chapters.size
+        persistedCount: restoredTasks.length,
+        cachedChapterCount: restoredTasks.length
     });
     for (const task of restoredTasks) {
         dependencies.events.emit({ type: "chapter-restored", task });
@@ -383,8 +419,15 @@ async function persistTaskCacheBatch(
                 saved: true,
                 failure: null
             });
-            const chapterCount = dependencies.runtime.chapters.size;
-            updateSnapshot(ctx, { persistedCount: chapterCount, cachedChapterCount: chapterCount });
+            for (const index of entries.keys()) {
+                if (ctx.selectedIndexes.has(index)) {
+                    ctx.persistedIndexes.add(index);
+                }
+            }
+            updateSnapshot(ctx, {
+                persistedCount: ctx.persistedIndexes.size,
+                cachedChapterCount: getSelectedReadyCount(ctx)
+            });
             return true;
         } catch (error) {
             const normalized = normalizeStorageError(error, "write");
@@ -429,7 +472,7 @@ async function downloadChapterHtml(task: DownloadTask, ctx: DownloadContext, isR
         dependencies.log({
             code: "chapter-fetch-failed",
             params: {
-                index: task.index + 1,
+                ...getTaskPositionParams(ctx, task),
                 title: task.title,
                 errorName: details.name,
                 detail: details.message,
@@ -442,7 +485,7 @@ async function downloadChapterHtml(task: DownloadTask, ctx: DownloadContext, isR
             stage: "fetch",
             code: "chapter-fetch-failed",
             params: {
-                index: task.index + 1,
+                ...getTaskPositionParams(ctx, task),
                 title: task.title,
                 errorName: details.name,
                 detail: details.message
@@ -459,7 +502,7 @@ async function processFetchedChapterHtml(
     ctx: DownloadContext,
     isRetry: boolean
 ): Promise<ChapterTaskResult> {
-    const { dependencies, imageEnabled, total } = ctx;
+    const { dependencies, imageEnabled } = ctx;
     const { runtime } = dependencies;
     let chapter: Chapter;
     try {
@@ -473,7 +516,7 @@ async function processFetchedChapterHtml(
         dependencies.log({
             code: "chapter-mapping-font-failed",
             params: {
-                index: task.index + 1,
+                ...getTaskPositionParams(ctx, task),
                 title: task.title,
                 errorCode: error.code,
                 reason: error.reason,
@@ -486,7 +529,7 @@ async function processFetchedChapterHtml(
             stage: "mapping-font",
             code: error.code,
             params: {
-                index: task.index + 1,
+                ...getTaskPositionParams(ctx, task),
                 title: task.title,
                 reason: error.reason,
                 ...error.params
@@ -513,13 +556,13 @@ async function processFetchedChapterHtml(
         updateSnapshot(ctx, {
             completedCount: ctx.machine.snapshot.completedCount + 1,
             processedCount: ctx.machine.snapshot.processedCount + 1,
-            cachedChapterCount: runtime.chapters.size
+            cachedChapterCount: getSelectedReadyCount(ctx)
         });
         updateProgress(ctx);
     } else {
         updateSnapshot(ctx, {
             processedCount: ctx.machine.snapshot.processedCount + 1,
-            cachedChapterCount: runtime.chapters.size
+            cachedChapterCount: getSelectedReadyCount(ctx)
         });
     }
 
@@ -539,8 +582,7 @@ async function processFetchedChapterHtml(
             params: {
                 retry: isRetry,
                 completed: ctx.machine.snapshot.completedCount,
-                total,
-                index: task.index + 1,
+                ...getTaskPositionParams(ctx, task),
                 title: task.title,
                 imageErrors,
                 imageCount,
@@ -553,8 +595,7 @@ async function processFetchedChapterHtml(
             params: {
                 retry: isRetry,
                 completed: ctx.machine.snapshot.completedCount,
-                total,
-                index: task.index + 1,
+                ...getTaskPositionParams(ctx, task),
                 title: task.title,
                 imageCount,
                 url: task.url
@@ -566,8 +607,7 @@ async function processFetchedChapterHtml(
             params: {
                 retry: isRetry,
                 completed: ctx.machine.snapshot.completedCount,
-                total,
-                index: task.index + 1,
+                ...getTaskPositionParams(ctx, task),
                 title: task.title,
                 url: task.url
             }
@@ -586,7 +626,7 @@ async function processChapterTask(
     ctx: DownloadContext,
     isRetry = false
 ): Promise<ChapterTaskResult> {
-    const { dependencies, total } = ctx;
+    const { dependencies } = ctx;
     const { runtime } = dependencies;
     if (runtime.isCancellationRequested()) {
         return "cancelled";
@@ -596,7 +636,7 @@ async function processChapterTask(
     if (!isRetry && runtime.chapters.has(task.index)) {
         updateSnapshot(ctx, {
             completedCount: ctx.machine.snapshot.completedCount + 1,
-            cachedChapterCount: runtime.chapters.size
+            cachedChapterCount: getSelectedReadyCount(ctx)
         });
         dependencies.events.emit({ type: "chapter-restored", task });
         updateProgress(ctx);
@@ -615,7 +655,7 @@ async function processChapterTask(
         updateSnapshot(ctx, {
             completedCount: ctx.machine.snapshot.completedCount + 1,
             processedCount: ctx.machine.snapshot.processedCount + 1,
-            cachedChapterCount: runtime.chapters.size
+            cachedChapterCount: getSelectedReadyCount(ctx)
         });
         updateProgress(ctx);
         const saved = await ctx.cacheBuffer.add(task.index, runtime.chapters.get(task.index)!);
@@ -626,8 +666,7 @@ async function processChapterTask(
             code: "chapter-skipped-non-site",
             params: {
                 completed: ctx.machine.snapshot.completedCount,
-                total,
-                index: task.index + 1,
+                ...getTaskPositionParams(ctx, task),
                 title: task.title
             }
         });
@@ -655,14 +694,14 @@ async function processChapterTask(
                 }
                 dependencies.log({
                     code: "protected-chapter-retry-skipped",
-                    params: { index: task.index + 1, total, title: task.title }
+                    params: { ...getTaskPositionParams(ctx, task), title: task.title }
                 });
                 return "failed";
             }
             reopenProtectedChapterForRetry(ctx, task);
             dependencies.log({
                 code: "protected-chapter-redetected",
-                params: { index: task.index + 1, total, title: task.title }
+                params: { ...getTaskPositionParams(ctx, task), title: task.title }
             });
             return resolveProtectedChapter({ task, pageHtml: html }, ctx, true);
         }
@@ -673,12 +712,12 @@ async function processChapterTask(
         if (queued.kind === "queued") {
             dependencies.log({
                 code: "protected-chapter-queued",
-                params: { index: task.index + 1, total, title: task.title }
+                params: { ...getTaskPositionParams(ctx, task), title: task.title }
             });
         } else if (queued.kind === "skipped") {
             dependencies.log({
                 code: "protected-chapter-skipped",
-                params: { index: task.index + 1, total, title: task.title }
+                params: { ...getTaskPositionParams(ctx, task), title: task.title }
             });
         }
         return "deferred";
@@ -698,6 +737,13 @@ async function promptForProtectedChapter(
     const prompt: ProtectedChapterPrompt = {
         task: item.task,
         totalChapters: ctx.total,
+        ...(ctx.selection.mode === "range"
+            ? {
+                  taskOrder: getTaskOrder(ctx, item.task),
+                  sourceTotalChapters: ctx.selection.sourceTotalChapters,
+                  selectionMode: ctx.selection.mode
+              }
+            : {}),
         pendingCount: ctx.machine.snapshot.protectedPendingCount,
         rememberPassword: ctx.rememberPassword,
         retryConnection,
@@ -745,7 +791,7 @@ async function resolveProtectedChapter(
             dependencies.ui.closeProtectedChapterPrompt();
             dependencies.log({
                 code: "protected-chapter-skipped",
-                params: { index: item.task.index + 1, total: ctx.total, title: item.task.title }
+                params: { ...getTaskPositionParams(ctx, item.task), title: item.task.title }
             });
             ctx.protectedSkippedIndexes.add(item.task.index);
             updateProtectedSnapshot(ctx, {
@@ -758,7 +804,7 @@ async function resolveProtectedChapter(
             dependencies.ui.closeProtectedChapterPrompt();
             dependencies.log({
                 code: "protected-chapter-skipped",
-                params: { index: item.task.index + 1, total: ctx.total, title: item.task.title }
+                params: { ...getTaskPositionParams(ctx, item.task), title: item.task.title }
             });
             ctx.protectedSkippedIndexes.add(item.task.index);
             if (isRetry) {
@@ -769,7 +815,7 @@ async function resolveProtectedChapter(
                 ctx.protectedSkippedIndexes.add(skipped.task.index);
                 dependencies.log({
                     code: "protected-chapter-skipped",
-                    params: { index: skipped.task.index + 1, total: ctx.total, title: skipped.task.title }
+                    params: { ...getTaskPositionParams(ctx, skipped.task), title: skipped.task.title }
                 });
             }
             updateProtectedSnapshot(ctx, {
@@ -802,7 +848,7 @@ async function resolveProtectedChapter(
                 if (attempt === 0) {
                     dependencies.log({
                         code: "protected-chapter-connection-retry",
-                        params: { index: item.task.index + 1, total: ctx.total, title: item.task.title }
+                        params: { ...getTaskPositionParams(ctx, item.task), title: item.task.title }
                     });
                     continue;
                 }
@@ -815,12 +861,12 @@ async function resolveProtectedChapter(
                 task: item.task,
                 stage: "protected-auth",
                 code: "network-error",
-                params: { index: item.task.index + 1, total: ctx.total },
+                params: getTaskPositionParams(ctx, item.task),
                 retry: false
             });
             dependencies.log({
                 code: "protected-chapter-connection-failed",
-                params: { index: item.task.index + 1, total: ctx.total, title: item.task.title }
+                params: { ...getTaskPositionParams(ctx, item.task), title: item.task.title }
             });
             message = undefined;
             messageCode = "connection-failed";
@@ -839,7 +885,7 @@ async function resolveProtectedChapter(
             dependencies.events.emit({ type: "protected-chapter-password-rejected", task: item.task });
             dependencies.log({
                 code: "protected-chapter-password-rejected",
-                params: { index: item.task.index + 1, total: ctx.total, title: item.task.title }
+                params: { ...getTaskPositionParams(ctx, item.task), title: item.task.title }
             });
             continue;
         }
@@ -850,8 +896,7 @@ async function resolveProtectedChapter(
                 stage: "protected-auth",
                 code: result.code,
                 params: {
-                    index: item.task.index + 1,
-                    total: ctx.total,
+                    ...getTaskPositionParams(ctx, item.task),
                     ...(result.params || {})
                 },
                 retry: false
@@ -859,8 +904,7 @@ async function resolveProtectedChapter(
             dependencies.log({
                 code: "protected-chapter-protocol-failed",
                 params: {
-                    index: item.task.index + 1,
-                    total: ctx.total,
+                    ...getTaskPositionParams(ctx, item.task),
                     title: item.task.title,
                     errorCode: result.code,
                     ...(result.params || {})
@@ -883,7 +927,7 @@ async function resolveProtectedChapter(
         if (processed === "completed") {
             dependencies.log({
                 code: "protected-chapter-unlocked",
-                params: { index: item.task.index + 1, total: ctx.total, title: item.task.title }
+                params: { ...getTaskPositionParams(ctx, item.task), title: item.task.title }
             });
         }
         return processed;
@@ -920,7 +964,7 @@ function throwIfMappingFontFailed(ctx: DownloadContext): void {
 
 // 扫描缺失或图片不完整的章节，并按原顺序执行一次补抓
 async function checkIntegrityAndRetry(tasks: DownloadTask[], ctx: DownloadContext): Promise<boolean> {
-    const { dependencies, imageEnabled, total } = ctx;
+    const { dependencies, imageEnabled } = ctx;
     const { runtime } = dependencies;
     dependencies.log({ code: "integrity-check-started" });
     beginProtectedRetryRound(ctx);
@@ -943,8 +987,7 @@ async function checkIntegrityAndRetry(tasks: DownloadTask[], ctx: DownloadContex
             dependencies.log({
                 code: "chapter-integrity-retry",
                 params: {
-                    index: issue.task.index + 1,
-                    total,
+                    ...getTaskPositionParams(ctx, issue.task),
                     title: issue.task.title,
                     ...getRetryReasonParams(issue, ctx)
                 }
@@ -976,7 +1019,7 @@ async function checkIntegrityAndRetry(tasks: DownloadTask[], ctx: DownloadContex
 }
 
 async function retryMissingChapters(tasks: readonly DownloadTask[], ctx: DownloadContext): Promise<boolean> {
-    const { dependencies, total } = ctx;
+    const { dependencies } = ctx;
     const { runtime } = dependencies;
     beginProtectedRetryRound(ctx);
     updateSnapshot(ctx, { retryPendingCount: tasks.length, failedCount: tasks.length });
@@ -988,7 +1031,7 @@ async function retryMissingChapters(tasks: readonly DownloadTask[], ctx: Downloa
         process: async (task) => {
             dependencies.log({
                 code: "missing-chapter-retry",
-                params: { index: task.index + 1, total, title: task.title, reason: "missing" }
+                params: { ...getTaskPositionParams(ctx, task), title: task.title, reason: "missing" }
             });
             const result = await processChapterTask(task, ctx, true);
             if (result === "cancelled") {
@@ -1035,7 +1078,21 @@ async function resolveIncompleteChapters(tasks: DownloadTask[], ctx: DownloadCon
 
         const decision = await runUserDecision(
             ctx,
-            () => dependencies.ui.confirmIncompleteChapters({ missingTasks, totalChapters: ctx.total }, runtime.signal),
+            () =>
+                dependencies.ui.confirmIncompleteChapters(
+                    {
+                        missingTasks,
+                        totalChapters: ctx.total,
+                        ...(ctx.selection.mode === "range"
+                            ? {
+                                  sourceTotalChapters: ctx.selection.sourceTotalChapters,
+                                  selectionMode: ctx.selection.mode,
+                                  taskOrderByIndex: ctx.taskOrderByIndex
+                              }
+                            : {})
+                    },
+                    runtime.signal
+                ),
             "cancel"
         );
         dependencies.events.emit({
@@ -1153,18 +1210,12 @@ async function performCancellation(ctx: DownloadContext): Promise<void> {
 function assembleExportChapters(ctx: DownloadContext): { text: string; chapters: Chapter[] } {
     const textSegments = [ctx.options.introTxt];
     const chapters: Chapter[] = [];
-    const tasksByIndex = new Map(ctx.options.tasks.map((task) => [task.index, task]));
-    for (let index = 0; index < ctx.total; index++) {
-        const chapter = ctx.dependencies.runtime.chapters.get(index);
+    for (const task of ctx.options.tasks) {
+        const chapter = ctx.dependencies.runtime.chapters.get(task.index);
         if (chapter) {
             textSegments.push(chapter.txtSegment);
             chapters.push(chapter);
         } else {
-            const task = tasksByIndex.get(index) || {
-                index,
-                title: `第 ${index + 1} 章`,
-                url: ""
-            };
             const placeholder = createMissingChapterPlaceholder(task);
             textSegments.push(placeholder.txtSegment);
             chapters.push(placeholder);
@@ -1177,7 +1228,13 @@ function assembleExportChapters(ctx: DownloadContext): { text: string; chapters:
  * 使用调用方提供的环境依赖运行全本下载，并统一处理恢复、下载、缓存、取消与导出准备
  */
 export async function runDownload(options: DownloadOptions, dependencies: DownloadDependencies): Promise<void> {
+    const selection = resolveDownloadSelection(options);
     const total = options.tasks.length;
+    const selectedIndexes = new Set(options.tasks.map((task) => task.index));
+    const taskOrderByIndex = new Map(options.tasks.map((task, order) => [task.index, order]));
+    const restoredIndexes = options.tasks
+        .filter((task) => dependencies.runtime.chapters.has(task.index))
+        .map((task) => task.index);
     const imageEnabled = options.imageEnabled;
     const concurrency = Math.max(1, Math.floor(dependencies.settings.getConcurrency()) || 1);
     const cacheMeta: CacheMeta = {
@@ -1186,12 +1243,12 @@ export async function runDownload(options: DownloadOptions, dependencies: Downlo
         rawBookName: options.rawBookName || options.bookName,
         author: options.author || "未知作者",
         pageUrl: options.pageUrl || dependencies.environment.currentUrl(),
-        totalChapters: total,
+        totalChapters: selection.sourceTotalChapters,
         sourcePageType: options.sourcePageType || "unknown",
         imageEnabled,
         updatedAt: dependencies.environment.now()
     };
-    const machine = new DownloadStateMachine(total, dependencies.runtime.chapters.size, dependencies.events);
+    const machine = new DownloadStateMachine(total, restoredIndexes.length, dependencies.events);
     const cacheBuffer = new ChapterCacheWriteBuffer({
         write: (entries, signal) => persistTaskCacheBatch(ctx, entries, signal),
         schedule: dependencies.scheduler.schedule,
@@ -1203,6 +1260,10 @@ export async function runDownload(options: DownloadOptions, dependencies: Downlo
         machine,
         cacheMeta,
         total,
+        selection,
+        selectedIndexes,
+        taskOrderByIndex,
+        persistedIndexes: new Set(restoredIndexes),
         imageEnabled,
         concurrency,
         cacheBuffer,
@@ -1227,10 +1288,10 @@ export async function runDownload(options: DownloadOptions, dependencies: Downlo
         transition(ctx, "preparing");
         dependencies.ui.prepare();
         dependencies.runtime.startCacheSession(cacheMeta, options.taskId, dependencies.runtime.chapters.size);
-        if (dependencies.runtime.chapters.size > 0) {
+        if (restoredIndexes.length > 0) {
             dependencies.log({
                 code: "cache-restore-started",
-                params: { count: dependencies.runtime.chapters.size }
+                params: { count: restoredIndexes.length }
             });
         }
         transition(ctx, "restoring-cache");
@@ -1317,9 +1378,9 @@ export async function runDownload(options: DownloadOptions, dependencies: Downlo
             return;
         }
         const assembled = assembleExportChapters(ctx);
-        let cacheCleared = false;
+        let cacheFinalized = false;
         try {
-            cacheCleared = await dependencies.cache.clearForTask(
+            cacheFinalized = await dependencies.cache.clearForTask(
                 options.bookId,
                 options.taskId,
                 dependencies.runtime.signal
@@ -1331,7 +1392,7 @@ export async function runDownload(options: DownloadOptions, dependencies: Downlo
             await finishCancellation(ctx);
             return;
         }
-        if (!cacheCleared) {
+        if (!cacheFinalized) {
             throw createStorageError("ownership-lost", "clear");
         }
         dependencies.runtime.setExportData({
@@ -1355,6 +1416,12 @@ export async function runDownload(options: DownloadOptions, dependencies: Downlo
                     totalCount: assembled.chapters.length,
                     missingCount: ctx.machine.snapshot.failedCount
                 },
+                selection: {
+                    mode: selection.mode,
+                    sourceTotalChapters: selection.sourceTotalChapters,
+                    startChapter: selection.startIndex + 1,
+                    endChapter: selection.endIndex + 1
+                },
                 imageEnabled
             }
         });
@@ -1366,7 +1433,7 @@ export async function runDownload(options: DownloadOptions, dependencies: Downlo
         });
         updateSnapshot(ctx, {
             completedCount: total,
-            cachedChapterCount: dependencies.runtime.chapters.size,
+            cachedChapterCount: getSelectedReadyCount(ctx),
             hasExportData: true
         });
         transition(ctx, "export-ready");

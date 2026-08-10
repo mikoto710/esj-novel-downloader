@@ -41,7 +41,6 @@ export function setCachedData(data: CachedData): void {
     state.cachedData = data;
 
     if (state.runtimeCacheSession) {
-        state.runtimeCacheSession.cachedChapterCount = data.chapters.length;
         state.runtimeCacheSession.updatedAt = Date.now();
         state.runtimeCacheSession.hasExportData = true;
     }
