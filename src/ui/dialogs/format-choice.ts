@@ -8,10 +8,10 @@ import { addDownloadHistory } from "../../core/download-history";
 import { MappingFontError } from "../../core/mapping-font";
 import { createBookExportFilename } from "../../core/export/filename";
 import { recordBrowserDiagnosticExport, recordBrowserDiagnosticFailure } from "../../adapters/browser-diagnostics";
-import { fullCleanup, enableDrag, el } from "../../utils/dom";
+import { fullCleanup, enableDrag, el, registerElementCleanup, removeElement } from "../../utils/dom";
 import { triggerDownload } from "../../utils/download";
 import { log } from "../../utils/log";
-import { acquirePageActionGroupLock } from "../page-action-lock";
+import { acquirePageActionGroupLockForPopup } from "../page-action-lock";
 import { subscribeInterfaceLocaleChange, t } from "../locale";
 import { formatMappingFontError } from "../messages/mapping-font";
 import { createCommonHeader } from "./common";
@@ -29,7 +29,6 @@ const MAX_EXPORT_ERROR_DETAIL_LENGTH = 2_000;
 const diagnosticExportFormat = { TXT: "txt", EPUB: "epub", HTML: "html" } as const;
 type ExportFailureStage = "generate" | "download";
 let disposeActiveFormatLocaleRefresh: (() => void) | null = null;
-let releaseActiveFormatPageActions: (() => void) | null = null;
 
 function getExportErrorDetails(error: unknown): string {
     const details =
@@ -78,14 +77,8 @@ export function showFormatChoice(): void {
         return;
     }
 
-    disposeActiveFormatLocaleRefresh?.();
-    releaseActiveFormatPageActions?.();
-    releaseActiveFormatPageActions = null;
     fullCleanup();
-
-    // 格式弹窗和下载入口分别持锁，任务返回时不会提前解锁本弹窗
-    const releasePageActions = acquirePageActionGroupLock();
-    releaseActiveFormatPageActions = releasePageActions;
+    disposeActiveFormatLocaleRefresh?.();
 
     const data = state.cachedData as CachedData;
     const mappedChapters = data.chapters.filter((chapter) => Boolean(chapter.mappingFont));
@@ -96,12 +89,7 @@ export function showFormatChoice(): void {
     const hasMappedChapters = mappingSummary.chapterCount > 0;
 
     const closeAction = () => {
-        disposeActiveFormatLocaleRefresh?.();
-        document.querySelector("#esj-format")?.remove();
-        if (releaseActiveFormatPageActions === releasePageActions) {
-            releaseActiveFormatPageActions = null;
-        }
-        releasePageActions();
+        removeElement(popup);
     };
 
     const header = createCommonHeader(t("export.title"), closeAction);
@@ -274,6 +262,7 @@ export function showFormatChoice(): void {
     );
 
     document.body.appendChild(popup);
+    acquirePageActionGroupLockForPopup(popup);
     enableDrag(popup, ".esj-common-header");
 
     const refreshFormatChoiceText = () => {
@@ -338,6 +327,7 @@ export function showFormatChoice(): void {
         }
     };
     disposeActiveFormatLocaleRefresh = disposeLocaleRefresh;
+    registerElementCleanup(popup, disposeLocaleRefresh);
 
     // 下载 EPUB
     async function handleEpubDownload() {

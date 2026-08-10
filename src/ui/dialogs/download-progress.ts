@@ -1,28 +1,20 @@
 import { abortActiveDownload, state } from "../../core/state";
 import type { BookDownloadLock } from "../../types";
-import { fullCleanup, enableDrag, el } from "../../utils/dom";
+import { fullCleanup, enableDrag, el, removeElement } from "../../utils/dom";
 import { log } from "../../utils/log";
 import { createMinimizedTray } from "../tray";
+import { acquirePageActionGroupLockForPopup } from "../page-action-lock";
 import { createCommonHeader } from "./common";
 import { bindInterfaceText, t } from "../locale";
-
-/**
- * 锁定/解锁页面上的设置按钮
- * @param locked true=禁用, false=启用
- */
-function toggleSettingsLock(locked: boolean) {
-    const btns = document.querySelectorAll(".esj-settings-trigger");
-    btns.forEach((b) => ((b as HTMLButtonElement).disabled = locked));
-}
 
 /**
  * 提示同一本书已有跨页面下载任务，单章导出不使用此弹窗
  */
 export function showBookDownloadInProgressPopup(lock: BookDownloadLock): void {
-    document.querySelector("#esj-book-lock")?.remove();
+    removeElement(document.querySelector("#esj-book-lock"));
 
     const sourceText = t(lock.sourcePageType === "detail" ? "download.conflict.detail" : "download.conflict.forum");
-    const closeAction = () => document.querySelector("#esj-book-lock")?.remove();
+    const closeAction = () => removeElement(popup);
     const popup = el(
         "div",
         {
@@ -48,6 +40,7 @@ export function showBookDownloadInProgressPopup(lock: BookDownloadLock): void {
     );
 
     document.body.appendChild(popup);
+    acquirePageActionGroupLockForPopup(popup);
     enableDrag(popup, ".esj-common-header");
 }
 
@@ -56,8 +49,6 @@ export function showBookDownloadInProgressPopup(lock: BookDownloadLock): void {
  */
 export function createDownloadPopup(mode: "all" | "range" = "all"): HTMLElement {
     fullCleanup(state.originalTitle);
-
-    toggleSettingsLock(true);
 
     function onCancel() {
         abortActiveDownload();
@@ -141,6 +132,7 @@ export function createDownloadPopup(mode: "all" | "range" = "all"): HTMLElement 
     );
 
     document.body.appendChild(popup);
+    acquirePageActionGroupLockForPopup(popup);
     enableDrag(popup, ".esj-common-header");
     return popup;
 }
@@ -152,16 +144,13 @@ export function createDownloadPopup(mode: "all" | "range" = "all"): HTMLElement 
 export function createConfirmPopup(onOk: () => void, onCancel?: () => void, cacheHint?: string): void {
     fullCleanup(state.originalTitle);
 
-    toggleSettingsLock(true);
-
     const cachedCount = state.globalChaptersMap.size;
     const hintText =
         cacheHint ||
         (cachedCount > 0 ? t("confirm.download.cached", { count: cachedCount }) : t("confirm.download.empty"));
 
     const closeAction = () => {
-        document.querySelector("#esj-confirm")?.remove();
-        toggleSettingsLock(false);
+        removeElement(popup);
         if (onCancel) {
             onCancel();
         }
@@ -177,9 +166,8 @@ export function createConfirmPopup(onOk: () => void, onCancel?: () => void, cach
             id: "esj-confirm-cancel",
             style: "padding:8px 12px;background:#eee;border:1px solid #ccc;border-radius:6px;cursor:pointer;",
             onclick: () => {
-                popup.remove();
+                removeElement(popup);
                 if (onCancel) {
-                    toggleSettingsLock(false);
                     onCancel();
                 }
             }
@@ -193,7 +181,7 @@ export function createConfirmPopup(onOk: () => void, onCancel?: () => void, cach
             id: "esj-confirm-ok",
             style: "padding:8px 12px;background:#2b9bd7;color:#fff;border:none;border-radius:6px;cursor:pointer;",
             onclick: () => {
-                popup.remove();
+                removeElement(popup);
                 onOk();
             }
         },
@@ -218,5 +206,6 @@ export function createConfirmPopup(onOk: () => void, onCancel?: () => void, cach
     );
 
     document.body.appendChild(popup);
+    acquirePageActionGroupLockForPopup(popup);
     enableDrag(popup, ".esj-common-header");
 }

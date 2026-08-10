@@ -1,9 +1,9 @@
 import type { DownloadSelection, DownloadTask } from "../../core/download/contracts";
 import { createRangeSelection } from "../../core/download/selection";
-import { enableDrag, el } from "../../utils/dom";
+import { enableDrag, el, registerElementCleanup, removeElement } from "../../utils/dom";
 import { createCommonHeader } from "./common";
 import { subscribeInterfaceLocaleChange, t } from "../locale";
-import { acquirePageActionGroupLock } from "../page-action-lock";
+import { acquirePageActionGroupLockForPopup } from "../page-action-lock";
 
 export type RangeSelectionDecision =
     | { action: "download"; selection: DownloadSelection }
@@ -25,8 +25,7 @@ let finishActiveRangeReplace: ((confirmed: boolean) => void) | null = null;
  */
 export function createRangeSelectionPopup(options: RangeSelectionPopupOptions): Promise<RangeSelectionDecision> {
     finishActiveRangeSelection?.({ action: "cancel" });
-    document.querySelector("#esj-range-selection")?.remove();
-    const releasePageActions = acquirePageActionGroupLock();
+    removeElement(document.querySelector("#esj-range-selection"));
 
     return new Promise((resolve) => {
         const total = options.tasks.length;
@@ -41,8 +40,7 @@ export function createRangeSelectionPopup(options: RangeSelectionPopupOptions): 
                 finishActiveRangeSelection = null;
             }
             unsubscribeLocale();
-            popup.remove();
-            releasePageActions();
+            removeElement(popup);
             resolve(decision);
         };
         finishActiveRangeSelection = finish;
@@ -225,6 +223,8 @@ export function createRangeSelectionPopup(options: RangeSelectionPopupOptions): 
             ]
         );
         document.body.appendChild(popup);
+        registerElementCleanup(popup, () => finish({ action: "cancel" }));
+        acquirePageActionGroupLockForPopup(popup);
         enableDrag(popup, ".esj-common-header");
         unsubscribeLocale = subscribeInterfaceLocaleChange(refresh);
         refresh();
@@ -238,8 +238,7 @@ export function createRangeSelectionPopup(options: RangeSelectionPopupOptions): 
  */
 export function confirmReplaceRangeExport(): Promise<boolean> {
     finishActiveRangeReplace?.(false);
-    document.querySelector("#esj-range-replace-confirm")?.remove();
-    const releasePageActions = acquirePageActionGroupLock();
+    removeElement(document.querySelector("#esj-range-replace-confirm"));
     return new Promise((resolve) => {
         let settled = false;
         const finish = (confirmed: boolean) => {
@@ -250,8 +249,7 @@ export function confirmReplaceRangeExport(): Promise<boolean> {
             if (finishActiveRangeReplace === finish) {
                 finishActiveRangeReplace = null;
             }
-            popup.remove();
-            releasePageActions();
+            removeElement(popup);
             resolve(confirmed);
         };
         finishActiveRangeReplace = finish;
@@ -289,6 +287,8 @@ export function confirmReplaceRangeExport(): Promise<boolean> {
             ]
         );
         document.body.appendChild(popup);
+        registerElementCleanup(popup, () => finish(false));
+        acquirePageActionGroupLockForPopup(popup);
         enableDrag(popup, ".esj-common-header");
         (popup.querySelector("#esj-range-replace-cancel") as HTMLButtonElement | null)?.focus();
     });

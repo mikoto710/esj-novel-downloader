@@ -6,10 +6,11 @@ import {
 } from "../../core/cache/manager";
 import { CacheListItem } from "../../types";
 import { subscribeCacheSync } from "../../core/cache/sync";
-import { el, enableDrag } from "../../utils/dom";
+import { el, enableDrag, registerElementCleanup, removeElement } from "../../utils/dom";
 import { log } from "../../utils/log";
 import { showMessagePopup } from "./message";
 import { bindInterfaceAttribute, subscribeInterfaceLocaleChange, t } from "../locale";
+import { acquirePageActionGroupLockForPopup } from "../page-action-lock";
 
 let disposeActiveCacheManagerSynchronizer: (() => void) | null = null;
 
@@ -20,11 +21,6 @@ function showCacheClearFailure(error: unknown): void {
         message: t("cache.failure.message"),
         details: error instanceof Error ? error.message : String(error)
     });
-}
-
-function toggleSettingsLock(locked: boolean) {
-    const buttons = document.querySelectorAll(".esj-settings-trigger");
-    buttons.forEach((button) => ((button as HTMLButtonElement).disabled = locked));
 }
 
 function createHeader(title: string, onClose: () => void): HTMLElement {
@@ -199,15 +195,19 @@ function showCacheProtectionNotice(message: string): Promise<void> {
  * 创建缓存管理弹窗
  */
 export function createCacheManagerPopup(): void {
+    removeElement(document.querySelector("#esj-cache-manager"));
+    removeElement(document.querySelector("#esj-cache-confirm"));
     disposeActiveCacheManagerSynchronizer?.();
-    document.querySelector("#esj-cache-manager")?.remove();
-    document.querySelector("#esj-cache-confirm")?.remove();
-    toggleSettingsLock(true);
 
     let stopSynchronizing: () => void = () => {};
     let stopLocaleRefresh: () => void = () => {};
     let refreshTimer: number | null = null;
+    let disposed = false;
     const disposeSynchronizer = () => {
+        if (disposed) {
+            return;
+        }
+        disposed = true;
         stopSynchronizing();
         stopLocaleRefresh();
         if (refreshTimer !== null) {
@@ -220,10 +220,8 @@ export function createCacheManagerPopup(): void {
     };
 
     const closeAction = () => {
-        disposeSynchronizer();
-        document.querySelector("#esj-cache-confirm")?.remove();
-        document.querySelector("#esj-cache-manager")?.remove();
-        toggleSettingsLock(false);
+        removeElement(document.querySelector("#esj-cache-confirm"));
+        removeElement(popup);
     };
 
     const listBox = el("div", {
@@ -360,6 +358,8 @@ export function createCacheManagerPopup(): void {
     disposeActiveCacheManagerSynchronizer = disposeSynchronizer;
 
     document.body.appendChild(popup);
+    registerElementCleanup(popup, disposeSynchronizer);
+    acquirePageActionGroupLockForPopup(popup);
     enableDrag(popup, ".esj-common-header");
     stopLocaleRefresh = subscribeInterfaceLocaleChange(() => {
         if (!popup.isConnected) {

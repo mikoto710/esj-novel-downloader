@@ -11,22 +11,14 @@ import {
 } from "../../core/config";
 import { isInterfaceLocalePreference } from "../../core/locale";
 import { listActiveBookDownloadLocks } from "../../core/book-lock";
-import { fullCleanup, enableDrag, el } from "../../utils/dom";
+import { fullCleanup, enableDrag, el, removeElement } from "../../utils/dom";
 import { log } from "../../utils/log";
 import { bindInterfaceAttribute, bindInterfaceText, publishInterfaceLocaleChange, t } from "../locale";
+import { acquirePageActionGroupLockForPopup } from "../page-action-lock";
 import { createCommonHeader } from "./common";
 import { createCacheManagerPopup } from "./cache-manager";
 import { createDownloadHistoryPopup } from "./download-history";
 import { createDiagnosticPopup } from "./diagnostics";
-
-/**
- * 锁定/解锁页面上的设置按钮
- * @param locked true=禁用, false=启用
- */
-function toggleSettingsLock(locked: boolean) {
-    const btns = document.querySelectorAll(".esj-settings-trigger");
-    btns.forEach((b) => ((b as HTMLButtonElement).disabled = locked));
-}
 
 function confirmImageSettingChange(activeTaskCount: number): Promise<boolean> {
     document.querySelector("#esj-image-setting-task-confirm")?.remove();
@@ -88,12 +80,8 @@ function confirmImageSettingChange(activeTaskCount: number): Promise<boolean> {
 export function createSettingsPanel(): void {
     fullCleanup();
 
-    // 设置面板打开时，自己就是设置，不需要禁用按钮
-    toggleSettingsLock(true);
-
     const closeAction = () => {
-        document.querySelector("#esj-settings")?.remove();
-        toggleSettingsLock(false);
+        removeElement(popup);
     };
 
     const header = createCommonHeader(`⚙️ ${t("settings.title")}`, closeAction);
@@ -187,7 +175,7 @@ export function createSettingsPanel(): void {
             className: "btn btn-primary btn-sm esj-cache-manager-trigger",
             style: "color: white; min-width: 110px;",
             onclick: () => {
-                document.querySelector("#esj-settings")?.remove();
+                removeElement(popup);
                 createCacheManagerPopup();
             }
         },
@@ -200,7 +188,7 @@ export function createSettingsPanel(): void {
             className: "btn btn-primary btn-sm",
             style: "color:white;min-width:110px;",
             onclick: () => {
-                document.querySelector("#esj-settings")?.remove();
+                removeElement(popup);
                 createDownloadHistoryPopup();
             }
         },
@@ -419,5 +407,6 @@ export function createSettingsPanel(): void {
     );
 
     document.body.appendChild(popup);
+    acquirePageActionGroupLockForPopup(popup);
     enableDrag(popup, ".esj-common-header");
 }

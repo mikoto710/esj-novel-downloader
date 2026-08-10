@@ -5,8 +5,9 @@ import {
     removeDownloadHistory
 } from "../../core/download-history";
 import { DownloadFormat, DownloadHistoryItem, SourcePageType } from "../../types";
-import { el, enableDrag } from "../../utils/dom";
+import { el, enableDrag, registerElementCleanup, removeElement } from "../../utils/dom";
 import { subscribeInterfaceLocaleChange, t } from "../locale";
+import { acquirePageActionGroupLockForPopup } from "../page-action-lock";
 
 let disposeActiveHistoryLocaleRefresh: (() => void) | null = null;
 let disposeActiveHistoryColumnResize: (() => void) | null = null;
@@ -220,23 +221,28 @@ function showHistoryClearConfirm(): Promise<boolean> {
  * 创建下载记录弹窗
  */
 export function createDownloadHistoryPopup(): void {
+    removeElement(document.querySelector("#esj-download-history"));
+    removeElement(document.querySelector("#esj-download-history-confirm"));
     disposeActiveHistoryLocaleRefresh?.();
     disposeActiveHistoryColumnResize?.();
     disposeActiveHistoryColumnResize = null;
-    document.querySelector("#esj-download-history")?.remove();
-    document.querySelector("#esj-download-history-confirm")?.remove();
     let disposeHistoryColumnResize: (() => void) | null = null;
-    const close = () => {
-        disposeActiveHistoryLocaleRefresh?.();
+    let disposeLocaleRefresh: () => void = () => undefined;
+    let disposed = false;
+    const dispose = () => {
+        if (disposed) {
+            return;
+        }
+        disposed = true;
+        disposeLocaleRefresh();
         disposeHistoryColumnResize?.();
         if (disposeActiveHistoryColumnResize === disposeHistoryColumnResize) {
             disposeActiveHistoryColumnResize = null;
         }
-        document.querySelector("#esj-download-history")?.remove();
-        document.querySelector("#esj-download-history-confirm")?.remove();
-        document.querySelectorAll(".esj-settings-trigger").forEach((button) => {
-            (button as HTMLButtonElement).disabled = false;
-        });
+        removeElement(document.querySelector("#esj-download-history-confirm"));
+    };
+    const close = () => {
+        removeElement(popup);
     };
     const header = el(
         "div",
@@ -498,6 +504,8 @@ export function createDownloadHistoryPopup(): void {
         ]
     );
     document.body.appendChild(popup);
+    registerElementCleanup(popup, dispose);
+    acquirePageActionGroupLockForPopup(popup);
     enableDrag(popup, ".esj-common-header");
     disposeHistoryColumnResize = enableHistoryColumnResize(table);
     disposeActiveHistoryColumnResize = disposeHistoryColumnResize;
@@ -561,7 +569,7 @@ export function createDownloadHistoryPopup(): void {
         }
         refreshLocaleText();
     });
-    const disposeLocaleRefresh = () => {
+    disposeLocaleRefresh = () => {
         unsubscribeLocale();
         if (disposeActiveHistoryLocaleRefresh === disposeLocaleRefresh) {
             disposeActiveHistoryLocaleRefresh = null;

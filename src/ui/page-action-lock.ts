@@ -1,3 +1,5 @@
+import { registerElementCleanup } from "../utils/dom";
+
 interface PageActionLockState {
     initialDisabled: boolean;
     owners: Set<symbol>;
@@ -55,4 +57,23 @@ export function acquirePageActionLock(elements: ArrayLike<Element>): () => void 
  */
 export function acquirePageActionGroupLock(): () => void {
     return acquirePageActionLock(document.querySelectorAll(".esj-download-trigger,.esj-settings-trigger"));
+}
+
+/**
+ * 让弹窗在自身移除前持有页面入口锁，外部清理时也会自动释放
+ */
+export function acquirePageActionGroupLockForPopup(popup: HTMLElement): () => void {
+    const releasePageActions = acquirePageActionGroupLock();
+    let unregisterCleanup: () => void = () => undefined;
+    let released = false;
+    const release = () => {
+        if (released) {
+            return;
+        }
+        released = true;
+        unregisterCleanup();
+        releasePageActions();
+    };
+    unregisterCleanup = registerElementCleanup(popup, release);
+    return release;
 }
