@@ -16,7 +16,8 @@ scrapers / ui
 - `contracts.ts` exposes the core ports and process data. Browser implementations belong in `adapters/`.
 - `integrity.ts` classifies missing chapters and image retry conditions. `incomplete-chapters.ts` creates export-only placeholders after an explicit user decision; callers must not write those placeholders back to the chapter map or persistent cache.
 - `core/cache/` owns v3 incremental cache, legacy-cache lazy migration, listing, and cross-page synchronization.
-- `ui/download-terminal-notices.ts` translates structured download, cancellation, and cache-discard failures into the common message popup after lifecycle cleanup; core code must not render DOM directly.
+- `ui/messages/download-terminal.ts` translates structured download, cancellation, and cache-discard failures into the common message dialog after lifecycle cleanup; core code must not render DOM directly.
+- `ui/pages/` owns page entry injection, `ui/dialogs/` owns interactive overlays, and `ui/messages/` owns locale-aware presentation of structured results.
 
 ## Localization boundary
 
@@ -44,7 +45,7 @@ scrapers / ui
 | Integrity and incomplete-chapter export | `src/core/download/integrity.ts`, `src/core/download/incomplete-chapters.ts` | `tests/download/`, `tests/export/`, `tests/ui/` |
 | Cache, locks, cross-page state          | `src/core/cache/`, `src/core/book-lock.ts`                                   | `tests/cache/`                                  |
 | Browser wiring                          | `src/adapters/`                                                              | browser contract tests                          |
-| Export and images                       | `src/core/epub.ts`, `src/core/html.ts`                                       | `tests/export/`                                 |
+| Export and images                       | `src/core/export/`, `src/utils/image.ts`                                     | `tests/export/`                                 |
 | Mapping fonts                           | `src/core/mapping-font.ts`                                                   | `tests/mapping-font/`                           |
-| Page behavior                           | `src/ui/`, `src/scrapers/`                                                   | `tests/ui/`                                     |
+| Page behavior                           | `src/ui/pages/`, `src/ui/dialogs/`, `src/ui/messages/`, `src/scrapers/`      | `tests/ui/`                                     |
 | Interface localization                  | `src/core/locales/`, `src/ui/locale.ts`                                      | `tests/ui/`                                     |

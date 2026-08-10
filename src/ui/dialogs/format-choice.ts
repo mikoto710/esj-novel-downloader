@@ -1,12 +1,12 @@
 import { state } from "../../core/state";
 import type { CachedData } from "../../types";
 import type { MappingFontSummary } from "../../core/download/contracts";
-import { buildEpub } from "../../core/epub";
-import { buildHtml } from "../../core/html";
+import { buildEpub } from "../../core/export/epub";
+import { buildHtml } from "../../core/export/html";
 import { getEpubTagPageSetting, getImageDownloadSetting } from "../../core/config";
 import { addDownloadHistory } from "../../core/download-history";
 import { MappingFontError } from "../../core/mapping-font";
-import { createBookExportFilename } from "../../core/download/export-filename";
+import { createBookExportFilename } from "../../core/export/filename";
 import { recordBrowserDiagnosticExport, recordBrowserDiagnosticFailure } from "../../adapters/browser-diagnostics";
 import { fullCleanup, enableDrag, el } from "../../utils/dom";
 import { triggerDownload } from "../../utils/download";

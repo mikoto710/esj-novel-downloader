@@ -11,8 +11,8 @@ const mocks = vi.hoisted(() => ({
     log: vi.fn()
 }));
 
-vi.mock("../../src/core/epub", () => ({ buildEpub: mocks.buildEpub }));
-vi.mock("../../src/core/html", () => ({ buildHtml: mocks.buildHtml }));
+vi.mock("../../src/core/export/epub", () => ({ buildEpub: mocks.buildEpub }));
+vi.mock("../../src/core/export/html", () => ({ buildHtml: mocks.buildHtml }));
 vi.mock("../../src/utils/log", () => ({ log: mocks.log }));
 vi.mock("../../src/utils/download", () => ({ triggerDownload: mocks.triggerDownload }));
 vi.mock("../../src/core/download-history", () => ({ addDownloadHistory: mocks.addDownloadHistory }));
