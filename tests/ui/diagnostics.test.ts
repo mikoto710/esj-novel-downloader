@@ -10,8 +10,8 @@ import {
 } from "../../src/adapters/browser-diagnostics";
 import { DIAGNOSTIC_CLOSE_UNCONFIRMED_MS } from "../../src/core/diagnostics";
 import { createInitialDownloadSnapshot } from "../../src/core/download/state-machine";
-import { createDiagnosticPopup } from "../../src/ui/diagnostics";
-import { showMessagePopup } from "../../src/ui/message-popup";
+import { createDiagnosticPopup } from "../../src/ui/dialogs/diagnostics";
+import { showMessagePopup } from "../../src/ui/dialogs/message";
 import { createSettingsPanel } from "../../src/ui/popups";
 import { setInterfaceLocalePreference } from "../../src/core/config";
 

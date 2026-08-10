@@ -2,7 +2,7 @@ import { el } from "../utils/dom";
 import { state } from "../core/state";
 import { showFormatChoice, createSettingsPanel } from "./popups";
 import { bindInterfaceAttribute, bindInterfaceText, t } from "./locale";
-import { confirmReplaceRangeExport } from "./range-selection-popup";
+import { confirmReplaceRangeExport } from "./dialogs/range-selection";
 import { acquirePageActionGroupLock } from "./page-action-lock";
 
 function hasBlockingDownloadPopup(): boolean {

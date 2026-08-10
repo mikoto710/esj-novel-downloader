@@ -4,8 +4,8 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { getInterfaceLocalePreference, setInterfaceLocalePreference } from "../../src/core/config";
 import { state } from "../../src/core/state";
 import { createDownloadButton, createSettingButton } from "../../src/ui/components";
-import { showMessagePopup } from "../../src/ui/message-popup";
-import { createCommonHeader } from "../../src/ui/popup-components";
+import { showMessagePopup } from "../../src/ui/dialogs/message";
+import { createCommonHeader } from "../../src/ui/dialogs/common";
 import { createConfirmPopup, createSettingsPanel } from "../../src/ui/popups";
 import { installRuntimeInterfaceLocaleSync } from "../../src/ui/locale";
 

@@ -5,7 +5,7 @@ import {
     formatBrowserDiagnosticSummary,
     listBrowserDiagnosticSessionView,
     removeBrowserDiagnosticSession
-} from "../adapters/browser-diagnostics";
+} from "../../adapters/browser-diagnostics";
 import {
     DIAGNOSTIC_HISTORY_LIMIT,
     DIAGNOSTIC_RETENTION_MS,
@@ -13,10 +13,10 @@ import {
     DIAGNOSTIC_TOTAL_BYTES_LIMIT,
     type DiagnosticSessionPresentation,
     type DiagnosticSessionView
-} from "../core/diagnostics";
-import { el, enableDrag } from "../utils/dom";
-import { createCommonHeader } from "./popup-components";
-import { subscribeInterfaceLocaleChange, t } from "./locale";
+} from "../../core/diagnostics";
+import { el, enableDrag } from "../../utils/dom";
+import { createCommonHeader } from "./common";
+import { subscribeInterfaceLocaleChange, t } from "../locale";
 
 const DIAGNOSTIC_AUTO_REFRESH_INTERVAL_MS = 3000;
 let disposeActiveDiagnosticPopup: (() => void) | null = null;

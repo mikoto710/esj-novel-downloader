@@ -5,7 +5,7 @@ import { createDeferred, createDownloadTask } from "../support";
 import { injectDetailButton } from "../../src/ui/detail";
 import { injectForumButton } from "../../src/ui/forum";
 import { createDownloadButton, createRangeDownloadButton } from "../../src/ui/components";
-import { createRangeSelectionPopup } from "../../src/ui/range-selection-popup";
+import { createRangeSelectionPopup } from "../../src/ui/dialogs/range-selection";
 import { publishInterfaceLocaleChange } from "../../src/ui/locale";
 import { setInterfaceLocalePreference } from "../../src/core/config";
 import { state } from "../../src/core/state";

@@ -2,7 +2,7 @@
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { setInterfaceLocalePreference } from "../../src/core/config";
-import { createDownloadHistoryPopup } from "../../src/ui/download-history";
+import { createDownloadHistoryPopup } from "../../src/ui/dialogs/download-history";
 import { publishInterfaceLocaleChange } from "../../src/ui/locale";
 
 const mocks = vi.hoisted(() => ({

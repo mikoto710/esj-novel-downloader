@@ -46,13 +46,13 @@ vi.mock("../../src/core/cache/sync", () => ({
 }));
 vi.mock("../../src/core/download/batch-download", () => ({ batchDownload: mocks.batchDownload }));
 vi.mock("../../src/core/download/task-finalizer", () => ({ finalizeBookDownloadTask: mocks.finalize }));
-vi.mock("../../src/ui/range-selection-popup", () => ({ createRangeSelectionPopup: mocks.rangePopup }));
+vi.mock("../../src/ui/dialogs/range-selection", () => ({ createRangeSelectionPopup: mocks.rangePopup }));
 vi.mock("../../src/ui/popups", () => ({
     createDownloadPopup: mocks.createDownloadPopup,
     showBookDownloadInProgressPopup: mocks.showConflict,
     showFormatChoice: mocks.showFormatChoice
 }));
-vi.mock("../../src/ui/message-popup", () => ({ showMessagePopup: mocks.showMessage }));
+vi.mock("../../src/ui/dialogs/message", () => ({ showMessagePopup: mocks.showMessage }));
 vi.mock("../../src/ui/download-terminal-notices", () => ({
     showCacheDiscardFailure: vi.fn(),
     showDownloadTerminalFailure: vi.fn()

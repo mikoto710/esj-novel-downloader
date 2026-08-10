@@ -3,13 +3,13 @@ import {
     clearManagedCache,
     listManagedCaches,
     stopAndClearManagedCache
-} from "../core/cache/manager";
-import { CacheListItem } from "../types";
-import { subscribeCacheSync } from "../core/cache/sync";
-import { el, enableDrag } from "../utils/dom";
-import { log } from "../utils/index";
-import { showMessagePopup } from "./message-popup";
-import { bindInterfaceAttribute, subscribeInterfaceLocaleChange, t } from "./locale";
+} from "../../core/cache/manager";
+import { CacheListItem } from "../../types";
+import { subscribeCacheSync } from "../../core/cache/sync";
+import { el, enableDrag } from "../../utils/dom";
+import { log } from "../../utils/index";
+import { showMessagePopup } from "./message";
+import { bindInterfaceAttribute, subscribeInterfaceLocaleChange, t } from "../locale";
 
 let disposeActiveCacheManagerSynchronizer: (() => void) | null = null;
 

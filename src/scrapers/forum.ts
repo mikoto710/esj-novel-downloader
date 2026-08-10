@@ -2,7 +2,7 @@ import { batchDownload } from "../core/download/batch-download";
 import type { DownloadTask } from "../core/download/contracts";
 import { parseBookMetadata } from "../core/parser";
 import { createConfirmPopup, createDownloadPopup, showBookDownloadInProgressPopup } from "../ui/popups";
-import { showMessagePopup } from "../ui/message-popup";
+import { showMessagePopup } from "../ui/dialogs/message";
 import { t } from "../ui/locale";
 import { abortActiveDownload, setAbortFlag, state, resetAbortController } from "../core/state";
 import {

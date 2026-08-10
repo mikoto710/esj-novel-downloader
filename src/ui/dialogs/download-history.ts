@@ -3,10 +3,10 @@ import {
     DOWNLOAD_HISTORY_LIMIT,
     listDownloadHistory,
     removeDownloadHistory
-} from "../core/download-history";
-import { DownloadFormat, DownloadHistoryItem, SourcePageType } from "../types";
-import { el, enableDrag } from "../utils/dom";
-import { subscribeInterfaceLocaleChange, t } from "./locale";
+} from "../../core/download-history";
+import { DownloadFormat, DownloadHistoryItem, SourcePageType } from "../../types";
+import { el, enableDrag } from "../../utils/dom";
+import { subscribeInterfaceLocaleChange, t } from "../locale";
 
 let disposeActiveHistoryLocaleRefresh: (() => void) | null = null;
 let disposeActiveHistoryColumnResize: (() => void) | null = null;

@@ -1,9 +1,9 @@
-import type { DownloadSelection, DownloadTask } from "../core/download/contracts";
-import { createRangeSelection } from "../core/download/selection";
-import { enableDrag, el } from "../utils/dom";
-import { createCommonHeader } from "./popup-components";
-import { subscribeInterfaceLocaleChange, t } from "./locale";
-import { acquirePageActionGroupLock } from "./page-action-lock";
+import type { DownloadSelection, DownloadTask } from "../../core/download/contracts";
+import { createRangeSelection } from "../../core/download/selection";
+import { enableDrag, el } from "../../utils/dom";
+import { createCommonHeader } from "./common";
+import { subscribeInterfaceLocaleChange, t } from "../locale";
+import { acquirePageActionGroupLock } from "../page-action-lock";
 
 export type RangeSelectionDecision =
     | { action: "download"; selection: DownloadSelection }
