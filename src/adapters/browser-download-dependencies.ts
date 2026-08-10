@@ -23,6 +23,7 @@ import {
 } from "../core/state";
 import {
     clearBookCacheForTask,
+    finishBookCacheForTask,
     loadBookCover,
     putBookCacheBatchForTask,
     putBookCoverForTask
@@ -307,6 +308,7 @@ const coverCache: CoverCacheRepository = {
 // IndexedDB 适配层只接收本批发生变化的章节
 const cache: ChapterCacheRepository = {
     putBatch: putBookCacheBatchForTask,
+    finishForTask: finishBookCacheForTask,
     clearForTask: clearBookCacheForTask
 };
 

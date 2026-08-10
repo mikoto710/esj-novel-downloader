@@ -377,6 +377,7 @@ export interface ChapterCacheRepository {
         meta: CacheMeta,
         signal?: AbortSignal
     ): Promise<boolean>;
+    finishForTask(bookId: string, taskId: string, meta: CacheMeta, signal?: AbortSignal): Promise<boolean>;
     clearForTask(bookId: string, taskId: string, signal?: AbortSignal): Promise<boolean>;
 }
 

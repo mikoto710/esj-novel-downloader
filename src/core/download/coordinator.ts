@@ -454,6 +454,36 @@ async function persistTaskCacheBatch(
     return false;
 }
 
+// writer 关闭事务可按同 taskId 幂等重试一次；false 明确表示所有权已丢失
+async function finishRangeCacheWriter(ctx: DownloadContext): Promise<boolean> {
+    const { dependencies, options, cacheMeta } = ctx;
+    for (let attempt = 1; attempt <= 2; attempt++) {
+        try {
+            return await dependencies.cache.finishForTask(
+                options.bookId,
+                options.taskId,
+                cacheMeta,
+                dependencies.runtime.signal
+            );
+        } catch (error) {
+            const normalized = normalizeStorageError(error, "write");
+            if (attempt === 1 && normalized.reason !== "ownership-lost" && !dependencies.runtime.signal?.aborted) {
+                dependencies.log({
+                    code: "cache-write-retry",
+                    params: {
+                        reason: normalized.reason,
+                        operation: normalized.operation,
+                        detail: normalized.params?.detail || normalized.message
+                    }
+                });
+                continue;
+            }
+            throw normalized;
+        }
+    }
+    return false;
+}
+
 // 按现有策略重试章节 HTML，请求实现由 ChapterFetcherPort 提供
 async function downloadChapterHtml(task: DownloadTask, ctx: DownloadContext, isRetry: boolean): Promise<string | null> {
     const { dependencies } = ctx;
@@ -1378,22 +1408,30 @@ export async function runDownload(options: DownloadOptions, dependencies: Downlo
             return;
         }
         const assembled = assembleExportChapters(ctx);
+        const sealed = await cacheBuffer.seal();
+        if (!sealed) {
+            throwIfStorageFailed(ctx);
+            throw createStorageError("ownership-lost", "write");
+        }
         let cacheFinalized = false;
         try {
-            cacheFinalized = await dependencies.cache.clearForTask(
-                options.bookId,
-                options.taskId,
-                dependencies.runtime.signal
-            );
+            cacheFinalized =
+                selection.mode === "range"
+                    ? await finishRangeCacheWriter(ctx)
+                    : await dependencies.cache.clearForTask(
+                          options.bookId,
+                          options.taskId,
+                          dependencies.runtime.signal
+                      );
         } catch (error) {
-            throw normalizeStorageError(error, "clear");
+            throw normalizeStorageError(error, selection.mode === "range" ? "write" : "clear");
         }
         if (dependencies.runtime.isCancellationRequested()) {
             await finishCancellation(ctx);
             return;
         }
         if (!cacheFinalized) {
-            throw createStorageError("ownership-lost", "clear");
+            throw createStorageError("ownership-lost", selection.mode === "range" ? "write" : "clear");
         }
         dependencies.runtime.setExportData({
             txt: assembled.text,

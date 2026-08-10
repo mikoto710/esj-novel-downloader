@@ -5,6 +5,7 @@ import {
     claimCacheV3,
     clearCacheV3,
     clearCacheV3ForTask,
+    finishCacheV3ForTask,
     listCacheManifestsV3,
     putCacheBatchV3,
     putCacheCoverV3ForTask,
@@ -226,6 +227,27 @@ export async function putBookCacheBatchForTask(
         }
         const normalized = normalizeStorageError(error, "write");
         console.error("保存缓存失败", normalized);
+        throw normalized;
+    }
+}
+
+/**
+ * 仅允许当前 writer 关闭写入权并保留该书累计缓存
+ */
+export async function finishBookCacheForTask(
+    bookId: string,
+    taskId: string,
+    meta: CacheMeta,
+    signal?: AbortSignal
+): Promise<boolean> {
+    try {
+        return await finishCacheV3ForTask(bookId, taskId, meta, signal);
+    } catch (error) {
+        if (isExpectedStorageCancellation(error, signal)) {
+            return false;
+        }
+        const normalized = normalizeStorageError(error, "write");
+        console.error("关闭当前下载任务缓存 writer 失败", normalized);
         throw normalized;
     }
 }

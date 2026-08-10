@@ -15,6 +15,7 @@ interface StressDownloadHarnessOptions {
     concurrency?: number;
     processChapter?: (task: DownloadTask) => Promise<Chapter> | Chapter;
     putBatch?: (entries: ReadonlyMap<number, Chapter>, signal?: AbortSignal) => Promise<boolean>;
+    finishForTask?: (signal?: AbortSignal) => Promise<boolean>;
     clearForTask?: (signal?: AbortSignal) => Promise<boolean>;
 }
 
@@ -100,9 +101,12 @@ export function createStressDownloadHarness(options: StressDownloadHarnessOption
                 persistedBatches.push(indexes);
                 return options.putBatch?.(entries, signal) ?? true;
             },
-            async clearForTask(_bookId, _taskId, signal) {
+            finishForTask: vi.fn(async (_bookId, _taskId, _meta, signal) => {
+                return options.finishForTask?.(signal) ?? true;
+            }),
+            clearForTask: vi.fn(async (_bookId, _taskId, signal) => {
                 return options.clearForTask?.(signal) ?? true;
-            }
+            })
         },
         lock: {
             owns: async () => true,

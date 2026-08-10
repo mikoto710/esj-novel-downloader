@@ -68,6 +68,7 @@ describe("mapped font cache normalization", () => {
                     writes.push(new Map(entries));
                     return true;
                 },
+                finishForTask: async () => true,
                 clearForTask: async () => true
             },
             lock: { owns: async () => true, shouldDiscardCache: async () => false },
@@ -158,7 +159,11 @@ describe("mapped font cache normalization", () => {
             },
             coverFetcher: { fetch: async () => null },
             coverCache: { load: async () => null, put: async () => true },
-            cache: { putBatch: async () => true, clearForTask: async () => true },
+            cache: {
+                putBatch: async () => true,
+                finishForTask: async () => true,
+                clearForTask: async () => true
+            },
             lock: { owns: async () => true, shouldDiscardCache: async () => false },
             events: { emit: () => undefined },
             scheduler: {

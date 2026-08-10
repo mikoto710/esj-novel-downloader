@@ -802,6 +802,7 @@ function createHarness(tasks: DownloadTask[], chapters = new Map<number, Chapter
         coverCache: { load: async () => null, put: async () => true },
         cache: {
             putBatch: async () => true,
+            finishForTask: async () => true,
             async clearForTask(bookId, taskId) {
                 cacheClears.push({ bookId, taskId });
                 return true;

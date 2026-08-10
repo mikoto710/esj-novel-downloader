@@ -19,6 +19,7 @@ const hoistedBrowserDownloadMocks = vi.hoisted(() => ({
     showTerminalFailure: vi.fn(),
     updateTrayText: vi.fn(),
     saveCache: vi.fn(),
+    finishCache: vi.fn(),
     clearCache: vi.fn(),
     loadCoverCache: vi.fn(),
     saveCoverCache: vi.fn(),
@@ -61,6 +62,7 @@ vi.mock("../../src/ui/download-terminal-notices", () => ({
 vi.mock("../../src/ui/tray", () => ({ updateTrayText: hoistedBrowserDownloadMocks.updateTrayText }));
 vi.mock("../../src/core/cache/book-cache", () => ({
     putBookCacheBatchForTask: hoistedBrowserDownloadMocks.saveCache,
+    finishBookCacheForTask: hoistedBrowserDownloadMocks.finishCache,
     clearBookCacheForTask: hoistedBrowserDownloadMocks.clearCache,
     loadBookCover: hoistedBrowserDownloadMocks.loadCoverCache,
     putBookCoverForTask: hoistedBrowserDownloadMocks.saveCoverCache
@@ -108,6 +110,7 @@ export async function resetBrowserDownloadHarness(): Promise<BrowserDownloadRunt
     hoistedBrowserDownloadMocks.createDownloadPopup.mockImplementation(() => document.createElement("div"));
     hoistedBrowserDownloadMocks.promptProtectedChapterPassword.mockResolvedValue({ action: "skip-current" });
     hoistedBrowserDownloadMocks.saveCache.mockResolvedValue(true);
+    hoistedBrowserDownloadMocks.finishCache.mockResolvedValue(true);
     hoistedBrowserDownloadMocks.clearCache.mockResolvedValue(true);
     hoistedBrowserDownloadMocks.loadCoverCache.mockResolvedValue(null);
     hoistedBrowserDownloadMocks.saveCoverCache.mockResolvedValue(true);
