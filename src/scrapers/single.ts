@@ -1,4 +1,4 @@
-import { blobToBase64 } from "../utils/index";
+import { blobToBase64 } from "../utils/download";
 import { parseChapterHtml, parseBookMetadata } from "../core/parser";
 import { getImageDownloadSetting } from "../core/config";
 import { processHtmlImages } from "../utils/image";

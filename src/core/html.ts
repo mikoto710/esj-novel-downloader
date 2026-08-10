@@ -1,5 +1,5 @@
 import { Chapter, BookMetadata } from "../types";
-import { blobToBase64 } from "../utils/index";
+import { blobToBase64 } from "../utils/download";
 import { prepareChapterMappingExport } from "./mapping-font";
 
 /**

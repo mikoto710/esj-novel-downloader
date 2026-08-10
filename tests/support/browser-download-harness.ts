@@ -39,12 +39,12 @@ vi.mock("../../src/core/cache/sync", () => ({
     subscribeCacheSync: vi.fn(() => vi.fn()),
     publishCacheSyncEvent: vi.fn()
 }));
-vi.mock("../../src/utils/index", () => ({
-    log: hoistedBrowserDownloadMocks.log,
+vi.mock("../../src/utils/log", () => ({ log: hoistedBrowserDownloadMocks.log }));
+vi.mock("../../src/utils/async", () => ({
     sleepWithAbort: hoistedBrowserDownloadMocks.sleepWithAbort,
-    sleep: hoistedBrowserDownloadMocks.sleep,
-    fetchWithTimeout: hoistedBrowserDownloadMocks.fetchWithTimeout
+    sleep: hoistedBrowserDownloadMocks.sleep
 }));
+vi.mock("../../src/utils/request", () => ({ fetchWithTimeout: hoistedBrowserDownloadMocks.fetchWithTimeout }));
 vi.mock("../../src/utils/dom", () => ({ fullCleanup: hoistedBrowserDownloadMocks.fullCleanup }));
 vi.mock("../../src/ui/popups", () => ({
     createDownloadPopup: hoistedBrowserDownloadMocks.createDownloadPopup,

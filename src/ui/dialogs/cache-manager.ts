@@ -7,7 +7,7 @@ import {
 import { CacheListItem } from "../../types";
 import { subscribeCacheSync } from "../../core/cache/sync";
 import { el, enableDrag } from "../../utils/dom";
-import { log } from "../../utils/index";
+import { log } from "../../utils/log";
 import { showMessagePopup } from "./message";
 import { bindInterfaceAttribute, subscribeInterfaceLocaleChange, t } from "../locale";
 

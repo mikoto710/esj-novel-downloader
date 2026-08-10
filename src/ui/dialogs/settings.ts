@@ -12,7 +12,7 @@ import {
 import { isInterfaceLocalePreference } from "../../core/locale";
 import { listActiveBookDownloadLocks } from "../../core/book-lock";
 import { fullCleanup, enableDrag, el } from "../../utils/dom";
-import { log } from "../../utils/index";
+import { log } from "../../utils/log";
 import { bindInterfaceAttribute, bindInterfaceText, publishInterfaceLocaleChange, t } from "../locale";
 import { createCommonHeader } from "./common";
 import { createCacheManagerPopup } from "./cache-manager";

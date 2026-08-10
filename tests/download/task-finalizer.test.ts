@@ -7,8 +7,7 @@ const mocks = vi.hoisted(() => ({
     release: vi.fn(),
     shouldDiscard: vi.fn(),
     clearCache: vi.fn(),
-    clearRuntimeSession: vi.fn(),
-    log: vi.fn()
+    clearRuntimeSession: vi.fn()
 }));
 
 vi.mock("../../src/core/book-lock", () => ({
@@ -20,8 +19,6 @@ vi.mock("../../src/core/state", async (importOriginal) => {
     const original = await importOriginal<typeof import("../../src/core/state")>();
     return { ...original, clearRuntimeCacheSession: mocks.clearRuntimeSession };
 });
-vi.mock("../../src/utils/index", () => ({ log: mocks.log }));
-
 import { finalizeBookDownloadTask } from "../../src/core/download/task-finalizer";
 import { state } from "../../src/core/state";
 

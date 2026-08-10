@@ -3,7 +3,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { setInterfaceLocalePreference } from "../../src/core/config";
 import { t } from "../../src/ui/locale";
-import { log, refreshUiLogTruncationText, setUiLogTruncationFormatter } from "../../src/utils/index";
+import { log, refreshUiLogTruncationText, setUiLogTruncationFormatter } from "../../src/utils/log";
 
 describe("log rendering", () => {
     beforeEach(() => {

@@ -42,7 +42,9 @@ import {
 import { updateTrayText } from "../ui/tray";
 import { fullCleanup } from "../utils/dom";
 import { processHtmlImages, type ImageProcessingFailure } from "../utils/image";
-import { fetchWithTimeout, log, sleep, sleepWithAbort } from "../utils/index";
+import { sleep, sleepWithAbort } from "../utils/async";
+import { log } from "../utils/log";
+import { fetchWithTimeout } from "../utils/request";
 import { removeImgTags } from "../utils/text";
 import { normalizeChapterMappingFont } from "../core/mapping-font";
 import { normalizeImageBlob } from "../utils/image-format";

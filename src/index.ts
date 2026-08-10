@@ -3,7 +3,7 @@ import { injectSinglePageButton } from "./ui/pages/single";
 import { injectForumButton } from "./ui/pages/forum";
 import { injectStyles } from "./ui/styles";
 import { installRuntimeInterfaceLocaleSync, subscribeInterfaceLocaleChange, t } from "./ui/locale";
-import { refreshUiLogTruncationText, setUiLogTruncationFormatter } from "./utils/index";
+import { refreshUiLogTruncationText, setUiLogTruncationFormatter } from "./utils/log";
 
 setUiLogTruncationFormatter((count) => t("log.truncated", { count }));
 subscribeInterfaceLocaleChange(() => refreshUiLogTruncationText());

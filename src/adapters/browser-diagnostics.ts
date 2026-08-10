@@ -16,7 +16,8 @@ import {
 } from "../core/diagnostics";
 import type { DownloadEventSink, DownloadLog, DownloadLogCode, DownloadOptions } from "../core/download/contracts";
 import { getConcurrency, getEpubTagPageSetting } from "../core/config";
-import { log, triggerDownload } from "../utils/index";
+import { triggerDownload } from "../utils/download";
+import { log } from "../utils/log";
 import { formatDownloadLog } from "./browser-download-messages";
 import { t } from "../ui/locale";
 

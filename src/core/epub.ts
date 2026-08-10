@@ -1,4 +1,4 @@
-import { loadScript } from "../utils/index";
+import { loadScript } from "../utils/script-loader";
 import { isSupportedImageMediaType } from "../utils/image-format";
 import { escapeXml, convertToXhtml } from "../utils/text";
 import { Chapter, BookMetadata, ChapterImage } from "../types";

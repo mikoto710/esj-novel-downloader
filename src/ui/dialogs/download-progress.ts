@@ -1,7 +1,7 @@
 import { abortActiveDownload, state } from "../../core/state";
 import type { BookDownloadLock } from "../../types";
 import { fullCleanup, enableDrag, el } from "../../utils/dom";
-import { log } from "../../utils/index";
+import { log } from "../../utils/log";
 import { createMinimizedTray } from "../tray";
 import { createCommonHeader } from "./common";
 import { bindInterfaceText, t } from "../locale";

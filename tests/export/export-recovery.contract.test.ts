@@ -13,7 +13,8 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("../../src/core/epub", () => ({ buildEpub: mocks.buildEpub }));
 vi.mock("../../src/core/html", () => ({ buildHtml: mocks.buildHtml }));
-vi.mock("../../src/utils/index", () => ({ log: mocks.log, triggerDownload: mocks.triggerDownload }));
+vi.mock("../../src/utils/log", () => ({ log: mocks.log }));
+vi.mock("../../src/utils/download", () => ({ triggerDownload: mocks.triggerDownload }));
 vi.mock("../../src/core/download-history", () => ({ addDownloadHistory: mocks.addDownloadHistory }));
 
 describe("full-book export recovery contracts", () => {
