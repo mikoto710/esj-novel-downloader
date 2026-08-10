@@ -11,7 +11,7 @@ import {
 import type { DownloadLog } from "./contracts";
 
 /**
- * 全本下载收尾时的缓存清理结果
+ * 书籍下载收尾时的缓存清理结果
  */
 export interface BookDownloadFinalizationResult {
     cacheDiscarded: boolean;

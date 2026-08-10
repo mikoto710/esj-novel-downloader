@@ -1,16 +1,11 @@
 import { el } from "../utils/dom";
-import { scrapeForum } from "../scrapers/forum";
-import { createDownloadButton, createSettingButton } from "./components";
+import { scrapeForum, scrapeForumRange } from "../scrapers/forum";
+import { createDownloadButton, createRangeDownloadButton, createSettingButton } from "./components";
 
 /**
  * 在论坛版块页注入 "全本下载" 按钮
  */
 export function injectForumButton(): void {
-    // 防重复注入
-    if (document.querySelector("#btn-download-forum")) {
-        return;
-    }
-
     // 找到包含发帖按钮的 column
     let container = document.querySelector(".forum-list-page .column");
 
@@ -34,11 +29,17 @@ export function injectForumButton(): void {
         return;
     }
 
-    const downloadBtn = createDownloadButton("btn-download-forum", undefined, scrapeForum, "");
-
-    const settingBtn = createSettingButton();
-
-    container.appendChild(downloadBtn);
-
-    container.appendChild(settingBtn);
+    let settingBtn = container.querySelector<HTMLElement>(".esj-settings-trigger");
+    if (!document.querySelector("#btn-download-forum")) {
+        const downloadBtn = createDownloadButton("btn-download-forum", undefined, scrapeForum, "");
+        container.insertBefore(downloadBtn, container.firstChild);
+    }
+    if (!document.querySelector("#btn-download-forum-range")) {
+        const rangeDownloadBtn = createRangeDownloadButton("btn-download-forum-range", scrapeForumRange);
+        container.insertBefore(rangeDownloadBtn, settingBtn);
+    }
+    if (!settingBtn) {
+        settingBtn = createSettingButton();
+        container.appendChild(settingBtn);
+    }
 }

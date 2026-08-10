@@ -29,6 +29,7 @@ import {
     startBrowserDiagnosticSession,
     updateBrowserDiagnosticSession
 } from "../adapters/browser-diagnostics";
+import { RangePreflightError, runRangeDownload } from "./range";
 
 function getBookId(): string {
     const match = location.href.match(/\/detail\/(\d+)/);
@@ -263,4 +264,35 @@ export async function scrapeDetail(): Promise<void> {
             showCacheDiscardFailure(finalization.cacheClearFailure);
         }
     }
+}
+
+/**
+ * 在详情页锁前解析完整目录，并启动独立的连续章节范围任务
+ */
+export async function scrapeDetailRange(): Promise<void> {
+    const bookId = getBookId();
+    if (bookId === "unknown") {
+        log(t("page.bookIdMissing"));
+        return;
+    }
+    await runRangeDownload({
+        bookId,
+        sourcePageType: "detail",
+        pageTitle: document.title,
+        async loadPlan() {
+            const chapterLinks = Array.from(document.querySelectorAll("#chapterList a")) as HTMLAnchorElement[];
+            if (chapterLinks.length === 0) {
+                throw new RangePreflightError("chapter-list-missing", "chapter-list");
+            }
+            return {
+                tasks: chapterLinks.map((node, index) => ({
+                    index,
+                    url: node.href,
+                    title: (node.getAttribute("data-title") || node.innerText || "").trim()
+                })),
+                meta: parseBookMetadata(document, location.href),
+                pageUrl: location.href
+            };
+        }
+    });
 }

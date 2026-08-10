@@ -770,7 +770,7 @@ export function confirmMappingFontExport(format: "EPUB" | "HTML", summary: Mappi
 }
 
 /**
- * 提示同一本书已有跨页面全本下载任务，单章导出不使用此弹窗
+ * 提示同一本书已有跨页面下载任务，单章导出不使用此弹窗
  */
 export function showBookDownloadInProgressPopup(lock: BookDownloadLock): void {
     document.querySelector("#esj-book-lock")?.remove();
@@ -808,7 +808,7 @@ export function showBookDownloadInProgressPopup(lock: BookDownloadLock): void {
 /**
  * 清理脚本已创建的弹窗和托盘后，创建并挂载下载进度弹窗
  */
-export function createDownloadPopup(): HTMLElement {
+export function createDownloadPopup(mode: "all" | "range" = "all"): HTMLElement {
     fullCleanup(state.originalTitle);
 
     toggleSettingsLock(true);
@@ -841,10 +841,11 @@ export function createDownloadPopup(): HTMLElement {
         createMinimizedTray(statusText);
     }
 
-    const header = createCommonHeader(t("download.popup.title"), onClose, onMinimize);
+    const titleKey = mode === "range" ? "download.popup.rangeTitle" : "download.popup.title";
+    const header = createCommonHeader(t(titleKey), onClose, onMinimize);
     const headerLabel = header.querySelector("span");
     if (headerLabel instanceof HTMLElement) {
-        bindInterfaceText(headerLabel, "download.popup.title");
+        bindInterfaceText(headerLabel, titleKey);
     }
 
     // 找到里面的 span 加 ID，方便后续更新进度

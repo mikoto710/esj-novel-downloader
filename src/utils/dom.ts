@@ -56,7 +56,9 @@ export function fullCleanup(originalTitle?: string): void {
         "#esj-image-cache-confirm",
         "#esj-mapping-confirm",
         "#esj-mapping-export-confirm",
-        "#esj-message-popup"
+        "#esj-message-popup",
+        "#esj-range-selection",
+        "#esj-range-replace-confirm"
     ];
 
     selectors.forEach((sel) => {
