@@ -3,6 +3,7 @@ import { createRangeSelection } from "../core/download/selection";
 import { enableDrag, el } from "../utils/dom";
 import { createCommonHeader } from "./popup-components";
 import { subscribeInterfaceLocaleChange, t } from "./locale";
+import { acquirePageActionGroupLock } from "./page-action-lock";
 
 export type RangeSelectionDecision =
     | { action: "download"; selection: DownloadSelection }
@@ -16,18 +17,16 @@ export interface RangeSelectionPopupOptions {
     hasExistingRange: boolean;
 }
 
-function togglePageActions(disabled: boolean): void {
-    document.querySelectorAll(".esj-download-trigger,.esj-settings-trigger").forEach((element) => {
-        (element as HTMLButtonElement).disabled = disabled;
-    });
-}
+let finishActiveRangeSelection: ((decision: RangeSelectionDecision) => void) | null = null;
+let finishActiveRangeReplace: ((confirmed: boolean) => void) | null = null;
 
 /**
  * 显示连续章节范围选择弹窗；缓存命中仅为锁前预览
  */
 export function createRangeSelectionPopup(options: RangeSelectionPopupOptions): Promise<RangeSelectionDecision> {
+    finishActiveRangeSelection?.({ action: "cancel" });
     document.querySelector("#esj-range-selection")?.remove();
-    togglePageActions(true);
+    const releasePageActions = acquirePageActionGroupLock();
 
     return new Promise((resolve) => {
         const total = options.tasks.length;
@@ -38,11 +37,15 @@ export function createRangeSelectionPopup(options: RangeSelectionPopupOptions): 
                 return;
             }
             settled = true;
+            if (finishActiveRangeSelection === finish) {
+                finishActiveRangeSelection = null;
+            }
             unsubscribeLocale();
             popup.remove();
-            togglePageActions(false);
+            releasePageActions();
             resolve(decision);
         };
+        finishActiveRangeSelection = finish;
         const header = createCommonHeader(t("range.title"), () => finish({ action: "cancel" }));
         const startLabel = el(
             "label",
@@ -234,7 +237,9 @@ export function createRangeSelectionPopup(options: RangeSelectionPopupOptions): 
  * 全本入口遇到范围导出快照时要求用户明确确认替换意图
  */
 export function confirmReplaceRangeExport(): Promise<boolean> {
+    finishActiveRangeReplace?.(false);
     document.querySelector("#esj-range-replace-confirm")?.remove();
+    const releasePageActions = acquirePageActionGroupLock();
     return new Promise((resolve) => {
         let settled = false;
         const finish = (confirmed: boolean) => {
@@ -242,9 +247,14 @@ export function confirmReplaceRangeExport(): Promise<boolean> {
                 return;
             }
             settled = true;
+            if (finishActiveRangeReplace === finish) {
+                finishActiveRangeReplace = null;
+            }
             popup.remove();
+            releasePageActions();
             resolve(confirmed);
         };
+        finishActiveRangeReplace = finish;
         const popup = el(
             "div",
             {

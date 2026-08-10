@@ -44,6 +44,7 @@ import {
 } from "./locale";
 import { formatMappingFontError } from "./mapping-font-messages";
 import { createBookExportFilename } from "../core/download/export-filename";
+import { acquirePageActionGroupLock } from "./page-action-lock";
 
 /**
  * 锁定/解锁页面上的设置按钮
@@ -51,15 +52,6 @@ import { createBookExportFilename } from "../core/download/export-filename";
  */
 function toggleSettingsLock(locked: boolean) {
     const btns = document.querySelectorAll(".esj-settings-trigger");
-    btns.forEach((b) => ((b as HTMLButtonElement).disabled = locked));
-}
-
-/**
- * 锁定/解锁页面上的下载按钮
- * @param locked true=禁用, false=启用
- */
-function toggleDownloadLock(locked: boolean) {
-    const btns = document.querySelectorAll(".esj-download-trigger");
     btns.forEach((b) => ((b as HTMLButtonElement).disabled = locked));
 }
 
@@ -75,6 +67,7 @@ const diagnosticExportFormat = { TXT: "txt", EPUB: "epub", HTML: "html" } as con
 type ExportFailureStage = "generate" | "download";
 let disposeActiveProtectedPromptLocaleRefresh: (() => void) | null = null;
 let disposeActiveFormatLocaleRefresh: (() => void) | null = null;
+let releaseActiveFormatPageActions: (() => void) | null = null;
 
 function confirmImageSettingChange(activeTaskCount: number): Promise<boolean> {
     document.querySelector("#esj-image-setting-task-confirm")?.remove();
@@ -995,11 +988,13 @@ export function showFormatChoice(): void {
     }
 
     disposeActiveFormatLocaleRefresh?.();
+    releaseActiveFormatPageActions?.();
+    releaseActiveFormatPageActions = null;
     fullCleanup();
 
-    // 禁用设置和下载按钮，防止重复操作
-    toggleSettingsLock(true);
-    toggleDownloadLock(true);
+    // 格式弹窗和下载入口分别持锁，任务返回时不会提前解锁本弹窗
+    const releasePageActions = acquirePageActionGroupLock();
+    releaseActiveFormatPageActions = releasePageActions;
 
     const data = state.cachedData as CachedData;
     const mappedChapters = data.chapters.filter((chapter) => Boolean(chapter.mappingFont));
@@ -1012,8 +1007,10 @@ export function showFormatChoice(): void {
     const closeAction = () => {
         disposeActiveFormatLocaleRefresh?.();
         document.querySelector("#esj-format")?.remove();
-        toggleSettingsLock(false);
-        toggleDownloadLock(false);
+        if (releaseActiveFormatPageActions === releasePageActions) {
+            releaseActiveFormatPageActions = null;
+        }
+        releasePageActions();
     };
 
     const header = createCommonHeader(t("export.title"), closeAction);
