@@ -30,6 +30,28 @@ describe("browser diagnostic persistence", () => {
         window.dispatchEvent(event);
     }
 
+    it("includes selected and source chapter counts in a range summary", () => {
+        startBrowserDiagnosticSession({
+            taskId: "task-range",
+            bookId: "range-book",
+            bookTitle: "Range Book",
+            pageUrl: "https://www.esjzone.cc/detail/range-book.html",
+            sourcePageType: "detail",
+            totalChapters: 20,
+            selection: {
+                mode: "range",
+                sourceTotalChapters: 120,
+                startChapter: 101,
+                endChapter: 120
+            },
+            imageEnabled: false
+        });
+
+        const session = listBrowserDiagnosticSessions().active[0];
+        expect(session.schemaVersion).toBe(1);
+        expect(formatBrowserDiagnosticSummary(session)).toContain("范围：第 101–120 章，本次 20 章／全书 120 章");
+    });
+
     it("persists a completed session with settings, logs and controlled book details", () => {
         startBrowserDiagnosticSession({
             taskId: "task-1",

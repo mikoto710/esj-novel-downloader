@@ -46,7 +46,7 @@ describe("image setting cache contracts", () => {
         expect(document.querySelector("#esj-image-cache-confirm")).toBeNull();
     });
 
-    it("warns about active full-book tasks and preserves the setting when cancelled", async () => {
+    it("warns about active book tasks and preserves the setting when cancelled", async () => {
         listActiveBookDownloadLocks.mockResolvedValue([{ bookId: "701" }, { bookId: "702" }]);
         const { createSettingsPanel } = await import("../../src/ui/popups");
         createSettingsPanel();
@@ -57,7 +57,7 @@ describe("image setting cache contracts", () => {
 
         await vi.waitFor(() =>
             expect(document.querySelector("#esj-image-setting-task-confirm")?.textContent).toContain(
-                "当前有 2 个全本任务正在下载"
+                "当前有 2 个书籍下载任务正在运行"
             )
         );
         expect(document.querySelector("#esj-image-setting-task-confirm")?.textContent).toContain("不受本次切换影响");

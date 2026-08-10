@@ -1,7 +1,7 @@
 import type { DownloadLog, DownloadLogCode } from "../core/download/contracts";
 import type { LocaleKey } from "../core/locale";
 import { t } from "../ui/locale";
-import { formatStorageFailureText } from "../ui/storage-failure-messages";
+import { formatStorageFailureText } from "../ui/messages/storage-failure";
 
 const DIRECT_LOG_KEYS = {
     "cover-cache-hit": "download.log.coverCacheHit",
@@ -16,7 +16,6 @@ const DIRECT_LOG_KEYS = {
     "integrity-check-started": "download.log.integrityStarted",
     "integrity-check-passed": "download.log.integrityPassed",
     "integrity-check-failed": "download.log.integrityFailed",
-    "missing-chapter-retry": "download.log.missingRetry",
     "missing-chapter-export-with-placeholders": "download.log.missingPlaceholder",
     "missing-chapter-retry-started": "download.log.missingRetryStarted",
     "missing-chapter-retry-saved": "download.log.missingRetrySaved",
@@ -44,7 +43,11 @@ function storageFailureText(message: DownloadLog): string {
 }
 
 function chapterPosition(message: DownloadLog): string {
-    return `[${value(message, "index")}/${value(message, "total")}]`;
+    const index = value(message, "index");
+    const sourceIndex = value(message, "sourceIndex");
+    return sourceIndex && sourceIndex !== index
+        ? t("download.log.rangePosition", { index, total: value(message, "total"), sourceIndex })
+        : `[${index}/${value(message, "total")}]`;
 }
 
 function chapterTitle(message: DownloadLog): string {
@@ -90,11 +93,18 @@ function formatIntegrityRetry(message: DownloadLog): string {
             : reason === "invalid-image-media-type"
               ? t("download.log.integrityReasonInvalidImage")
               : t("download.log.integrityReasonImageFailures", { count: value(message, "imageErrors") });
-    return t("download.log.integrityRetry", {
-        index: value(message, "index"),
-        total: value(message, "total"),
-        reason: suffix
-    });
+    const sourceIndex = value(message, "sourceIndex");
+    return t(
+        sourceIndex && sourceIndex !== value(message, "index")
+            ? "download.log.integrityRetryRange"
+            : "download.log.integrityRetry",
+        {
+            index: value(message, "index"),
+            total: value(message, "total"),
+            sourceIndex,
+            reason: suffix
+        }
+    );
 }
 
 function formatCancellation(message: DownloadLog): string {
@@ -165,6 +175,19 @@ export function formatDownloadLog(message: DownloadLog): string {
             return t("protected.log.unlocked", { chapter: chapterTitle(message) });
         case "chapter-integrity-retry":
             return formatIntegrityRetry(message);
+        case "missing-chapter-retry": {
+            const sourceIndex = value(message, "sourceIndex");
+            return t(
+                sourceIndex && sourceIndex !== value(message, "index")
+                    ? "download.log.missingRetryRange"
+                    : "download.log.missingRetry",
+                {
+                    index: value(message, "index"),
+                    total: value(message, "total"),
+                    sourceIndex
+                }
+            );
+        }
         case "cancellation-finished":
             return formatCancellation(message);
         case "download-storage-failed":

@@ -19,6 +19,7 @@ const hoistedBrowserDownloadMocks = vi.hoisted(() => ({
     showTerminalFailure: vi.fn(),
     updateTrayText: vi.fn(),
     saveCache: vi.fn(),
+    finishCache: vi.fn(),
     clearCache: vi.fn(),
     loadCoverCache: vi.fn(),
     saveCoverCache: vi.fn(),
@@ -38,12 +39,12 @@ vi.mock("../../src/core/cache/sync", () => ({
     subscribeCacheSync: vi.fn(() => vi.fn()),
     publishCacheSyncEvent: vi.fn()
 }));
-vi.mock("../../src/utils/index", () => ({
-    log: hoistedBrowserDownloadMocks.log,
+vi.mock("../../src/utils/log", () => ({ log: hoistedBrowserDownloadMocks.log }));
+vi.mock("../../src/utils/async", () => ({
     sleepWithAbort: hoistedBrowserDownloadMocks.sleepWithAbort,
-    sleep: hoistedBrowserDownloadMocks.sleep,
-    fetchWithTimeout: hoistedBrowserDownloadMocks.fetchWithTimeout
+    sleep: hoistedBrowserDownloadMocks.sleep
 }));
+vi.mock("../../src/utils/request", () => ({ fetchWithTimeout: hoistedBrowserDownloadMocks.fetchWithTimeout }));
 vi.mock("../../src/utils/dom", () => ({ fullCleanup: hoistedBrowserDownloadMocks.fullCleanup }));
 vi.mock("../../src/ui/popups", () => ({
     createDownloadPopup: hoistedBrowserDownloadMocks.createDownloadPopup,
@@ -55,12 +56,13 @@ vi.mock("../../src/ui/popups", () => ({
     updateMappingFontWarning: hoistedBrowserDownloadMocks.updateMappingFontWarning,
     showMappingFontFailure: hoistedBrowserDownloadMocks.showMappingFontFailure
 }));
-vi.mock("../../src/ui/download-terminal-notices", () => ({
+vi.mock("../../src/ui/messages/download-terminal", () => ({
     showDownloadTerminalFailure: hoistedBrowserDownloadMocks.showTerminalFailure
 }));
 vi.mock("../../src/ui/tray", () => ({ updateTrayText: hoistedBrowserDownloadMocks.updateTrayText }));
 vi.mock("../../src/core/cache/book-cache", () => ({
     putBookCacheBatchForTask: hoistedBrowserDownloadMocks.saveCache,
+    finishBookCacheForTask: hoistedBrowserDownloadMocks.finishCache,
     clearBookCacheForTask: hoistedBrowserDownloadMocks.clearCache,
     loadBookCover: hoistedBrowserDownloadMocks.loadCoverCache,
     putBookCoverForTask: hoistedBrowserDownloadMocks.saveCoverCache
@@ -108,6 +110,7 @@ export async function resetBrowserDownloadHarness(): Promise<BrowserDownloadRunt
     hoistedBrowserDownloadMocks.createDownloadPopup.mockImplementation(() => document.createElement("div"));
     hoistedBrowserDownloadMocks.promptProtectedChapterPassword.mockResolvedValue({ action: "skip-current" });
     hoistedBrowserDownloadMocks.saveCache.mockResolvedValue(true);
+    hoistedBrowserDownloadMocks.finishCache.mockResolvedValue(true);
     hoistedBrowserDownloadMocks.clearCache.mockResolvedValue(true);
     hoistedBrowserDownloadMocks.loadCoverCache.mockResolvedValue(null);
     hoistedBrowserDownloadMocks.saveCoverCache.mockResolvedValue(true);

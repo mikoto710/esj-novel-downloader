@@ -128,6 +128,21 @@ describe("incomplete chapter decision UI", () => {
         await expect(decision).resolves.toBe("export-with-placeholders");
     });
 
+    it("shows selected and source positions for missing range chapters", async () => {
+        const task = createDownloadTask(100);
+        const decision = confirmIncompleteChapters({
+            missingTasks: [task],
+            totalChapters: 20,
+            sourceTotalChapters: 120,
+            selectionMode: "range",
+            taskOrderByIndex: new Map([[100, 0]])
+        });
+
+        expect(document.querySelector("#esj-incomplete-chapters")?.textContent).toContain("[1/20｜原书第 101 章]");
+        (document.querySelector("#esj-incomplete-cancel") as HTMLButtonElement).click();
+        await expect(decision).resolves.toBe("cancel");
+    });
+
     it("returns retry and removes the dialog when missing chapters are retried", async () => {
         const decision = confirmIncompleteChapters({ missingTasks: [createDownloadTask()], totalChapters: 1 });
         (document.querySelector("#esj-incomplete-retry") as HTMLButtonElement).click();

@@ -5,7 +5,7 @@ import {
     formatBrowserDiagnosticSummary,
     listBrowserDiagnosticSessionView,
     removeBrowserDiagnosticSession
-} from "../adapters/browser-diagnostics";
+} from "../../adapters/browser-diagnostics";
 import {
     DIAGNOSTIC_HISTORY_LIMIT,
     DIAGNOSTIC_RETENTION_MS,
@@ -13,10 +13,11 @@ import {
     DIAGNOSTIC_TOTAL_BYTES_LIMIT,
     type DiagnosticSessionPresentation,
     type DiagnosticSessionView
-} from "../core/diagnostics";
-import { el, enableDrag } from "../utils/dom";
-import { createCommonHeader } from "./popup-components";
-import { subscribeInterfaceLocaleChange, t } from "./locale";
+} from "../../core/diagnostics";
+import { el, enableDrag, registerElementCleanup, removeElement } from "../../utils/dom";
+import { createCommonHeader } from "./common";
+import { subscribeInterfaceLocaleChange, t } from "../locale";
+import { acquirePageActionGroupLockForPopup } from "../page-action-lock";
 
 const DIAGNOSTIC_AUTO_REFRESH_INTERVAL_MS = 3000;
 let disposeActiveDiagnosticPopup: (() => void) | null = null;
@@ -90,25 +91,14 @@ async function copyText(text: string): Promise<void> {
  */
 export function createDiagnosticPopup(): void {
     const existingPopup = document.querySelector("#esj-diagnostics") as HTMLElement | null;
-    const openedFromSettings =
-        existingPopup?.dataset.releaseSettingsLock === "true" || Boolean(document.querySelector("#esj-settings"));
+    removeElement(existingPopup);
     disposeActiveDiagnosticPopup?.();
-    existingPopup?.remove();
-    document.querySelector("#esj-settings")?.remove();
+    removeElement(document.querySelector("#esj-settings"));
 
     let selectedId: string | null = null;
     let refreshTimer: number | null = null;
-    let removalObserver: MutationObserver | null = null;
     let stopLocaleRefresh: () => void = () => {};
     let disposed = false;
-    const toggleSettingsLock = (locked: boolean) => {
-        document.querySelectorAll(".esj-settings-trigger").forEach((button) => {
-            (button as HTMLButtonElement).disabled = locked;
-        });
-    };
-    if (openedFromSettings) {
-        toggleSettingsLock(true);
-    }
     const dispose = () => {
         if (disposed) {
             return;
@@ -120,20 +110,13 @@ export function createDiagnosticPopup(): void {
         }
         document.removeEventListener("visibilitychange", onVisibilityChange);
         stopLocaleRefresh();
-        removalObserver?.disconnect();
-        removalObserver = null;
         document.querySelector("#esj-diagnostic-clear-confirm")?.remove();
         if (disposeActiveDiagnosticPopup === dispose) {
             disposeActiveDiagnosticPopup = null;
         }
-        // 诊断弹窗仅在接管设置面板后释放设置入口，避免解除其他弹窗已持有的锁
-        if (openedFromSettings) {
-            toggleSettingsLock(false);
-        }
     };
     const close = () => {
-        dispose();
-        popup.remove();
+        removeElement(popup);
     };
     const header = createCommonHeader(t("diagnostics.title"), close);
     const retentionNotice = el("div", {
@@ -397,7 +380,6 @@ export function createDiagnosticPopup(): void {
         "div",
         {
             id: "esj-diagnostics",
-            "data-release-settings-lock": openedFromSettings ? "true" : "false",
             style: "position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:760px;max-width:calc(100vw - 32px);height:560px;max-height:calc(100vh - 32px);background:#fff;border:1px solid #aaa;border-radius:8px;box-shadow:0 0 18px rgba(0,0,0,.28);z-index:1000003;display:flex;flex-direction:column;"
         },
         [
@@ -413,6 +395,8 @@ export function createDiagnosticPopup(): void {
     );
 
     document.body.appendChild(popup);
+    registerElementCleanup(popup, dispose);
+    acquirePageActionGroupLockForPopup(popup);
     enableDrag(popup, ".esj-common-header");
     render();
     stopLocaleRefresh = subscribeInterfaceLocaleChange(() => {
@@ -434,12 +418,6 @@ export function createDiagnosticPopup(): void {
     });
     disposeActiveDiagnosticPopup = dispose;
     document.addEventListener("visibilitychange", onVisibilityChange);
-    removalObserver = new MutationObserver(() => {
-        if (!popup.isConnected) {
-            dispose();
-        }
-    });
-    removalObserver.observe(document.body, { childList: true });
     scheduleAutoRefresh();
 
     function showClearConfirm(): Promise<boolean> {

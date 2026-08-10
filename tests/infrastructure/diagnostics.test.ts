@@ -64,6 +64,33 @@ function createInput(
 }
 
 describe("diagnostic session retention", () => {
+    it("persists an optional range selection without changing the diagnostic schema", () => {
+        const repository = new MemoryDiagnosticRepository();
+        const manager = new DiagnosticManager(repository, () => 1_000);
+        manager.start(
+            createInput("range", {
+                totalChapters: 20,
+                selection: {
+                    mode: "range",
+                    sourceTotalChapters: 120,
+                    startChapter: 101,
+                    endChapter: 120
+                }
+            })
+        );
+
+        expect(manager.list().active[0]).toMatchObject({
+            schemaVersion: 1,
+            selection: {
+                mode: "range",
+                sourceTotalChapters: 120,
+                startChapter: 101,
+                endChapter: 120
+            },
+            task: { totalChapters: 20 }
+        });
+    });
+
     it("does not persist every restored or processed chapter when a large cache is resumed", () => {
         const repository = new MemoryDiagnosticRepository();
         const manager = new DiagnosticManager(repository, () => 1_000);

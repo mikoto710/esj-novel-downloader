@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { beforeEach, describe, expect, it } from "vitest";
-import { showMessagePopup } from "../../src/ui/message-popup";
+import { showMessagePopup } from "../../src/ui/dialogs/message";
 import { showMappingFontFailure } from "../../src/ui/popups";
 import { setInterfaceLocalePreference } from "../../src/core/config";
 

@@ -1,11 +1,11 @@
-import { blobToBase64 } from "../utils/index";
+import { blobToBase64 } from "../utils/download";
 import { parseChapterHtml, parseBookMetadata } from "../core/parser";
 import { getImageDownloadSetting } from "../core/config";
 import { processHtmlImages } from "../utils/image";
 import { addDownloadHistory } from "../core/download-history";
 import { MappingFontError, normalizeChapterMappingFont, prepareChapterMappingExport } from "../core/mapping-font";
 import { confirmMappingFontExport } from "../ui/popups";
-import { showMessagePopup } from "../ui/message-popup";
+import { showMessagePopup } from "../ui/dialogs/message";
 import { t } from "../ui/locale";
 import { isProtectedChapterHtml } from "../adapters/browser-protected-chapter";
 import {

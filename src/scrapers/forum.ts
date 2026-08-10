@@ -2,7 +2,7 @@ import { batchDownload } from "../core/download/batch-download";
 import type { DownloadTask } from "../core/download/contracts";
 import { parseBookMetadata } from "../core/parser";
 import { createConfirmPopup, createDownloadPopup, showBookDownloadInProgressPopup } from "../ui/popups";
-import { showMessagePopup } from "../ui/message-popup";
+import { showMessagePopup } from "../ui/dialogs/message";
 import { t } from "../ui/locale";
 import { abortActiveDownload, setAbortFlag, state, resetAbortController } from "../core/state";
 import {
@@ -17,9 +17,9 @@ import { fullCleanup } from "../utils/dom";
 import { finalizeBookDownloadTask } from "../core/download/task-finalizer";
 import { normalizeStorageError, StorageError, toStorageFailure } from "../core/cache/storage-error";
 import { getImageDownloadSetting } from "../core/config";
-import { getImageCacheConfirmHint } from "../ui/image-cache-compatibility";
-import { showCacheDiscardFailure, showDownloadTerminalFailure } from "../ui/download-terminal-notices";
-import { formatStorageFailure } from "../ui/storage-failure-messages";
+import { getImageCacheConfirmHint } from "../ui/messages/image-cache-compatibility";
+import { showCacheDiscardFailure, showDownloadTerminalFailure } from "../ui/messages/download-terminal";
+import { formatStorageFailure } from "../ui/messages/storage-failure";
 import {
     browserDiagnosticLog as log,
     finishBrowserDiagnosticSession,
@@ -29,6 +29,17 @@ import {
     startBrowserDiagnosticSession,
     updateBrowserDiagnosticSession
 } from "../adapters/browser-diagnostics";
+import { RangePreflightError, runRangeDownload } from "./range";
+
+function getForumBookId(): string {
+    const urlParts = location.pathname.split("/").filter(Boolean);
+    for (let index = urlParts.length - 1; index >= 0; index--) {
+        if (/^\d+$/.test(urlParts[index])) {
+            return urlParts[index];
+        }
+    }
+    return "";
+}
 
 /**
  * 抓取论坛页面的章节列表并启动下载
@@ -36,17 +47,7 @@ import {
 export async function scrapeForum(): Promise<void> {
     state.originalTitle = document.title;
 
-    let bid = "";
-
-    if (!bid) {
-        const urlParts = location.pathname.split("/").filter((p) => p);
-        for (let i = urlParts.length - 1; i >= 0; i--) {
-            if (/^\d+$/.test(urlParts[i])) {
-                bid = urlParts[i];
-                break;
-            }
-        }
-    }
+    const bid = getForumBookId();
 
     if (!bid) {
         log(t("page.bookIdMissing"));
@@ -321,4 +322,46 @@ export async function scrapeForum(): Promise<void> {
             showCacheDiscardFailure(finalization.cacheClearFailure);
         }
     }
+}
+
+/**
+ * 在论坛页锁前取得详情目录，并启动独立的连续章节范围任务
+ */
+export async function scrapeForumRange(): Promise<void> {
+    const bookId = getForumBookId();
+    if (!bookId) {
+        log(t("page.bookIdMissing"));
+        return;
+    }
+    await runRangeDownload({
+        bookId,
+        sourcePageType: "forum",
+        pageTitle: document.title,
+        async loadPlan() {
+            const detailUrl = `${location.origin}/detail/${bookId}.html`;
+            let response: Response;
+            try {
+                response = await fetch(detailUrl);
+                if (!response.ok) {
+                    throw new Error(`HTTP Error ${response.status}`);
+                }
+            } catch (error) {
+                throw new RangePreflightError("detail-fetch-failed", "book-metadata", { cause: error });
+            }
+            const doc = new DOMParser().parseFromString(await response.text(), "text/html");
+            const chapterLinks = Array.from(doc.querySelectorAll("#chapterList a")) as HTMLAnchorElement[];
+            if (chapterLinks.length === 0) {
+                throw new RangePreflightError("chapter-list-missing", "chapter-list");
+            }
+            return {
+                tasks: chapterLinks.map((node, index) => ({
+                    index,
+                    url: new URL(node.getAttribute("href") || node.href, detailUrl).href,
+                    title: (node.getAttribute("data-title") || node.innerText || "").trim()
+                })),
+                meta: parseBookMetadata(doc, detailUrl),
+                pageUrl: detailUrl
+            };
+        }
+    });
 }

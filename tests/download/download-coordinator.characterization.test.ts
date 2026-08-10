@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { runDownload } from "../../src/core/download/coordinator";
 import type {
     DownloadDependencies,
+    DownloadOptions,
     DownloadEvent,
     IncompleteChapterDecision,
     IncompleteChapterDetection,
@@ -22,6 +23,72 @@ import {
 import { MappingFontError } from "../../src/core/mapping-font";
 
 describe("runDownload characterization", () => {
+    it("downloads a middle range by absolute index without counting or exporting outside cache", async () => {
+        const tasks = Array.from({ length: 20 }, (_, order) => createDownloadTask(order + 100));
+        const chapters = new Map<number, Chapter>([
+            [0, createChapter(0)],
+            [100, createChapter(100)],
+            [101, createChapter(101)]
+        ]);
+        const harness = createHarness(tasks, chapters);
+
+        await runDownload(
+            createOptions(tasks, {
+                selection: {
+                    mode: "range",
+                    sourceTotalChapters: 120,
+                    startIndex: 100,
+                    endIndex: 119
+                }
+            }),
+            harness.dependencies
+        );
+
+        expect(harness.processedIndexes).toEqual(Array.from({ length: 18 }, (_, order) => order + 102));
+        expect(harness.exportData?.chapters).toHaveLength(20);
+        expect(harness.exportData?.chapters[0]).toEqual(createChapter(100));
+        expect(harness.exportData?.chapters.at(-1)).toEqual(createChapter(119));
+        expect(harness.exportData?.exportContext?.selection).toEqual({
+            mode: "range",
+            sourceTotalChapters: 120,
+            startChapter: 101,
+            endChapter: 120
+        });
+        expect(harness.cacheClears).toEqual([]);
+        expect(harness.cacheFinishes).toEqual([
+            expect.objectContaining({ bookId: "100", taskId: "task-100", totalChapters: 120 })
+        ]);
+        expect(harness.ui.snapshots.at(-1)).toMatchObject({
+            scheduledCount: 20,
+            restoredCount: 2,
+            readyChapterCount: 20,
+            cachedChapterCount: 20,
+            persistedCount: 20
+        });
+        expect(harness.runtimeSession).toMatchObject({ cachedChapterCount: 21, totalChapters: 120 });
+    });
+
+    it("retries an uncertain range writer close once before publishing export data", async () => {
+        const tasks = [createDownloadTask(10), createDownloadTask(11)];
+        const harness = createHarness(tasks);
+        const finishForTask = vi
+            .fn()
+            .mockRejectedValueOnce(new DOMException("transaction aborted", "AbortError"))
+            .mockResolvedValueOnce(true);
+        harness.dependencies.cache.finishForTask = finishForTask;
+
+        await runDownload(
+            createOptions(tasks, {
+                selection: { mode: "range", sourceTotalChapters: 20, startIndex: 10, endIndex: 11 }
+            }),
+            harness.dependencies
+        );
+
+        expect(finishForTask).toHaveBeenCalledTimes(2);
+        expect(harness.exportData?.chapters).toHaveLength(2);
+        expect(harness.log).toHaveBeenCalledWith(expect.objectContaining({ code: "cache-write-retry" }));
+    });
+
     it("processes protected chapters through the live queue and existing chapter pipeline", async () => {
         const tasks = [createDownloadTask(0), createDownloadTask(1), createDownloadTask(2)];
         const harness = createHarness(tasks);
@@ -716,6 +783,7 @@ function createHarness(tasks: DownloadTask[], chapters = new Map<number, Chapter
     const events = new RecordingDownloadEvents<DownloadEvent>();
     const processedIndexes: number[] = [];
     const cacheClears: Array<{ bookId: string; taskId: string }> = [];
+    const cacheFinishes: Array<{ bookId: string; taskId: string; totalChapters: number }> = [];
     const ui = {
         snapshots: [] as DownloadSnapshot[],
         prepare: vi.fn(),
@@ -802,6 +870,10 @@ function createHarness(tasks: DownloadTask[], chapters = new Map<number, Chapter
         coverCache: { load: async () => null, put: async () => true },
         cache: {
             putBatch: async () => true,
+            async finishForTask(bookId, taskId, meta) {
+                cacheFinishes.push({ bookId, taskId, totalChapters: meta.totalChapters });
+                return true;
+            },
             async clearForTask(bookId, taskId) {
                 cacheClears.push({ bookId, taskId });
                 return true;
@@ -834,15 +906,19 @@ function createHarness(tasks: DownloadTask[], chapters = new Map<number, Chapter
         fetcher,
         processedIndexes,
         cacheClears,
+        cacheFinishes,
         ui,
         log,
         get exportData() {
             return exportData;
+        },
+        get runtimeSession() {
+            return runtimeSession;
         }
     };
 }
 
-function createOptions(tasks: DownloadTask[], overrides: Partial<ReturnType<typeof createOptionsBase>> = {}) {
+function createOptions(tasks: DownloadTask[], overrides: Partial<DownloadOptions> = {}): DownloadOptions {
     return { ...createOptionsBase(tasks), ...overrides };
 }
 

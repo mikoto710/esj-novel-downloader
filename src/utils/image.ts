@@ -1,4 +1,5 @@
-import { fetchWithTimeout, sleepWithAbort } from "./index";
+import { sleepWithAbort } from "./async";
+import { fetchWithTimeout } from "./request";
 import { normalizeImageBlob, resolveImageUrl } from "./image-format";
 import type { ChapterImage } from "../types";
 

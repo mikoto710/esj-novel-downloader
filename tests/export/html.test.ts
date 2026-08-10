@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { describe, expect, it } from "vitest";
-import { buildHtml } from "../../src/core/html";
+import { buildHtml } from "../../src/core/export/html";
 import { createMissingChapterPlaceholder } from "../../src/core/download/incomplete-chapters";
 import { createBookMetadata, createChapter } from "../support";
 

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { getImageCacheConfirmHint } from "../../src/ui/image-cache-compatibility";
+import { getImageCacheConfirmHint } from "../../src/ui/messages/image-cache-compatibility";
 
 vi.mock("../../src/ui/locale", async () => {
     const locale = await vi.importActual<typeof import("../../src/core/locale")>("../../src/core/locale");

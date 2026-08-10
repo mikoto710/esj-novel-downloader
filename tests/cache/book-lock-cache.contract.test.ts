@@ -94,6 +94,47 @@ describe("book lock contracts", () => {
         await locks.releaseBookDownloadLock(replacement.lock);
     });
 
+    it("closes a range writer idempotently and rejects delayed writes until the next claim", async () => {
+        vi.stubGlobal("BroadcastChannel", undefined);
+        const storage = await import("../../src/core/cache/book-cache");
+        const repository = await import("../../src/core/cache/indexeddb-repository");
+        const meta = createCacheMeta({ bookId: "105", totalChapters: 20, updatedAt: Date.now() });
+
+        await storage.claimBookCache("105", "task-range", false);
+        expect(
+            await storage.putBookCacheBatchForTask("105", "task-range", new Map([[10, createChapter(10)]]), meta)
+        ).toBe(true);
+        expect(await storage.finishBookCacheForTask("105", "task-range", meta)).toBe(true);
+        const firstClosedAt = (await repository.readCacheManifestV3("105"))?.writerClosedAt;
+        expect(firstClosedAt).toBeTypeOf("number");
+
+        vi.spyOn(Date, "now").mockReturnValue((firstClosedAt ?? 0) + 10_000);
+        expect(await storage.finishBookCacheForTask("105", "task-range", meta)).toBe(true);
+        expect((await repository.readCacheManifestV3("105"))?.writerClosedAt).toBe(firstClosedAt);
+        expect(
+            await storage.putBookCacheBatchForTask("105", "task-range", new Map([[11, createChapter(11)]]), meta)
+        ).toBe(false);
+
+        await storage.claimBookCache("105", "task-next", false);
+        expect((await repository.readCacheManifestV3("105"))?.writerClosedAt).toBeUndefined();
+        expect(
+            await storage.putBookCacheBatchForTask("105", "task-next", new Map([[11, createChapter(11)]]), meta)
+        ).toBe(true);
+        expect(await storage.clearBookCacheForTask("105", "task-range")).toBe(false);
+    });
+
+    it("allows stop-and-clear to remove a writer that was already closed by the same task", async () => {
+        vi.stubGlobal("BroadcastChannel", undefined);
+        const storage = await import("../../src/core/cache/book-cache");
+        const meta = createCacheMeta({ bookId: "106", totalChapters: 5, updatedAt: Date.now() });
+
+        await storage.claimBookCache("106", "task-range", false);
+        await storage.putBookCacheBatchForTask("106", "task-range", new Map([[2, createChapter(2)]]), meta);
+        expect(await storage.finishBookCacheForTask("106", "task-range", meta)).toBe(true);
+        expect(await storage.clearBookCacheForTask("106", "task-range")).toBe(true);
+        expect(await storage.loadBookCache("106")).toEqual({ size: 0, map: null });
+    });
+
     it("lazily migrates v2 chapters after the v3 writer is claimed", async () => {
         vi.stubGlobal("BroadcastChannel", undefined);
         const { get, set } = await import("idb-keyval");

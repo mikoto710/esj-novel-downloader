@@ -58,7 +58,7 @@ export function hasBookDownloadTaskPresence(taskId: string): boolean {
 }
 
 /**
- * 支持启动全本下载的页面类型
+ * 支持启动书籍下载的页面类型
  */
 export type FullBookSourcePageType = Extract<SourcePageType, "detail" | "forum">;
 
@@ -107,7 +107,7 @@ export async function ownsActiveBookDownloadLock(lock: BookDownloadLock | null):
 }
 
 /**
- * 列出全部仍有效的全本下载任务锁
+ * 列出全部仍有效的书籍下载任务锁
  */
 export async function listActiveBookDownloadLocks(): Promise<BookDownloadLock[]> {
     const allEntries = await entries<string, BookDownloadLock>(lockStore);
@@ -235,7 +235,7 @@ function createReleasedLock(lock: BookDownloadLock): BookDownloadLock {
 }
 
 /**
- * 原子获取指定书籍的全本下载任务锁
+ * 原子获取指定书籍的下载任务锁
  * 已存在有效任务时返回冲突锁，不覆盖现有所有者
  */
 export async function acquireBookDownloadLock(

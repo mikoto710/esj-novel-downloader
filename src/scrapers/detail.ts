@@ -8,7 +8,7 @@ import {
 } from "../core/book-lock";
 import { fullCleanup } from "../utils/dom";
 import { createConfirmPopup, createDownloadPopup, showBookDownloadInProgressPopup } from "../ui/popups";
-import { showMessagePopup } from "../ui/message-popup";
+import { showMessagePopup } from "../ui/dialogs/message";
 import { t } from "../ui/locale";
 import { batchDownload } from "../core/download/batch-download";
 import type { DownloadTask } from "../core/download/contracts";
@@ -17,9 +17,9 @@ import { claimBookCache, loadBookCache } from "../core/cache/book-cache";
 import { finalizeBookDownloadTask } from "../core/download/task-finalizer";
 import { normalizeStorageError, StorageError, toStorageFailure } from "../core/cache/storage-error";
 import { getImageDownloadSetting } from "../core/config";
-import { getImageCacheConfirmHint } from "../ui/image-cache-compatibility";
-import { showCacheDiscardFailure, showDownloadTerminalFailure } from "../ui/download-terminal-notices";
-import { formatStorageFailure } from "../ui/storage-failure-messages";
+import { getImageCacheConfirmHint } from "../ui/messages/image-cache-compatibility";
+import { showCacheDiscardFailure, showDownloadTerminalFailure } from "../ui/messages/download-terminal";
+import { formatStorageFailure } from "../ui/messages/storage-failure";
 import {
     browserDiagnosticLog as log,
     finishBrowserDiagnosticSession,
@@ -29,6 +29,7 @@ import {
     startBrowserDiagnosticSession,
     updateBrowserDiagnosticSession
 } from "../adapters/browser-diagnostics";
+import { RangePreflightError, runRangeDownload } from "./range";
 
 function getBookId(): string {
     const match = location.href.match(/\/detail\/(\d+)/);
@@ -263,4 +264,35 @@ export async function scrapeDetail(): Promise<void> {
             showCacheDiscardFailure(finalization.cacheClearFailure);
         }
     }
+}
+
+/**
+ * 在详情页锁前解析完整目录，并启动独立的连续章节范围任务
+ */
+export async function scrapeDetailRange(): Promise<void> {
+    const bookId = getBookId();
+    if (bookId === "unknown") {
+        log(t("page.bookIdMissing"));
+        return;
+    }
+    await runRangeDownload({
+        bookId,
+        sourcePageType: "detail",
+        pageTitle: document.title,
+        async loadPlan() {
+            const chapterLinks = Array.from(document.querySelectorAll("#chapterList a")) as HTMLAnchorElement[];
+            if (chapterLinks.length === 0) {
+                throw new RangePreflightError("chapter-list-missing", "chapter-list");
+            }
+            return {
+                tasks: chapterLinks.map((node, index) => ({
+                    index,
+                    url: node.href,
+                    title: (node.getAttribute("data-title") || node.innerText || "").trim()
+                })),
+                meta: parseBookMetadata(document, location.href),
+                pageUrl: location.href
+            };
+        }
+    });
 }

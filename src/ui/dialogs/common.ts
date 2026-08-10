@@ -1,5 +1,5 @@
-import { el } from "../utils/dom";
-import { bindInterfaceAttribute } from "./locale";
+import { el } from "../../utils/dom";
+import { bindInterfaceAttribute } from "../locale";
 
 /**
  * 创建弹窗公共标题栏

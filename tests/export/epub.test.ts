@@ -4,17 +4,15 @@ import JSZip from "jszip";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { BookMetadata, Chapter, ChapterImage } from "../../src/types";
 
-const { loadScriptMock, logMock } = vi.hoisted(() => ({
-    loadScriptMock: vi.fn(),
-    logMock: vi.fn()
+const { loadScriptMock } = vi.hoisted(() => ({
+    loadScriptMock: vi.fn()
 }));
 
-vi.mock("../../src/utils/index", () => ({
-    loadScript: loadScriptMock,
-    log: logMock
+vi.mock("../../src/utils/script-loader", () => ({
+    loadScript: loadScriptMock
 }));
 
-import { buildEpub } from "../../src/core/epub";
+import { buildEpub } from "../../src/core/export/epub";
 import { createMissingChapterPlaceholder } from "../../src/core/download/incomplete-chapters";
 
 const metadata: BookMetadata = {
@@ -40,7 +38,6 @@ describe("buildEpub image resources", () => {
     beforeEach(() => {
         loadScriptMock.mockReset();
         loadScriptMock.mockResolvedValue(JSZip);
-        logMock.mockReset();
     });
 
     it("writes a normalized image, manifest MIME, and XHTML reference consistently", async () => {

@@ -12,6 +12,7 @@ export interface CacheManifestV3 {
     chapterCount: number;
     meta?: CacheMeta;
     writerTaskId: string;
+    writerClosedAt?: number;
     cleared?: boolean;
 }
 
@@ -243,19 +244,18 @@ export async function claimCacheV3(
                 if (compatibility !== "compatible") {
                     store.delete(getChapterRange(bookId));
                 }
-                store.put(
-                    {
-                        ...current,
-                        ts: Date.now(),
-                        chapterCount: compatibility === "compatible" ? current.chapterCount : 0,
-                        ...(current.meta
-                            ? { meta: { ...current.meta, imageEnabled: requestedImageEnabled, updatedAt: Date.now() } }
-                            : {}),
-                        writerTaskId: taskId,
-                        cleared: false
-                    } satisfies CacheManifestV3,
-                    getManifestKey(bookId)
-                );
+                const claimedManifest: CacheManifestV3 = {
+                    ...current,
+                    ts: Date.now(),
+                    chapterCount: compatibility === "compatible" ? current.chapterCount : 0,
+                    ...(current.meta
+                        ? { meta: { ...current.meta, imageEnabled: requestedImageEnabled, updatedAt: Date.now() } }
+                        : {}),
+                    writerTaskId: taskId,
+                    cleared: false
+                };
+                delete claimedManifest.writerClosedAt;
+                store.put(claimedManifest, getManifestKey(bookId));
                 setResult({
                     compatibility,
                     invalidatedCount: compatibility === "compatible" ? 0 : current.chapterCount
@@ -310,7 +310,12 @@ export async function putCacheBatchV3(
         const request = store.get(getManifestKey(bookId));
         request.onsuccess = () => {
             const current = request.result as CacheManifestV3 | undefined;
-            if (!current || current.writerTaskId !== taskId || current.cleared) {
+            if (
+                !current ||
+                current.writerTaskId !== taskId ||
+                current.cleared ||
+                current.writerClosedAt !== undefined
+            ) {
                 setResult(false);
                 return;
             }
@@ -354,7 +359,12 @@ export async function putCacheCoverV3ForTask(
         const request = store.get(getManifestKey(bookId));
         request.onsuccess = () => {
             const current = request.result as CacheManifestV3 | undefined;
-            if (!current || current.writerTaskId !== taskId || current.cleared) {
+            if (
+                !current ||
+                current.writerTaskId !== taskId ||
+                current.cleared ||
+                current.writerClosedAt !== undefined
+            ) {
                 setResult(false);
                 return;
             }
@@ -372,6 +382,48 @@ export async function putCacheCoverV3ForTask(
                 getCoverKey(bookId, coverUrl)
             );
             setResult(true);
+        };
+    }, signal);
+}
+
+/**
+ * 原子提交最终元数据并关闭当前 writer，保留章节和封面供后续任务复用
+ */
+export async function finishCacheV3ForTask(
+    bookId: string,
+    taskId: string,
+    meta: CacheMeta,
+    signal?: AbortSignal
+): Promise<boolean> {
+    return runWriteTransaction<boolean>((store, setResult) => {
+        const request = store.get(getManifestKey(bookId));
+        request.onsuccess = () => {
+            const current = request.result as CacheManifestV3 | undefined;
+            if (!current || current.writerTaskId !== taskId || current.cleared) {
+                setResult(false);
+                return;
+            }
+            if (current.writerClosedAt !== undefined) {
+                setResult(true);
+                return;
+            }
+
+            const countRequest = store.count(getChapterRange(bookId));
+            countRequest.onsuccess = () => {
+                const normalizedMeta = normalizeMeta(bookId, meta);
+                const writerClosedAt = Date.now();
+                store.put(
+                    {
+                        ...current,
+                        ts: normalizedMeta?.updatedAt || writerClosedAt,
+                        chapterCount: countRequest.result,
+                        ...(normalizedMeta === undefined ? {} : { meta: normalizedMeta }),
+                        writerClosedAt
+                    } satisfies CacheManifestV3,
+                    getManifestKey(bookId)
+                );
+                setResult(true);
+            };
         };
     }, signal);
 }

@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { injectSinglePageButton } from "../../src/ui/single";
+import { injectSinglePageButton } from "../../src/ui/pages/single";
 import { setInterfaceLocalePreference } from "../../src/core/config";
 
 function createWoff2Bytes(): Uint8Array {

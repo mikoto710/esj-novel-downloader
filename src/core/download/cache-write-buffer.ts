@@ -65,6 +65,7 @@ export class ChapterCacheWriteBuffer {
     private activeWrite: ActiveCacheWrite | null = null;
     private writeChain = Promise.resolve(true);
     private rejected = false;
+    private sealed = false;
     private cancellationTimedOut = false;
     private discarded = false;
     private storageFailure: StorageFailure | null = null;
@@ -96,7 +97,7 @@ export class ChapterCacheWriteBuffer {
      * 返回 false 表示缓冲区已停止接受章节，或本次触发的缓存写入失败
      */
     async add(index: number, chapter: Chapter): Promise<boolean> {
-        if (this.rejected || this.discarded) {
+        if (this.sealed || this.rejected || this.discarded) {
             return false;
         }
 
@@ -112,6 +113,16 @@ export class ChapterCacheWriteBuffer {
             return this.flush();
         }
         return true;
+    }
+
+    /**
+     * 永久停止接收新章节并等待当前批次及既有写入链完成
+     * 重复调用保持幂等，供范围任务在关闭持久 writer 前建立明确写入边界
+     */
+    async seal(): Promise<boolean> {
+        this.sealed = true;
+        this.cancelTimer();
+        return this.flush();
     }
 
     /**

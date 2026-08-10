@@ -1,3 +1,77 @@
+interface ElementCleanupState {
+    callbacks: Set<() => void>;
+    observer: MutationObserver | null;
+}
+
+const elementCleanupStates = new WeakMap<Element, ElementCleanupState>();
+
+function runElementCleanup(element: Element): void {
+    const state = elementCleanupStates.get(element);
+    if (!state) {
+        return;
+    }
+    elementCleanupStates.delete(element);
+    state.observer?.disconnect();
+    state.callbacks.forEach((callback) => {
+        try {
+            callback();
+        } catch (error) {
+            console.error("Element cleanup failed", error);
+        }
+    });
+}
+
+/**
+ * 注册与元素生命周期绑定的清理回调；外部移除元素时也会执行
+ */
+export function registerElementCleanup(element: Element, callback: () => void): () => void {
+    let state = elementCleanupStates.get(element);
+    if (!state) {
+        const MutationObserverClass = element.ownerDocument.defaultView?.MutationObserver;
+        state = {
+            callbacks: new Set(),
+            observer: MutationObserverClass
+                ? new MutationObserverClass(() => {
+                      if (!element.isConnected) {
+                          runElementCleanup(element);
+                      }
+                  })
+                : null
+        };
+        elementCleanupStates.set(element, state);
+        state.observer?.observe(element.ownerDocument.documentElement, { childList: true, subtree: true });
+    }
+    state.callbacks.add(callback);
+
+    let registered = true;
+    return () => {
+        if (!registered) {
+            return;
+        }
+        registered = false;
+        const current = elementCleanupStates.get(element);
+        if (!current) {
+            return;
+        }
+        current.callbacks.delete(callback);
+        if (current.callbacks.size === 0) {
+            current.observer?.disconnect();
+            elementCleanupStates.delete(element);
+        }
+    };
+}
+
+/**
+ * 在移除元素前同步执行其生命周期清理
+ */
+export function removeElement(element: Element | null | undefined): void {
+    if (!element) {
+        return;
+    }
+    runElementCleanup(element);
+    element.remove();
+}
+
 /**
  * 启用弹窗拖拽功能
  * @param popup 弹窗的容器元素
@@ -48,26 +122,30 @@ export function fullCleanup(originalTitle?: string): void {
         "#esj-popup",
         "#esj-min-tray",
         "#esj-confirm",
+        "#esj-book-lock",
         "#esj-format",
         "#esj-settings",
+        "#esj-image-setting-task-confirm",
         "#esj-cache-manager",
+        "#esj-cache-confirm",
+        "#esj-cache-protection-notice",
         "#esj-download-history",
         "#esj-download-history-confirm",
+        "#esj-diagnostics",
+        "#esj-diagnostic-clear-confirm",
         "#esj-image-cache-confirm",
         "#esj-mapping-confirm",
         "#esj-mapping-export-confirm",
-        "#esj-message-popup"
+        "#esj-message-popup",
+        "#esj-range-selection",
+        "#esj-range-replace-confirm"
     ];
 
-    selectors.forEach((sel) => {
-        document.querySelector(sel)?.remove();
-    });
+    selectors.forEach((sel) => removeElement(document.querySelector(sel)));
 
     if (originalTitle) {
         document.title = originalTitle;
     }
-    const settingsBtns = document.querySelectorAll(".esj-settings-trigger");
-    settingsBtns.forEach((btn) => ((btn as HTMLButtonElement).disabled = false));
 }
 
 /**

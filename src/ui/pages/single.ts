@@ -1,11 +1,11 @@
-import { el } from "../utils/dom";
-import { showMessagePopup } from "./message-popup";
-import { downloadCurrentPage } from "../scrapers/single";
-import { parseChapterHtml } from "../core/parser";
-import { MappingFontError, normalizeChapterMappingFont } from "../core/mapping-font";
-import { isProtectedChapterHtml } from "../adapters/browser-protected-chapter";
-import { bindInterfaceAttribute, subscribeInterfaceLocaleChange, t } from "./locale";
-import { formatMappingFontError } from "./mapping-font-messages";
+import { el } from "../../utils/dom";
+import { showMessagePopup } from "../dialogs/message";
+import { downloadCurrentPage } from "../../scrapers/single";
+import { parseChapterHtml } from "../../core/parser";
+import { MappingFontError, normalizeChapterMappingFont } from "../../core/mapping-font";
+import { isProtectedChapterHtml } from "../../adapters/browser-protected-chapter";
+import { bindInterfaceAttribute, subscribeInterfaceLocaleChange, t } from "../locale";
+import { formatMappingFontError } from "../messages/mapping-font";
 
 const CUSTOMIZER_REFRESH_DELAY_MS = 150;
 

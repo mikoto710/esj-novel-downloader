@@ -50,13 +50,15 @@ scrapers / ui
                     └─> adapters / cache / browser APIs
 ```
 
-- `scrapers/` 和 `ui/` 负责页面接入与用户交互。
+- `scrapers/` 负责页面抓取与任务编排；`ui/pages/` 负责入口注入，`ui/dialogs/` 负责交互弹窗，`ui/messages/` 负责将结构化结果转换为本地化提示。
 - `core/download/` 负责状态流转、缓存恢复、调度、完整性检查、取消和导出准备。
+- `core/export/` 负责 EPUB、HTML 和导出文件名组装，不访问 DOM 或 GM API。
 - 核心逻辑不得直接访问 DOM、GM API 或浏览器全局状态。
 - 浏览器能力通过 contracts 和 adapter 注入。
 - 核心层只传递稳定的消息代码、参数或与语言无关的错误详情，由 adapter 或 UI 负责本地化展示。
 - 界面本地化不得转换小说正文、书籍元数据、站点原始链接或导出内容，也不得改写 ESJZone `status === 206` 的协议判断文本。
 - `core/cache/` 负责增量缓存、迁移、所有权和跨页面同步。
+- `utils/` 按异步、请求、日志、下载和脚本加载职责直接导入具体模块，不再通过综合 `index.ts` 聚合。
 - 成功、失败和取消必须经过统一收尾流程。
 - 缺章占位只用于本次导出，不得写回章节 Map 或持久缓存。
 - 缓存 schema、取消语义或其他重大用户行为变化应先讨论兼容和迁移方案。

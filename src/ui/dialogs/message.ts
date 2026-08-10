@@ -1,8 +1,8 @@
-import { el, enableDrag } from "../utils/dom";
-import { createCommonHeader } from "./popup-components";
-import { listBrowserDiagnosticSessions } from "../adapters/browser-diagnostics";
+import { el, enableDrag } from "../../utils/dom";
+import { createCommonHeader } from "./common";
+import { listBrowserDiagnosticSessions } from "../../adapters/browser-diagnostics";
 import { createDiagnosticPopup } from "./diagnostics";
-import { t } from "./locale";
+import { t } from "../locale";
 
 export type MessagePopupTone = "info" | "warning" | "error";
 

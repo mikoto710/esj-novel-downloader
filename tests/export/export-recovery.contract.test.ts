@@ -11,9 +11,10 @@ const mocks = vi.hoisted(() => ({
     log: vi.fn()
 }));
 
-vi.mock("../../src/core/epub", () => ({ buildEpub: mocks.buildEpub }));
-vi.mock("../../src/core/html", () => ({ buildHtml: mocks.buildHtml }));
-vi.mock("../../src/utils/index", () => ({ log: mocks.log, triggerDownload: mocks.triggerDownload }));
+vi.mock("../../src/core/export/epub", () => ({ buildEpub: mocks.buildEpub }));
+vi.mock("../../src/core/export/html", () => ({ buildHtml: mocks.buildHtml }));
+vi.mock("../../src/utils/log", () => ({ log: mocks.log }));
+vi.mock("../../src/utils/download", () => ({ triggerDownload: mocks.triggerDownload }));
 vi.mock("../../src/core/download-history", () => ({ addDownloadHistory: mocks.addDownloadHistory }));
 
 describe("full-book export recovery contracts", () => {
@@ -156,6 +157,54 @@ describe("full-book export recovery contracts", () => {
         expect(txtButton.textContent).toBe("⬇ TXT 下載");
     });
 
+    it("shows the chapter count only for full-book exports", async () => {
+        await prepareExportPopup(
+            createCachedData({ chapters: [createChapter(0), createChapter(1), createChapter(2)] })
+        );
+
+        expect(document.querySelector("#esj-format-chapter-count")?.textContent).toBe("共 3 章");
+        expect(document.querySelector("#esj-format-range")).toBeNull();
+    });
+
+    it("shows one range summary and keeps it singular after a locale refresh", async () => {
+        const { setInterfaceLocalePreference } = await import("../../src/core/config");
+        const { publishInterfaceLocaleChange } = await import("../../src/ui/locale");
+        const chapters = Array.from({ length: 20 }, (_, index) => createChapter(index));
+        await prepareExportPopup(
+            createCachedData({
+                chapters,
+                exportContext: {
+                    bookId: "100",
+                    rawBookName: "测试小说",
+                    pageUrl: "https://www.esjzone.cc/detail/100.html",
+                    sourcePageType: "detail",
+                    chapterSummary: { totalCount: 20, missingCount: 0 },
+                    selection: {
+                        mode: "range",
+                        sourceTotalChapters: 120,
+                        startChapter: 101,
+                        endChapter: 120
+                    },
+                    imageEnabled: false
+                }
+            })
+        );
+        const popup = document.querySelector("#esj-format") as HTMLElement;
+        const rangeStatus = popup.querySelector("#esj-format-range");
+
+        expect(rangeStatus?.textContent).toBe("第 101–120 章，共 20 章");
+        expect(popup.querySelector("#esj-format-chapter-count")).toBeNull();
+        expect(popup.textContent?.match(/共 20 章/g)).toHaveLength(1);
+
+        setInterfaceLocalePreference("zh-TW");
+        publishInterfaceLocaleChange();
+
+        expect(popup.querySelector("#esj-format-range")).toBe(rangeStatus);
+        expect(rangeStatus?.textContent).toBe("第 101–120 章，共 20 章");
+        expect(popup.querySelector("#esj-format-chapter-count")).toBeNull();
+        expect(popup.textContent?.match(/共 20 章/g)).toHaveLength(1);
+    });
+
     it("prevents duplicate HTML builds while allowing another format to export", async () => {
         const htmlBuild = createDeferred<Blob>();
         mocks.buildHtml.mockReturnValue(htmlBuild.promise);
@@ -172,6 +221,44 @@ describe("full-book export recovery contracts", () => {
         htmlBuild.resolve(new Blob(["html"], { type: "text/html" }));
         await vi.waitFor(() => expect(mocks.triggerDownload).toHaveBeenCalledTimes(2));
         expect(mocks.addDownloadHistory).toHaveBeenCalledWith(expect.objectContaining({ format: "html" }));
+    });
+
+    it("uses the captured range snapshot for filenames and history", async () => {
+        const rangeData = createCachedData({
+            exportContext: {
+                bookId: "100",
+                rawBookName: "测试小说",
+                pageUrl: "https://www.esjzone.cc/detail/100.html",
+                sourcePageType: "detail",
+                chapterSummary: { totalCount: 20, missingCount: 1 },
+                selection: {
+                    mode: "range",
+                    sourceTotalChapters: 120,
+                    startChapter: 101,
+                    endChapter: 120
+                },
+                imageEnabled: false
+            }
+        });
+        const { state } = await prepareExportPopup(rangeData);
+
+        state.cachedData = createCachedData();
+        click("#esj-txt");
+
+        expect(mocks.triggerDownload).toHaveBeenCalledWith(expect.any(Blob), "测试小说_第101-120章.txt");
+        await vi.waitFor(() =>
+            expect(mocks.addDownloadHistory).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    chapterSummary: { totalCount: 20, missingCount: 1 },
+                    selection: {
+                        mode: "range",
+                        sourceTotalChapters: 120,
+                        startChapter: 101,
+                        endChapter: 120
+                    }
+                })
+            )
+        );
     });
 
     it("reports TXT download failures with bounded details and succeeds after closing the message", async () => {

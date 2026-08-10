@@ -2,17 +2,15 @@
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { fetchWithTimeoutMock, logMock, sleepWithAbortMock } = vi.hoisted(() => ({
+const { fetchWithTimeoutMock, sleepWithAbortMock } = vi.hoisted(() => ({
     fetchWithTimeoutMock: vi.fn(),
-    logMock: vi.fn(),
     sleepWithAbortMock: vi.fn().mockResolvedValue(undefined)
 }));
 
-vi.mock("../../src/utils/index", () => ({
-    fetchWithTimeout: fetchWithTimeoutMock,
-    log: logMock,
+vi.mock("../../src/utils/async", () => ({
     sleepWithAbort: sleepWithAbortMock
 }));
+vi.mock("../../src/utils/request", () => ({ fetchWithTimeout: fetchWithTimeoutMock }));
 
 import { processHtmlImages } from "../../src/utils/image";
 
@@ -23,7 +21,6 @@ function blobResponse(blob: Blob): Response {
 describe("processHtmlImages", () => {
     beforeEach(() => {
         fetchWithTimeoutMock.mockReset();
-        logMock.mockReset();
         sleepWithAbortMock.mockClear();
     });
 

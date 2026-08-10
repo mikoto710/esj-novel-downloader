@@ -16,7 +16,8 @@ import {
 } from "../core/diagnostics";
 import type { DownloadEventSink, DownloadLog, DownloadLogCode, DownloadOptions } from "../core/download/contracts";
 import { getConcurrency, getEpubTagPageSetting } from "../core/config";
-import { log, triggerDownload } from "../utils/index";
+import { triggerDownload } from "../utils/download";
+import { log } from "../utils/log";
 import { formatDownloadLog } from "./browser-download-messages";
 import { t } from "../ui/locale";
 
@@ -478,6 +479,16 @@ export function formatBrowserDiagnosticSummary(
         `${formatDiagnosticBrowser(session)} / ${session.application.userscriptManager}`,
         t("diagnostics.summary.book", { title: bookTitle, bookId: session.book.bookId }),
         t("diagnostics.summary.link", { url: session.book.url }),
+        ...(session.selection?.mode === "range"
+            ? [
+                  t("diagnostics.summary.range", {
+                      start: session.selection.startChapter,
+                      end: session.selection.endChapter,
+                      count: session.task.totalChapters,
+                      sourceTotal: session.selection.sourceTotalChapters
+                  })
+              ]
+            : []),
         ...(presentationLine ? [presentationLine] : []),
         t("diagnostics.summary.result", { result: session.result, phase: session.task.phase }),
         t("diagnostics.summary.chapters", {

@@ -1,5 +1,5 @@
-import { evaluateImageCacheCompatibility } from "../core/cache/image-cache-compatibility";
-import { t } from "./locale";
+import { evaluateImageCacheCompatibility } from "../../core/cache/image-cache-compatibility";
+import { t } from "../locale";
 
 /**
  * 根据任务启动时的插图设置说明本次缓存恢复行为

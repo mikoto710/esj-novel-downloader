@@ -2,6 +2,12 @@ import { el } from "../utils/dom";
 import { state } from "../core/state";
 import { showFormatChoice, createSettingsPanel } from "./popups";
 import { bindInterfaceAttribute, bindInterfaceText, t } from "./locale";
+import { confirmReplaceRangeExport } from "./dialogs/range-selection";
+import { acquirePageActionGroupLock } from "./page-action-lock";
+
+function hasBlockingDownloadPopup(): boolean {
+    return Boolean(document.querySelector("#esj-confirm,#esj-format,#esj-range-selection,#esj-range-replace-confirm"));
+}
 
 /**
  * 创建通用的设置按钮
@@ -64,40 +70,46 @@ export function createDownloadButton(
                     return;
                 }
 
-                // 检查是否处于其他弹窗状态
-                if (document.querySelector("#esj-confirm") || document.querySelector("#esj-format")) {
+                // 用户决策弹窗各自持有页面操作锁，入口层仍保留防重保护
+                if (btn.disabled || hasBlockingDownloadPopup()) {
                     return;
                 }
+
+                // 保存原始 HTML，以便范围结果替换确认取消或任务结束时恢复
+                const originalHtml = btn.innerHTML;
+                const preparingHtml = `<i class="icon-refresh fa-spin"></i> ${t("common.preparing")}`;
 
                 // 如果有缓存，直接显示导出窗口，不进入 loading
                 if (state.cachedData) {
-                    showFormatChoice();
+                    if (state.cachedData.exportContext?.selection?.mode !== "range") {
+                        showFormatChoice();
+                        return;
+                    }
+                    btn.innerHTML = preparingHtml;
+                    if (!(await confirmReplaceRangeExport())) {
+                        btn.innerHTML = originalHtml;
+                        return;
+                    }
+                }
+
+                if (btn.disabled || hasBlockingDownloadPopup()) {
+                    btn.innerHTML = originalHtml;
                     return;
                 }
 
-                if (btn.disabled) {
-                    return;
-                }
-
-                // 保存原始 HTML 以便恢复
-                const originalHtml = btn.innerHTML;
+                const releasePageActions = acquirePageActionGroupLock();
 
                 // 执行抓取任务，进入 loading
-                btn.disabled = true;
-                btn.innerHTML = `<i class="icon-refresh fa-spin"></i> ${t("common.preparing")}`;
+                btn.innerHTML = preparingHtml;
 
                 try {
                     await scrapeFn();
                 } catch (err: any) {
                     console.error("Scrape Error: " + err.message);
                 } finally {
-                    // 没有缓存数据时，才恢复按钮可用
-                    if (!state.cachedData) {
-                        btn.disabled = false;
-                        btn.innerHTML = originalHtml;
-                    } else {
-                        btn.innerHTML = originalHtml;
-                    }
+                    // 导出弹窗如仍存在会持有自己的锁；本入口只释放当前点击任务
+                    btn.innerHTML = originalHtml;
+                    releasePageActions();
                 }
             }
         },
@@ -110,5 +122,47 @@ export function createDownloadButton(
         ]
     );
 
+    return btn;
+}
+
+/**
+ * 创建独立范围下载按钮；已有导出结果由范围选择弹窗决定复用或替换
+ */
+export function createRangeDownloadButton(
+    id: string,
+    scrapeFn: () => Promise<void>,
+    customClass: string = ""
+): HTMLElement {
+    const btn = el(
+        "button",
+        {
+            id,
+            className: `btn btn-info esj-download-trigger ${customClass}`,
+            style: "color: white; cursor: pointer; margin-left: 5px;",
+            onclick: async () => {
+                const runningPopup = document.querySelector("#esj-popup") as HTMLElement | null;
+                if (runningPopup) {
+                    runningPopup.style.display = "flex";
+                    document.querySelector("#esj-min-tray")?.remove();
+                    return;
+                }
+                if (btn.disabled || hasBlockingDownloadPopup()) {
+                    return;
+                }
+                const originalHtml = btn.innerHTML;
+                const releasePageActions = acquirePageActionGroupLock();
+                btn.innerHTML = `<i class="icon-refresh fa-spin"></i> ${t("common.preparing")}`;
+                try {
+                    await scrapeFn();
+                } catch (error) {
+                    console.error("Range Scrape Error", error);
+                } finally {
+                    btn.innerHTML = originalHtml;
+                    releasePageActions();
+                }
+            }
+        },
+        [el("i", { className: "icon-download" }), " ", bindInterfaceText(el("span"), "button.downloadRange")]
+    );
     return btn;
 }

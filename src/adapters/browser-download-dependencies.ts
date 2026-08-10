@@ -23,6 +23,7 @@ import {
 } from "../core/state";
 import {
     clearBookCacheForTask,
+    finishBookCacheForTask,
     loadBookCover,
     putBookCacheBatchForTask,
     putBookCoverForTask
@@ -41,12 +42,14 @@ import {
 import { updateTrayText } from "../ui/tray";
 import { fullCleanup } from "../utils/dom";
 import { processHtmlImages, type ImageProcessingFailure } from "../utils/image";
-import { fetchWithTimeout, log, sleep, sleepWithAbort } from "../utils/index";
+import { sleep, sleepWithAbort } from "../utils/async";
+import { log } from "../utils/log";
+import { fetchWithTimeout } from "../utils/request";
 import { removeImgTags } from "../utils/text";
 import { normalizeChapterMappingFont } from "../core/mapping-font";
 import { normalizeImageBlob } from "../utils/image-format";
 import { browserDiagnosticEvents, browserDiagnosticLog, recordBrowserDiagnosticFailure } from "./browser-diagnostics";
-import { showDownloadTerminalFailure } from "../ui/download-terminal-notices";
+import { showDownloadTerminalFailure } from "../ui/messages/download-terminal";
 import { createBrowserProtectedChapterAuth, isProtectedChapterHtml } from "./browser-protected-chapter";
 import { BrowserRequestGate } from "./browser-request-gate";
 import { subscribeInterfaceLocaleChange, t } from "../ui/locale";
@@ -106,12 +109,14 @@ function updateDownloadStatus(status: string): void {
 }
 
 let lastDownloadSnapshot: DownloadSnapshot | null = null;
+let activeDownloadMode: "all" | "range" = "all";
 
 // 下载核心只发布快照，所有标题、进度条、托盘和弹窗更新在此落到 DOM
 const ui: DownloadUiPort = {
-    prepare() {
+    prepare(selection) {
+        activeDownloadMode = selection.mode;
         if (!document.querySelector("#esj-popup")) {
-            createDownloadPopup();
+            createDownloadPopup(selection.mode);
         }
     },
     update(snapshot) {
@@ -176,8 +181,16 @@ const ui: DownloadUiPort = {
         const { readyChapterCount: count, scheduledCount: total, protectedPendingCount: pending } = snapshot;
         const downloadStatus =
             pending > 0
-                ? t("download.status.runningProtected", { ready: count, total, pending })
-                : t("download.status.running", { ready: count, total });
+                ? t(
+                      activeDownloadMode === "range"
+                          ? "download.status.runningRangeProtected"
+                          : "download.status.runningProtected",
+                      { ready: count, total, pending }
+                  )
+                : t(activeDownloadMode === "range" ? "download.status.runningRange" : "download.status.running", {
+                      ready: count,
+                      total
+                  });
         const progressEl = document.querySelector("#esj-progress") as HTMLElement | null;
         updateDownloadStatus(downloadStatus);
         document.title = `[${count}/${total}${pending > 0 ? t("download.status.protectedTitle", { pending }) : ""}] ${state.originalTitle}`;
@@ -307,6 +320,7 @@ const coverCache: CoverCacheRepository = {
 // IndexedDB 适配层只接收本批发生变化的章节
 const cache: ChapterCacheRepository = {
     putBatch: putBookCacheBatchForTask,
+    finishForTask: finishBookCacheForTask,
     clearForTask: clearBookCacheForTask
 };
 

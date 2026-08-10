@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { showCacheDiscardFailure, showDownloadTerminalFailure } from "../../src/ui/download-terminal-notices";
+import { showCacheDiscardFailure, showDownloadTerminalFailure } from "../../src/ui/messages/download-terminal";
 import { setInterfaceLocalePreference } from "../../src/core/config";
 
 vi.mock("../../src/adapters/browser-diagnostics", () => ({

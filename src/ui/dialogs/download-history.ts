@@ -3,10 +3,11 @@ import {
     DOWNLOAD_HISTORY_LIMIT,
     listDownloadHistory,
     removeDownloadHistory
-} from "../core/download-history";
-import { DownloadFormat, DownloadHistoryItem, SourcePageType } from "../types";
-import { el, enableDrag } from "../utils/dom";
-import { subscribeInterfaceLocaleChange, t } from "./locale";
+} from "../../core/download-history";
+import { DownloadFormat, DownloadHistoryItem, SourcePageType } from "../../types";
+import { el, enableDrag, registerElementCleanup, removeElement } from "../../utils/dom";
+import { subscribeInterfaceLocaleChange, t } from "../locale";
+import { acquirePageActionGroupLockForPopup } from "../page-action-lock";
 
 let disposeActiveHistoryLocaleRefresh: (() => void) | null = null;
 let disposeActiveHistoryColumnResize: (() => void) | null = null;
@@ -134,6 +135,14 @@ function chapterStatusText(item: DownloadHistoryItem): string {
     if (!item.chapterSummary) {
         return item.chapterInfo || "—";
     }
+    if (item.selection?.mode === "range") {
+        return t(item.chapterSummary.missingCount > 0 ? "history.chapter.rangeWithMissing" : "history.chapter.range", {
+            start: item.selection.startChapter,
+            end: item.selection.endChapter,
+            total: item.chapterSummary.totalCount,
+            missing: item.chapterSummary.missingCount
+        });
+    }
     return item.chapterSummary.missingCount > 0
         ? t("history.chapter.withMissing", {
               total: item.chapterSummary.totalCount,
@@ -212,23 +221,28 @@ function showHistoryClearConfirm(): Promise<boolean> {
  * 创建下载记录弹窗
  */
 export function createDownloadHistoryPopup(): void {
+    removeElement(document.querySelector("#esj-download-history"));
+    removeElement(document.querySelector("#esj-download-history-confirm"));
     disposeActiveHistoryLocaleRefresh?.();
     disposeActiveHistoryColumnResize?.();
     disposeActiveHistoryColumnResize = null;
-    document.querySelector("#esj-download-history")?.remove();
-    document.querySelector("#esj-download-history-confirm")?.remove();
     let disposeHistoryColumnResize: (() => void) | null = null;
-    const close = () => {
-        disposeActiveHistoryLocaleRefresh?.();
+    let disposeLocaleRefresh: () => void = () => undefined;
+    let disposed = false;
+    const dispose = () => {
+        if (disposed) {
+            return;
+        }
+        disposed = true;
+        disposeLocaleRefresh();
         disposeHistoryColumnResize?.();
         if (disposeActiveHistoryColumnResize === disposeHistoryColumnResize) {
             disposeActiveHistoryColumnResize = null;
         }
-        document.querySelector("#esj-download-history")?.remove();
-        document.querySelector("#esj-download-history-confirm")?.remove();
-        document.querySelectorAll(".esj-settings-trigger").forEach((button) => {
-            (button as HTMLButtonElement).disabled = false;
-        });
+        removeElement(document.querySelector("#esj-download-history-confirm"));
+    };
+    const close = () => {
+        removeElement(popup);
     };
     const header = el(
         "div",
@@ -256,6 +270,7 @@ export function createDownloadHistoryPopup(): void {
         selectOptions([
             ["all", t("history.filter.allType")],
             ["book", t("history.filter.book")],
+            ["range", t("history.filter.range")],
             ["single", t("history.filter.single")]
         ])
     );
@@ -337,7 +352,11 @@ export function createDownloadHistoryPopup(): void {
         const filtered = items.filter(
             (item) =>
                 (scope === "all" ||
-                    (scope === "single" ? item.sourcePageType === "single" : item.sourcePageType !== "single")) &&
+                    (scope === "single"
+                        ? item.sourcePageType === "single"
+                        : scope === "range"
+                          ? item.selection?.mode === "range"
+                          : item.sourcePageType !== "single" && item.selection?.mode !== "range")) &&
                 (format === "all" || item.format === format) &&
                 (source === "all" || item.sourcePageType === source)
         );
@@ -391,7 +410,15 @@ export function createDownloadHistoryPopup(): void {
                 el("tr", {}, [
                     cell(item.bookName),
                     cell(item.author || "—"),
-                    cell(t(item.sourcePageType === "single" ? "history.type.single" : "history.type.book")),
+                    cell(
+                        t(
+                            item.sourcePageType === "single"
+                                ? "history.type.single"
+                                : item.selection?.mode === "range"
+                                  ? "history.type.range"
+                                  : "history.type.book"
+                        )
+                    ),
                     cell(item.format.toUpperCase()),
                     cell(sourceLabel(item.sourcePageType)),
                     cell(chapterStatusText(item)),
@@ -477,6 +504,8 @@ export function createDownloadHistoryPopup(): void {
         ]
     );
     document.body.appendChild(popup);
+    registerElementCleanup(popup, dispose);
+    acquirePageActionGroupLockForPopup(popup);
     enableDrag(popup, ".esj-common-header");
     disposeHistoryColumnResize = enableHistoryColumnResize(table);
     disposeActiveHistoryColumnResize = disposeHistoryColumnResize;
@@ -493,6 +522,7 @@ export function createDownloadHistoryPopup(): void {
         const optionKeys = new Map<string, Parameters<typeof t>[0]>([
             ["all", "history.filter.allType"],
             ["book", "history.filter.book"],
+            ["range", "history.filter.range"],
             ["single", "history.filter.single"]
         ]);
         scopeSelect.querySelectorAll<HTMLOptionElement>("option").forEach((option) => {
@@ -539,7 +569,7 @@ export function createDownloadHistoryPopup(): void {
         }
         refreshLocaleText();
     });
-    const disposeLocaleRefresh = () => {
+    disposeLocaleRefresh = () => {
         unsubscribeLocale();
         if (disposeActiveHistoryLocaleRefresh === disposeLocaleRefresh) {
             disposeActiveHistoryLocaleRefresh = null;

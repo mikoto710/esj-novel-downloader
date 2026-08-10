@@ -6,6 +6,7 @@ import type {
     DownloadTask
 } from "./download/contracts";
 import type { DomainMessageParams } from "./messages";
+import type { DownloadSelectionSummary } from "../types";
 
 // 诊断数据独立于章节缓存；容量和保留期同时限制，避免长期占用 userscript 存储
 export const DIAGNOSTIC_SCHEMA_VERSION = 1;
@@ -127,6 +128,7 @@ export interface DiagnosticSession {
     closeObservedAt?: number;
     application: DiagnosticApplicationInfo;
     book: DiagnosticBookInfo;
+    selection?: DownloadSelectionSummary;
     settings: DiagnosticSettings;
     task: DiagnosticTaskSummary;
     failures: DiagnosticFailure[];
@@ -166,6 +168,7 @@ export interface StartDiagnosticSessionInput {
     pageUrl: string;
     sourcePageType: string;
     totalChapters?: number;
+    selection?: DownloadSelectionSummary;
     application: DiagnosticApplicationInfo;
     settings: DiagnosticSettings;
 }
@@ -456,6 +459,7 @@ export class DiagnosticManager {
                 url: sanitizeDiagnosticUrl(input.pageUrl),
                 sourcePageType: input.sourcePageType
             },
+            ...(input.selection === undefined ? {} : { selection: input.selection }),
             settings: input.settings,
             task: initialTaskSummary(input.totalChapters || 0),
             failures: [],
@@ -489,7 +493,7 @@ export class DiagnosticManager {
      */
     updateSession(
         taskId: string,
-        options: Partial<Pick<DownloadOptions, "bookName" | "pageUrl" | "sourcePageType" | "tasks">>
+        options: Partial<Pick<DownloadOptions, "bookName" | "pageUrl" | "sourcePageType" | "tasks" | "selection">>
     ): void {
         this.mutateSession(taskId, (session) => {
             if (options.bookName) {
@@ -503,6 +507,14 @@ export class DiagnosticManager {
             }
             if (options.tasks) {
                 session.task.totalChapters = options.tasks.length;
+            }
+            if (options.selection) {
+                session.selection = {
+                    mode: options.selection.mode,
+                    sourceTotalChapters: options.selection.sourceTotalChapters,
+                    startChapter: options.selection.startIndex + 1,
+                    endChapter: options.selection.endIndex + 1
+                };
             }
         });
     }
