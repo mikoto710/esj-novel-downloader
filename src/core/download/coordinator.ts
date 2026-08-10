@@ -1316,7 +1316,7 @@ export async function runDownload(options: DownloadOptions, dependencies: Downlo
     try {
         // 初始化 UI 和当前页会话摘要
         transition(ctx, "preparing");
-        dependencies.ui.prepare();
+        dependencies.ui.prepare(selection);
         dependencies.runtime.startCacheSession(cacheMeta, options.taskId, dependencies.runtime.chapters.size);
         if (restoredIndexes.length > 0) {
             dependencies.log({

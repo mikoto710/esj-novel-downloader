@@ -134,6 +134,14 @@ function chapterStatusText(item: DownloadHistoryItem): string {
     if (!item.chapterSummary) {
         return item.chapterInfo || "—";
     }
+    if (item.selection?.mode === "range") {
+        return t(item.chapterSummary.missingCount > 0 ? "history.chapter.rangeWithMissing" : "history.chapter.range", {
+            start: item.selection.startChapter,
+            end: item.selection.endChapter,
+            total: item.chapterSummary.totalCount,
+            missing: item.chapterSummary.missingCount
+        });
+    }
     return item.chapterSummary.missingCount > 0
         ? t("history.chapter.withMissing", {
               total: item.chapterSummary.totalCount,
@@ -256,6 +264,7 @@ export function createDownloadHistoryPopup(): void {
         selectOptions([
             ["all", t("history.filter.allType")],
             ["book", t("history.filter.book")],
+            ["range", t("history.filter.range")],
             ["single", t("history.filter.single")]
         ])
     );
@@ -337,7 +346,11 @@ export function createDownloadHistoryPopup(): void {
         const filtered = items.filter(
             (item) =>
                 (scope === "all" ||
-                    (scope === "single" ? item.sourcePageType === "single" : item.sourcePageType !== "single")) &&
+                    (scope === "single"
+                        ? item.sourcePageType === "single"
+                        : scope === "range"
+                          ? item.selection?.mode === "range"
+                          : item.sourcePageType !== "single" && item.selection?.mode !== "range")) &&
                 (format === "all" || item.format === format) &&
                 (source === "all" || item.sourcePageType === source)
         );
@@ -391,7 +404,15 @@ export function createDownloadHistoryPopup(): void {
                 el("tr", {}, [
                     cell(item.bookName),
                     cell(item.author || "—"),
-                    cell(t(item.sourcePageType === "single" ? "history.type.single" : "history.type.book")),
+                    cell(
+                        t(
+                            item.sourcePageType === "single"
+                                ? "history.type.single"
+                                : item.selection?.mode === "range"
+                                  ? "history.type.range"
+                                  : "history.type.book"
+                        )
+                    ),
                     cell(item.format.toUpperCase()),
                     cell(sourceLabel(item.sourcePageType)),
                     cell(chapterStatusText(item)),
@@ -493,6 +514,7 @@ export function createDownloadHistoryPopup(): void {
         const optionKeys = new Map<string, Parameters<typeof t>[0]>([
             ["all", "history.filter.allType"],
             ["book", "history.filter.book"],
+            ["range", "history.filter.range"],
             ["single", "history.filter.single"]
         ]);
         scopeSelect.querySelectorAll<HTMLOptionElement>("option").forEach((option) => {

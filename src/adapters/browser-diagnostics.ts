@@ -478,6 +478,16 @@ export function formatBrowserDiagnosticSummary(
         `${formatDiagnosticBrowser(session)} / ${session.application.userscriptManager}`,
         t("diagnostics.summary.book", { title: bookTitle, bookId: session.book.bookId }),
         t("diagnostics.summary.link", { url: session.book.url }),
+        ...(session.selection?.mode === "range"
+            ? [
+                  t("diagnostics.summary.range", {
+                      start: session.selection.startChapter,
+                      end: session.selection.endChapter,
+                      count: session.task.totalChapters,
+                      sourceTotal: session.selection.sourceTotalChapters
+                  })
+              ]
+            : []),
         ...(presentationLine ? [presentationLine] : []),
         t("diagnostics.summary.result", { result: session.result, phase: session.task.phase }),
         t("diagnostics.summary.chapters", {

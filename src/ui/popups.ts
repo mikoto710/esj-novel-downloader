@@ -43,6 +43,7 @@ import {
     t
 } from "./locale";
 import { formatMappingFontError } from "./mapping-font-messages";
+import { createBookExportFilename } from "../core/download/export-filename";
 
 /**
  * 锁定/解锁页面上的设置按钮
@@ -423,9 +424,10 @@ export function promptProtectedChapterPassword(
         const body = el("div", { style: "padding:16px;font-size:14px;line-height:1.6;color:#333;" }, [
             el("div", { style: "font-weight:bold;" }, [prompt.task.title]),
             el("div", { id: "esj-protected-position", style: "margin:4px 0 10px;color:#666;" }, [
-                t("protected.position", {
-                    index: prompt.task.index + 1,
+                t(prompt.selectionMode === "range" ? "protected.positionRange" : "protected.position", {
+                    index: prompt.taskOrder ?? prompt.task.index + 1,
                     total: prompt.totalChapters,
+                    sourceIndex: prompt.task.index + 1,
                     pending: prompt.pendingCount
                 })
             ]),
@@ -527,11 +529,15 @@ export function promptProtectedChapterPassword(
                 headerLabel.textContent = t("protected.required");
             }
             if (position) {
-                position.textContent = t("protected.position", {
-                    index: prompt.task.index + 1,
-                    total: prompt.totalChapters,
-                    pending: prompt.pendingCount
-                });
+                position.textContent = t(
+                    prompt.selectionMode === "range" ? "protected.positionRange" : "protected.position",
+                    {
+                        index: prompt.taskOrder ?? prompt.task.index + 1,
+                        total: prompt.totalChapters,
+                        sourceIndex: prompt.task.index + 1,
+                        pending: prompt.pendingCount
+                    }
+                );
             }
             if (openChapter) {
                 openChapter.textContent = t("protected.openChapter");
@@ -602,16 +608,20 @@ export function confirmIncompleteChapters(
         let settled = false;
         const abortListener = () => finish("cancel");
 
-        const preview = detection.missingTasks
-            .slice(0, 10)
-            .map((task) =>
-                el("li", { style: "margin-bottom:8px;" }, [
-                    el("div", { style: "font-weight:bold;color:#333;" }, [
-                        `[${task.index + 1}/${detection.totalChapters}] ${task.title}`
-                    ]),
-                    el("div", { style: "color:#666;font-size:12px;overflow-wrap:anywhere;" }, [task.url])
-                ])
-            );
+        const preview = detection.missingTasks.slice(0, 10).map((task) =>
+            el("li", { style: "margin-bottom:8px;" }, [
+                el("div", { style: "font-weight:bold;color:#333;" }, [
+                    detection.selectionMode === "range"
+                        ? t("download.missing.rangePosition", {
+                              index: (detection.taskOrderByIndex?.get(task.index) ?? 0) + 1,
+                              total: detection.totalChapters,
+                              sourceIndex: task.index + 1
+                          }) + ` ${task.title}`
+                        : `[${task.index + 1}/${detection.totalChapters}] ${task.title}`
+                ]),
+                el("div", { style: "color:#666;font-size:12px;overflow-wrap:anywhere;" }, [task.url])
+            ])
+        );
         if (detection.missingTasks.length > preview.length) {
             preview.push(
                 el("li", { style: "color:#8a5a00;" }, [
@@ -1058,6 +1068,15 @@ export function showFormatChoice(): void {
 
     const infoBody = el("div", { style: "padding:20px;font-size:14px;line-height:1.5;" }, [
         el("div", { id: "esj-format-book-status" }, [t("export.bookReady", { title: data.metadata.title })]),
+        data.exportContext?.selection?.mode === "range"
+            ? el("div", { id: "esj-format-range", style: "color:#2b6f9f;font-size:12px;margin-top:4px;" }, [
+                  t("export.range", {
+                      start: data.exportContext.selection.startChapter,
+                      end: data.exportContext.selection.endChapter,
+                      count: data.chapters.length
+                  })
+              ])
+            : "",
         el("div", { id: "esj-format-chapter-count", style: "color:#666;font-size:12px;margin-top:4px;" }, [
             t("export.chapterCount", { count: data.chapters.length })
         ]),
@@ -1094,7 +1113,11 @@ export function showFormatChoice(): void {
             onclick: hasMappedChapters
                 ? undefined
                 : () => {
-                      const filename = (data.metadata.title || "book") + ".txt";
+                      const filename = createBookExportFilename(
+                          data.metadata.title,
+                          "txt",
+                          data.exportContext?.selection
+                      );
                       let blob: Blob;
                       try {
                           blob = new Blob([data.txt], { type: "text/plain;charset=utf-8" });
@@ -1173,11 +1196,19 @@ export function showFormatChoice(): void {
         coverStatus.textContent = t(data.metadata.coverBlob ? "export.coverReady" : "export.coverMissing");
         const bookStatus = popup.querySelector("#esj-format-book-status");
         const chapterCount = popup.querySelector("#esj-format-chapter-count");
+        const rangeStatus = popup.querySelector("#esj-format-range");
         if (bookStatus) {
             bookStatus.textContent = t("export.bookReady", { title: data.metadata.title });
         }
         if (chapterCount) {
             chapterCount.textContent = t("export.chapterCount", { count: data.chapters.length });
+        }
+        if (rangeStatus && data.exportContext?.selection?.mode === "range") {
+            rangeStatus.textContent = t("export.range", {
+                start: data.exportContext.selection.startChapter,
+                end: data.exportContext.selection.endChapter,
+                count: data.chapters.length
+            });
         }
         if (imageStatus instanceof HTMLElement) {
             const successCount = data.chapters.reduce((count, chapter) => count + (chapter.images?.length || 0), 0);
@@ -1227,7 +1258,8 @@ export function showFormatChoice(): void {
         }
         epubExporting = true;
         const btn = document.querySelector("#esj-epub") as HTMLButtonElement;
-        const currentData = state.cachedData as CachedData;
+        // 格式弹窗只消费创建时捕获的不可变导出快照，不跟随后续同书任务替换全局状态
+        const currentData = data;
         const originalBg = btn.style.background;
         const oldTitle = document.title;
         try {
@@ -1239,7 +1271,11 @@ export function showFormatChoice(): void {
 
             // 如果已经生成过，直接下载缓存的 blob
             if (currentData.epubBlob) {
-                const filename = (currentData.metadata.title || "book") + ".epub";
+                const filename = createBookExportFilename(
+                    currentData.metadata.title,
+                    "epub",
+                    currentData.exportContext?.selection
+                );
                 try {
                     triggerDownload(currentData.epubBlob, filename);
                     recordSuccessfulExport("epub");
@@ -1267,7 +1303,11 @@ export function showFormatChoice(): void {
             }
             currentData.epubBlob = blob;
 
-            const filename = (currentData.metadata.title || "book") + ".epub";
+            const filename = createBookExportFilename(
+                currentData.metadata.title,
+                "epub",
+                currentData.exportContext?.selection
+            );
             try {
                 triggerDownload(blob, filename);
                 recordSuccessfulExport("epub");
@@ -1310,7 +1350,7 @@ export function showFormatChoice(): void {
                 return;
             }
 
-            const filename = (data.metadata.title || "book") + ".html";
+            const filename = createBookExportFilename(data.metadata.title, "html", data.exportContext?.selection);
             try {
                 triggerDownload(blob, filename);
                 recordSuccessfulExport("html");
@@ -1369,6 +1409,7 @@ export function showFormatChoice(): void {
                 missingCount: data.chapters.filter((chapter) => chapter.content.includes('class="esj-missing-chapter"'))
                     .length
             },
+            ...(context?.selection === undefined ? {} : { selection: context.selection }),
             ...(imageInfo === undefined ? {} : { imageInfo }),
             pageUrl: context?.pageUrl || location.href
         });

@@ -184,10 +184,16 @@ export async function runRangeDownload(options: RunRangeDownloadOptions): Promis
                 taskId: lock.taskId,
                 bookId,
                 bookTitle: plan.meta.rawBookName || plan.meta.bookName,
-            pageUrl: plan.pageUrl,
-            sourcePageType,
-            totalChapters: selectedTasks.length,
-            imageEnabled
+                pageUrl: plan.pageUrl,
+                sourcePageType,
+                totalChapters: selectedTasks.length,
+                selection: {
+                    mode: selection.mode,
+                    sourceTotalChapters: selection.sourceTotalChapters,
+                    startChapter: selection.startIndex + 1,
+                    endChapter: selection.endIndex + 1
+                },
+                imageEnabled
             },
             { observePageClose: true }
         );

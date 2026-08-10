@@ -314,7 +314,7 @@ export interface DownloadRuntimePort {
  * DOM、标题、进度条和弹窗更新接口
  */
 export interface DownloadUiPort {
-    prepare(): void;
+    prepare(selection: DownloadSelection): void;
     update(snapshot: DownloadSnapshot): void;
     confirmMappingFontDownload(detection: MappingFontDetection, signal?: AbortSignal): Promise<boolean>;
     confirmIncompleteChapters(
