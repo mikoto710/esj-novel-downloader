@@ -153,9 +153,11 @@ export function showFormatChoice(): void {
                   })
               ])
             : "",
-        el("div", { id: "esj-format-chapter-count", style: "color:#666;font-size:12px;margin-top:4px;" }, [
-            t("export.chapterCount", { count: data.chapters.length })
-        ]),
+        data.exportContext?.selection?.mode === "range"
+            ? ""
+            : el("div", { id: "esj-format-chapter-count", style: "color:#666;font-size:12px;margin-top:4px;" }, [
+                  t("export.chapterCount", { count: data.chapters.length })
+              ]),
         coverStatus,
         imageStatus,
         hasMappedChapters
