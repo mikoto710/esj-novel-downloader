@@ -2,8 +2,8 @@
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createDeferred, createDownloadTask } from "../support";
-import { injectDetailButton } from "../../src/ui/detail";
-import { injectForumButton } from "../../src/ui/forum";
+import { injectDetailButton } from "../../src/ui/pages/detail";
+import { injectForumButton } from "../../src/ui/pages/forum";
 import { createDownloadButton, createRangeDownloadButton } from "../../src/ui/components";
 import { createRangeSelectionPopup } from "../../src/ui/dialogs/range-selection";
 import { publishInterfaceLocaleChange } from "../../src/ui/locale";

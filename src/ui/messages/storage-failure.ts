@@ -1,6 +1,6 @@
-import type { StorageFailure, StorageFailureReason } from "../core/cache/storage-error";
-import type { LocaleKey } from "../core/locale";
-import { t } from "./locale";
+import type { StorageFailure, StorageFailureReason } from "../../core/cache/storage-error";
+import type { LocaleKey } from "../../core/locale";
+import { t } from "../locale";
 
 const STORAGE_FAILURE_KEYS = {
     "quota-exceeded": "download.storage.quotaExceeded",

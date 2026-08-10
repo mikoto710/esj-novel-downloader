@@ -47,7 +47,7 @@ import { removeImgTags } from "../utils/text";
 import { normalizeChapterMappingFont } from "../core/mapping-font";
 import { normalizeImageBlob } from "../utils/image-format";
 import { browserDiagnosticEvents, browserDiagnosticLog, recordBrowserDiagnosticFailure } from "./browser-diagnostics";
-import { showDownloadTerminalFailure } from "../ui/download-terminal-notices";
+import { showDownloadTerminalFailure } from "../ui/messages/download-terminal";
 import { createBrowserProtectedChapterAuth, isProtectedChapterHtml } from "./browser-protected-chapter";
 import { BrowserRequestGate } from "./browser-request-gate";
 import { subscribeInterfaceLocaleChange, t } from "../ui/locale";

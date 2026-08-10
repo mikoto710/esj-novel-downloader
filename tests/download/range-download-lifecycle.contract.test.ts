@@ -53,7 +53,7 @@ vi.mock("../../src/ui/popups", () => ({
     showFormatChoice: mocks.showFormatChoice
 }));
 vi.mock("../../src/ui/dialogs/message", () => ({ showMessagePopup: mocks.showMessage }));
-vi.mock("../../src/ui/download-terminal-notices", () => ({
+vi.mock("../../src/ui/messages/download-terminal", () => ({
     showCacheDiscardFailure: vi.fn(),
     showDownloadTerminalFailure: vi.fn()
 }));

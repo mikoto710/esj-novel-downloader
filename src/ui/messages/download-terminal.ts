@@ -1,8 +1,8 @@
-import type { DownloadTerminalFailure } from "../core/download/contracts";
-import type { StorageFailure } from "../core/cache/storage-error";
-import { showMessagePopup } from "./message-popup";
-import { t } from "./locale";
-import { formatStorageFailure } from "./storage-failure-messages";
+import type { DownloadTerminalFailure } from "../../core/download/contracts";
+import type { StorageFailure } from "../../core/cache/storage-error";
+import { showMessagePopup } from "../dialogs/message";
+import { t } from "../locale";
+import { formatStorageFailure } from "./storage-failure";
 
 function showStorageFailure(title: string, message: string, failure: StorageFailure | null): void {
     if (!failure) {

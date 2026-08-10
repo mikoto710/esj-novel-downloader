@@ -12,7 +12,7 @@ import { fullCleanup, enableDrag, el } from "../../utils/dom";
 import { log, triggerDownload } from "../../utils/index";
 import { acquirePageActionGroupLock } from "../page-action-lock";
 import { subscribeInterfaceLocaleChange, t } from "../locale";
-import { formatMappingFontError } from "../mapping-font-messages";
+import { formatMappingFontError } from "../messages/mapping-font";
 import { createCommonHeader } from "./common";
 import { showMessagePopup } from "./message";
 import { confirmMappingFontExport } from "./mapping-font";

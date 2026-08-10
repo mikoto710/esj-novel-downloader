@@ -17,9 +17,9 @@ import { claimBookCache, loadBookCache } from "../core/cache/book-cache";
 import { finalizeBookDownloadTask } from "../core/download/task-finalizer";
 import { normalizeStorageError, StorageError, toStorageFailure } from "../core/cache/storage-error";
 import { getImageDownloadSetting } from "../core/config";
-import { getImageCacheConfirmHint } from "../ui/image-cache-compatibility";
-import { showCacheDiscardFailure, showDownloadTerminalFailure } from "../ui/download-terminal-notices";
-import { formatStorageFailure } from "../ui/storage-failure-messages";
+import { getImageCacheConfirmHint } from "../ui/messages/image-cache-compatibility";
+import { showCacheDiscardFailure, showDownloadTerminalFailure } from "../ui/messages/download-terminal";
+import { formatStorageFailure } from "../ui/messages/storage-failure";
 import {
     browserDiagnosticLog as log,
     finishBrowserDiagnosticSession,

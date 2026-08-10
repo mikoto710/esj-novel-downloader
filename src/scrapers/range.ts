@@ -21,8 +21,8 @@ import { fullCleanup } from "../utils/dom";
 import { createDownloadPopup, showBookDownloadInProgressPopup, showFormatChoice } from "../ui/popups";
 import { createRangeSelectionPopup } from "../ui/dialogs/range-selection";
 import { showMessagePopup } from "../ui/dialogs/message";
-import { showCacheDiscardFailure, showDownloadTerminalFailure } from "../ui/download-terminal-notices";
-import { formatStorageFailure } from "../ui/storage-failure-messages";
+import { showCacheDiscardFailure, showDownloadTerminalFailure } from "../ui/messages/download-terminal";
+import { formatStorageFailure } from "../ui/messages/storage-failure";
 import { t } from "../ui/locale";
 import {
     browserDiagnosticLog as log,

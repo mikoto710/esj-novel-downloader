@@ -3,7 +3,7 @@ import { enableDrag, el } from "../../utils/dom";
 import { showMessagePopup } from "./message";
 import { createCommonHeader } from "./common";
 import { t } from "../locale";
-import { formatMappingFontError } from "../mapping-font-messages";
+import { formatMappingFontError } from "../messages/mapping-font";
 
 function formatMappingFontBytes(bytes: number): string {
     if (bytes < 1024 * 1024) {

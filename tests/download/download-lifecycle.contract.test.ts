@@ -59,7 +59,7 @@ vi.mock("../../src/ui/popups", () => ({
 }));
 vi.mock("../../src/utils/dom", () => ({ fullCleanup: mocks.fullCleanup }));
 vi.mock("../../src/utils/index", () => ({ log: mocks.log }));
-vi.mock("../../src/ui/download-terminal-notices", () => ({
+vi.mock("../../src/ui/messages/download-terminal", () => ({
     showCacheDiscardFailure: vi.fn(),
     showDownloadTerminalFailure: mocks.showTerminalFailure
 }));

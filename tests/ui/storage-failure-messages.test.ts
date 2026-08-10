@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { formatStorageFailure, formatStorageFailureText } from "../../src/ui/storage-failure-messages";
+import { formatStorageFailure, formatStorageFailureText } from "../../src/ui/messages/storage-failure";
 
 vi.mock("../../src/ui/locale", () => ({
     t: (key: string) =>

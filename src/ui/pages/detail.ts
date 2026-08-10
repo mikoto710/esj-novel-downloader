@@ -1,5 +1,5 @@
-import { scrapeDetail, scrapeDetailRange } from "../scrapers/detail";
-import { createDownloadButton, createRangeDownloadButton, createSettingButton } from "./components";
+import { scrapeDetail, scrapeDetailRange } from "../../scrapers/detail";
+import { createDownloadButton, createRangeDownloadButton, createSettingButton } from "../components";
 
 /**
  * 向小说详情页注入 "全本下载" 按钮

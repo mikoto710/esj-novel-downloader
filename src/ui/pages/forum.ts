@@ -1,6 +1,6 @@
-import { el } from "../utils/dom";
-import { scrapeForum, scrapeForumRange } from "../scrapers/forum";
-import { createDownloadButton, createRangeDownloadButton, createSettingButton } from "./components";
+import { el } from "../../utils/dom";
+import { scrapeForum, scrapeForumRange } from "../../scrapers/forum";
+import { createDownloadButton, createRangeDownloadButton, createSettingButton } from "../components";
 
 /**
  * 在论坛版块页注入 "全本下载" 按钮

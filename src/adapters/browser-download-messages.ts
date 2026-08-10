@@ -1,7 +1,7 @@
 import type { DownloadLog, DownloadLogCode } from "../core/download/contracts";
 import type { LocaleKey } from "../core/locale";
 import { t } from "../ui/locale";
-import { formatStorageFailureText } from "../ui/storage-failure-messages";
+import { formatStorageFailureText } from "../ui/messages/storage-failure";
 
 const DIRECT_LOG_KEYS = {
     "cover-cache-hit": "download.log.coverCacheHit",

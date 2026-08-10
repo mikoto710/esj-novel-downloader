@@ -56,7 +56,7 @@ vi.mock("../../src/ui/popups", () => ({
     updateMappingFontWarning: hoistedBrowserDownloadMocks.updateMappingFontWarning,
     showMappingFontFailure: hoistedBrowserDownloadMocks.showMappingFontFailure
 }));
-vi.mock("../../src/ui/download-terminal-notices", () => ({
+vi.mock("../../src/ui/messages/download-terminal", () => ({
     showDownloadTerminalFailure: hoistedBrowserDownloadMocks.showTerminalFailure
 }));
 vi.mock("../../src/ui/tray", () => ({ updateTrayText: hoistedBrowserDownloadMocks.updateTrayText }));
