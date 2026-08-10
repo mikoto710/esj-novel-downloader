@@ -21,6 +21,17 @@ export interface DownloadTask {
     title: string;
 }
 
+/**
+ * detail／forum 书籍下载所覆盖的原书章节范围
+ * 索引固定为 0-based，用户界面和持久化摘要在各自边界转换为 1-based
+ */
+export interface DownloadSelection {
+    mode: "all" | "range";
+    sourceTotalChapters: number;
+    startIndex: number;
+    endIndex: number;
+}
+
 export type DownloadLogCode =
     | "cover-cache-hit"
     | "cover-cache-read-failed"
@@ -105,7 +116,11 @@ export interface ProtectedChapterDetectorPort {
 
 export interface ProtectedChapterPrompt {
     task: DownloadTask;
+    // 范围内 1-based 顺序；原书位置继续由 task.index 表示
+    taskOrder?: number;
     totalChapters: number;
+    sourceTotalChapters?: number;
+    selectionMode?: DownloadSelection["mode"];
     pendingCount: number;
     // 仅保留 ESJZone status 206 返回的原始站点提示
     message?: string;
@@ -139,6 +154,7 @@ export interface DownloadOptions {
     sourcePageType?: SourcePageType;
     imageEnabled: boolean;
     tasks: DownloadTask[];
+    selection?: DownloadSelection;
 }
 
 /**

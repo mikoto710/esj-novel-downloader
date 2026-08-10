@@ -62,6 +62,13 @@ export interface ChapterSummary {
     missingCount: number;
 }
 
+export interface DownloadSelectionSummary {
+    mode: "all" | "range";
+    sourceTotalChapters: number;
+    startChapter: number;
+    endChapter: number;
+}
+
 export interface DownloadHistoryItem {
     id: string;
     bookId?: string;
@@ -70,6 +77,7 @@ export interface DownloadHistoryItem {
     format: DownloadFormat;
     sourcePageType: Extract<SourcePageType, "detail" | "forum" | "single">;
     chapterSummary?: ChapterSummary;
+    selection?: DownloadSelectionSummary;
     // 兼容旧版下载记录，新记录改用 chapterSummary
     chapterInfo?: string;
     imageInfo?: {
@@ -173,6 +181,7 @@ export interface CachedData {
         pageUrl: string;
         sourcePageType: Extract<SourcePageType, "detail" | "forum">;
         chapterSummary?: ChapterSummary;
+        selection?: DownloadSelectionSummary;
         // 兼容旧版运行时导出数据
         chapterInfo?: string;
         imageEnabled: boolean;
