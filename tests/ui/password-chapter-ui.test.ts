@@ -37,6 +37,22 @@ describe("protected chapter password UI", () => {
         await expect(decision).resolves.toEqual({ action: "cancel" });
     });
 
+    it("separates selected order from the absolute source chapter in range mode", async () => {
+        const decision = promptProtectedChapterPassword({
+            task: createDownloadTask(100, { title: "第 101 章", url: "https://www.esjzone.cc/forum/100/101.html" }),
+            totalChapters: 20,
+            taskOrder: 1,
+            sourceTotalChapters: 120,
+            selectionMode: "range",
+            pendingCount: 1
+        });
+        const popup = document.querySelector("#esj-protected-chapter") as HTMLElement;
+
+        expect(popup.textContent).toContain("本次位置 1/20｜原书第 101 章");
+        (popup.querySelector("#esj-protected-cancel") as HTMLButtonElement).click();
+        await expect(decision).resolves.toEqual({ action: "cancel" });
+    });
+
     it("renders the password prompt in traditional Chinese", async () => {
         setInterfaceLocalePreference("zh-TW");
         const decision = prompt();

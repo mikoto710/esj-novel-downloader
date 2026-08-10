@@ -94,6 +94,23 @@ describe("ChapterCacheWriteBuffer", () => {
         expect(write).toHaveBeenCalledOnce();
     });
 
+    it("seals pending writes, rejects later chapters, and keeps repeated flushes idempotent", async () => {
+        const write = vi.fn(async (_entries: ReadonlyMap<number, Chapter>) => true);
+        const buffer = createBuffer(
+            { maxChapterCount: 25, maxBytes: Number.MAX_SAFE_INTEGER, maxDelayMs: 60_000 },
+            write
+        );
+
+        await expect(buffer.add(10, createChapter(10))).resolves.toBe(true);
+        await expect(buffer.seal()).resolves.toBe(true);
+        await expect(buffer.add(11, createChapter(11))).resolves.toBe(false);
+        await expect(buffer.flush()).resolves.toBe(true);
+        await expect(buffer.flushForCancellation()).resolves.toBe("saved");
+
+        expect(write).toHaveBeenCalledOnce();
+        expect(write.mock.calls[0][0]).toEqual(new Map([[10, createChapter(10)]]));
+    });
+
     it("keeps chapters added while an earlier batch is still writing", async () => {
         const firstWrite = createDeferred<boolean>();
         const writes: number[][] = [];

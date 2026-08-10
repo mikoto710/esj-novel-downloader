@@ -24,6 +24,22 @@ describe("download history chapter summary locale", () => {
         setInterfaceLocalePreference("zh-TW");
         mocks.listDownloadHistory.mockResolvedValue([
             {
+                id: "range",
+                bookName: "Range Book",
+                author: "Author",
+                format: "html",
+                sourcePageType: "forum",
+                chapterSummary: { totalCount: 20, missingCount: 1 },
+                selection: {
+                    mode: "range",
+                    sourceTotalChapters: 120,
+                    startChapter: 101,
+                    endChapter: 120
+                },
+                pageUrl: "https://www.esjzone.cc/forum/120.html",
+                exportedAt: Date.now() + 1
+            },
+            {
                 id: "structured",
                 bookName: "Structured Book",
                 author: "Author",
@@ -52,13 +68,15 @@ describe("download history chapter summary locale", () => {
         await vi.waitFor(() => {
             const text = document.querySelector("#esj-download-history")?.textContent;
             expect(text).toContain("共 12 章（其中 2 章為缺章說明）");
+            expect(text).toContain("第 101–120 章，共 20 章（其中 1 章為缺章說明）");
+            expect(text).toContain("範圍");
             expect(text).toContain("舊版章節文字");
         });
     });
 
     it("uses a compact delete label with a descriptive title", async () => {
         createDownloadHistoryPopup();
-        await vi.waitFor(() => expect(document.querySelectorAll("#esj-download-history tbody tr")).toHaveLength(2));
+        await vi.waitFor(() => expect(document.querySelectorAll("#esj-download-history tbody tr")).toHaveLength(3));
 
         const deleteButton = document.querySelector(
             "#esj-download-history tbody tr:first-child td:last-child button:last-child"
@@ -70,7 +88,7 @@ describe("download history chapter summary locale", () => {
 
     it("resizes adjacent columns and preserves their widths across locale refresh", async () => {
         createDownloadHistoryPopup();
-        await vi.waitFor(() => expect(document.querySelectorAll("#esj-download-history tbody tr")).toHaveLength(2));
+        await vi.waitFor(() => expect(document.querySelectorAll("#esj-download-history tbody tr")).toHaveLength(3));
 
         const table = document.querySelector("#esj-download-history table") as HTMLTableElement;
         const columns = Array.from(table.querySelectorAll<HTMLTableColElement>("col"));
@@ -101,7 +119,7 @@ describe("download history chapter summary locale", () => {
 
     it("refreshes the open table in place and preserves active filters", async () => {
         createDownloadHistoryPopup();
-        await vi.waitFor(() => expect(document.querySelectorAll("#esj-download-history tbody tr")).toHaveLength(2));
+        await vi.waitFor(() => expect(document.querySelectorAll("#esj-download-history tbody tr")).toHaveLength(3));
         const popup = document.querySelector("#esj-download-history") as HTMLElement;
         const selects = Array.from(popup.querySelectorAll("select")) as HTMLSelectElement[];
         selects[0].value = "book";

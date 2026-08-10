@@ -174,6 +174,44 @@ describe("full-book export recovery contracts", () => {
         expect(mocks.addDownloadHistory).toHaveBeenCalledWith(expect.objectContaining({ format: "html" }));
     });
 
+    it("uses the captured range snapshot for filenames and history", async () => {
+        const rangeData = createCachedData({
+            exportContext: {
+                bookId: "100",
+                rawBookName: "测试小说",
+                pageUrl: "https://www.esjzone.cc/detail/100.html",
+                sourcePageType: "detail",
+                chapterSummary: { totalCount: 20, missingCount: 1 },
+                selection: {
+                    mode: "range",
+                    sourceTotalChapters: 120,
+                    startChapter: 101,
+                    endChapter: 120
+                },
+                imageEnabled: false
+            }
+        });
+        const { state } = await prepareExportPopup(rangeData);
+
+        state.cachedData = createCachedData();
+        click("#esj-txt");
+
+        expect(mocks.triggerDownload).toHaveBeenCalledWith(expect.any(Blob), "测试小说_第101-120章.txt");
+        await vi.waitFor(() =>
+            expect(mocks.addDownloadHistory).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    chapterSummary: { totalCount: 20, missingCount: 1 },
+                    selection: {
+                        mode: "range",
+                        sourceTotalChapters: 120,
+                        startChapter: 101,
+                        endChapter: 120
+                    }
+                })
+            )
+        );
+    });
+
     it("reports TXT download failures with bounded details and succeeds after closing the message", async () => {
         const longMessage = `object URL failed: ${"x".repeat(2_500)}`;
         mocks.triggerDownload.mockImplementationOnce(() => {

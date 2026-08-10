@@ -1,10 +1,47 @@
 import { describe, expect, it } from "vitest";
 import { runDownload } from "../../src/core/download/coordinator";
 import type { DownloadPhase, DownloadSnapshot } from "../../src/core/download/contracts";
-import { createDeferred, createDownloadTask } from "../support";
+import { createChapter, createChapterImage, createDeferred, createDownloadTask } from "../support";
 import { createStressDownloadHarness, createStressDownloadOptions } from "./download-stress-harness";
 
 describe("download resilience pressure", () => {
+    it("exports a late 25-chapter range from a 3000-chapter image cache without clearing the whole cache", async () => {
+        const sourceTasks = Array.from({ length: 3_000 }, (_, index) => createDownloadTask(index));
+        const chapters = new Map(
+            sourceTasks.map((task) => [
+                task.index,
+                createChapter(task.index, { images: [createChapterImage(task.index)] })
+            ])
+        );
+        const selectedTasks = sourceTasks.slice(2_975);
+        const harness = createStressDownloadHarness({
+            tasks: selectedTasks,
+            chapters,
+            imageEnabled: true
+        });
+
+        await runDownload(
+            {
+                ...createStressDownloadOptions(selectedTasks, true),
+                selection: {
+                    mode: "range",
+                    sourceTotalChapters: sourceTasks.length,
+                    startIndex: 2_975,
+                    endIndex: 2_999
+                }
+            },
+            harness.dependencies
+        );
+
+        expect(harness.fetchedIndexes).toEqual([]);
+        expect(harness.exportData?.chapters).toHaveLength(25);
+        expect(harness.exportData?.chapters[0].title).toBe("第 2976 章");
+        expect(harness.exportData?.chapters.at(-1)?.title).toBe("第 3000 章");
+        expect(harness.dependencies.cache.finishForTask).toHaveBeenCalledOnce();
+        expect(harness.dependencies.cache.clearForTask).not.toHaveBeenCalled();
+        expect(chapters).toHaveLength(3_000);
+    });
+
     it("bounds work claimed while a slow cache write applies backpressure", async () => {
         const tasks = Array.from({ length: 300 }, (_, index) => createDownloadTask(index));
         const firstWriteStarted = createDeferred<void>();
