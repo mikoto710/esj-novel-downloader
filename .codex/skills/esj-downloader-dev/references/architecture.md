@@ -11,7 +11,7 @@ scrapers / ui
   -> cache, lock, state, UI, GM API, DOM
 ```
 
-- `batch-download.ts` composes browser dependencies and starts full-book downloads.
+- `batch-download.ts` composes browser dependencies and starts book downloads; an optional selection narrows work while preserving absolute chapter indexes.
 - `coordinator.ts` owns state transitions, cache recovery, chapter scheduling, integrity checks, cancellation, and export preparation.
 - `contracts.ts` exposes the core ports and process data. Browser implementations belong in `adapters/`.
 - `integrity.ts` classifies missing chapters and image retry conditions. `incomplete-chapters.ts` creates export-only placeholders after an explicit user decision; callers must not write those placeholders back to the chapter map or persistent cache.
@@ -30,6 +30,8 @@ scrapers / ui
 - Do not let `core/download/` access DOM, GM APIs, or browser globals.
 - Finish success, failure, and cancellation through the shared finalization path.
 - Keep the task lock, cache writer, and cancellation mode consistent.
+- Full and range downloads of the same book share one book-level lock and one v3 cache. Full success clears its writer; range success seals pending writes and closes its writer with `finishForTask()` while retaining the whole-book cache.
+- Treat range progress, integrity, password prompts, and export as selected-task views. Keep `CacheMeta.totalChapters` and runtime cache counts at whole-book scope, and never let outside-range chapters enter the current export.
 - Keep download cache distinct from download history.
 - Keep persisted diagnostic and history records locale-neutral when they are rendered in the current interface language.
 - Define migration, backward-compatibility, or explicit invalidation for cache/config format changes.
