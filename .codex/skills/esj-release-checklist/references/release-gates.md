@@ -1,19 +1,18 @@
 # Release Gates
 
-## Always collect
+## Pre-release gates
 
 | Gate                        | Evidence                                                                                             |
 | --------------------------- | ---------------------------------------------------------------------------------------------------- |
 | Intended version and branch | `package.json`, current branch, and target-release policy                                            |
 | Candidate state             | clean working tree, exact candidate commit, and remote branch synchronization                        |
 | Repository blockers         | open Issue and PR state relevant to the release                                                      |
-| Source quality              | `npm run build` from the release candidate source                                                    |
+| Source quality              | `npm run build` and `npm run test:stress` from the release candidate source                          |
 | Scope                       | focused diff and user-visible change summary                                                         |
-| Documentation               | Simplified and Traditional Chinese README parity; contributor, test, and Skill command consistency   |
+| Documentation               | parity of affected README sections; consistency of changed contributor, test, and Skill commands    |
 | Regression selection        | `$esj-regression-selector` command record                                                            |
 | Artifact provenance         | confirm the userscript was built from the checked source                                             |
 | Tag policy                  | tag exactly matches `package.json`; prerelease commit is contained in `dev`, stable commit in `main` |
-| Published release           | verify prerelease status, uploaded asset version, and userscript installation or upgrade             |
 
 ## Apply when relevant
 
@@ -29,6 +28,8 @@
 
 ## Decision wording
 
-- Ready: all applicable gates have passing evidence; list any accepted non-blocking risk.
+- Ready to publish: all applicable pre-release gates have passing evidence; list any accepted non-blocking risk.
 - Not ready: identify the failed or unverified gate and the exact action needed.
+- After publication, verify prerelease status, uploaded asset version, and installation or upgrade before marking post-release verification complete.
+- An assessment is complete when the requested scope has an evidence table and a supported verdict, including any blockers. Resolving blockers or publishing requires authorization for that work.
 - Never infer release readiness from a tag, a green focused test, or an existing `dist/` artifact alone.

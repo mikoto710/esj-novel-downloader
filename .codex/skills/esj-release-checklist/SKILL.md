@@ -1,6 +1,6 @@
 ---
 name: esj-release-checklist
-description: Assess ESJ Novel Downloader beta, release-candidate, or stable-release readiness with evidence, targeted regression checks, and explicit residual risk. Use when preparing release notes, reviewing a release branch or tag, validating a version bump, or deciding whether a build is ready to publish; do not use it to publish without explicit authorization.
+description: Assess ESJ Novel Downloader release readiness or verify a published release. Use for release gate assessments, candidate version/tag validation, or post-release verification; exclude wording-only release-note edits. Publishing requires explicit authorization.
 ---
 
 # ESJ Release Checklist
@@ -8,10 +8,10 @@ description: Assess ESJ Novel Downloader beta, release-candidate, or stable-rele
 ## Assess; do not publish
 
 1. Read `references/release-gates.md` and inspect the current branch, version, tags, and release workflow before making any release claim.
-2. Compare the intended change set with the gates that apply to it. Use `$esj-regression-selector` to select and execute the regression matrix.
-3. Check that user-visible behavior and commands agree across `README.md`, `README.zh-TW.md`, `CONTRIBUTING.md`, `tests/README.md`, and the repository Skills that govern the changed area.
+2. Compare the intended change set with the gates that apply to the requested pre-release assessment or post-release verification. Use `$esj-regression-selector` within the authorized review or validation scope.
+3. For changed user-visible behavior, check the affected sections of both READMEs. For changed development, test, or release commands, check the affected sections of `CONTRIBUTING.md`, `tests/README.md`, and the governing Skills.
 4. Produce an evidence table: gate, evidence/command, result, and unresolved risk.
-5. Mark the release ready only when required checks pass and every relevant manual or migration check is evidenced. Otherwise report the precise blocker.
+5. Mark the release ready to publish only when required pre-release checks pass and every relevant manual or migration check is evidenced. Otherwise report the precise blocker. Apply post-release gates after publication.
 
 ## Preserve release authority
 

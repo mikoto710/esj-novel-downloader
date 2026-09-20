@@ -88,7 +88,6 @@ npm run test:stress
 发布准备执行：
 
 ```bash
-npm run format:check
 npm run build
 npm run test:stress
 ```

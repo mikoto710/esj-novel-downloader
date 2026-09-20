@@ -27,7 +27,6 @@ docs/contribution-guide
 提交前至少运行：
 
 ```bash
-npm run format:check
 npm run build
 ```
 
@@ -153,9 +152,8 @@ chore: prepare beta release
 
 发布准备需要记录：
 
-- `npm run format:check`
 - `npm run build`
-- 必要的 `npm run test:stress`
+- `npm run test:stress`（发布候选必需）
 - 浏览器与 userscript 管理器验收
 - 已接受的非阻塞限制
 

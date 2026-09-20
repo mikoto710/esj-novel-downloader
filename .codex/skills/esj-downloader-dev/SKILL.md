@@ -11,7 +11,7 @@ description: Implement, refactor, or diagnose ESJ Novel Downloader TypeScript us
 2. Identify the boundary before editing: page workflows (`scrapers/`), page injection (`ui/pages/`), dialogs (`ui/dialogs/`), presentation messages (`ui/messages/`), pure core logic (`core/`), browser assembly (`adapters/`), or persistence (`core/cache/`).
 3. Keep core download code free of DOM, GM API, and browser-global access. Extend `core/download/contracts.ts` and assemble browser behavior in `adapters/browser-download-dependencies.ts` when a new dependency is needed.
 4. Preserve unified finalization across success, failure, and cancellation. Treat lock ownership, cache writers, listeners, timers, and channels as one lifecycle.
-5. Use `$esj-regression-selector` after selecting the change surface; run its required checks before reporting completion.
+5. Use `$esj-regression-selector` after selecting the change surface; follow its review or implementation path according to the requested scope.
 
 ## Keep changes reviewable
 
@@ -24,7 +24,7 @@ description: Implement, refactor, or diagnose ESJ Novel Downloader TypeScript us
 - Keep localization in the presentation boundary: core code emits stable codes, parameters, or locale-neutral details; UI and browser adapters translate them. Never translate novel content, book metadata, source URLs, exported novel data, or ESJZone `status === 206` protocol text. Localize `zh-TW` manually with Taiwanese software terminology.
 - Production comments use Chinese and explain business invariants, lifecycle ownership, or race ordering. Use caller-focused JSDoc without a final period only where exported APIs need a contract; keep implementation details in adjacent `//` comments and do not mix ordinary block comments with JSDoc.
 - Use fixtures, fakes, fake clocks, and userscript mocks. Do not access ESJZone, live network services, or production IndexedDB in automated tests.
-- Leave version, tags, GitHub Releases, and `dist/` untouched unless the user explicitly assigns release work.
+- Version changes, tag creation/push, GitHub Releases, and committing `dist/` require explicit authorization for that operation. Required local builds may regenerate ignored `dist/` artifacts within the authorized implementation or validation scope.
 
 ## Escalate risk deliberately
 

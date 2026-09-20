@@ -8,9 +8,10 @@
 | Browser API, download assembly, page injection                                                  | relevant `*.contract.test.ts`; `tests/support/browser-download-harness.ts` | targeted Vitest test; `npm run check`; document manual browser/userscript-manager check  |
 | Export, images, EPUB, HTML, or full-vs-single isolation                                         | `tests/export/`                                                            | targeted Vitest test; `npm run check`                                                    |
 | Mapping-font detection, cache normalization, or export binding                                  | `tests/mapping-font/` plus affected export tests                           | targeted Vitest test; `npm run check`                                                    |
-| Cache schema, legacy migration, history isolation, storage errors, cross-page sync              | `tests/cache/`                                                             | targeted Vitest test; `npm run check`                                                    |
+| Cache schema, legacy migration, history isolation, storage errors, cross-page sync              | `tests/cache/`                                                             | targeted Vitest test; `npm run check`; `npm run test:stress`                             |
 | Download scheduling, retry, worker pool, incremental writes, lock, cancel, resume, or lifecycle | `tests/download/` and relevant `tests/cache/`                              | targeted Vitest test; `npm run check`; `npm run test:stress`                             |
-| Broad cross-cutting change or release candidate                                                 | affected suites                                                            | `npm run build`; add `npm run test:stress` for any lifecycle/cache/concurrency change    |
+| Broad cross-cutting change                                                                      | affected suites                                                            | `npm run build`; add `npm run test:stress` for any lifecycle/cache/concurrency change    |
+| Release candidate                                                                              | affected suites                                                            | `npm run build`; `npm run test:stress`                                                  |
 
 ## Test conventions
 
