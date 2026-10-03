@@ -65,6 +65,7 @@ vi.mock("../../src/ui/messages/download-terminal", () => ({
 }));
 
 import { scrapeDetail } from "../../src/scrapers/detail";
+import { scrapeForum } from "../../src/scrapers/forum";
 import { state } from "../../src/core/state";
 
 describe("download lifecycle contracts", () => {
@@ -111,6 +112,27 @@ describe("download lifecycle contracts", () => {
 
         expect(mocks.finalize).toHaveBeenCalledOnce();
         expect(mocks.finalize).toHaveBeenCalledWith(lock, mocks.stopHeartbeat, expect.any(Function));
+    });
+
+    it.each([
+        ["detail heartbeat", scrapeDetail, mocks.startHeartbeat],
+        ["detail popup", scrapeDetail, mocks.createDownloadPopup],
+        ["forum heartbeat", scrapeForum, mocks.startHeartbeat],
+        ["forum popup", scrapeForum, mocks.createDownloadPopup]
+    ] as const)("releases acquired resources when %s initialization fails", async (_name, scrape, initialize) => {
+        if (scrape === scrapeForum) {
+            window.history.replaceState({}, "", "/forum/100");
+        }
+        initialize.mockImplementationOnce(() => {
+            throw new Error("initialization failed");
+        });
+
+        await scrape();
+
+        expect(mocks.claimCache).not.toHaveBeenCalled();
+        expect(mocks.batchDownload).not.toHaveBeenCalled();
+        expect(mocks.finalize).toHaveBeenCalledOnce();
+        expect(mocks.finalize).toHaveBeenCalledWith(lock, expect.any(Function), expect.any(Function));
     });
 
     it("does not remove a terminal notice owned by the download coordinator", async () => {

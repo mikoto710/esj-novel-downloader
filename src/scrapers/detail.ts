@@ -111,25 +111,26 @@ export async function scrapeDetail(): Promise<void> {
 
     const lock = lockResult.lock;
     state.activeBookLock = lock;
-    setAbortFlag(false);
-    resetAbortController();
-    const stopHeartbeat = startBookDownloadLockHeartbeat(lock, abortActiveDownload);
-    createDownloadPopup();
-    // 从缓存认领前开始记录，才能覆盖 claim、页面解析和正式下载阶段的失败
-    startBrowserDiagnosticSession(
-        {
-            taskId: lock.taskId,
-            bookId,
-            bookTitle: document.title,
-            pageUrl: location.href,
-            sourcePageType: "detail",
-            imageEnabled
-        },
-        { observePageClose: true }
-    );
+    let stopHeartbeat: () => void = () => undefined;
     let downloadStarted = false;
 
     try {
+        setAbortFlag(false);
+        resetAbortController();
+        stopHeartbeat = startBookDownloadLockHeartbeat(lock, abortActiveDownload);
+        createDownloadPopup();
+        // 从缓存认领前开始记录，才能覆盖 claim、页面解析和正式下载阶段的失败
+        startBrowserDiagnosticSession(
+            {
+                taskId: lock.taskId,
+                bookId,
+                bookTitle: document.title,
+                pageUrl: location.href,
+                sourcePageType: "detail",
+                imageEnabled
+            },
+            { observePageClose: true }
+        );
         log(t("page.cachePreparing"));
         const claimedCache = await claimBookCache(bookId, lock.taskId, imageEnabled, state.abortController?.signal);
         state.globalChaptersMap = claimedCache.map || new Map();
