@@ -139,6 +139,7 @@ describe("cross-page lock recovery contracts", () => {
         }
         const claimed = await storage.claimBookCache("730", replacement.lock.taskId, false);
 
+        if (claimed.status !== "claimed") throw new Error("expected compatible cache claim");
         expect(claimed.map?.get(0)?.content).toBe("recoverable chapter");
         expect(await locks.ownsActiveBookDownloadLock(first.lock)).toBe(false);
         expect(await locks.heartbeatBookDownloadLock(first.lock)).toBe(false);

@@ -26,7 +26,8 @@ describe("image cache reconciliation contracts", () => {
 
         const claimed = await storage.claimBookCache("500", "task-new", false);
 
-        expect(claimed).toMatchObject({ size: 1, compatibility: "compatible", invalidatedCount: 0 });
+        expect(claimed).toMatchObject({ status: "claimed", size: 1, compatibility: "compatible", invalidatedCount: 0 });
+        if (claimed.status !== "claimed") throw new Error("expected compatible cache claim");
         expect(claimed.map?.get(0)?.title).toBeTruthy();
     });
 
@@ -46,7 +47,9 @@ describe("image cache reconciliation contracts", () => {
             createCacheMeta({ bookId: "501", imageEnabled: cached })
         );
 
-        const claimed = await storage.claimBookCache("501", "task-new", requested);
+        const claimed = await storage.claimBookCache("501", "task-new", requested, undefined, {
+            allowInvalidation: true
+        });
 
         expect(claimed).toMatchObject({
             size: 0,
@@ -75,7 +78,7 @@ describe("image cache reconciliation contracts", () => {
         );
         await storage.putBookCoverForTask("502", "task-old", "https://img.example/cover.jpg", cover);
 
-        await storage.claimBookCache("502", "task-new", true);
+        await storage.claimBookCache("502", "task-new", true, undefined, { allowInvalidation: true });
 
         expect((await storage.loadBookCache("502")).size).toBe(0);
         await expect(storage.loadBookCover("502", "https://img.example/cover.jpg")).resolves.not.toBeNull();
@@ -90,7 +93,7 @@ describe("image cache reconciliation contracts", () => {
             chapters: [[0, createChapter(0)]]
         });
 
-        const claimed = await storage.claimBookCache("503", "task-new", false);
+        const claimed = await storage.claimBookCache("503", "task-new", false, undefined, { allowInvalidation: true });
 
         expect(claimed).toMatchObject({
             size: 0,
@@ -113,7 +116,9 @@ describe("image cache reconciliation contracts", () => {
         const controller = new AbortController();
         controller.abort();
 
-        await expect(storage.claimBookCache("504", "task-new", true, controller.signal)).rejects.toMatchObject({
+        await expect(
+            storage.claimBookCache("504", "task-new", true, controller.signal, { allowInvalidation: true })
+        ).rejects.toMatchObject({
             name: "AbortError"
         });
 

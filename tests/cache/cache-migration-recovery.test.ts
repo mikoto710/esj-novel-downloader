@@ -63,7 +63,7 @@ describe("v2 cache migration recovery", () => {
         vi.clearAllMocks();
         mocks.readManifest.mockResolvedValue(undefined);
         mocks.readChapters.mockResolvedValue(new Map([[0, chapter]]));
-        mocks.claim.mockResolvedValue({ compatibility: "compatible", invalidatedCount: 0 });
+        mocks.claim.mockResolvedValue({ status: "claimed", compatibility: "compatible", invalidatedCount: 0 });
         mocks.readLegacy.mockResolvedValue(legacyRecord);
         mocks.deleteLegacy.mockResolvedValue(undefined);
         mocks.listManifests.mockResolvedValue([]);
@@ -78,7 +78,7 @@ describe("v2 cache migration recovery", () => {
     it("retries an interrupted migration once before deleting v2", async () => {
         mocks.claim
             .mockRejectedValueOnce(new DOMException("transaction aborted", "AbortError"))
-            .mockResolvedValueOnce({ compatibility: "compatible", invalidatedCount: 0 });
+            .mockResolvedValueOnce({ status: "claimed", compatibility: "compatible", invalidatedCount: 0 });
         const storage = await import("../../src/core/cache/book-cache");
 
         await expect(storage.claimBookCache("200", "task-200", false)).resolves.toMatchObject({ size: 1 });
@@ -101,7 +101,9 @@ describe("v2 cache migration recovery", () => {
         expect(mocks.deleteLegacy).not.toHaveBeenCalled();
         await expect(storage.loadBookCache("200")).resolves.toMatchObject({ size: 1 });
 
-        mocks.claim.mockReset().mockResolvedValue({ compatibility: "compatible", invalidatedCount: 0 });
+        mocks.claim
+            .mockReset()
+            .mockResolvedValue({ status: "claimed", compatibility: "compatible", invalidatedCount: 0 });
         await expect(storage.claimBookCache("200", "task-200", false)).resolves.toMatchObject({ size: 1 });
         expect(mocks.deleteLegacy).toHaveBeenCalledOnce();
     });

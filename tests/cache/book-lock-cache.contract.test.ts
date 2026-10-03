@@ -151,6 +151,7 @@ describe("book lock contracts", () => {
         expect(await get("esj_down_book_200")).toBeDefined();
 
         const claimed = await storage.claimBookCache("200", "task-200", false);
+        if (claimed.status !== "claimed") throw new Error("expected compatible cache claim");
         expect(claimed.map?.get(0)?.content).toBe("legacy chapter");
         expect(claimed.compatibility).toBe("compatible");
         expect(await get("esj_down_book_200")).toBeUndefined();

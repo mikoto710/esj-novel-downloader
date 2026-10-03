@@ -35,12 +35,6 @@ export interface BookCacheLoadResult {
     meta?: CacheMeta;
 }
 
-export interface BookCacheClaimResult extends BookCacheLoadResult {
-    status: "claimed";
-    compatibility: ImageCacheCompatibility;
-    invalidatedCount: number;
-}
-
 export interface BookCachePreviewResult {
     valid: boolean;
     size: number;
@@ -49,7 +43,9 @@ export interface BookCachePreviewResult {
     compatibility: ImageCacheCompatibility;
 }
 
-export type BookCacheClaimAttempt = BookCacheClaimResult | (BookCachePreviewResult & { status: "needs-confirmation" });
+export type BookCacheClaimResult =
+    | (BookCacheLoadResult & { status: "claimed"; compatibility: ImageCacheCompatibility; invalidatedCount: number })
+    | (BookCachePreviewResult & { status: "needs-confirmation" });
 
 export interface BookCacheClaimOptions {
     allowInvalidation?: boolean;
@@ -193,28 +189,15 @@ export async function loadBookCache(bookId: string): Promise<BookCacheLoadResult
 }
 
 /**
- * 持锁认领或迁移缓存；传入 options 时未经确认的失效只返回预览
+ * 持锁认领或迁移缓存；未经明确确认的失效只返回预览
  */
-export function claimBookCache(
-    bookId: string,
-    taskId: string,
-    requestedImageEnabled: boolean,
-    signal?: AbortSignal
-): Promise<BookCacheClaimResult>;
-export function claimBookCache(
-    bookId: string,
-    taskId: string,
-    requestedImageEnabled: boolean,
-    signal: AbortSignal | undefined,
-    options: BookCacheClaimOptions
-): Promise<BookCacheClaimAttempt>;
 export async function claimBookCache(
     bookId: string,
     taskId: string,
     requestedImageEnabled: boolean,
     signal?: AbortSignal,
-    options?: BookCacheClaimOptions
-): Promise<BookCacheClaimAttempt> {
+    options: BookCacheClaimOptions = {}
+): Promise<BookCacheClaimResult> {
     try {
         const legacy = await readLegacyCache(bookId);
         const migrationSource = isReusableLegacyCache(legacy?.data)
@@ -234,7 +217,7 @@ export async function claimBookCache(
                     CACHE_EXPIRE_TIME,
                     requestedImageEnabled,
                     signal,
-                    options === undefined ? true : options.allowInvalidation === true
+                    options.allowInvalidation === true
                 );
                 break;
             } catch (error) {

@@ -254,7 +254,7 @@ export async function claimCacheV3(
     maxAgeMs: number,
     requestedImageEnabled: boolean,
     signal?: AbortSignal,
-    allowInvalidation = true
+    allowInvalidation = false
 ): Promise<CacheClaimV3Result> {
     return runWriteTransaction<CacheClaimV3Result>((store, setResult) => {
         const request = store.get(getManifestKey(bookId));
