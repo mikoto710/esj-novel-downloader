@@ -64,6 +64,9 @@ jobs:
       - name: Check and Build UserScript
         run: npm run build
 
+      - name: Run download stress tests
+        run: npm run test:stress
+
       - name: Create Release & Upload Asset
         uses: softprops/action-gh-release@v1
         with:
