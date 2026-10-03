@@ -187,7 +187,7 @@ export type DownloadTerminalFailure =
  * 下载核心对外发布的进度快照
  * restored fetched processed persisted 分别表示恢复获取处理和持久化进度
  * completedCount 兼容现有任务决策计数
- * readyChapterCount 表示可进入导出的正文数
+ * readyChapterCount 和兼容字段 cachedChapterCount 均为本次范围内可导出的正文数
  */
 export interface DownloadSnapshot {
     phase: DownloadPhase;

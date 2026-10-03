@@ -55,8 +55,7 @@ export function createTaskCacheWriter(
                     }
                 }
                 progress.update({
-                    persistedCount: persistedIndexes.size,
-                    cachedChapterCount: scope.readyCount(chapters)
+                    persistedCount: persistedIndexes.size
                 });
                 return true;
             } catch (error) {

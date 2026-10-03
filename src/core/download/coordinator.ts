@@ -100,7 +100,6 @@ export async function runDownload(
         checkActive();
         progress.update({
             completedCount: options.tasks.length,
-            cachedChapterCount: scope.readyCount(chapters),
             hasExportData: true
         });
         progress.transition("export-ready");

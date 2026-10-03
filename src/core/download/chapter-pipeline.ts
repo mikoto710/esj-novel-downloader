@@ -139,8 +139,7 @@ export function createChapterPipeline(
 
         progress.update({
             completedCount: progress.snapshot.completedCount + (isRetry ? 0 : 1),
-            processedCount: progress.snapshot.processedCount + 1,
-            cachedChapterCount: scope.readyCount(chapters)
+            processedCount: progress.snapshot.processedCount + 1
         });
 
         const saved = await cache.add(task.index, chapter);
@@ -188,8 +187,7 @@ export function createChapterPipeline(
         // 已恢复章节只推进现有 UI 完成数，不重复网络请求和解析
         if (!isRetry && chapters.has(task.index)) {
             progress.update({
-                completedCount: progress.snapshot.completedCount + 1,
-                cachedChapterCount: scope.readyCount(chapters)
+                completedCount: progress.snapshot.completedCount + 1
             });
             ports.events.emit({ type: "chapter-restored", task });
             return "completed";
@@ -206,8 +204,7 @@ export function createChapterPipeline(
             });
             progress.update({
                 completedCount: progress.snapshot.completedCount + 1,
-                processedCount: progress.snapshot.processedCount + 1,
-                cachedChapterCount: scope.readyCount(chapters)
+                processedCount: progress.snapshot.processedCount + 1
             });
             const saved = await cache.add(task.index, chapters.get(task.index)!);
             if (!saved) {

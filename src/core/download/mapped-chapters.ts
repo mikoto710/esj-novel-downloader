@@ -167,8 +167,7 @@ export function createMappedChapters(
         progress.update({
             restoredCount: restoredTasks.length,
             completedCount: restoredTasks.length,
-            persistedCount: restoredTasks.length,
-            cachedChapterCount: restoredTasks.length
+            persistedCount: restoredTasks.length
         });
         for (const task of restoredTasks) {
             ports.events.emit({ type: "chapter-restored", task });

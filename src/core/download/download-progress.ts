@@ -22,7 +22,8 @@ export class DownloadProgress {
     transition(phase: DownloadPhase): void {
         this.ui.update(this.machine.transition(phase));
     }
-    update(values: Partial<Omit<DownloadSnapshot, "phase">>): void {
-        this.ui.update(this.machine.update({ ...values, readyChapterCount: this.scope.readyCount(this.chapters) }));
+    update(values: Partial<Omit<DownloadSnapshot, "phase" | "readyChapterCount" | "cachedChapterCount">>): void {
+        const readyChapterCount = this.scope.readyCount(this.chapters);
+        this.ui.update(this.machine.update({ ...values, readyChapterCount, cachedChapterCount: readyChapterCount }));
     }
 }
