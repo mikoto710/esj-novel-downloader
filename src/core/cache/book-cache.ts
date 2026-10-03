@@ -7,6 +7,7 @@ import {
     clearCacheV3ForTask,
     finishCacheV3ForTask,
     listCacheManifestsV3,
+    previewCacheV3,
     putCacheBatchV3,
     putCacheCoverV3ForTask,
     readCacheChaptersV3,
@@ -24,7 +25,7 @@ import {
 } from "./legacy-cache";
 import { publishCacheSyncEvent } from "./sync";
 import { isExpectedStorageCancellation, normalizeStorageError } from "./storage-error";
-import type { ImageCacheCompatibility } from "./image-cache-compatibility";
+import { evaluateImageCacheCompatibility, type ImageCacheCompatibility } from "./image-cache-compatibility";
 
 const CACHE_EXPIRE_TIME = 24 * 60 * 60 * 1000;
 
@@ -35,8 +36,23 @@ export interface BookCacheLoadResult {
 }
 
 export interface BookCacheClaimResult extends BookCacheLoadResult {
+    status: "claimed";
     compatibility: ImageCacheCompatibility;
     invalidatedCount: number;
+}
+
+export interface BookCachePreviewResult {
+    valid: boolean;
+    size: number;
+    indexes: number[];
+    meta?: CacheMeta;
+    compatibility: ImageCacheCompatibility;
+}
+
+export type BookCacheClaimAttempt = BookCacheClaimResult | (BookCachePreviewResult & { status: "needs-confirmation" });
+
+export interface BookCacheClaimOptions {
+    allowInvalidation?: boolean;
 }
 
 function isExpired(data: { ts: number }): boolean {
@@ -93,6 +109,48 @@ function toLegacyPersistentEntry(record: LegacyCacheRecord): PersistentCacheEntr
 }
 
 /**
+ * 只读预览有效库存；兼容性不符时，所列章节不能复用
+ */
+export async function previewBookCache(
+    bookId: string,
+    requestedImageEnabled: boolean
+): Promise<BookCachePreviewResult> {
+    try {
+        const { manifest, indexes } = await previewCacheV3(bookId);
+        if (manifest) {
+            if (isReusableV3Cache(manifest)) {
+                return {
+                    valid: true,
+                    size: indexes.length,
+                    indexes,
+                    ...(manifest.meta === undefined ? {} : { meta: manifest.meta }),
+                    compatibility: evaluateImageCacheCompatibility(manifest.meta?.imageEnabled, requestedImageEnabled)
+                };
+            }
+        } else {
+            // 旧记录只有整块格式，预览读取但不迁移
+            const legacy = await readLegacyCache(bookId);
+            if (isReusableLegacyCache(legacy?.data)) {
+                const indexes = Array.from(new Set(legacy.data.chapters.map(([index]) => index)));
+                return {
+                    valid: true,
+                    size: indexes.length,
+                    indexes,
+                    ...(legacy.data.meta === undefined ? {} : { meta: legacy.data.meta }),
+                    compatibility: evaluateImageCacheCompatibility(
+                        legacy.data.meta?.imageEnabled,
+                        requestedImageEnabled
+                    )
+                };
+            }
+        }
+        return { valid: false, size: 0, indexes: [], compatibility: "compatible" };
+    } catch (error) {
+        throw normalizeStorageError(error, "read");
+    }
+}
+
+/**
  * 读取 IndexedDB 中的小说缓存
  * v3 缓存优先，未迁移时只读 v2 缓存
  */
@@ -135,15 +193,28 @@ export async function loadBookCache(bookId: string): Promise<BookCacheLoadResult
 }
 
 /**
- * 由已取得下载锁的任务原子认领 v3 缓存写入权
- * 首次认领时惰性迁移可用的 v2 缓存
+ * 持锁认领或迁移缓存；传入 options 时未经确认的失效只返回预览
  */
-export async function claimBookCache(
+export function claimBookCache(
     bookId: string,
     taskId: string,
     requestedImageEnabled: boolean,
     signal?: AbortSignal
-): Promise<BookCacheClaimResult> {
+): Promise<BookCacheClaimResult>;
+export function claimBookCache(
+    bookId: string,
+    taskId: string,
+    requestedImageEnabled: boolean,
+    signal: AbortSignal | undefined,
+    options: BookCacheClaimOptions
+): Promise<BookCacheClaimAttempt>;
+export async function claimBookCache(
+    bookId: string,
+    taskId: string,
+    requestedImageEnabled: boolean,
+    signal?: AbortSignal,
+    options?: BookCacheClaimOptions
+): Promise<BookCacheClaimAttempt> {
     try {
         const legacy = await readLegacyCache(bookId);
         const migrationSource = isReusableLegacyCache(legacy?.data)
@@ -162,7 +233,8 @@ export async function claimBookCache(
                     migrationSource,
                     CACHE_EXPIRE_TIME,
                     requestedImageEnabled,
-                    signal
+                    signal,
+                    options === undefined ? true : options.allowInvalidation === true
                 );
                 break;
             } catch (error) {
@@ -181,11 +253,15 @@ export async function claimBookCache(
         if (!claimResult) {
             throw new Error("缓存认领未返回兼容性结果");
         }
+        if (claimResult.status === "needs-confirmation") {
+            return { ...claimResult, valid: true, size: claimResult.indexes.length };
+        }
         await deleteLegacyCacheAfterMigration(bookId);
         publishCacheSyncEvent({ type: "cache-claimed", bookId, taskId });
 
         const map = await readCacheChaptersV3(bookId);
         return {
+            status: "claimed",
             size: map.size,
             map: map.size > 0 ? map : null,
             compatibility: claimResult.compatibility,

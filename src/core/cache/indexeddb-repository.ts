@@ -24,10 +24,14 @@ export interface CacheMigrationSource {
     meta?: CacheMeta;
 }
 
-export interface CacheClaimV3Result {
-    compatibility: ImageCacheCompatibility;
-    invalidatedCount: number;
-}
+export type CacheClaimV3Result =
+    | { status: "claimed"; compatibility: ImageCacheCompatibility; invalidatedCount: number }
+    | {
+          status: "needs-confirmation";
+          compatibility: ImageCacheCompatibility;
+          indexes: number[];
+          meta?: CacheMeta;
+      };
 
 interface StoredChapterV3 {
     version: 3;
@@ -187,6 +191,28 @@ export async function readCacheManifestV3(bookId: string): Promise<CacheManifest
     return get<CacheManifestV3>(getManifestKey(bookId), cacheV3Store);
 }
 
+function getChapterIndexes(keys: IDBValidKey[]): number[] {
+    return keys.flatMap((key) => {
+        const index = Array.isArray(key) ? key[2] : undefined;
+        return typeof index === "number" && Number.isSafeInteger(index) && index >= 0 ? [index] : [];
+    });
+}
+
+/**
+ * 在同一只读快照中读取清单和章节索引，不加载正文或 Blob
+ */
+export async function previewCacheV3(
+    bookId: string
+): Promise<{ manifest: CacheManifestV3 | undefined; indexes: number[] }> {
+    return cacheV3Store("readonly", async (store) => {
+        const [manifest, keys] = await Promise.all([
+            promisifyRequest<CacheManifestV3 | undefined>(store.get(getManifestKey(bookId))),
+            promisifyRequest<IDBValidKey[]>(store.getAllKeys(getChapterRange(bookId)))
+        ]);
+        return { manifest, indexes: getChapterIndexes(keys) };
+    });
+}
+
 /**
  * 读取指定书籍的全部 v3 章节
  */
@@ -227,7 +253,8 @@ export async function claimCacheV3(
     migrationSource: CacheMigrationSource | null,
     maxAgeMs: number,
     requestedImageEnabled: boolean,
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    allowInvalidation = true
 ): Promise<CacheClaimV3Result> {
     return runWriteTransaction<CacheClaimV3Result>((store, setResult) => {
         const request = store.get(getManifestKey(bookId));
@@ -241,34 +268,66 @@ export async function claimCacheV3(
                     current.meta?.imageEnabled,
                     requestedImageEnabled
                 );
-                if (compatibility !== "compatible") {
-                    store.delete(getChapterRange(bookId));
-                }
-                const claimedManifest: CacheManifestV3 = {
-                    ...current,
-                    ts: Date.now(),
-                    chapterCount: compatibility === "compatible" ? current.chapterCount : 0,
-                    ...(current.meta
-                        ? { meta: { ...current.meta, imageEnabled: requestedImageEnabled, updatedAt: Date.now() } }
-                        : {}),
-                    writerTaskId: taskId,
-                    cleared: false
+                const claimCurrent = () => {
+                    if (compatibility !== "compatible") {
+                        store.delete(getChapterRange(bookId));
+                    }
+                    const claimedManifest: CacheManifestV3 = {
+                        ...current,
+                        ts: Date.now(),
+                        chapterCount: compatibility === "compatible" ? current.chapterCount : 0,
+                        ...(current.meta
+                            ? { meta: { ...current.meta, imageEnabled: requestedImageEnabled, updatedAt: Date.now() } }
+                            : {}),
+                        writerTaskId: taskId,
+                        cleared: false
+                    };
+                    delete claimedManifest.writerClosedAt;
+                    store.put(claimedManifest, getManifestKey(bookId));
+                    setResult({
+                        status: "claimed",
+                        compatibility,
+                        invalidatedCount: compatibility === "compatible" ? 0 : current.chapterCount
+                    });
                 };
-                delete claimedManifest.writerClosedAt;
-                store.put(claimedManifest, getManifestKey(bookId));
-                setResult({
-                    compatibility,
-                    invalidatedCount: compatibility === "compatible" ? 0 : current.chapterCount
-                });
+                if (compatibility !== "compatible" && !allowInvalidation) {
+                    // 确认与认领共用写事务，拒绝时不改变 writer 或章节
+                    const keysRequest = store.getAllKeys(getChapterRange(bookId));
+                    keysRequest.onsuccess = () => {
+                        const indexes = getChapterIndexes(keysRequest.result);
+                        if (indexes.length === 0) {
+                            claimCurrent();
+                            return;
+                        }
+                        setResult({
+                            status: "needs-confirmation",
+                            compatibility,
+                            indexes,
+                            ...(current.meta === undefined ? {} : { meta: current.meta })
+                        });
+                    };
+                } else {
+                    claimCurrent();
+                }
                 return;
             }
 
-            store.delete(getChapterRange(bookId));
-            const migrationCompatibility = migrationSource
-                ? evaluateImageCacheCompatibility(migrationSource.meta?.imageEnabled, requestedImageEnabled)
+            // 已有 v3（含墓碑）时，旧缓存不能回流
+            const source = current ? null : migrationSource;
+            const migrationCompatibility = source
+                ? evaluateImageCacheCompatibility(source.meta?.imageEnabled, requestedImageEnabled)
                 : "compatible";
-            const migratedEntries =
-                !current && migrationSource && migrationCompatibility === "compatible" ? migrationSource.chapters : [];
+            if (source && source.chapters.length > 0 && migrationCompatibility !== "compatible" && !allowInvalidation) {
+                setResult({
+                    status: "needs-confirmation",
+                    compatibility: migrationCompatibility,
+                    indexes: Array.from(new Set(source.chapters.map(([index]) => index))),
+                    ...(source.meta === undefined ? {} : { meta: source.meta })
+                });
+                return;
+            }
+            store.delete(getChapterRange(bookId));
+            const migratedEntries = source && migrationCompatibility === "compatible" ? source.chapters : [];
             for (const [index, chapter] of migratedEntries) {
                 store.put(
                     { version: 3, bookId, index, chapter } satisfies StoredChapterV3,
@@ -288,9 +347,9 @@ export async function claimCacheV3(
                 getManifestKey(bookId)
             );
             setResult({
+                status: "claimed",
                 compatibility: migrationCompatibility,
-                invalidatedCount:
-                    migrationSource && migrationCompatibility !== "compatible" ? migrationSource.chapters.length : 0
+                invalidatedCount: source && migrationCompatibility !== "compatible" ? source.chapters.length : 0
             });
         };
     }, signal);
