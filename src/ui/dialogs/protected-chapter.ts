@@ -117,6 +117,7 @@ export function promptProtectedChapterPassword(
         const finishOrNotify = (
             decision: Extract<ProtectedChapterDecision, { action: "skip-current" | "skip-all" | "cancel" }>
         ) => {
+            // 提交已结束本次等待，授权中的取消改为通知任务
             if (settled) {
                 onPendingDecision?.(decision);
                 return;
@@ -247,6 +248,7 @@ export function promptProtectedChapterPassword(
             },
             [header, body, footer]
         );
+        // 重试更新内容和回调，保留原窗口位置
         if (existingPopup) {
             existingPopup.replaceChildren(...Array.from(popup.childNodes));
             mountedPopup = existingPopup;

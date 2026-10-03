@@ -169,6 +169,7 @@ export function createSettingsPanel(): void {
         }
     });
 
+    // 子面板接管页面操作锁，设置面板随之关闭
     const btnCacheManager = el(
         "button",
         {
@@ -216,6 +217,7 @@ export function createSettingsPanel(): void {
             const input = e.target as HTMLInputElement;
             const checked = (e.target as HTMLInputElement).checked;
             const previous = getImageDownloadSetting();
+            // 等跨页任务确认后再保存设置；取消时恢复原开关
             input.disabled = true;
             try {
                 const activeTasks = await listActiveBookDownloadLocks();

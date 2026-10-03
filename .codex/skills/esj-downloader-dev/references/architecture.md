@@ -1,51 +1,19 @@
 # Project Boundaries
 
-## Dependency direction
+For download entry, cache, cancellation, protected chapters, or export changes, read the repository's [ARCHITECTURE.md](../../../../ARCHITECTURE.md). It is the maintained source for call paths, state ownership, browser seams, and representative tests.
 
-```text
-scrapers / ui
-  -> core/download/batch-download.ts
-  -> core/download/coordinator.ts
-  -> contracts.ts
-  -> adapters/browser-download-dependencies.ts
-  -> cache, lock, state, UI, GM API, DOM
-```
+- `scrapers/book-download.ts` owns selection, atomic cache confirmation, book-lock acquisition, and finalization.
+- `adapters/batch-download.ts` assembles browser capabilities; `core/download/coordinator.ts` returns explicit ready/cancelled results.
+- `core/download/` business modules receive focused inputs and capabilities. ESLint enforces direct environment boundaries; `task-finalizer.ts` is browser lifecycle assembly, and `core/cache/` implements persistence.
+- `ui/dialogs/format-choice.ts` receives the export snapshot explicitly. Failed or cancelled new work preserves the previous result.
 
-- `batch-download.ts` composes browser dependencies and starts book downloads; an optional selection narrows work while preserving absolute chapter indexes.
-- `coordinator.ts` owns state transitions, cache recovery, chapter scheduling, integrity checks, cancellation, and export preparation.
-- `contracts.ts` exposes the core ports and process data. Browser implementations belong in `adapters/`.
-- `integrity.ts` classifies missing chapters and image retry conditions. `incomplete-chapters.ts` creates export-only placeholders after an explicit user decision; callers must not write those placeholders back to the chapter map or persistent cache.
-- `core/cache/` owns v3 incremental cache, legacy-cache lazy migration, listing, and cross-page synchronization.
-- `ui/messages/download-terminal.ts` translates structured download, cancellation, and cache-discard failures into the common message dialog after lifecycle cleanup; core code must not render DOM directly.
-- `ui/pages/` owns page entry injection, `ui/dialogs/` owns interactive overlays, and `ui/messages/` owns locale-aware presentation of structured results.
+## Review invariants
 
-## Localization boundary
+- Full and range tasks share one book lock and absolute-index cache. Full success clears cache; range success seals and closes its writer while retaining accumulated chapters.
+- Selection progress, whole-book inventory, and export readiness have different meanings. UI and diagnostics project authoritative state.
+- Preview is read-only. Cache claim checks compatibility and invalidation consent in the same write transaction.
+- Normal cancellation has a bounded flush; discard can upgrade cancellation. Network abort must not prevent the permitted final cache write.
+- Protected-chapter passwords stay in task memory. Export placeholders stay out of chapter/cache data.
+- Core emits stable message codes. UI and adapters localize interface text; novel content, metadata, URLs, and ESJZone `status === 206` protocol text remain unchanged.
 
-- `core/locales/` owns interface catalogs, while UI and browser adapters own translated presentation.
-- Core download and persistence code emits stable codes, parameters, or locale-neutral details; it must not read the current locale.
-- Never translate novel content, book metadata, source URLs, exported novel data, or the ESJZone `status === 206` protocol text.
-- Keep Simplified Chinese terminology consistent with existing public labels. Localize Traditional Chinese manually with Taiwanese software terms such as `下載執行緒數`, `快取`, `紀錄`, and `匯出`.
-
-## High-risk invariants
-
-- Do not let `core/download/` access DOM, GM APIs, or browser globals.
-- Finish success, failure, and cancellation through the shared finalization path.
-- Keep the task lock, cache writer, and cancellation mode consistent.
-- Full and range downloads of the same book share one book-level lock and one v3 cache. Full success clears its writer; range success seals pending writes and closes its writer with `finishForTask()` while retaining the whole-book cache.
-- Treat range progress, integrity, password prompts, and export as selected-task views. Keep `CacheMeta.totalChapters` and runtime cache counts at whole-book scope, and never let outside-range chapters enter the current export.
-- Keep download cache distinct from download history.
-- Keep persisted diagnostic and history records locale-neutral when they are rendered in the current interface language.
-- Define migration, backward-compatibility, or explicit invalidation for cache/config format changes.
-
-## Useful module locations
-
-| Concern                                 | Production code                                                              | Tests                                           |
-| --------------------------------------- | ---------------------------------------------------------------------------- | ----------------------------------------------- |
-| Scheduling and lifecycle                | `src/core/download/`                                                         | `tests/download/`                               |
-| Integrity and incomplete-chapter export | `src/core/download/integrity.ts`, `src/core/download/incomplete-chapters.ts` | `tests/download/`, `tests/export/`, `tests/ui/` |
-| Cache, locks, cross-page state          | `src/core/cache/`, `src/core/book-lock.ts`                                   | `tests/cache/`                                  |
-| Browser wiring                          | `src/adapters/`                                                              | browser contract tests                          |
-| Export and images                       | `src/core/export/`, `src/utils/image.ts`                                     | `tests/export/`                                 |
-| Mapping fonts                           | `src/core/mapping-font.ts`                                                   | `tests/mapping-font/`                           |
-| Page behavior                           | `src/ui/pages/`, `src/ui/dialogs/`, `src/ui/messages/`, `src/scrapers/`      | `tests/ui/`                                     |
-| Interface localization                  | `src/core/locales/`, `src/ui/locale.ts`                                      | `tests/ui/`                                     |
+Select focused checks with `esj-regression-selector`; tests use fixtures and isolated storage. Keep method JSDoc to a short Chinese sentence on three lines, with brief `//` comments for non-obvious ordering.

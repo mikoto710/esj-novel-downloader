@@ -439,8 +439,7 @@ export class DiagnosticManager {
     ) {}
 
     /**
-     * 创建并持久化活动诊断会话，相同 taskId 的旧活动记录会被替换
-     * 页面网址写入时只保留 HTTP 或 HTTPS 来源与路径
+     * 创建脱敏的活动诊断会话，并替换同 taskId 的旧活动记录
      */
     start(input: StartDiagnosticSessionInput): DiagnosticSession {
         const now = this.now();

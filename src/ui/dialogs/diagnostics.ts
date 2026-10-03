@@ -359,6 +359,7 @@ export function createDiagnosticPopup(): void {
         }
     };
 
+    // 只在页面可见时轮询，回到前台立即刷新
     const scheduleAutoRefresh = () => {
         if (refreshTimer !== null) {
             window.clearInterval(refreshTimer);

@@ -35,8 +35,7 @@ const FORWARD_TRANSITIONS: Readonly<Record<DownloadPhase, ReadonlySet<DownloadPh
 };
 
 /**
- * 判断业务阶段转换是否合法
- * 相同阶段用于幂等更新，不视为错误
+ * 判断业务阶段转换是否合法，允许相同阶段幂等更新
  */
 export function canTransitionDownloadPhase(from: DownloadPhase, to: DownloadPhase): boolean {
     if (from === to) {
@@ -102,8 +101,7 @@ export class DownloadStateMachine {
     }
 
     /**
-     * 校验并应用业务阶段转换，阶段变化时发布事件且非法转换抛出错误
-     * 相同阶段只返回当前快照，不重复发布阶段事件
+     * 校验并切换阶段，变化时发布事件，非法转换抛错
      */
     transition(phase: DownloadPhase): DownloadSnapshot {
         const previous = this.current.phase;

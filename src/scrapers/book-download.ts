@@ -292,6 +292,7 @@ async function executeBookDownload(
             });
         }
     } finally {
+        // 仅补齐提前退出的诊断，不覆盖核心已记录的终态
         if (diagnosticStarted) {
             finishBrowserDiagnosticSession(lock.taskId, state.abortFlag ? "cancelled" : "failed");
         }

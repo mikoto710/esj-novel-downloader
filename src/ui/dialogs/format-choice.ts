@@ -325,6 +325,7 @@ export function showFormatChoice(data: CachedData): void {
                         ? await buildEpub(data.chapters, data.metadata, getEpubTagPageSetting())
                         : await buildHtml(data.chapters, data.metadata);
                 if (format === "epub") {
+                    // 生成成功即缓存，触发下载失败后可直接重试
                     data.epubBlob = blob;
                 }
             }

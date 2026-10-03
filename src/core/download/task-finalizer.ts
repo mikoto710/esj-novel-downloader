@@ -19,9 +19,7 @@ export interface BookDownloadFinalizationResult {
 }
 
 /**
- * 统一停止任务心跳、按任务锁中的停止并清除请求处理缓存并释放下载锁
- * 所有成功、失败和取消路径都必须调用本函数
- * @returns 缓存是否已清除及可展示的清理失败摘要
+ * 处理缓存清除请求，并在所有退出路径停止心跳、释放锁
  */
 export async function finalizeBookDownloadTask(
     lock: BookDownloadLock,

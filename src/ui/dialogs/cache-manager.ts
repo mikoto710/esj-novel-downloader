@@ -203,6 +203,7 @@ export function createCacheManagerPopup(): void {
     let stopLocaleRefresh: () => void = () => {};
     let refreshTimer: number | null = null;
     let disposed = false;
+    // 主弹窗统一回收订阅和延迟刷新，重复关闭不影响新实例
     const disposeSynchronizer = () => {
         if (disposed) {
             return;
@@ -246,6 +247,7 @@ export function createCacheManagerPopup(): void {
     // 重新读取合并后的缓存列表并重建操作区域
     async function renderList() {
         const items = await listManagedCaches();
+        // 数据返回时弹窗可能已关闭，旧结果不再更新界面
         if (!popup.isConnected) {
             return;
         }
@@ -433,6 +435,7 @@ function createCacheItem(item: CacheListItem, rerender: () => Promise<void>): HT
                         return;
                     }
 
+                    // 发出停止请求不等于清理完成，以实际结果展示提示
                     const result = await stopAndClearManagedCache(item.bookId);
                     const resultMessage: Record<typeof result.status, string> = {
                         "not-active": t("cache.stop.notActive"),

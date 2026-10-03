@@ -147,8 +147,7 @@ export async function previewBookCache(
 }
 
 /**
- * 读取 IndexedDB 中的小说缓存
- * v3 缓存优先，未迁移时只读 v2 缓存
+ * 优先读取 v3 小说缓存，未迁移时只读 v2 缓存
  */
 export async function loadBookCache(bookId: string): Promise<BookCacheLoadResult> {
     try {
