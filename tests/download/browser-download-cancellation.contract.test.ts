@@ -20,8 +20,9 @@ describe("browser download cancellation contracts", () => {
     });
 
     it("passes the active abort signal to coordinator delays", async () => {
-        await runtime.batchDownload(createBrowserDownloadOptions(createBrowserDownloadTasks(1)));
+        const result = await runtime.batchDownload(createBrowserDownloadOptions(createBrowserDownloadTasks(1)));
 
+        expect(result.status).toBe("ready");
         expect(mocks.sleepWithAbort).toHaveBeenCalled();
         expect(mocks.sleepWithAbort.mock.calls.every((call) => call[1] === runtime.state.abortController?.signal)).toBe(
             true
@@ -36,10 +37,10 @@ describe("browser download cancellation contracts", () => {
             }
         });
 
-        await runtime.batchDownload(createBrowserDownloadOptions(createBrowserDownloadTasks(1)));
+        const result = await runtime.batchDownload(createBrowserDownloadOptions(createBrowserDownloadTasks(1)));
 
         expect(mocks.fetchWithTimeout).toHaveBeenCalledTimes(3);
-        expect(mocks.showFormatChoice).not.toHaveBeenCalled();
+        expect(result.status).toBe("cancelled");
         expect(mocks.fullCleanup).toHaveBeenCalledOnce();
         expect(mocks.showTerminalFailure).not.toHaveBeenCalled();
     });
@@ -78,9 +79,9 @@ describe("browser download cancellation contracts", () => {
             await requestStarted.promise;
             runtime.abortActiveDownload();
             runtime.abortActiveDownload();
-            await download;
+            const result = await download;
 
-            expect(mocks.showFormatChoice).not.toHaveBeenCalled();
+            expect(result.status).toBe("cancelled");
             expect(mocks.fullCleanup).toHaveBeenCalledOnce();
             expect(mocks.closeProtectedChapterPrompt).toHaveBeenCalled();
             expect(mocks.log.mock.calls.flat().join("\n")).not.toContain("never-log-this");
@@ -93,14 +94,14 @@ describe("browser download cancellation contracts", () => {
             return { processedHtml: "<p>未完成正文</p>", images: [], failCount: 0, failures: [] };
         });
 
-        await runtime.batchDownload({
+        const result = await runtime.batchDownload({
             ...createBrowserDownloadOptions(createBrowserDownloadTasks(1)),
             imageEnabled: true
         });
 
         expect(runtime.state.globalChaptersMap.size).toBe(0);
         expect(mocks.saveCache).not.toHaveBeenCalled();
-        expect(mocks.showFormatChoice).not.toHaveBeenCalled();
+        expect(result.status).toBe("cancelled");
     });
 
     it("aborts cache cleanup when cancellation arrives during export preparation", async () => {
@@ -125,9 +126,9 @@ describe("browser download cancellation contracts", () => {
         runtime.abortActiveDownload();
 
         await clearAborted.promise;
-        await downloadPromise;
+        const result = await downloadPromise;
 
-        expect(mocks.showFormatChoice).not.toHaveBeenCalled();
+        expect(result.status).toBe("cancelled");
         expect(mocks.log.mock.calls.flat().join("\n")).toContain("进度已保存");
     });
 
@@ -196,11 +197,11 @@ describe("browser download cancellation contracts", () => {
         expect(mocks.shouldDiscard).toHaveBeenCalledOnce();
         runtime.abortActiveDownload("discard");
         await writeAborted.promise;
-        await download;
+        const result = await download;
 
         expect(mocks.saveCache).toHaveBeenCalledOnce();
         expect(mocks.showTerminalFailure).not.toHaveBeenCalled();
-        expect(runtime.state.cachedData).toBeNull();
+        expect(result).toEqual({ status: "cancelled", outcome: "discarded" });
     });
 
     it("aborts the active cache write immediately when cancellation discards progress", async () => {
@@ -228,7 +229,8 @@ describe("browser download cancellation contracts", () => {
         runtime.abortActiveDownload("discard");
 
         await writeAborted.promise;
-        await downloadPromise;
+        const result = await downloadPromise;
+        expect(result).toEqual({ status: "cancelled", outcome: "discarded" });
 
         expect(mocks.saveCache).toHaveBeenCalledOnce();
         expect(mocks.log.mock.calls.flat().join("\n")).toContain("正在清理缓存");

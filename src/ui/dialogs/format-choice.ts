@@ -1,4 +1,3 @@
-import { state } from "../../core/state";
 import type { CachedData } from "../../types";
 import type { MappingFontSummary } from "../../core/download/contracts";
 import { buildEpub } from "../../core/export/epub";
@@ -71,12 +70,7 @@ function showExportFailure(format: "TXT" | "EPUB" | "HTML", stage: ExportFailure
 /**
  * 显示 TXT、EPUB 和 HTML 格式选择弹窗
  */
-export function showFormatChoice(exportData: CachedData | null = state.cachedData): void {
-    if (!exportData) {
-        showMessagePopup({ tone: "info", title: t("export.none.title"), message: t("export.none.message") });
-        return;
-    }
-    const data = exportData;
+export function showFormatChoice(data: CachedData): void {
     fullCleanup();
     disposeActiveFormatLocaleRefresh?.();
 

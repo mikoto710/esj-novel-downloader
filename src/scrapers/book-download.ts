@@ -1,25 +1,24 @@
-import type { DownloadTask } from "../core/download/contracts";
+import type { DownloadSelection, DownloadTask } from "../core/download/contracts";
 import type { SourcePageType } from "../types";
+import type { LocaleKey } from "../core/locale";
 import type { parseBookMetadata } from "../core/parser";
 import { abortActiveDownload, resetAbortController, setAbortFlag, state } from "../core/state";
 import {
     acquireBookDownloadLock,
-    getConflictingBookDownloadLock,
     markBookDownloadRunning,
     startBookDownloadLockHeartbeat,
     updateBookDownloadLockTitle
 } from "../core/book-lock";
-import { claimBookCache, loadBookCache } from "../core/cache/book-cache";
-import { evaluateImageCacheCompatibility } from "../core/cache/image-cache-compatibility";
+import { claimBookCache, previewBookCache, type BookCachePreviewResult } from "../core/cache/book-cache";
 import { publishCacheSyncEvent } from "../core/cache/sync";
 import { getImageDownloadSetting } from "../core/config";
-import { batchDownload } from "../core/download/batch-download";
+import { batchDownload } from "../adapters/batch-download";
 import { selectDownloadTasks } from "../core/download/selection";
 import { finalizeBookDownloadTask } from "../core/download/task-finalizer";
 import { normalizeStorageError, StorageError, toStorageFailure } from "../core/cache/storage-error";
 import { fullCleanup } from "../utils/dom";
 import { createDownloadPopup, showBookDownloadInProgressPopup, showFormatChoice } from "../ui/popups";
-import { createRangeSelectionPopup } from "../ui/dialogs/range-selection";
+import { createDownloadSelectionPopup } from "../ui/dialogs/download-selection";
 import { showMessagePopup } from "../ui/dialogs/message";
 import { showCacheDiscardFailure, showDownloadTerminalFailure } from "../ui/messages/download-terminal";
 import { formatStorageFailure } from "../ui/messages/storage-failure";
@@ -27,70 +26,69 @@ import { t } from "../ui/locale";
 import {
     browserDiagnosticLog as log,
     finishBrowserDiagnosticSession,
-    isBrowserDiagnosticSessionActive,
     recordBrowserDiagnosticFailure,
     recordBrowserPreflightDiagnosticFailure,
     startBrowserDiagnosticSession,
     updateBrowserDiagnosticSession
 } from "../adapters/browser-diagnostics";
 
-type RangeSourcePageType = Extract<SourcePageType, "detail" | "forum">;
+type BookSourcePageType = Extract<SourcePageType, "detail" | "forum">;
 type ParsedBookMetadata = ReturnType<typeof parseBookMetadata>;
 
-export interface PreparedRangeBook {
+export interface PreparedBook {
     tasks: DownloadTask[];
     meta: ParsedBookMetadata;
     pageUrl: string;
 }
 
-export class RangePreflightError extends Error {
+export class BookPreflightError extends Error {
     constructor(
         readonly code: "chapter-list-missing" | "detail-fetch-failed",
         readonly stage: "chapter-list" | "book-metadata",
         options?: ErrorOptions
     ) {
         super(code, options);
-        this.name = "RangePreflightError";
+        this.name = "BookPreflightError";
     }
 }
 
-interface RunRangeDownloadOptions {
+interface RunBookDownloadOptions {
     bookId: string;
-    sourcePageType: RangeSourcePageType;
+    sourcePageType: BookSourcePageType;
     pageTitle: string;
-    loadPlan(): Promise<PreparedRangeBook>;
-}
-
-function showPreflightFailure(error: RangePreflightError): void {
-    showMessagePopup({
-        tone: error.code === "chapter-list-missing" ? "warning" : "error",
-        title: t(error.code === "chapter-list-missing" ? "page.chaptersMissing.title" : "page.detailFailed.title"),
-        message: t(error.code === "chapter-list-missing" ? "page.chaptersMissing.message" : "page.detailFailed.message")
-    });
+    loadPlan(): Promise<PreparedBook>;
 }
 
 /**
- * 在完整目录已可取得的页面上编排范围选择、锁、缓存认领和统一收尾
+ * 先选择下载范围，再取得锁并执行同一任务流程
  */
-export async function runRangeDownload(options: RunRangeDownloadOptions): Promise<void> {
+export async function runBookDownload(options: RunBookDownloadOptions): Promise<void> {
     const { bookId, sourcePageType } = options;
     state.originalTitle = options.pageTitle;
-
-    const conflictingLock = await getConflictingBookDownloadLock(bookId);
-    if (conflictingLock) {
-        showBookDownloadInProgressPopup(conflictingLock);
-        return;
-    }
-
     const imageEnabled = getImageDownloadSetting();
-    let cacheResult;
+    const previousExport = state.cachedData;
+    let plan: PreparedBook | undefined;
+    let preview: BookCachePreviewResult | undefined;
+    let preparationErrorKey: LocaleKey | undefined;
+
     try {
-        cacheResult = await loadBookCache(bookId);
+        plan = await options.loadPlan().catch((error: unknown) => {
+            throw error instanceof BookPreflightError
+                ? error
+                : new BookPreflightError("detail-fetch-failed", "book-metadata", { cause: error });
+        });
+        if (plan.tasks.length === 0) {
+            throw new BookPreflightError("chapter-list-missing", "chapter-list");
+        }
+        preview = await previewBookCache(bookId, imageEnabled);
     } catch (error) {
-        const failure = normalizeStorageError(error, "read");
-        const displayMessage = formatStorageFailure(toStorageFailure(failure));
-        console.error(failure);
-        log(t("page.cacheReadFailed", { detail: displayMessage }));
+        const failure = error instanceof BookPreflightError ? error : normalizeStorageError(error, "read");
+        preparationErrorKey =
+            failure instanceof BookPreflightError
+                ? failure.code === "chapter-list-missing"
+                    ? "page.chaptersMissing.message"
+                    : "page.detailFailed.message"
+                : "page.cacheUnavailable.message";
         recordBrowserPreflightDiagnosticFailure({
             bookId,
             bookTitle: options.pageTitle,
@@ -98,67 +96,61 @@ export async function runRangeDownload(options: RunRangeDownloadOptions): Promis
             sourcePageType,
             imageEnabled,
             failure: {
-                scope: "storage",
-                stage: "cache-read",
-                code: failure.reason,
+                scope: failure instanceof BookPreflightError ? "page" : "storage",
+                stage: failure instanceof BookPreflightError ? failure.stage : "cache-read",
+                code: failure instanceof BookPreflightError ? failure.code : failure.reason,
                 message: failure.message
             }
         });
-        showMessagePopup({
-            tone: "error",
-            title: t("page.cacheUnavailable.title"),
-            message: t("page.cacheUnavailable.message")
-        });
-        return;
     }
 
-    let plan: PreparedRangeBook;
-    try {
-        plan = await options.loadPlan();
-        if (plan.tasks.length === 0) {
-            throw new RangePreflightError("chapter-list-missing", "chapter-list");
-        }
-    } catch (error) {
-        const preflightError =
-            error instanceof RangePreflightError
-                ? error
-                : new RangePreflightError("detail-fetch-failed", "book-metadata", { cause: error });
-        recordBrowserPreflightDiagnosticFailure({
-            bookId,
-            bookTitle: options.pageTitle,
-            pageUrl: location.href,
-            sourcePageType,
-            totalChapters: 0,
+    let initialSelection: DownloadSelection | undefined;
+    while (true) {
+        const invalidatesCache = Boolean(preview && preview.size > 0 && preview.compatibility !== "compatible");
+        const decision = await createDownloadSelectionPopup({
+            tasks: plan?.tasks || [],
+            cachedIndexes: new Set(preview?.indexes || []),
+            cacheWillBeInvalidated: invalidatesCache,
+            cacheCount: preview?.size || 0,
             imageEnabled,
-            failure: {
-                scope: "page",
-                stage: preflightError.stage,
-                code: preflightError.code,
-                message: preflightError.message
-            }
+            hasExistingExport: Boolean(previousExport),
+            ...(previousExport?.exportContext?.selection
+                ? { existingSelection: previousExport.exportContext.selection }
+                : {}),
+            ...(initialSelection ? { initialSelection } : {}),
+            ...(preparationErrorKey ? { preparationErrorKey } : {})
         });
-        showPreflightFailure(preflightError);
-        return;
+        if (decision.action === "open-existing") {
+            if (previousExport) {
+                showFormatChoice(previousExport);
+            }
+            return;
+        }
+        if (decision.action === "cancel" || !plan || !preview || preparationErrorKey) {
+            return;
+        }
+        initialSelection = decision.selection;
+        // 仅未确认的缓存失效返回新预览；释放锁后再让用户选择
+        const latest = await executeBookDownload(options, plan, decision.selection, imageEnabled, invalidatesCache);
+        if (!latest) {
+            return;
+        }
+        preview = latest;
     }
+}
 
-    state.globalChaptersMap = cacheResult.map || new Map();
-    const compatibility = evaluateImageCacheCompatibility(cacheResult.meta?.imageEnabled, imageEnabled);
-    const decision = await createRangeSelectionPopup({
-        tasks: plan.tasks,
-        cachedIndexes: new Set(state.globalChaptersMap.keys()),
-        cacheWillBeInvalidated: cacheResult.size > 0 && compatibility !== "compatible",
-        hasExistingRange: state.cachedData?.exportContext?.selection?.mode === "range"
-    });
-    if (decision.action === "open-existing") {
-        showFormatChoice();
-        return;
-    }
-    if (decision.action === "cancel") {
-        return;
-    }
-    const selection = decision.selection;
+/**
+ * 持锁执行下载，所有退出路径统一释放资源
+ */
+async function executeBookDownload(
+    options: RunBookDownloadOptions,
+    plan: PreparedBook,
+    selection: DownloadSelection,
+    imageEnabled: boolean,
+    allowInvalidation: boolean
+): Promise<BookCachePreviewResult | undefined> {
+    const { bookId, sourcePageType } = options;
     const selectedTasks = selectDownloadTasks(plan.tasks, selection);
-
     const lockResult = await acquireBookDownloadLock(bookId, sourcePageType);
     if (!lockResult.acquired) {
         fullCleanup(state.originalTitle);
@@ -168,7 +160,6 @@ export async function runRangeDownload(options: RunRangeDownloadOptions): Promis
 
     const lock = lockResult.lock;
     state.activeBookLock = lock;
-    const previousExport = state.cachedData;
     let stopHeartbeat: () => void = () => undefined;
     let diagnosticStarted = false;
     let downloadStarted = false;
@@ -199,7 +190,13 @@ export async function runRangeDownload(options: RunRangeDownloadOptions): Promis
         );
         diagnosticStarted = true;
         log(t("page.cachePreparing"));
-        const claimedCache = await claimBookCache(bookId, lock.taskId, imageEnabled, state.abortController?.signal);
+        const claimedCache = await claimBookCache(bookId, lock.taskId, imageEnabled, state.abortController?.signal, {
+            allowInvalidation
+        });
+        if (claimedCache.status === "needs-confirmation") {
+            fullCleanup(state.originalTitle);
+            return claimedCache;
+        }
         state.globalChaptersMap = claimedCache.map || new Map();
         if (claimedCache.invalidatedCount > 0) {
             log(
@@ -256,9 +253,12 @@ export async function runRangeDownload(options: RunRangeDownloadOptions): Promis
         } as const;
         updateBrowserDiagnosticSession(downloadOptions);
         downloadStarted = true;
-        await batchDownload(downloadOptions);
-        exportReady =
-            state.cachedData !== previousExport && state.cachedData?.exportContext?.selection?.mode !== undefined;
+        const result = await batchDownload(downloadOptions);
+        if (result.status === "ready") {
+            state.cachedData = result.data;
+            exportReady = true;
+            showFormatChoice(result.data);
+        }
     } catch (error) {
         const details = error instanceof Error ? error : new Error(String(error));
         if (state.abortFlag || details.name === "AbortError" || details.message === "User Aborted") {
@@ -266,11 +266,11 @@ export async function runRangeDownload(options: RunRangeDownloadOptions): Promis
             return;
         }
         console.error(error);
-        if (!downloadStarted && isBrowserDiagnosticSessionActive(lock.taskId)) {
+        if (!downloadStarted) {
             recordBrowserDiagnosticFailure(
                 {
                     scope: error instanceof StorageError ? "storage" : "page",
-                    stage: `${sourcePageType}-range-page`,
+                    stage: `${sourcePageType}-page`,
                     code: error instanceof StorageError ? error.reason : details.name || "range-page-failed",
                     message: details.message
                 },

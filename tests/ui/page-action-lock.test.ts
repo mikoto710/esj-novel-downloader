@@ -2,27 +2,27 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { state } from "../../src/core/state";
-import { createDownloadButton, createRangeDownloadButton, createSettingButton } from "../../src/ui/components";
-import { createConfirmPopup, createDownloadPopup, createSettingsPanel } from "../../src/ui/popups";
+import { createDownloadButton, createSettingButton } from "../../src/ui/components";
+import { createDownloadPopup, createSettingsPanel } from "../../src/ui/popups";
 import { acquirePageActionGroupLock } from "../../src/ui/page-action-lock";
 import { t } from "../../src/ui/locale";
 import { fullCleanup } from "../../src/utils/dom";
+import { createDownloadSelectionPopup } from "../../src/ui/dialogs/download-selection";
+import { createDownloadTask } from "../support";
 
-function createPageActions() {
-    const fullScrape = vi.fn(async () => undefined);
-    const rangeScrape = vi.fn(async () => undefined);
-    const fullButton = createDownloadButton("full", undefined, fullScrape) as HTMLButtonElement;
-    const rangeButton = createRangeDownloadButton("range", rangeScrape) as HTMLButtonElement;
+function createPageActions(download: () => Promise<void> = async () => undefined) {
+    const scrape = vi.fn(download);
+    const downloadButton = createDownloadButton("download", undefined, scrape) as HTMLButtonElement;
     const settingsButton = createSettingButton() as HTMLButtonElement;
-    document.body.append(fullButton, rangeButton, settingsButton);
-    return { fullButton, rangeButton, settingsButton, fullScrape, rangeScrape };
+    document.body.append(downloadButton, settingsButton);
+    return { downloadButton, settingsButton, scrape };
 }
 
 function expectPageActionsDisabled(disabled: boolean): void {
     const buttons = Array.from(
         document.querySelectorAll<HTMLButtonElement>(".esj-download-trigger,.esj-settings-trigger")
     );
-    expect(buttons).toHaveLength(3);
+    expect(buttons).toHaveLength(2);
     expect(buttons.every((button) => button.disabled === disabled)).toBe(true);
 }
 
@@ -39,18 +39,16 @@ describe("page action popup locks", () => {
         document.body.replaceChildren();
     });
 
-    it("blocks full and range downloads while settings are open, then restores every entry on close", async () => {
-        const { fullButton, rangeButton, settingsButton, fullScrape, rangeScrape } = createPageActions();
+    it("blocks download while settings are open, then restores both entries on close", async () => {
+        const { downloadButton, settingsButton, scrape } = createPageActions();
 
         settingsButton.click();
         expect(document.querySelector("#esj-settings")).not.toBeNull();
         expectPageActionsDisabled(true);
 
-        fullButton.click();
-        rangeButton.click();
+        downloadButton.click();
         await Promise.resolve();
-        expect(fullScrape).not.toHaveBeenCalled();
-        expect(rangeScrape).not.toHaveBeenCalled();
+        expect(scrape).not.toHaveBeenCalled();
 
         document.querySelector<HTMLButtonElement>("#esj-settings .esj-common-header button")?.click();
         expect(document.querySelector("#esj-settings")).toBeNull();
@@ -71,14 +69,26 @@ describe("page action popup locks", () => {
         expectPageActionsDisabled(false);
     });
 
-    it("hands the page lock from confirmation to download progress until cleanup", () => {
-        createPageActions();
-        createConfirmPopup(() => createDownloadPopup());
+    it("hands the page lock from download selection to progress until cleanup", async () => {
+        const { downloadButton } = createPageActions(async () => {
+            const decision = await createDownloadSelectionPopup({
+                tasks: [createDownloadTask(0)],
+                cachedIndexes: new Set(),
+                cacheCount: 0,
+                cacheWillBeInvalidated: false,
+                imageEnabled: false,
+                hasExistingExport: false
+            });
+            if (decision.action === "download") {
+                createDownloadPopup();
+            }
+        });
+        downloadButton.click();
         expectPageActionsDisabled(true);
 
-        document.querySelector<HTMLButtonElement>("#esj-confirm-ok")?.click();
-        expect(document.querySelector("#esj-confirm")).toBeNull();
-        expect(document.querySelector("#esj-popup")).not.toBeNull();
+        document.querySelector<HTMLButtonElement>("#esj-range-download")?.click();
+        await vi.waitFor(() => expect(document.querySelector("#esj-popup")).not.toBeNull());
+        expect(document.querySelector("#esj-range-selection")).toBeNull();
         expectPageActionsDisabled(true);
 
         fullCleanup();

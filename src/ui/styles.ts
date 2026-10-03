@@ -10,7 +10,7 @@ const STYLES = `
     }
     
     /* 头部 */
-    #esj-header, #esj-confirm-header, #esj-format-header #esj-settings-header {
+    #esj-header, #esj-format-header, #esj-settings-header {
         padding: 10px; background: #2b9bd7; color: #fff;
         display: flex; justify-content: space-between; align-items: center;
         cursor: move; border-radius: 8px 8px 0 0;
@@ -108,7 +108,7 @@ const STYLES = `
     #esj-progress { width: 0%; height: 100%; background: #2b9bd7; transition: width .2s; }
 
     /* 确认弹窗 & 格式弹窗 */
-    #esj-confirm, #esj-format, #esj-cache-confirm {
+    #esj-format, #esj-cache-confirm, #esj-range-selection {
         position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%);
         width: 380px; background: #fff; border: 1px solid #aaa;
         border-radius: 8px; box-shadow: 0 0 18px rgba(0,0,0,0.28);

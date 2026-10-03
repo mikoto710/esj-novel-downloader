@@ -6,6 +6,7 @@ import {
     createBrowserDownloadOptions,
     createBrowserDownloadTasks,
     getBrowserDownloadMocks,
+    expectReadyDownload,
     resetBrowserDownloadHarness
 } from "../support/browser-download-harness";
 import { createChapter, createDeferred } from "../support";
@@ -21,8 +22,12 @@ describe("browser download flow contracts", () => {
     });
 
     it("shows saving, integrity, export preparation, and completion stages", async () => {
-        await runtime.batchDownload(createBrowserDownloadOptions(createBrowserDownloadTasks(1)));
+        const data = expectReadyDownload(
+            await runtime.batchDownload(createBrowserDownloadOptions(createBrowserDownloadTasks(1)))
+        );
 
+        expect(data.chapters).toHaveLength(1);
+        expect(runtime.state.cachedData).toBeNull();
         const trayMessages = mocks.updateTrayText.mock.calls.flat();
         expect(trayMessages).toContain("全本下载（1/1）");
         expect(trayMessages.join("\n")).not.toContain("密码待处理 0");
@@ -59,11 +64,13 @@ describe("browser download flow contracts", () => {
             .mockRejectedValueOnce(new Error("third"))
             .mockResolvedValue({ text: vi.fn().mockResolvedValue("<html></html>") });
 
-        await runtime.batchDownload(createBrowserDownloadOptions(createBrowserDownloadTasks(1)));
+        const data = expectReadyDownload(
+            await runtime.batchDownload(createBrowserDownloadOptions(createBrowserDownloadTasks(1)))
+        );
 
         expect(mocks.fetchWithTimeout).toHaveBeenCalledTimes(4);
         expect(mocks.saveCache).toHaveBeenCalledOnce();
-        expect(runtime.state.cachedData?.chapters).toHaveLength(1);
+        expect(data.chapters).toHaveLength(1);
     });
 
     it("wires protected chapter GET, token POST, password POST, and normal processing", async () => {
@@ -80,7 +87,9 @@ describe("browser download flow contracts", () => {
             rememberPassword: false
         });
 
-        await runtime.batchDownload(createBrowserDownloadOptions(createBrowserDownloadTasks(1)));
+        const data = expectReadyDownload(
+            await runtime.batchDownload(createBrowserDownloadOptions(createBrowserDownloadTasks(1)))
+        );
 
         expect(mocks.fetchWithTimeout).toHaveBeenCalledTimes(4);
         expect(mocks.fetchWithTimeout.mock.calls[1][1]).toMatchObject({ method: "GET", credentials: "include" });
@@ -90,7 +99,7 @@ describe("browser download flow contracts", () => {
         expect(mocks.fetchWithTimeout.mock.calls[3][1].headers.Authorization).toBe("fictional-token");
         expect(String(mocks.fetchWithTimeout.mock.calls[3][1].body)).toBe("pw=fictional-password");
         expect(mocks.parseChapterHtml).toHaveBeenCalledWith(expect.stringContaining("unlocked body"), "第 1 章");
-        expect(runtime.state.cachedData?.chapters).toHaveLength(1);
+        expect(data.chapters).toHaveLength(1);
     });
 
     it("waits for ordinary requests before refreshing and authorizing the protected chapter", async () => {

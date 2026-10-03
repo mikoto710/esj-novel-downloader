@@ -6,6 +6,7 @@ import {
     type BrowserDownloadRuntime,
     createBrowserDownloadOptions,
     getBrowserDownloadMocks,
+    expectReadyDownload,
     resetBrowserDownloadHarness
 } from "../support/browser-download-harness";
 
@@ -32,9 +33,11 @@ describe("browser mapped font contracts", () => {
             bookName: "Test book"
         });
 
-        await runtime.batchDownload(createBrowserDownloadOptions([createDownloadTask()]));
+        const data = expectReadyDownload(
+            await runtime.batchDownload(createBrowserDownloadOptions([createDownloadTask()]))
+        );
 
-        const chapter = runtime.state.cachedData?.chapters[0];
+        const chapter = data.chapters[0];
         expect(chapter?.mappingFont?.family).toBe("1");
         expect(chapter?.content).not.toContain("data:text/css");
         expect(chapter?.content).not.toContain("<img");

@@ -1,7 +1,13 @@
 // @vitest-environment jsdom
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { createBookLock, createDeferred, createDetailPageFixture, installDocumentFixture } from "../support";
+import {
+    createBookLock,
+    createCachedData,
+    createDeferred,
+    createDetailPageFixture,
+    installDocumentFixture
+} from "../support";
 import { setInterfaceLocalePreference } from "../../src/core/config";
 
 const mocks = vi.hoisted(() => ({
@@ -13,9 +19,9 @@ const mocks = vi.hoisted(() => ({
     markRunning: vi.fn(),
     startHeartbeat: vi.fn(),
     updateTitle: vi.fn(),
-    loadCache: vi.fn(),
+    previewCache: vi.fn(),
     claimCache: vi.fn(),
-    createConfirmPopup: vi.fn(),
+    selectionPopup: vi.fn(),
     createDownloadPopup: vi.fn(),
     showConflict: vi.fn(),
     showTerminalFailure: vi.fn(),
@@ -28,7 +34,7 @@ vi.mock("../../src/core/cache/sync", () => ({
     publishCacheSyncEvent: vi.fn()
 }));
 
-vi.mock("../../src/core/download/batch-download", () => ({ batchDownload: mocks.batchDownload }));
+vi.mock("../../src/adapters/batch-download", () => ({ batchDownload: mocks.batchDownload }));
 vi.mock("../../src/core/download/task-finalizer", () => ({ finalizeBookDownloadTask: mocks.finalize }));
 vi.mock("../../src/core/book-lock", () => ({
     getConflictingBookDownloadLock: mocks.getConflict,
@@ -38,7 +44,7 @@ vi.mock("../../src/core/book-lock", () => ({
     updateBookDownloadLockTitle: mocks.updateTitle
 }));
 vi.mock("../../src/core/cache/book-cache", () => ({
-    loadBookCache: mocks.loadCache,
+    previewBookCache: mocks.previewCache,
     claimBookCache: mocks.claimCache
 }));
 vi.mock("../../src/core/parser", () => ({
@@ -53,10 +59,12 @@ vi.mock("../../src/core/parser", () => ({
     }))
 }));
 vi.mock("../../src/ui/popups", () => ({
-    createConfirmPopup: mocks.createConfirmPopup,
+    showFormatChoice: vi.fn(),
     createDownloadPopup: mocks.createDownloadPopup,
     showBookDownloadInProgressPopup: mocks.showConflict
 }));
+vi.mock("../../src/ui/dialogs/download-selection", () => ({ createDownloadSelectionPopup: mocks.selectionPopup }));
+vi.mock("../../src/ui/dialogs/message", () => ({ showMessagePopup: vi.fn() }));
 vi.mock("../../src/utils/dom", () => ({ fullCleanup: mocks.fullCleanup }));
 vi.mock("../../src/utils/log", () => ({ log: mocks.log }));
 vi.mock("../../src/ui/messages/download-terminal", () => ({
@@ -83,8 +91,9 @@ describe("download lifecycle contracts", () => {
         state.activeBookLock = null;
 
         mocks.getConflict.mockResolvedValue(null);
-        mocks.loadCache.mockResolvedValue({ size: 0, map: null });
+        mocks.previewCache.mockResolvedValue({ valid: false, size: 0, indexes: [], compatibility: "compatible" });
         mocks.claimCache.mockResolvedValue({
+            status: "claimed",
             size: 0,
             map: null,
             compatibility: "compatible",
@@ -94,8 +103,11 @@ describe("download lifecycle contracts", () => {
         mocks.markRunning.mockResolvedValue(true);
         mocks.startHeartbeat.mockReturnValue(mocks.stopHeartbeat);
         mocks.updateTitle.mockResolvedValue(undefined);
-        mocks.createConfirmPopup.mockImplementation((onOk: () => void) => onOk());
-        mocks.batchDownload.mockResolvedValue(undefined);
+        mocks.selectionPopup.mockResolvedValue({
+            action: "download",
+            selection: { mode: "all", sourceTotalChapters: 2, startIndex: 0, endIndex: 1 }
+        });
+        mocks.batchDownload.mockResolvedValue({ status: "ready", data: createCachedData() });
         mocks.finalize.mockResolvedValue({ cacheDiscarded: false, cacheClearFailure: null });
     });
 
@@ -105,6 +117,7 @@ describe("download lifecycle contracts", () => {
         } else if (outcome === "cancel") {
             mocks.batchDownload.mockImplementationOnce(async () => {
                 state.abortFlag = true;
+                return { status: "cancelled", outcome: "saved" };
             });
         }
 
@@ -122,6 +135,10 @@ describe("download lifecycle contracts", () => {
     ] as const)("releases acquired resources when %s initialization fails", async (_name, scrape, initialize) => {
         if (scrape === scrapeForum) {
             window.history.replaceState({}, "", "/forum/100");
+            vi.stubGlobal(
+                "fetch",
+                vi.fn(async () => ({ ok: true, text: async () => document.documentElement.outerHTML }))
+            );
         }
         initialize.mockImplementationOnce(() => {
             throw new Error("initialization failed");
@@ -161,7 +178,9 @@ describe("download lifecycle contracts", () => {
         await scrapeDetail();
 
         expect(mocks.log).toHaveBeenCalledWith("正在准备本地缓存…");
-        expect(mocks.claimCache).toHaveBeenCalledWith("100", lock.taskId, false, expect.any(AbortSignal));
+        expect(mocks.claimCache).toHaveBeenCalledWith("100", lock.taskId, false, expect.any(AbortSignal), {
+            allowInvalidation: false
+        });
         expect(mocks.log.mock.invocationCallOrder[0]).toBeLessThan(mocks.claimCache.mock.invocationCallOrder[0]);
     });
 
@@ -203,7 +222,9 @@ describe("download lifecycle contracts", () => {
 
         await scrapeDetail();
 
-        expect(mocks.claimCache).toHaveBeenCalledWith("100", lock.taskId, true, expect.any(AbortSignal));
+        expect(mocks.claimCache).toHaveBeenCalledWith("100", lock.taskId, true, expect.any(AbortSignal), {
+            allowInvalidation: false
+        });
         expect(mocks.batchDownload).toHaveBeenCalledWith(expect.objectContaining({ imageEnabled: true }));
     });
 });

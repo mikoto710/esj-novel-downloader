@@ -1,9 +1,9 @@
 import { el } from "../../utils/dom";
-import { scrapeForum, scrapeForumRange } from "../../scrapers/forum";
-import { createDownloadButton, createRangeDownloadButton, createSettingButton } from "../components";
+import { scrapeForum } from "../../scrapers/forum";
+import { createDownloadButton, createSettingButton } from "../components";
 
 /**
- * 在论坛版块页注入 "全本下载" 按钮
+ * 在论坛版块页注入 下载 按钮
  */
 export function injectForumButton(): void {
     // 找到包含发帖按钮的 column
@@ -32,11 +32,8 @@ export function injectForumButton(): void {
     const downloadBtn =
         document.querySelector<HTMLElement>("#btn-download-forum") ||
         createDownloadButton("btn-download-forum", undefined, scrapeForum, "");
-    const rangeDownloadBtn =
-        document.querySelector<HTMLElement>("#btn-download-forum-range") ||
-        createRangeDownloadButton("btn-download-forum-range", scrapeForumRange);
     const settingBtn = container.querySelector<HTMLElement>(".esj-settings-trigger") || createSettingButton();
 
-    // 保留论坛原生操作顺序，只规范化脚本自身三个入口的尾部顺序
-    container.append(downloadBtn, rangeDownloadBtn, settingBtn);
+    // 保留论坛原生操作顺序，只规范化脚本自身两个入口的尾部顺序
+    container.append(downloadBtn, settingBtn);
 }

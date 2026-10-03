@@ -121,7 +121,6 @@ export function fullCleanup(originalTitle?: string): void {
     const selectors = [
         "#esj-popup",
         "#esj-min-tray",
-        "#esj-confirm",
         "#esj-book-lock",
         "#esj-format",
         "#esj-settings",
@@ -137,8 +136,7 @@ export function fullCleanup(originalTitle?: string): void {
         "#esj-mapping-confirm",
         "#esj-mapping-export-confirm",
         "#esj-message-popup",
-        "#esj-range-selection",
-        "#esj-range-replace-confirm"
+        "#esj-range-selection"
     ];
 
     selectors.forEach((sel) => removeElement(document.querySelector(sel)));

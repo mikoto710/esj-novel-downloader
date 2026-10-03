@@ -1,3 +1,5 @@
+import type { DownloadSelectionSummary } from "../../types";
+import type { LocaleKey } from "../../core/locale";
 import type { DownloadSelection, DownloadTask } from "../../core/download/contracts";
 import { createRangeSelection } from "../../core/download/selection";
 import { enableDrag, el, registerElementCleanup, removeElement } from "../../utils/dom";
@@ -5,25 +7,31 @@ import { createCommonHeader } from "./common";
 import { subscribeInterfaceLocaleChange, t } from "../locale";
 import { acquirePageActionGroupLockForPopup } from "../page-action-lock";
 
-export type RangeSelectionDecision =
+export type DownloadSelectionDecision =
     | { action: "download"; selection: DownloadSelection }
     | { action: "open-existing" }
     | { action: "cancel" };
 
-export interface RangeSelectionPopupOptions {
+export interface DownloadSelectionPopupOptions {
     tasks: readonly DownloadTask[];
     cachedIndexes: ReadonlySet<number>;
     cacheWillBeInvalidated: boolean;
-    hasExistingRange: boolean;
+    hasExistingExport: boolean;
+    cacheCount: number;
+    imageEnabled: boolean;
+    existingSelection?: DownloadSelectionSummary;
+    initialSelection?: DownloadSelection;
+    preparationErrorKey?: LocaleKey;
 }
 
-let finishActiveRangeSelection: ((decision: RangeSelectionDecision) => void) | null = null;
-let finishActiveRangeReplace: ((confirmed: boolean) => void) | null = null;
+let finishActiveRangeSelection: ((decision: DownloadSelectionDecision) => void) | null = null;
 
 /**
- * 显示连续章节范围选择弹窗；缓存命中仅为锁前预览
+ * 选择全本或连续范围，缓存命中仅作锁前预览
  */
-export function createRangeSelectionPopup(options: RangeSelectionPopupOptions): Promise<RangeSelectionDecision> {
+export function createDownloadSelectionPopup(
+    options: DownloadSelectionPopupOptions
+): Promise<DownloadSelectionDecision> {
     finishActiveRangeSelection?.({ action: "cancel" });
     removeElement(document.querySelector("#esj-range-selection"));
 
@@ -31,7 +39,8 @@ export function createRangeSelectionPopup(options: RangeSelectionPopupOptions): 
         const total = options.tasks.length;
         let settled = false;
         let unsubscribeLocale: () => void = () => undefined;
-        const finish = (decision: RangeSelectionDecision) => {
+        // 关闭按钮、替换弹窗和外部移除共用同一次决策收尾
+        const finish = (decision: DownloadSelectionDecision) => {
             if (settled) {
                 return;
             }
@@ -45,6 +54,16 @@ export function createRangeSelectionPopup(options: RangeSelectionPopupOptions): 
         };
         finishActiveRangeSelection = finish;
         const header = createCommonHeader(t("range.title"), () => finish({ action: "cancel" }));
+        const mode = el(
+            "select",
+            { id: "esj-download-mode", style: "padding:8px;border:1px solid #bbb;border-radius:5px;" },
+            [
+                el("option", { value: "all" }, [t("range.modeAll")]),
+                el("option", { value: "range" }, [t("range.modeRange")])
+            ]
+        );
+        mode.value = options.initialSelection?.mode || "all";
+        const imageSetting = el("div", { id: "esj-download-images", style: "font-size:12px;color:#666;" });
         const startLabel = el(
             "label",
             { for: "esj-range-start", style: "display:flex;flex-direction:column;gap:5px;" },
@@ -59,7 +78,7 @@ export function createRangeSelectionPopup(options: RangeSelectionPopupOptions): 
             min: 1,
             max: total,
             step: 1,
-            value: 1,
+            value: (options.initialSelection?.startIndex ?? 0) + 1,
             style: "padding:8px;border:1px solid #bbb;border-radius:5px;"
         });
         const endInput = el("input", {
@@ -68,7 +87,7 @@ export function createRangeSelectionPopup(options: RangeSelectionPopupOptions): 
             min: 1,
             max: total,
             step: 1,
-            value: total,
+            value: (options.initialSelection?.endIndex ?? total - 1) + 1,
             style: "padding:8px;border:1px solid #bbb;border-radius:5px;"
         });
         startLabel.appendChild(startInput);
@@ -92,7 +111,7 @@ export function createRangeSelectionPopup(options: RangeSelectionPopupOptions): 
                       id: "esj-range-cache-warning",
                       style: "padding:8px;border:1px solid #d97706;background:#fff7e6;color:#8a5a00;border-radius:5px;font-size:12px;"
                   },
-                  [t("range.cacheDiscardWarning")]
+                  [t("range.cacheDiscardWarning", { count: options.cacheCount })]
               )
             : "";
         const stopWarning = el(
@@ -112,7 +131,7 @@ export function createRangeSelectionPopup(options: RangeSelectionPopupOptions): 
             },
             [t("common.cancel")]
         );
-        const openPreviousButton = options.hasExistingRange
+        const openPreviousButton = options.hasExistingExport
             ? el(
                   "button",
                   {
@@ -133,6 +152,12 @@ export function createRangeSelectionPopup(options: RangeSelectionPopupOptions): 
         );
 
         const getSelection = (): DownloadSelection | null => {
+            if (options.preparationErrorKey || total === 0) {
+                return null;
+            }
+            if (mode.value === "all") {
+                return createRangeSelection(1, total, total);
+            }
             const startText = startInput.value.trim();
             const endText = endInput.value.trim();
             if (!startText || !endText) {
@@ -144,8 +169,13 @@ export function createRangeSelectionPopup(options: RangeSelectionPopupOptions): 
                 return null;
             }
         };
+        // 只刷新文案和预览，切换语言时保留用户输入
         const refresh = () => {
             const selection = getSelection();
+            startInput.disabled = endInput.disabled = mode.value === "all";
+            mode.options[0].textContent = t("range.modeAll");
+            mode.options[1].textContent = t("range.modeRange");
+            imageSetting.textContent = t(options.imageEnabled ? "range.imagesEnabled" : "range.imagesDisabled");
             const headerLabel = header.querySelector("span");
             if (headerLabel) {
                 headerLabel.textContent = t("range.title");
@@ -155,14 +185,25 @@ export function createRangeSelectionPopup(options: RangeSelectionPopupOptions): 
             cancelButton.textContent = t("common.cancel");
             downloadButton.textContent = t("range.download");
             if (openPreviousButton) {
-                openPreviousButton.textContent = t("range.openPrevious");
+                const previous = options.existingSelection;
+                const label =
+                    previous?.mode === "range"
+                        ? t("export.range", {
+                              start: previous.startChapter,
+                              end: previous.endChapter,
+                              count: previous.endChapter - previous.startChapter + 1
+                          })
+                        : t("range.modeAll");
+                openPreviousButton.textContent = `${t("range.openPrevious")}（${label}）`;
             }
             stopWarning.textContent = t("range.stopClearWarning");
             if (cacheWarning instanceof HTMLElement) {
-                cacheWarning.textContent = t("range.cacheDiscardWarning");
+                cacheWarning.textContent = t("range.cacheDiscardWarning", { count: options.cacheCount });
             }
             if (!selection) {
-                validation.textContent = t("range.invalid", { total });
+                validation.textContent = options.preparationErrorKey
+                    ? t(options.preparationErrorKey)
+                    : t("range.invalid", { total });
                 startTitle.textContent = "";
                 endTitle.textContent = "";
                 summary.textContent = "";
@@ -171,8 +212,10 @@ export function createRangeSelectionPopup(options: RangeSelectionPopupOptions): 
                 return;
             }
             const selectedTasks = options.tasks.slice(selection.startIndex, selection.endIndex + 1);
+            // 不兼容的库存会整书失效，不能计入本次可复用数量
             const cached = selectedTasks.reduce(
-                (count, task) => count + (options.cachedIndexes.has(task.index) ? 1 : 0),
+                (count, task) =>
+                    count + (!options.cacheWillBeInvalidated && options.cachedIndexes.has(task.index) ? 1 : 0),
                 0
             );
             validation.textContent = "";
@@ -189,6 +232,7 @@ export function createRangeSelectionPopup(options: RangeSelectionPopupOptions): 
                 finish({ action: "download", selection });
             }
         });
+        mode.addEventListener("change", refresh);
         startInput.addEventListener("input", refresh);
         endInput.addEventListener("input", refresh);
 
@@ -203,6 +247,8 @@ export function createRangeSelectionPopup(options: RangeSelectionPopupOptions): 
             [
                 header,
                 el("div", { style: "padding:16px;display:flex;flex-direction:column;gap:10px;" }, [
+                    mode,
+                    imageSetting,
                     el("div", { style: "display:grid;grid-template-columns:1fr 1fr;gap:12px;" }, [
                         startLabel,
                         endLabel
@@ -228,68 +274,6 @@ export function createRangeSelectionPopup(options: RangeSelectionPopupOptions): 
         enableDrag(popup, ".esj-common-header");
         unsubscribeLocale = subscribeInterfaceLocaleChange(refresh);
         refresh();
-        startInput.focus();
-        startInput.select();
-    });
-}
-
-/**
- * 全本入口遇到范围导出快照时要求用户明确确认替换意图
- */
-export function confirmReplaceRangeExport(): Promise<boolean> {
-    finishActiveRangeReplace?.(false);
-    removeElement(document.querySelector("#esj-range-replace-confirm"));
-    return new Promise((resolve) => {
-        let settled = false;
-        const finish = (confirmed: boolean) => {
-            if (settled) {
-                return;
-            }
-            settled = true;
-            if (finishActiveRangeReplace === finish) {
-                finishActiveRangeReplace = null;
-            }
-            removeElement(popup);
-            resolve(confirmed);
-        };
-        finishActiveRangeReplace = finish;
-        const popup = el(
-            "div",
-            {
-                id: "esj-range-replace-confirm",
-                role: "dialog",
-                "aria-modal": "true",
-                style: "position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:420px;max-width:calc(100vw - 32px);background:#fff;border:1px solid #aaa;border-radius:8px;box-shadow:0 0 18px rgba(0,0,0,.28);z-index:1000000;display:flex;flex-direction:column;"
-            },
-            [
-                createCommonHeader(t("range.replace.title"), () => finish(false)),
-                el("div", { style: "padding:16px;font-size:14px;line-height:1.7;" }, [t("range.replace.message")]),
-                el("div", { style: "padding:12px;display:flex;justify-content:flex-end;gap:8px;" }, [
-                    el(
-                        "button",
-                        {
-                            id: "esj-range-replace-cancel",
-                            style: "padding:8px 12px;background:#eee;border:1px solid #ccc;border-radius:6px;cursor:pointer;",
-                            onclick: () => finish(false)
-                        },
-                        [t("common.cancel")]
-                    ),
-                    el(
-                        "button",
-                        {
-                            id: "esj-range-replace-continue",
-                            style: "padding:8px 12px;background:#2b9bd7;color:#fff;border:none;border-radius:6px;cursor:pointer;",
-                            onclick: () => finish(true)
-                        },
-                        [t("range.replace.continue")]
-                    )
-                ])
-            ]
-        );
-        document.body.appendChild(popup);
-        registerElementCleanup(popup, () => finish(false));
-        acquirePageActionGroupLockForPopup(popup);
-        enableDrag(popup, ".esj-common-header");
-        (popup.querySelector("#esj-range-replace-cancel") as HTMLButtonElement | null)?.focus();
+        (options.preparationErrorKey && openPreviousButton ? openPreviousButton : mode).focus();
     });
 }

@@ -1,5 +1,5 @@
-import { vi } from "vitest";
-import type { ProtectedChapterDecision } from "../../src/core/download/contracts";
+import { expect, vi } from "vitest";
+import type { DownloadResult, ProtectedChapterDecision } from "../../src/core/download/contracts";
 import { createBookLock, createDownloadTask } from "./factories";
 
 const hoistedBrowserDownloadMocks = vi.hoisted(() => ({
@@ -9,7 +9,6 @@ const hoistedBrowserDownloadMocks = vi.hoisted(() => ({
     fetchWithTimeout: vi.fn(),
     fullCleanup: vi.fn(),
     createDownloadPopup: vi.fn(),
-    showFormatChoice: vi.fn(),
     confirmMappingFontDownload: vi.fn(async () => true),
     confirmIncompleteChapters: vi.fn(async () => "export-with-placeholders" as const),
     promptProtectedChapterPassword: vi.fn(async (): Promise<ProtectedChapterDecision> => ({ action: "skip-current" })),
@@ -48,7 +47,6 @@ vi.mock("../../src/utils/request", () => ({ fetchWithTimeout: hoistedBrowserDown
 vi.mock("../../src/utils/dom", () => ({ fullCleanup: hoistedBrowserDownloadMocks.fullCleanup }));
 vi.mock("../../src/ui/popups", () => ({
     createDownloadPopup: hoistedBrowserDownloadMocks.createDownloadPopup,
-    showFormatChoice: hoistedBrowserDownloadMocks.showFormatChoice,
     confirmMappingFontDownload: hoistedBrowserDownloadMocks.confirmMappingFontDownload,
     confirmIncompleteChapters: hoistedBrowserDownloadMocks.confirmIncompleteChapters,
     promptProtectedChapterPassword: hoistedBrowserDownloadMocks.promptProtectedChapterPassword,
@@ -79,14 +77,14 @@ vi.mock("../../src/core/book-lock", () => ({
 }));
 
 export interface BrowserDownloadRuntime {
-    batchDownload: typeof import("../../src/core/download/batch-download").batchDownload;
+    batchDownload: typeof import("../../src/adapters/batch-download").batchDownload;
     abortActiveDownload: typeof import("../../src/core/state").abortActiveDownload;
     state: typeof import("../../src/core/state").state;
 }
 
 export async function resetBrowserDownloadHarness(): Promise<BrowserDownloadRuntime> {
     const [{ batchDownload }, stateRuntime] = await Promise.all([
-        import("../../src/core/download/batch-download"),
+        import("../../src/adapters/batch-download"),
         import("../../src/core/state")
     ]);
     const { abortActiveDownload, resetAbortController, setAbortFlag, state } = stateRuntime;
@@ -147,4 +145,10 @@ export function createBrowserDownloadOptions(tasks: ReturnType<typeof createDown
         imageEnabled: false,
         tasks
     };
+}
+
+export function expectReadyDownload(result: DownloadResult) {
+    expect(result.status).toBe("ready");
+    if (result.status !== "ready") throw new Error("Expected export data from download");
+    return result.data;
 }

@@ -11,6 +11,7 @@ import {
     createBrowserDownloadOptions,
     createBrowserDownloadTasks,
     getBrowserDownloadMocks,
+    expectReadyDownload,
     resetBrowserDownloadHarness
 } from "../support/browser-download-harness";
 
@@ -52,13 +53,13 @@ describe("browser inline image diagnostic contracts", () => {
             })
             .mockResolvedValueOnce({ processedHtml: "<p>正文</p>", images: [], failCount: 0, failures: [] });
 
-        await runtime.batchDownload({
+        const result = await runtime.batchDownload({
             ...createBrowserDownloadOptions(createBrowserDownloadTasks(1)),
             imageEnabled: true
         });
 
         const session = listBrowserDiagnosticSessions().history[0];
-        expect(runtime.state.cachedData?.chapters[0]?.imageErrors).toBe(0);
+        expect(expectReadyDownload(result).chapters[0]?.imageErrors).toBe(0);
         expect(session).toMatchObject({ result: "success", task: { phase: "export-ready" } });
         expect(session.failures).toEqual([
             expect.objectContaining({
@@ -89,7 +90,7 @@ describe("browser inline image diagnostic contracts", () => {
             };
         });
 
-        await runtime.batchDownload({
+        const result = await runtime.batchDownload({
             ...createBrowserDownloadOptions(createBrowserDownloadTasks(1)),
             imageEnabled: true
         });
@@ -97,6 +98,6 @@ describe("browser inline image diagnostic contracts", () => {
         const session = listBrowserDiagnosticSessions().history[0];
         expect(session).toMatchObject({ result: "cancelled", task: { phase: "cancelled" } });
         expect(session.failures).toEqual([]);
-        expect(runtime.state.cachedData).toBeNull();
+        expect(result).toEqual({ status: "cancelled", outcome: "saved" });
     });
 });

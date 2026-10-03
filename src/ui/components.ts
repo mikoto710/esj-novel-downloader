@@ -1,17 +1,14 @@
 import { el } from "../utils/dom";
-import { state } from "../core/state";
-import { showFormatChoice, createSettingsPanel } from "./popups";
-import { bindInterfaceAttribute, bindInterfaceText, t } from "./locale";
-import { confirmReplaceRangeExport } from "./dialogs/range-selection";
+import { createSettingsPanel } from "./popups";
+import { bindInterfaceAttribute, bindInterfaceText, refreshBoundInterfaceText, t } from "./locale";
 import { acquirePageActionGroupLock } from "./page-action-lock";
 
 function hasBlockingDownloadPopup(): boolean {
-    return Boolean(document.querySelector("#esj-confirm,#esj-format,#esj-range-selection,#esj-range-replace-confirm"));
+    return Boolean(document.querySelector("#esj-format,#esj-range-selection"));
 }
 
 /**
  * 创建通用的设置按钮
- * @param customClass 额外的 CSS 类 (如 "m-b-10")
  */
 export function createSettingButton(customClass: string = ""): HTMLElement {
     const button = el(
@@ -43,14 +40,10 @@ export function createSettingButton(customClass: string = ""): HTMLElement {
 
 /**
  * 创建通用的下载按钮
- * @param id 元素的 DOM ID
- * @param text 按钮显示的文字
- * @param scrapeFn 点击后执行的抓取函数 (async)
- * @param customClass 额外的 CSS 类 (如 "m-b-10")
  */
 export function createDownloadButton(
     id: string,
-    text: string = t("button.downloadAll"),
+    text: string = t("button.download"),
     scrapeFn: () => Promise<void>,
     customClass: string = ""
 ): HTMLElement {
@@ -75,40 +68,26 @@ export function createDownloadButton(
                     return;
                 }
 
-                // 保存原始 HTML，以便范围结果替换确认取消或任务结束时恢复
-                const originalHtml = btn.innerHTML;
-                const preparingHtml = `<i class="icon-refresh fa-spin"></i> ${t("common.preparing")}`;
-
-                // 如果有缓存，直接显示导出窗口，不进入 loading
-                if (state.cachedData) {
-                    if (state.cachedData.exportContext?.selection?.mode !== "range") {
-                        showFormatChoice();
-                        return;
-                    }
-                    btn.innerHTML = preparingHtml;
-                    if (!(await confirmReplaceRangeExport())) {
-                        btn.innerHTML = originalHtml;
-                        return;
-                    }
-                }
-
-                if (btn.disabled || hasBlockingDownloadPopup()) {
-                    btn.innerHTML = originalHtml;
-                    return;
-                }
+                // 任务结束后恢复入口文案
+                const originalNodes = Array.from(btn.childNodes);
 
                 const releasePageActions = acquirePageActionGroupLock();
 
                 // 执行抓取任务，进入 loading
-                btn.innerHTML = preparingHtml;
+                btn.replaceChildren(
+                    el("i", { className: "icon-refresh fa-spin" }),
+                    " ",
+                    bindInterfaceText(el("span"), "common.preparing")
+                );
 
                 try {
                     await scrapeFn();
-                } catch (err: any) {
-                    console.error("Scrape Error: " + err.message);
+                } catch (error) {
+                    console.error("Scrape Error", error);
                 } finally {
                     // 导出弹窗如仍存在会持有自己的锁；本入口只释放当前点击任务
-                    btn.innerHTML = originalHtml;
+                    btn.replaceChildren(...originalNodes);
+                    refreshBoundInterfaceText(btn);
                     releasePageActions();
                 }
             }
@@ -116,53 +95,9 @@ export function createDownloadButton(
         [
             el("i", { className: "icon-download" }),
             " ",
-            text === t("button.downloadAll")
-                ? bindInterfaceText(el("span"), "button.downloadAll")
-                : el("span", {}, [text])
+            text === t("button.download") ? bindInterfaceText(el("span"), "button.download") : el("span", {}, [text])
         ]
     );
 
-    return btn;
-}
-
-/**
- * 创建独立范围下载按钮；已有导出结果由范围选择弹窗决定复用或替换
- */
-export function createRangeDownloadButton(
-    id: string,
-    scrapeFn: () => Promise<void>,
-    customClass: string = ""
-): HTMLElement {
-    const btn = el(
-        "button",
-        {
-            id,
-            className: `btn btn-info esj-download-trigger ${customClass}`,
-            style: "color: white; cursor: pointer; margin-left: 5px;",
-            onclick: async () => {
-                const runningPopup = document.querySelector("#esj-popup") as HTMLElement | null;
-                if (runningPopup) {
-                    runningPopup.style.display = "flex";
-                    document.querySelector("#esj-min-tray")?.remove();
-                    return;
-                }
-                if (btn.disabled || hasBlockingDownloadPopup()) {
-                    return;
-                }
-                const originalHtml = btn.innerHTML;
-                const releasePageActions = acquirePageActionGroupLock();
-                btn.innerHTML = `<i class="icon-refresh fa-spin"></i> ${t("common.preparing")}`;
-                try {
-                    await scrapeFn();
-                } catch (error) {
-                    console.error("Range Scrape Error", error);
-                } finally {
-                    btn.innerHTML = originalHtml;
-                    releasePageActions();
-                }
-            }
-        },
-        [el("i", { className: "icon-download" }), " ", bindInterfaceText(el("span"), "button.downloadRange")]
-    );
     return btn;
 }

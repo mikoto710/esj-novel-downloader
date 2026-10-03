@@ -6,8 +6,10 @@ import { state } from "../../src/core/state";
 import { createDownloadButton, createSettingButton } from "../../src/ui/components";
 import { showMessagePopup } from "../../src/ui/dialogs/message";
 import { createCommonHeader } from "../../src/ui/dialogs/common";
-import { createConfirmPopup, createSettingsPanel } from "../../src/ui/popups";
+import { createSettingsPanel } from "../../src/ui/popups";
 import { installRuntimeInterfaceLocaleSync } from "../../src/ui/locale";
+import { createDownloadSelectionPopup } from "../../src/ui/dialogs/download-selection";
+import { createDownloadTask } from "../support";
 
 describe("shared locale UI", () => {
     beforeEach(() => {
@@ -26,7 +28,7 @@ describe("shared locale UI", () => {
         );
 
         expect(settingButton.getAttribute("aria-label")).toBe("腳本設定");
-        expect(downloadButton.textContent).toContain("全本下載");
+        expect(downloadButton.textContent).toContain("下載");
         expect(header.querySelector('[aria-label="最小化"]')).not.toBeNull();
         expect(header.querySelector('[aria-label="關閉"]')).not.toBeNull();
     });
@@ -80,30 +82,34 @@ describe("shared locale UI", () => {
         document.body.append(settingButton, downloadButton);
         const dispose = installRuntimeInterfaceLocaleSync();
 
-        expect(downloadButton.textContent).toContain("全本下載");
+        expect(downloadButton.textContent).toContain("下載");
         const websiteSwitch = document.querySelector(".customizer-text-switch .trans") as HTMLElement;
         websiteSwitch.dataset.encode = "1";
         await Promise.resolve();
         await Promise.resolve();
 
         expect(document.querySelector("#runtime-download")).toBe(downloadButton);
-        expect(downloadButton.textContent).toContain("全本下载");
+        expect(downloadButton.textContent).toContain("下载");
         expect(settingButton.getAttribute("aria-label")).toBe("脚本设置");
         dispose();
     });
 
-    it("uses locale keys for the common download confirmation", () => {
-        state.globalChaptersMap.set(0, {
-            title: "Chapter 1",
-            content: "content",
-            txtSegment: "content"
+    it("uses locale keys for the unified download selection and cache preview", async () => {
+        const decision = createDownloadSelectionPopup({
+            tasks: [createDownloadTask(0)],
+            cachedIndexes: new Set([0]),
+            cacheCount: 1,
+            cacheWillBeInvalidated: false,
+            imageEnabled: false,
+            hasExistingExport: false
         });
-        createConfirmPopup(() => undefined);
 
-        const popup = document.querySelector("#esj-confirm") as HTMLElement;
-        expect(popup.querySelector(".esj-common-header")?.textContent).toContain("確認下載");
-        expect(popup.textContent).toContain("偵測到已有 1 章快取");
-        expect(popup.querySelector("#esj-confirm-cancel")?.textContent).toBe("取消");
-        expect(popup.querySelector("#esj-confirm-ok")?.textContent).toBe("確認");
+        const popup = document.querySelector("#esj-range-selection") as HTMLElement;
+        expect(popup.querySelector(".esj-common-header")?.textContent).toContain("選擇下載範圍");
+        expect(popup.textContent).toContain("預計重用 1 章快取");
+        expect(popup.querySelector("#esj-range-cancel")?.textContent).toBe("取消");
+        expect(popup.querySelector("#esj-range-download")?.textContent).toBe("開始下載");
+        popup.querySelector<HTMLButtonElement>("#esj-range-cancel")?.click();
+        await expect(decision).resolves.toEqual({ action: "cancel" });
     });
 });

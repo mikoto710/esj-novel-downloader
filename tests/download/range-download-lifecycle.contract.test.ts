@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { createBookLock, createDeferred, createDownloadTask } from "../support";
+import { createBookLock, createCachedData, createDeferred, createDownloadTask } from "../support";
 
 const mocks = vi.hoisted(() => ({
     getConflict: vi.fn(),
@@ -10,7 +10,7 @@ const mocks = vi.hoisted(() => ({
     startHeartbeat: vi.fn(),
     updateTitle: vi.fn(),
     stopHeartbeat: vi.fn(),
-    loadCache: vi.fn(),
+    previewCache: vi.fn(),
     claimCache: vi.fn(),
     rangePopup: vi.fn(),
     createDownloadPopup: vi.fn(),
@@ -37,16 +37,16 @@ vi.mock("../../src/core/book-lock", () => ({
     updateBookDownloadLockTitle: mocks.updateTitle
 }));
 vi.mock("../../src/core/cache/book-cache", () => ({
-    loadBookCache: mocks.loadCache,
+    previewBookCache: mocks.previewCache,
     claimBookCache: mocks.claimCache
 }));
 vi.mock("../../src/core/cache/sync", () => ({
     subscribeCacheSync: vi.fn(() => vi.fn()),
     publishCacheSyncEvent: mocks.publishCacheSyncEvent
 }));
-vi.mock("../../src/core/download/batch-download", () => ({ batchDownload: mocks.batchDownload }));
+vi.mock("../../src/adapters/batch-download", () => ({ batchDownload: mocks.batchDownload }));
 vi.mock("../../src/core/download/task-finalizer", () => ({ finalizeBookDownloadTask: mocks.finalize }));
-vi.mock("../../src/ui/dialogs/range-selection", () => ({ createRangeSelectionPopup: mocks.rangePopup }));
+vi.mock("../../src/ui/dialogs/download-selection", () => ({ createDownloadSelectionPopup: mocks.rangePopup }));
 vi.mock("../../src/ui/popups", () => ({
     createDownloadPopup: mocks.createDownloadPopup,
     showBookDownloadInProgressPopup: mocks.showConflict,
@@ -68,7 +68,7 @@ vi.mock("../../src/adapters/browser-diagnostics", () => ({
     updateBrowserDiagnosticSession: mocks.updateDiagnostic
 }));
 
-import { RangePreflightError, runRangeDownload } from "../../src/scrapers/range";
+import { BookPreflightError, runBookDownload } from "../../src/scrapers/book-download";
 import { state } from "../../src/core/state";
 
 describe("range download lifecycle", () => {
@@ -99,8 +99,11 @@ describe("range download lifecycle", () => {
         state.runtimeCacheSession = null;
         state.activeBookLock = null;
         mocks.getConflict.mockResolvedValue(null);
-        mocks.loadCache.mockResolvedValue({ size: 1, map: new Map([[0, { title: "cached" }]]), meta: undefined });
+        mocks.rangePopup.mockResolvedValue({ action: "cancel" });
+        mocks.batchDownload.mockResolvedValue({ status: "ready", data: createCachedData() });
+        mocks.previewCache.mockResolvedValue({ valid: true, size: 1, indexes: [0], compatibility: "compatible" });
         mocks.claimCache.mockResolvedValue({
+            status: "claimed",
             size: 1,
             map: new Map([[0, { title: "cached" }]]),
             compatibility: "compatible",
@@ -120,7 +123,7 @@ describe("range download lifecycle", () => {
         }>();
         mocks.rangePopup.mockReturnValue(selectionDecision.promise);
         mocks.batchDownload.mockImplementationOnce(async () => {
-            state.cachedData = {
+            const data = {
                 txt: "",
                 chapters: [],
                 metadata: {
@@ -137,12 +140,13 @@ describe("range download lifecycle", () => {
                     pageUrl: plan.pageUrl,
                     sourcePageType: "detail",
                     imageEnabled: false,
-                    selection: { mode: "range", sourceTotalChapters: 3, startChapter: 2, endChapter: 3 }
+                    selection: { mode: "range" as const, sourceTotalChapters: 3, startChapter: 2, endChapter: 3 }
                 }
             };
+            return { status: "ready", data };
         });
 
-        const running = runRangeDownload({
+        const running = runBookDownload({
             bookId: "100",
             sourcePageType: "detail",
             pageTitle: "测试小说",
@@ -160,7 +164,9 @@ describe("range download lifecycle", () => {
 
         expect(mocks.acquire).toHaveBeenCalledWith("100", "detail");
         expect(mocks.createDownloadPopup).toHaveBeenCalledWith("range");
-        expect(mocks.claimCache).toHaveBeenCalledWith("100", lock.taskId, false, expect.any(AbortSignal));
+        expect(mocks.claimCache).toHaveBeenCalledWith("100", lock.taskId, false, expect.any(AbortSignal), {
+            allowInvalidation: false
+        });
         expect(mocks.batchDownload).toHaveBeenCalledWith(
             expect.objectContaining({
                 tasks: [tasks[1], tasks[2]],
@@ -180,7 +186,7 @@ describe("range download lifecycle", () => {
         });
         mocks.acquire.mockResolvedValueOnce({ acquired: false, lock });
 
-        await runRangeDownload({
+        await runBookDownload({
             bookId: "100",
             sourcePageType: "detail",
             pageTitle: "测试小说",
@@ -201,7 +207,7 @@ describe("range download lifecycle", () => {
             throw new Error("heartbeat setup failed");
         });
 
-        await runRangeDownload({
+        await runBookDownload({
             bookId: "100",
             sourcePageType: "detail",
             pageTitle: "测试小说",
@@ -214,12 +220,12 @@ describe("range download lifecycle", () => {
     });
 
     it("keeps lock, writer, heartbeat, and active diagnostics absent after a preflight directory failure", async () => {
-        await runRangeDownload({
+        await runBookDownload({
             bookId: "100",
             sourcePageType: "forum",
             pageTitle: "测试小说",
             loadPlan: async () => {
-                throw new RangePreflightError("detail-fetch-failed", "book-metadata");
+                throw new BookPreflightError("detail-fetch-failed", "book-metadata");
             }
         });
 
@@ -229,5 +235,114 @@ describe("range download lifecycle", () => {
         expect(mocks.startDiagnostic).not.toHaveBeenCalled();
         expect(mocks.claimCache).not.toHaveBeenCalled();
         expect(mocks.finalize).not.toHaveBeenCalled();
+    });
+    it("returns to confirmation without starting when the latest cache became incompatible", async () => {
+        const selection = { mode: "range", sourceTotalChapters: 3, startIndex: 1, endIndex: 2 };
+        mocks.rangePopup
+            .mockResolvedValueOnce({ action: "download", selection })
+            .mockResolvedValueOnce({ action: "cancel" });
+        mocks.claimCache.mockResolvedValueOnce({
+            status: "needs-confirmation",
+            valid: true,
+            size: 3,
+            indexes: [0, 1, 2],
+            compatibility: "refetch-required"
+        });
+        const old = createCachedData();
+        const oldChapters = new Map([[0, old.chapters[0]!]]);
+        state.cachedData = old;
+        state.globalChaptersMap = oldChapters;
+
+        await runBookDownload({
+            bookId: "100",
+            sourcePageType: "detail",
+            pageTitle: "Book",
+            loadPlan: async () => plan
+        });
+
+        expect(mocks.batchDownload).not.toHaveBeenCalled();
+        expect(mocks.finalize).toHaveBeenCalledOnce();
+        expect(mocks.finalize.mock.invocationCallOrder[0]).toBeLessThan(mocks.rangePopup.mock.invocationCallOrder[1]);
+        expect(mocks.rangePopup).toHaveBeenLastCalledWith(
+            expect.objectContaining({ cacheWillBeInvalidated: true, cacheCount: 3, initialSelection: selection })
+        );
+        expect(state.cachedData).toBe(old);
+        expect(state.globalChaptersMap).toBe(oldChapters);
+    });
+
+    it("claims again with explicit invalidation consent after showing the changed cache", async () => {
+        const selection = { mode: "all", sourceTotalChapters: 3, startIndex: 0, endIndex: 2 };
+        mocks.rangePopup.mockResolvedValue({ action: "download", selection });
+        mocks.claimCache.mockResolvedValueOnce({
+            status: "needs-confirmation",
+            valid: true,
+            size: 3,
+            indexes: [0, 1, 2],
+            compatibility: "unknown"
+        });
+
+        await runBookDownload({
+            bookId: "100",
+            sourcePageType: "detail",
+            pageTitle: "Book",
+            loadPlan: async () => plan
+        });
+
+        expect(mocks.claimCache).toHaveBeenNthCalledWith(1, "100", lock.taskId, false, expect.any(AbortSignal), {
+            allowInvalidation: false
+        });
+        expect(mocks.claimCache).toHaveBeenNthCalledWith(2, "100", lock.taskId, false, expect.any(AbortSignal), {
+            allowInvalidation: true
+        });
+        expect(mocks.acquire).toHaveBeenCalledTimes(2);
+        expect(mocks.finalize).toHaveBeenCalledTimes(2);
+        expect(mocks.batchDownload).toHaveBeenCalledOnce();
+    });
+
+    it("reopens the previous export even when the cache preview fails", async () => {
+        const old = createCachedData();
+        state.cachedData = old;
+        mocks.previewCache.mockRejectedValueOnce(new Error("database unavailable"));
+        mocks.rangePopup.mockResolvedValueOnce({ action: "open-existing" });
+
+        await runBookDownload({
+            bookId: "100",
+            sourcePageType: "detail",
+            pageTitle: "Book",
+            loadPlan: async () => plan
+        });
+
+        expect(mocks.rangePopup).toHaveBeenCalledWith(
+            expect.objectContaining({ hasExistingExport: true, preparationErrorKey: "page.cacheUnavailable.message" })
+        );
+        expect(mocks.showFormatChoice).toHaveBeenCalledWith(old);
+        expect(mocks.acquire).not.toHaveBeenCalled();
+        expect(mocks.claimCache).not.toHaveBeenCalled();
+        expect(state.cachedData).toBe(old);
+    });
+
+    it.each(["cancelled", "failed"])("keeps the previous export after a %s attempt", async (status) => {
+        const old = createCachedData();
+        state.cachedData = old;
+        mocks.rangePopup.mockResolvedValueOnce({
+            action: "download",
+            selection: { mode: "all", sourceTotalChapters: 3, startIndex: 0, endIndex: 2 }
+        });
+        if (status === "failed") {
+            mocks.batchDownload.mockRejectedValueOnce(new Error("download failed"));
+        } else {
+            mocks.batchDownload.mockResolvedValueOnce({ status: "cancelled", outcome: "saved" });
+        }
+
+        await runBookDownload({
+            bookId: "100",
+            sourcePageType: "detail",
+            pageTitle: "Book",
+            loadPlan: async () => plan
+        });
+
+        expect(state.cachedData).toBe(old);
+        expect(mocks.showFormatChoice).not.toHaveBeenCalled();
+        expect(mocks.finalize).toHaveBeenCalledOnce();
     });
 });

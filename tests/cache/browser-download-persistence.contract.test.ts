@@ -7,6 +7,7 @@ import {
     createBrowserDownloadOptions,
     createBrowserDownloadTasks,
     getBrowserDownloadMocks,
+    expectReadyDownload,
     resetBrowserDownloadHarness
 } from "../support/browser-download-harness";
 
@@ -22,13 +23,12 @@ describe("browser download persistence contracts", () => {
         const tasks = createBrowserDownloadTasks(3);
         runtime.state.globalChaptersMap = new Map(tasks.map((task) => [task.index, createChapter(task.index)]));
 
-        await runtime.batchDownload(createBrowserDownloadOptions(tasks));
+        const data = expectReadyDownload(await runtime.batchDownload(createBrowserDownloadOptions(tasks)));
 
         expect(mocks.fetchWithTimeout).not.toHaveBeenCalled();
         expect(mocks.saveCache).not.toHaveBeenCalled();
         expect(mocks.clearCache).toHaveBeenCalledOnce();
-        expect(runtime.state.cachedData?.chapters).toHaveLength(3);
-        expect(mocks.showFormatChoice).toHaveBeenCalledOnce();
+        expect(data.chapters).toHaveLength(3);
     });
 
     it("applies cache backpressure before a worker claims another chapter", async () => {

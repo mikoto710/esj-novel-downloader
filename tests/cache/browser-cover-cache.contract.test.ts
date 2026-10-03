@@ -8,6 +8,7 @@ import {
     createBrowserDownloadOptions,
     createBrowserDownloadTasks,
     getBrowserDownloadMocks,
+    expectReadyDownload,
     resetBrowserDownloadHarness
 } from "../support/browser-download-harness";
 
@@ -35,12 +36,12 @@ describe("browser cover cache contracts", () => {
         runtime.state.globalChaptersMap = new Map(tasks.map((task) => [task.index, createChapter(task.index)]));
         mocks.loadCoverCache.mockResolvedValue(createJpegCover());
 
-        await runtime.batchDownload(options);
+        const data = expectReadyDownload(await runtime.batchDownload(options));
 
         expect(mocks.loadCoverCache).toHaveBeenCalledWith("100", options.coverUrl);
         expect(mocks.fetchWithTimeout).not.toHaveBeenCalled();
         expect(mocks.saveCoverCache).not.toHaveBeenCalled();
-        expect(runtime.state.cachedData?.metadata.coverExt).toBe("jpg");
+        expect(data.metadata.coverExt).toBe("jpg");
         expect(mocks.log).toHaveBeenCalledWith("💾 已读取本地封面缓存");
     });
 
@@ -51,7 +52,7 @@ describe("browser cover cache contracts", () => {
         const networkBlob = createJpegCover("application/octet-stream").blob;
         mocks.fetchWithTimeout.mockResolvedValue({ blob: async () => networkBlob });
 
-        await runtime.batchDownload(options);
+        const data = expectReadyDownload(await runtime.batchDownload(options));
 
         expect(mocks.fetchWithTimeout).toHaveBeenCalledOnce();
         expect(mocks.saveCoverCache).toHaveBeenCalledWith(
@@ -63,7 +64,7 @@ describe("browser cover cache contracts", () => {
         );
         const savedCover = mocks.saveCoverCache.mock.calls[0][3] as BookCover;
         expect(savedCover.blob.type).toBe("image/jpeg");
-        expect(runtime.state.cachedData?.metadata.coverBlob?.type).toBe("image/jpeg");
+        expect(data.metadata.coverBlob?.type).toBe("image/jpeg");
     });
 
     it("uses the PNG signature instead of the declared network MIME", async () => {
@@ -76,7 +77,7 @@ describe("browser cover cache contracts", () => {
             blob: async () => new Blob([bytes], { type: "application/octet-stream" })
         });
 
-        await runtime.batchDownload(options);
+        const data = expectReadyDownload(await runtime.batchDownload(options));
 
         expect(mocks.saveCoverCache).toHaveBeenCalledWith(
             "100",
@@ -85,8 +86,8 @@ describe("browser cover cache contracts", () => {
             expect.objectContaining({ ext: "png", mediaType: "image/png" }),
             expect.any(AbortSignal)
         );
-        expect(runtime.state.cachedData?.metadata.coverExt).toBe("png");
-        expect(runtime.state.cachedData?.metadata.coverBlob?.type).toBe("image/png");
+        expect(data.metadata.coverExt).toBe("png");
+        expect(data.metadata.coverBlob?.type).toBe("image/png");
     });
 
     it("keeps the in-memory cover when its optional cache write fails", async () => {
@@ -96,10 +97,9 @@ describe("browser cover cache contracts", () => {
         mocks.fetchWithTimeout.mockResolvedValue({ blob: async () => createJpegCover().blob });
         mocks.saveCoverCache.mockRejectedValue(new Error("cover cache unavailable"));
 
-        await expect(runtime.batchDownload(options)).resolves.toBeUndefined();
+        const data = expectReadyDownload(await runtime.batchDownload(options));
 
-        expect(runtime.state.cachedData?.metadata.coverBlob).not.toBeNull();
-        expect(mocks.showFormatChoice).toHaveBeenCalledOnce();
+        expect(data.metadata.coverBlob).not.toBeNull();
         expect(mocks.log).toHaveBeenCalledWith(expect.stringContaining("本次继续使用内存封面"));
     });
 
@@ -111,9 +111,9 @@ describe("browser cover cache contracts", () => {
             blob: async () => new Blob([new Uint8Array([0xff, 0xd8, 0xff])], { type: "image/jpeg" })
         });
 
-        await runtime.batchDownload(options);
+        const data = expectReadyDownload(await runtime.batchDownload(options));
 
         expect(mocks.saveCoverCache).not.toHaveBeenCalled();
-        expect(runtime.state.cachedData?.metadata.coverBlob).toBeNull();
+        expect(data.metadata.coverBlob).toBeNull();
     });
 });
