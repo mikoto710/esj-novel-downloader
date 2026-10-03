@@ -21,6 +21,8 @@ export function updateMappingFontWarning(summary: MappingFontSummary): void {
         return;
     }
     let warning = popup.querySelector("#esj-mapping-warning") as HTMLElement | null;
+
+    // 警告放在日志前方，重复检测只更新同一提示区
     if (!warning) {
         warning = el("div", {
             id: "esj-mapping-warning",
@@ -55,6 +57,8 @@ export function confirmMappingFontDownload(detection: MappingFontDetection, sign
         };
         const onAbort = () => finish(false);
         const header = createCommonHeader(t("mapping.detected.title"), () => finish(false));
+
+        // 说明字体限制和当前并发请求情况，用户在底部决定是否继续
         const body = el("div", { style: "padding:16px;font-size:14px;line-height:1.7;color:#333;" }, [
             el("div", { style: "font-weight:bold;margin-bottom:8px;" }, [detection.task.title]),
             t("mapping.detected.message"),
@@ -146,6 +150,8 @@ export function confirmMappingFontExport(format: "EPUB" | "HTML", summary: Mappi
             popup.remove();
             resolve(confirmed);
         };
+
+        // 导出确认只影响本次格式生成，不重新开始下载任务
         const popup = el(
             "div",
             {

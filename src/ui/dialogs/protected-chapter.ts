@@ -125,6 +125,8 @@ export function promptProtectedChapterPassword(
             finish(decision);
         };
         const hasFailureMessage = Boolean(prompt.message || prompt.messageCode);
+
+        // 提示、输入框和记忆选项共用同一表单，提交结果仍在原位置展示
         const error = el("div", {
             id: "esj-protected-error",
             style: `min-height:20px;margin-top:8px;color:${hasFailureMessage ? "#c62828" : "#666"};font-size:13px;`
@@ -161,6 +163,8 @@ export function promptProtectedChapterPassword(
             }
         };
         const header = createCommonHeader(t("protected.required"), () => finishOrNotify({ action: "cancel" }));
+
+        // 正文先定位受保护章节，再提供原页链接、密码输入和反馈
         const body = el("div", { style: "padding:16px;font-size:14px;line-height:1.6;color:#333;" }, [
             el("div", { style: "font-weight:bold;" }, [prompt.task.title]),
             el("div", { id: "esj-protected-position", style: "margin:4px 0 10px;color:#666;" }, [
@@ -189,6 +193,8 @@ export function promptProtectedChapterPassword(
             ]),
             error
         ]);
+
+        // 取消作用于整个任务，跳过区分当前章与剩余密码章
         const footer = el(
             "div",
             {
@@ -248,6 +254,7 @@ export function promptProtectedChapterPassword(
             },
             [header, body, footer]
         );
+
         // 重试更新内容和回调，保留原窗口位置
         if (existingPopup) {
             existingPopup.replaceChildren(...Array.from(popup.childNodes));

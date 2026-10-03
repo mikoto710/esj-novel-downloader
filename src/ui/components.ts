@@ -20,11 +20,11 @@ export function createSettingButton(customClass: string = ""): HTMLElement {
             style: "color: white; cursor: pointer; margin-left: 10px",
             onclick: (e: Event) => {
                 e.preventDefault();
-                // 如果被禁用，直接返回
                 if ((e.target as HTMLButtonElement).disabled) {
                     return;
                 }
-                // 互斥锁：有任务运行时禁止
+
+                // 运行中的任务与最小化任务共用设置保护，避免中途改变任务界面
                 if (document.querySelector("#esj-popup") || document.querySelector("#esj-min-tray")) {
                     return;
                 }
@@ -54,10 +54,9 @@ export function createDownloadButton(
             className: `btn btn-info esj-download-trigger ${customClass}`,
             style: "color: white; cursor: pointer; margin-left: 5px;",
             onclick: async () => {
-                // 防止弹窗已存在的情景
+                // 再次点击运行中的任务只恢复窗口，不启动第二次抓取
                 const runningPopup = document.querySelector("#esj-popup") as HTMLElement;
                 if (runningPopup) {
-                    // 恢复弹窗显示
                     runningPopup.style.display = "flex";
                     document.querySelector("#esj-min-tray")?.remove();
                     return;
@@ -73,7 +72,7 @@ export function createDownloadButton(
 
                 const releasePageActions = acquirePageActionGroupLock();
 
-                // 执行抓取任务，进入 loading
+                // 临时换成准备状态，结束后恢复原节点及其语言绑定
                 btn.replaceChildren(
                     el("i", { className: "icon-refresh fa-spin" }),
                     " ",

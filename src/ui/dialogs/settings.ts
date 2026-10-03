@@ -94,6 +94,7 @@ export function createSettingsPanel(): void {
             ? `v${GM_info.script.version.trim()}`
             : t("settings.versionUnknown");
 
+    // 语言选择立即保存并通知已打开的界面刷新
     const interfaceLocalePreference = getInterfaceLocalePreference();
     const interfaceLocaleSelect = bindInterfaceAttribute(
         el(
@@ -217,6 +218,7 @@ export function createSettingsPanel(): void {
             const input = e.target as HTMLInputElement;
             const checked = (e.target as HTMLInputElement).checked;
             const previous = getImageDownloadSetting();
+
             // 等跨页任务确认后再保存设置；取消时恢复原开关
             input.disabled = true;
             try {
@@ -229,6 +231,7 @@ export function createSettingsPanel(): void {
                 input.disabled = false;
             }
             setImageDownloadSetting(checked);
+
             // 已有章节由后续任务按 imageEnabled 逐书判断，不在设置变更时全局清理
             log(
                 t("settings.log.image", {
@@ -253,6 +256,7 @@ export function createSettingsPanel(): void {
             const checked = (e.target as HTMLInputElement).checked;
             setEpubTagPageSetting(checked);
 
+            // 标签页改变后需重新生成 EPUB，已有正文结果继续复用
             if (state.cachedData) {
                 state.cachedData.epubBlob = null;
             }
@@ -283,6 +287,7 @@ export function createSettingsPanel(): void {
     // 通用行样式
     const rowStyle = "display:flex; align-items:center; justify-content:space-between;";
 
+    // 设置项和管理入口统一为左侧说明、右侧控件的行结构
     const rowConcurrency = el("div", { style: rowStyle }, [
         bindInterfaceText(el("label", { style: "color: #333;" }), "settings.concurrency", { max: 10 }),
         inputConcurrency
@@ -336,6 +341,7 @@ export function createSettingsPanel(): void {
         switchToggleEpubTagPage
     ]);
 
+    // 外部项目链接和当前脚本版本集中放在面板末尾
     const relatedLinkStyle =
         "flex:1;display:block;padding:8px 6px;border-radius:6px;text-align:center;text-decoration:none;font-size:12px;font-weight:bold;";
     const btnGithub = el(
@@ -380,8 +386,9 @@ export function createSettingsPanel(): void {
         ])
     ]);
 
-    // 组装整体面板
+    // 设置正文独立滚动，标题始终可见
     const body = el("div", { style: "padding:25px 20px;font-size:14px;overflow:auto;min-height:0;" }, [
+        // 下载和界面选项
         rowConcurrency,
         createDivider(),
         rowInterfaceLanguage,
@@ -390,6 +397,8 @@ export function createSettingsPanel(): void {
         createDivider(),
         rowEpubTagPage,
         createDivider(),
+
+        // 缓存、历史和诊断管理入口
         rowCache,
         createDivider(),
         rowHistory,

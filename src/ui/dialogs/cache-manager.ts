@@ -96,7 +96,9 @@ function createActionButton(
     );
 }
 
-// 显示缓存清理确认弹窗
+/**
+ * 确认缓存清理操作，关闭视为取消
+ */
 function showCacheConfirm(options: { title?: string; message: string; danger?: boolean }): Promise<boolean> {
     document.querySelector("#esj-cache-confirm")?.remove();
 
@@ -154,7 +156,9 @@ function showCacheConfirm(options: { title?: string; message: string; danger?: b
     });
 }
 
-// 显示活动任务保护或清理结果
+/**
+ * 展示活动任务保护或清理结果，等待用户关闭
+ */
 function showCacheProtectionNotice(message: string): Promise<void> {
     document.querySelector("#esj-cache-protection-notice")?.remove();
 
@@ -203,6 +207,7 @@ export function createCacheManagerPopup(): void {
     let stopLocaleRefresh: () => void = () => {};
     let refreshTimer: number | null = null;
     let disposed = false;
+
     // 主弹窗统一回收订阅和延迟刷新，重复关闭不影响新实例
     const disposeSynchronizer = () => {
         if (disposed) {
@@ -225,6 +230,7 @@ export function createCacheManagerPopup(): void {
         removeElement(popup);
     };
 
+    // 卡片列表独立滚动，标题和整页清理操作固定在上下两端
     const listBox = el("div", {
         className: "esj-cache-list",
         style: "flex:1;min-height:0;padding:14px;background:#fafafa;overflow:auto;"
@@ -247,6 +253,7 @@ export function createCacheManagerPopup(): void {
     // 重新读取合并后的缓存列表并重建操作区域
     async function renderList() {
         const items = await listManagedCaches();
+
         // 数据返回时弹窗可能已关闭，旧结果不再更新界面
         if (!popup.isConnected) {
             return;
@@ -254,6 +261,7 @@ export function createCacheManagerPopup(): void {
         listBox.replaceChildren();
         footer.replaceChildren();
 
+        // 左侧刷新库存，右侧按清理范围分组，活动任务由管理层保护
         const leftActions = el("div", { style: "display:flex;gap:8px;flex-wrap:wrap;" });
         const rightActions = el("div", { style: "display:flex;gap:8px;flex-wrap:wrap;" });
 
@@ -380,8 +388,11 @@ export function createCacheManagerPopup(): void {
     void renderList();
 }
 
-// 根据活动任务和缓存来源生成可用操作
+/**
+ * 按缓存来源和任务状态组装书籍卡片及可用操作
+ */
 function createCacheItem(item: CacheListItem, rerender: () => Promise<void>): HTMLElement {
+    // 徽标分别说明存储来源、任务状态和本页是否已有可导出结果
     const badges = el("div", {
         className: "esj-cache-badges",
         style: "display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;"
@@ -409,6 +420,7 @@ function createCacheItem(item: CacheListItem, rerender: () => Promise<void>): HT
             ? Math.min(100, Math.round((item.progressCount / item.totalChapters) * 100))
             : 0;
 
+    // 此处展示整书库存比例，范围任务仍累计到同一份缓存
     const progressBar = el("div", { className: "esj-cache-progress-bar", style: `width:${percent}%;` });
     const progressTrack = el(
         "div",
@@ -421,6 +433,7 @@ function createCacheItem(item: CacheListItem, rerender: () => Promise<void>): HT
 
     const actions = el("div", { style: "display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;" });
 
+    // 活动任务只提供停止并清除，空闲记录才按持久或本页来源清理
     if (item.activeTask) {
         actions.appendChild(
             createActionButton(
@@ -521,6 +534,7 @@ function createCacheItem(item: CacheListItem, rerender: () => Promise<void>): HT
         );
     }
 
+    // 卡片按书籍信息、库存摘要、状态徽标、进度和操作排列
     return el(
         "div",
         {

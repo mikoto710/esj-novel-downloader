@@ -131,6 +131,8 @@ export function createDiagnosticPopup(): void {
         });
     };
     refreshRetentionNotice();
+
+    // 左侧选择会话，右侧展示所选会话；两栏各自滚动
     const list = el("div", {
         id: "esj-diagnostic-list",
         style: "width:280px;min-width:280px;border-right:1px solid #ddd;overflow:auto;background:#fafafa;"
@@ -139,6 +141,8 @@ export function createDiagnosticPopup(): void {
         id: "esj-diagnostic-detail",
         style: "flex:1;min-width:0;padding:16px;overflow:auto;color:#333;"
     });
+
+    // 刷新和清空作用于列表，复制、下载和删除作用于所选会话
     const buttonStyle = "padding:8px 12px;border-radius:6px;cursor:pointer;border:1px solid #ccc;";
     const refreshButton = el(
         "button",
@@ -240,6 +244,8 @@ export function createDiagnosticPopup(): void {
         const presentation = sessionResult(view);
         const presentationHint = sessionPresentationHint(view);
         const exported = createBrowserDiagnosticExport(session);
+
+        // 详情先显示结果及解释，再展示脱敏摘要和导出文件名
         detail.append(
             el("div", { style: "font-size:18px;font-weight:bold;margin-bottom:6px;overflow-wrap:anywhere;" }, [
                 bookTitle
@@ -284,6 +290,7 @@ export function createDiagnosticPopup(): void {
         const listScrollTop = preserveScroll ? list.scrollTop : 0;
         const detailScrollTop = preserveScroll ? detail.scrollTop : 0;
         const view = listBrowserDiagnosticSessionView();
+
         // 关闭后未确认会话不占用进行中位置但保留检查
         const sessions = [...view.active, ...view.unconfirmed, ...view.history];
         if (!selectedId || !sessions.some((item) => item.session.id === selectedId)) {
@@ -295,6 +302,7 @@ export function createDiagnosticPopup(): void {
                 el("div", { style: "padding:40px 12px;text-align:center;color:#777;" }, [t("diagnostics.empty")])
             );
         } else {
+            // 按活动、待确认和最近记录分组，点击行后同步右侧详情
             const appendSection = (title: string, items: DiagnosticSessionView[]) => {
                 if (items.length === 0) {
                     return;
@@ -353,6 +361,7 @@ export function createDiagnosticPopup(): void {
             dispose();
             return;
         }
+
         // 清除确认期间不重绘，保留用户当前操作与确认对话框的归属
         if (document.visibilityState === "visible" && !document.querySelector("#esj-diagnostic-clear-confirm")) {
             render({ preserveScroll: true });
@@ -377,6 +386,7 @@ export function createDiagnosticPopup(): void {
         }
     }
 
+    // 保留说明和操作栏固定，双栏内容填满中间剩余高度
     const popup = el(
         "div",
         {

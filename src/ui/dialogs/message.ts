@@ -64,6 +64,7 @@ export function showMessagePopup(options: MessagePopupOptions): HTMLElement {
     const header = createCommonHeader(`${presentation.icon} ${options.title || t(presentation.title)}`, close);
     header.querySelector("span")?.setAttribute("id", titleId);
 
+    // 摘要始终展示，详细错误按需追加到同一滚动正文区
     const bodyChildren: Array<string | Node> = [
         el(
             "div",
@@ -87,6 +88,7 @@ export function showMessagePopup(options: MessagePopupOptions): HTMLElement {
         );
     }
 
+    // 错误已有诊断记录时提供查看入口，打开诊断前关闭消息窗口
     const footerButtons: Array<string | Node> = [];
     const diagnosticStore = options.tone === "error" ? listBrowserDiagnosticSessions() : null;
     if (diagnosticStore && diagnosticStore.active.length + diagnosticStore.history.length > 0) {

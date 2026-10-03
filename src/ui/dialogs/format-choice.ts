@@ -87,6 +87,7 @@ export function showFormatChoice(data: CachedData): void {
 
     const header = createCommonHeader(t("export.title"), closeAction);
 
+    // 信息区展示当前导出快照的封面、插图和字体情况
     const coverStatus = data.metadata.coverBlob
         ? el("div", { id: "esj-format-cover-status", style: "color:green;font-size:12px;margin-top:4px;" }, [
               t("export.coverReady")
@@ -106,6 +107,7 @@ export function showFormatChoice(data: CachedData): void {
           })
         : "";
 
+    // 范围结果显示起止章序，全本结果显示总章数
     const infoBody = el("div", { style: "padding:20px;font-size:14px;line-height:1.5;" }, [
         el("div", { id: "esj-format-book-status" }, [t("export.bookReady", { title: data.metadata.title })]),
         data.exportContext?.selection?.mode === "range"
@@ -144,6 +146,7 @@ export function showFormatChoice(data: CachedData): void {
     // 每种格式独立防重，弹窗持有的结果不跟随后续任务变化
     const exporting = new Set<"epub" | "html">();
 
+    // TXT 无法携带映射字体；EPUB 和 HTML 在各自按钮中生成富文本产物
     const btnTxt = el(
         "button",
         {
@@ -200,6 +203,7 @@ export function showFormatChoice(data: CachedData): void {
         [t("export.downloadHtml")]
     );
 
+    // 三种格式并列展示，TXT 不可用的原因另放在按钮下方
     const footer = el(
         "div",
         {
@@ -329,6 +333,7 @@ export function showFormatChoice(data: CachedData): void {
                     data.epubBlob = blob;
                 }
             }
+
             // 弹窗始终使用创建时的结果，后续任务不会替换本次导出内容
             stage = "download";
             triggerDownload(blob, createBookExportFilename(data.metadata.title, format, data.exportContext?.selection));

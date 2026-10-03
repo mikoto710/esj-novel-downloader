@@ -39,6 +39,7 @@ export function createDownloadSelectionPopup(
         const total = options.tasks.length;
         let settled = false;
         let unsubscribeLocale: () => void = () => undefined;
+
         // 关闭按钮、替换弹窗和外部移除共用同一次决策收尾
         const finish = (decision: DownloadSelectionDecision) => {
             if (settled) {
@@ -54,6 +55,8 @@ export function createDownloadSelectionPopup(
         };
         finishActiveRangeSelection = finish;
         const header = createCommonHeader(t("range.title"), () => finish({ action: "cancel" }));
+
+        // 下载方式和章序共同决定选择，全本模式保留输入但禁止编辑
         const mode = el(
             "select",
             { id: "esj-download-mode", style: "padding:8px;border:1px solid #bbb;border-radius:5px;" },
@@ -93,6 +96,7 @@ export function createDownloadSelectionPopup(
         startLabel.appendChild(startInput);
         endLabel.appendChild(endInput);
 
+        // 章名、数量和校验结果随输入刷新，不在输入时重新读取缓存
         const startTitle = el("div", { id: "esj-range-start-title", style: "font-size:12px;color:#666;" });
         const endTitle = el("div", { id: "esj-range-end-title", style: "font-size:12px;color:#666;" });
         const summary = el("div", { id: "esj-range-summary", style: "font-size:13px;color:#333;" });
@@ -100,6 +104,8 @@ export function createDownloadSelectionPopup(
             id: "esj-range-validation",
             style: "font-size:12px;color:#b42318;min-height:18px;"
         });
+
+        // 分别提示全选等价全本、缓存失效，以及停止清除的整书影响
         const allWarning = el("div", {
             id: "esj-range-all-warning",
             style: "display:none;padding:8px;border:1px solid #e6a23c;background:#fff7e6;color:#8a5a00;border-radius:5px;font-size:12px;"
@@ -122,6 +128,7 @@ export function createDownloadSelectionPopup(
             },
             [t("range.stopClearWarning")]
         );
+
         const cancelButton = el(
             "button",
             {
@@ -131,6 +138,8 @@ export function createDownloadSelectionPopup(
             },
             [t("common.cancel")]
         );
+
+        // 旧结果可独立导出，目录或缓存预检失败时仍保留这个入口
         const openPreviousButton = options.hasExistingExport
             ? el(
                   "button",
@@ -169,6 +178,7 @@ export function createDownloadSelectionPopup(
                 return null;
             }
         };
+
         // 只刷新文案和预览，切换语言时保留用户输入
         const refresh = () => {
             const selection = getSelection();
@@ -212,6 +222,7 @@ export function createDownloadSelectionPopup(
                 return;
             }
             const selectedTasks = options.tasks.slice(selection.startIndex, selection.endIndex + 1);
+
             // 不兼容的库存会整书失效，不能计入本次可复用数量
             const cached = selectedTasks.reduce(
                 (count, task) =>
@@ -236,6 +247,7 @@ export function createDownloadSelectionPopup(
         startInput.addEventListener("input", refresh);
         endInput.addEventListener("input", refresh);
 
+        // 正文排列选择、预览和警告，底部只负责返回本次操作决策
         const popup = el(
             "div",
             {

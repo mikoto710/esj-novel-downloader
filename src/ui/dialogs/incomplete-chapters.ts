@@ -19,6 +19,7 @@ export function confirmIncompleteChapters(
         let settled = false;
         const abortListener = () => finish("cancel");
 
+        // 只预览前十条缺章，范围任务同时标明本次位置和原书章序
         const preview = detection.missingTasks.slice(0, 10).map((task) =>
             el("li", { style: "margin-bottom:8px;" }, [
                 el("div", { style: "font-weight:bold;color:#333;" }, [
@@ -61,6 +62,8 @@ export function confirmIncompleteChapters(
                     ),
                     el("ol", { style: "margin:12px 0 0;padding-left:28px;" }, preview)
                 ]),
+
+                // 底部三种决策交回下载流程，窗口本身不补抓或写入占位章节
                 el(
                     "div",
                     {

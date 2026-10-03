@@ -3,9 +3,6 @@ import { bindInterfaceAttribute } from "../locale";
 
 /**
  * 创建弹窗公共标题栏
- * @param title 标题
- * @param onClose 关闭回调
- * @param onMinimize 可选的最小化回调
  */
 export function createCommonHeader(title: string, onClose: () => void, onMinimize?: () => void): HTMLElement {
     const buttons: HTMLElement[] = [];
@@ -50,6 +47,7 @@ export function createCommonHeader(title: string, onClose: () => void, onMinimiz
         )
     );
 
+    // 标题和操作区左右排列，整个标题栏作为弹窗拖拽手柄
     return el(
         "div",
         {

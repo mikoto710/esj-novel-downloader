@@ -15,6 +15,8 @@ export function showBookDownloadInProgressPopup(lock: BookDownloadLock): void {
 
     const sourceText = t(lock.sourcePageType === "detail" ? "download.conflict.detail" : "download.conflict.forum");
     const closeAction = () => removeElement(popup);
+
+    // 冲突窗口只说明已有任务，确认和关闭都不影响另一页面的下载
     const popup = el(
         "div",
         {
@@ -51,6 +53,7 @@ export function createDownloadPopup(mode: "all" | "range" = "all"): HTMLElement 
     fullCleanup(state.originalTitle);
 
     function onCancel() {
+        // 保留进度窗口，等待当前任务保存进度并完成收尾
         abortActiveDownload();
         const btn = document.querySelector("#esj-cancel") as HTMLButtonElement;
         if (btn) {
@@ -62,11 +65,13 @@ export function createDownloadPopup(mode: "all" | "range" = "all"): HTMLElement 
     }
 
     function onClose() {
+        // 关闭同时请求停止，缓存和锁仍由下载任务统一收尾
         abortActiveDownload();
         fullCleanup(state.originalTitle);
     }
 
     function onMinimize() {
+        // 仅隐藏窗口，用托盘保留恢复入口，下载继续运行
         const popup = document.querySelector("#esj-popup") as HTMLElement;
         if (popup) {
             popup.style.display = "none";
@@ -85,12 +90,13 @@ export function createDownloadPopup(mode: "all" | "range" = "all"): HTMLElement 
         bindInterfaceText(headerLabel, titleKey);
     }
 
-    // 找到里面的 span 加 ID，方便后续更新进度
+    // 标题使用固定 ID，供下载阶段和托盘同步更新
     const span = header.querySelector("span");
     if (span) {
         span.id = "esj-title";
     }
 
+    // 进度条展示本次任务的完成比例，详细过程写入下方日志
     const progressBar = el("div", {
         id: "esj-progress",
         style: "width:0%;height:100%;background:#2b9bd7;transition:width .2s;"
@@ -112,6 +118,7 @@ export function createDownloadPopup(mode: "all" | "range" = "all"): HTMLElement 
     );
     bindInterfaceText(btnCancel, "download.action.cancelTask");
 
+    // 从上到下为标题、进度、滚动日志和取消区，日志占用剩余高度
     const popup = el(
         "div",
         {
@@ -131,6 +138,7 @@ export function createDownloadPopup(mode: "all" | "range" = "all"): HTMLElement 
         ]
     );
 
+    // 挂载后锁住页面入口，拖拽与最小化共用同一窗口
     document.body.appendChild(popup);
     acquirePageActionGroupLockForPopup(popup);
     enableDrag(popup, ".esj-common-header");

@@ -43,6 +43,9 @@ function selectOptions(values: Array<[string, string]>): HTMLElement[] {
     return values.map(([value, text]) => el("option", { value }, [text]));
 }
 
+/**
+ * 调整相邻列宽，并返回拖拽监听的清理函数
+ */
 function enableHistoryColumnResize(table: HTMLTableElement): () => void {
     const columns = Array.from(table.querySelectorAll<HTMLTableColElement>("col"));
     const headers = Array.from(table.querySelectorAll<HTMLTableCellElement>("thead th"));
@@ -81,6 +84,7 @@ function enableHistoryColumnResize(table: HTMLTableElement): () => void {
             document.body.style.userSelect = "none";
 
             const onMouseMove = (moveEvent: MouseEvent) => {
+                // 只在相邻两列间分配宽度，保持表格总宽和最小列宽
                 const requestedDelta = moveEvent.clientX - startX;
                 const boundedDelta = Math.min(
                     Math.max(requestedDelta, pairMinimumWidth - leftStartWidth),
@@ -151,7 +155,9 @@ function chapterStatusText(item: DownloadHistoryItem): string {
         : t("history.chapter.total", { total: item.chapterSummary.totalCount });
 }
 
-// 显示清空下载记录确认弹窗
+/**
+ * 确认清空全部下载记录，关闭视为取消
+ */
 function showHistoryClearConfirm(): Promise<boolean> {
     document.querySelector("#esj-download-history-confirm")?.remove();
 
@@ -264,6 +270,7 @@ export function createDownloadHistoryPopup(): void {
         ]
     );
 
+    // 三个筛选器只改变当前展示，记录本身仍保留在完整列表中
     const scopeSelect = el(
         "select",
         { style: "padding:6px;border:1px solid #ccc;border-radius:5px;" },
@@ -296,6 +303,8 @@ export function createDownloadHistoryPopup(): void {
     );
     const summary = el("span", { style: "margin-left:auto;color:#666;font-size:12px;" });
     const tableBody = el("tbody");
+
+    // 同一列定义生成宽度和表头，最后一列不设置拖拽分隔柄
     const columnDefinitions: Array<[Parameters<typeof t>[0], string]> = [
         ["history.column.book", "21%"],
         ["history.column.author", "12%"],
@@ -365,6 +374,8 @@ export function createDownloadHistoryPopup(): void {
             total: items.length,
             limit: DOWNLOAD_HISTORY_LIMIT
         });
+
+        // 只重建记录行，保留筛选条件、表头和用户调整后的列宽
         tableBody.replaceChildren();
         if (filtered.length === 0) {
             tableBody.appendChild(
@@ -406,6 +417,8 @@ export function createDownloadHistoryPopup(): void {
                 },
                 [t("history.action.deleteShort")]
             );
+
+            // 单行依次展示书籍、导出信息、时间，操作区只作用于本条记录
             tableBody.appendChild(
                 el("tr", {}, [
                     cell(item.bookName),
@@ -439,6 +452,8 @@ export function createDownloadHistoryPopup(): void {
     };
 
     [scopeSelect, formatSelect, sourceSelect].forEach((select) => select.addEventListener("change", render));
+
+    // 底部清空作用于全部历史，不受当前筛选条件限制
     const clearButton = el(
         "button",
         {
@@ -470,6 +485,8 @@ export function createDownloadHistoryPopup(): void {
         },
         [t("cache.action.refresh")]
     );
+
+    // 筛选栏和底部操作固定，长记录列表在中间区域滚动
     const popup = el(
         "div",
         {
@@ -509,6 +526,8 @@ export function createDownloadHistoryPopup(): void {
     enableDrag(popup, ".esj-common-header");
     disposeHistoryColumnResize = enableHistoryColumnResize(table);
     disposeActiveHistoryColumnResize = disposeHistoryColumnResize;
+
+    // 语言切换重绘文字和记录行，保留当前列表滚动位置
     const refreshLocaleText = () => {
         const listScrollTop = listBox.scrollTop;
         const headerLabel = header.querySelector("span");

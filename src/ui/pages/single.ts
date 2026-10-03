@@ -44,6 +44,9 @@ function enableSingleExport(button: HTMLElement, title: string): void {
     button.style.cursor = "pointer";
 }
 
+/**
+ * 保留密码章节按钮入口，并引导用户先在原站解锁
+ */
 function guideSingleProtectedExport(elements: SingleExportElements): void {
     for (const button of [elements.txtButton, elements.htmlButton]) {
         button.dataset.esjProtected = "true";
@@ -86,6 +89,9 @@ function showSingleMappingFailure(elements: SingleExportElements, reason: string
     replaceSingleMappingNotice(elements.container, t("mapping.single.blocked", { reason }), "#c62828");
 }
 
+/**
+ * 根据当前正文预检结果更新单章按钮与提示
+ */
 async function updateSinglePageMappingUi(version: number): Promise<void> {
     const elements = getSingleExportElements();
     if (!elements) {
@@ -112,6 +118,8 @@ async function updateSinglePageMappingUi(version: number): Promise<void> {
             content: parsed.contentHtml,
             txtSegment: `${parsed.title}\n\n${parsed.author}\n\n${parsed.contentText}\n\n`
         });
+
+        // 正文或语言可能在预检期间变化，旧结果不再更新当前工具栏
         if (
             version !== mappingUiRefreshVersion ||
             !elements.txtButton.isConnected ||
@@ -150,6 +158,9 @@ async function updateSinglePageMappingUi(version: number): Promise<void> {
     }
 }
 
+/**
+ * 合并预检刷新，并使先前异步结果失效
+ */
 function scheduleSinglePageMappingUiRefresh(delayMs = 0): void {
     mappingUiRefreshVersion += 1;
     if (mappingUiRefreshTimer !== null) {
@@ -190,6 +201,8 @@ function installSinglePageMappingUiLifecycle(): void {
         },
         true
     );
+
+    // 正文延迟插入或密码解锁替换内容后，重新判断两个导出按钮的可用性
     const contentObserver = new MutationObserver((mutations) => {
         const chapterAdded = mutations.some((mutation) =>
             Array.from(mutation.addedNodes).some(
@@ -228,10 +241,10 @@ function handleProtectedSingleExport(button: HTMLElement): boolean {
 }
 
 /**
- * 在单章阅读页注入 "下载本章" 按钮
+ * 在单章阅读页注入 TXT、HTML 按钮与预检提示
  */
 export function injectSinglePageButton(): void {
-    // 定位中间的 column
+    // 复用网站章节导航容器，导出入口与“回整合”放在同一组
     const viewAllBtn = document.querySelector(".entry-navigation .view-all");
 
     if (!viewAllBtn || !viewAllBtn.parentElement) {
@@ -240,14 +253,14 @@ export function injectSinglePageButton(): void {
 
     const container = viewAllBtn.parentElement;
 
-    // 防重复
+    // 已有按钮只刷新预检，不重复插入入口
     if (document.querySelector("#btn-download-single")) {
         installSinglePageMappingUiLifecycle();
         scheduleSinglePageMappingUiRefresh();
         return;
     }
 
-    // 创建 TXT 按钮
+    // TXT 按钮受正文与字体预检约束，不可用时展示当前原因
     const btnTxt = el(
         "a",
         {
@@ -274,7 +287,7 @@ export function injectSinglePageButton(): void {
         [el("i", { className: "icon-download" })]
     );
 
-    // 创建 HTML 按钮
+    // HTML 使用独立入口，映射字体可由富文本格式携带
     const btnHtml = el(
         "a",
         {
@@ -303,7 +316,7 @@ export function injectSinglePageButton(): void {
     bindInterfaceAttribute(btnTxt, "title", "mapping.single.txtTitle");
     bindInterfaceAttribute(btnHtml, "title", "mapping.single.htmlTitle");
 
-    // 插入到 "回整合" 按钮后面
+    // 按 TXT、HTML 顺序挂载，再启动预检同步按钮状态
     container.appendChild(btnTxt);
     container.appendChild(btnHtml);
     installSinglePageMappingUiLifecycle();
