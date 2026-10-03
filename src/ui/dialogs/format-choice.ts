@@ -102,45 +102,16 @@ export function showFormatChoice(): void {
               t("export.coverMissing")
           ]);
 
-    // 正文插图统计
-    let imageStatus: HTMLElement | string = "";
+    const imageSuccessCount = data.chapters.reduce((count, chapter) => count + (chapter.images?.length || 0), 0);
+    const imageFailureCount = data.chapters.reduce((count, chapter) => count + (chapter.imageErrors || 0), 0);
+    const imageTotalCount = imageSuccessCount + imageFailureCount;
     const isImageDownloadEnabled = data.exportContext?.imageEnabled ?? getImageDownloadSetting();
-
-    if (isImageDownloadEnabled) {
-        let successCount = 0;
-        let failCount = 0;
-
-        // 遍历统计
-        data.chapters.forEach((chap) => {
-            if (chap.images) {
-                successCount += chap.images.length;
-            }
-            if (chap.imageErrors) {
-                failCount += chap.imageErrors;
-            }
-        });
-
-        const totalCount = successCount + failCount;
-
-        if (totalCount > 0) {
-            // 有图片处理记录，失败显示橙色，全成功显示蓝色
-            const color = failCount > 0 ? "#e6a23c" : "#2b9bd7";
-            const errorHint = failCount > 0 ? t("export.imagesFailed", { count: failCount }) : "";
-
-            imageStatus = el(
-                "div",
-                { id: "esj-format-image-status", style: `color:${color}; font-size:12px; margin-top:4px;` },
-                [`${t("export.images", { success: successCount, total: totalCount })}${errorHint}`]
-            );
-        } else {
-            // 开启了开关但没抓到任何图
-            imageStatus = el(
-                "div",
-                { id: "esj-format-image-status", style: "color:#999; font-size:12px; margin-top:4px;" },
-                [t("export.imagesNone")]
-            );
-        }
-    }
+    const imageStatus = isImageDownloadEnabled
+        ? el("div", {
+              id: "esj-format-image-status",
+              style: `color:${imageTotalCount === 0 ? "#999" : imageFailureCount > 0 ? "#e6a23c" : "#2b9bd7"};font-size:12px;margin-top:4px;`
+          })
+        : "";
 
     const infoBody = el("div", { style: "padding:20px;font-size:14px;line-height:1.5;" }, [
         el("div", { id: "esj-format-book-status" }, [t("export.bookReady", { title: data.metadata.title })]),
@@ -177,8 +148,7 @@ export function showFormatChoice(): void {
             : ""
     ]);
 
-    let epubExporting = false;
-    let htmlExporting = false;
+    const exporting = new Set<"epub" | "html">();
 
     const btnTxt = el(
         "button",
@@ -221,7 +191,7 @@ export function showFormatChoice(): void {
         {
             id: "esj-epub",
             style: "flex:1;padding:10px 0;border:none;background:#2b9bd7;color:#fff;border-radius:6px;cursor:pointer;font-weight:bold;",
-            onclick: async () => handleEpubDownload()
+            onclick: () => handleRichDownload("epub", btnEpub)
         },
         [t("export.downloadEpub")]
     );
@@ -231,7 +201,7 @@ export function showFormatChoice(): void {
         {
             id: "esj-html",
             style: "flex:1;padding:10px 0;border:none;background:#999;color:#fff;border-radius:6px;cursor:pointer;font-weight:bold;",
-            onclick: async () => handleHtmlDownload()
+            onclick: () => handleRichDownload("html", btnHtml)
         },
         [t("export.downloadHtml")]
     );
@@ -290,13 +260,10 @@ export function showFormatChoice(): void {
             });
         }
         if (imageStatus instanceof HTMLElement) {
-            const successCount = data.chapters.reduce((count, chapter) => count + (chapter.images?.length || 0), 0);
-            const failCount = data.chapters.reduce((count, chapter) => count + (chapter.imageErrors || 0), 0);
-            const totalCount = successCount + failCount;
             imageStatus.textContent =
-                totalCount > 0
-                    ? `${t("export.images", { success: successCount, total: totalCount })}${
-                          failCount > 0 ? t("export.imagesFailed", { count: failCount }) : ""
+                imageTotalCount > 0
+                    ? `${t("export.images", { success: imageSuccessCount, total: imageTotalCount })}${
+                          imageFailureCount > 0 ? t("export.imagesFailed", { count: imageFailureCount }) : ""
                       }`
                     : t("export.imagesNone");
         }
@@ -309,12 +276,13 @@ export function showFormatChoice(): void {
         }
         btnTxt.textContent = t(hasMappedChapters ? "export.txtDisabled" : "export.downloadTxt");
         btnTxt.title = t(hasMappedChapters ? "export.txtBlocked" : "export.downloadTxt");
-        btnEpub.textContent = t(epubExporting ? "export.generating" : "export.downloadEpub");
-        btnHtml.textContent = t(htmlExporting ? "export.generating" : "export.downloadHtml");
+        btnEpub.textContent = t(exporting.has("epub") ? "export.generating" : "export.downloadEpub");
+        btnHtml.textContent = t(exporting.has("html") ? "export.generating" : "export.downloadHtml");
         if (txtDisabledReason instanceof HTMLElement) {
             txtDisabledReason.textContent = t("download.export.txtDisabled");
         }
     };
+    refreshFormatChoiceText();
     const unsubscribeLocale = subscribeInterfaceLocaleChange(() => {
         if (!popup.isConnected) {
             disposeActiveFormatLocaleRefresh?.();
@@ -331,117 +299,55 @@ export function showFormatChoice(): void {
     disposeActiveFormatLocaleRefresh = disposeLocaleRefresh;
     registerElementCleanup(popup, disposeLocaleRefresh);
 
-    // 下载 EPUB
-    async function handleEpubDownload() {
-        if (epubExporting) {
+    /**
+     * 生成并导出所选格式，各格式独立防重并允许失败后重试
+     */
+    async function handleRichDownload(format: "epub" | "html", button: HTMLButtonElement): Promise<void> {
+        if (exporting.has(format)) {
             return;
         }
-        epubExporting = true;
-        const btn = document.querySelector("#esj-epub") as HTMLButtonElement;
-        // 格式弹窗只消费创建时捕获的不可变导出快照，不跟随后续同书任务替换全局状态
-        const currentData = data;
-        const originalBg = btn.style.background;
+        exporting.add(format);
+        const label = format === "epub" ? "EPUB" : "HTML";
+        const originalBg = button.style.background;
         const oldTitle = document.title;
+        let stage: ExportFailureStage = "generate";
         try {
-            btn.disabled = true;
-            if (hasMappedChapters && !(await confirmMappingFontExport("EPUB", mappingSummary))) {
-                recordCancelledExport("epub");
+            button.disabled = true;
+            if (hasMappedChapters && !(await confirmMappingFontExport(label, mappingSummary))) {
+                recordCancelledExport(format);
                 return;
             }
-
-            // 如果已经生成过，直接下载缓存的 blob
-            if (currentData.epubBlob) {
-                const filename = createBookExportFilename(
-                    currentData.metadata.title,
-                    "epub",
-                    currentData.exportContext?.selection
-                );
-                try {
-                    triggerDownload(currentData.epubBlob, filename);
-                    recordSuccessfulExport("epub");
-                    void recordBookExport("epub");
-                } catch (error) {
-                    console.error(error);
-                    showExportFailure("EPUB", "download", error);
+            let blob = format === "epub" ? data.epubBlob : null;
+            if (!blob) {
+                button.textContent = t("export.generating");
+                if (format === "epub") {
+                    button.style.background = "#7ab8d6";
+                    document.title = t("export.documentTitle", { title: oldTitle });
                 }
-                return;
+                log(t(format === "epub" ? "export.log.buildEpub" : "export.log.buildHtml"));
+                blob =
+                    format === "epub"
+                        ? await buildEpub(data.chapters, data.metadata, getEpubTagPageSetting())
+                        : await buildHtml(data.chapters, data.metadata);
+                if (format === "epub") {
+                    data.epubBlob = blob;
+                }
             }
-
-            btn.innerText = t("export.generating");
-            btn.style.background = "#7ab8d6";
-
-            document.title = t("export.documentTitle", { title: oldTitle });
-
-            let blob: Blob;
-            try {
-                log(t("export.log.buildEpub"));
-                blob = await buildEpub(currentData.chapters, currentData.metadata, getEpubTagPageSetting());
-            } catch (error) {
-                console.error(error);
-                showExportFailure("EPUB", "generate", error);
-                return;
-            }
-            currentData.epubBlob = blob;
-
-            const filename = createBookExportFilename(
-                currentData.metadata.title,
-                "epub",
-                currentData.exportContext?.selection
-            );
-            try {
-                triggerDownload(blob, filename);
-                recordSuccessfulExport("epub");
-                void recordBookExport("epub");
-            } catch (error) {
-                console.error(error);
-                showExportFailure("EPUB", "download", error);
-            }
+            // 弹窗始终使用创建时的结果，后续任务不会替换本次导出内容
+            stage = "download";
+            triggerDownload(blob, createBookExportFilename(data.metadata.title, format, data.exportContext?.selection));
+            recordSuccessfulExport(format);
+            void recordBookExport(format);
+        } catch (error) {
+            console.error(error);
+            showExportFailure(label, stage, error);
         } finally {
-            epubExporting = false;
-            btn.disabled = false;
-            btn.style.background = originalBg;
-            document.title = oldTitle;
-            refreshFormatChoiceText();
-        }
-    }
-
-    // 下载 HTML
-    async function handleHtmlDownload() {
-        if (htmlExporting) {
-            return;
-        }
-        htmlExporting = true;
-        const btn = document.querySelector("#esj-html") as HTMLButtonElement;
-        try {
-            btn.disabled = true;
-            if (hasMappedChapters && !(await confirmMappingFontExport("HTML", mappingSummary))) {
-                recordCancelledExport("html");
-                return;
+            exporting.delete(format);
+            button.disabled = false;
+            button.style.background = originalBg;
+            if (format === "epub") {
+                document.title = oldTitle;
             }
-            btn.innerText = t("export.generating");
-
-            let blob: Blob;
-            try {
-                log(t("export.log.buildHtml"));
-                blob = await buildHtml(data.chapters, data.metadata);
-            } catch (error) {
-                console.error(error);
-                showExportFailure("HTML", "generate", error);
-                return;
-            }
-
-            const filename = createBookExportFilename(data.metadata.title, "html", data.exportContext?.selection);
-            try {
-                triggerDownload(blob, filename);
-                recordSuccessfulExport("html");
-                void recordBookExport("html");
-            } catch (error) {
-                console.error(error);
-                showExportFailure("HTML", "download", error);
-            }
-        } finally {
-            htmlExporting = false;
-            btn.disabled = false;
             refreshFormatChoiceText();
         }
     }
@@ -475,8 +381,8 @@ export function showFormatChoice(): void {
                 ? undefined
                 : {
                       enabled: context?.imageEnabled || false,
-                      successCount: data.chapters.reduce((count, chapter) => count + (chapter.images?.length || 0), 0),
-                      failureCount: data.chapters.reduce((count, chapter) => count + (chapter.imageErrors || 0), 0)
+                      successCount: imageSuccessCount,
+                      failureCount: imageFailureCount
                   };
         return addDownloadHistory({
             ...(context?.bookId === undefined ? {} : { bookId: context.bookId }),
