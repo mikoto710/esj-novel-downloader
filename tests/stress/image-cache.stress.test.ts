@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import { runDownload } from "../../src/core/download/coordinator";
 import type { ChapterImage } from "../../src/types";
 import { createChapter, createChapterImage, createDownloadTask } from "../support";
 import { createStressDownloadHarness, createStressDownloadOptions } from "./download-stress-harness";
@@ -17,7 +16,7 @@ describe("image cache pressure", () => {
                 })
         });
 
-        await runDownload(createStressDownloadOptions(tasks, true), harness.dependencies);
+        await harness.run(createStressDownloadOptions(tasks, true));
 
         expect(harness.persistedIndexes).toHaveLength(3_000);
         expect(harness.persistedBatches).toHaveLength(120);
@@ -44,7 +43,7 @@ describe("image cache pressure", () => {
             }
         });
 
-        await runDownload(createStressDownloadOptions(tasks, true), harness.dependencies);
+        await harness.run(createStressDownloadOptions(tasks, true));
 
         expect(harness.persistedBatches.map((batch) => batch.length)).toEqual([4, 4, 4]);
         expect(harness.persistedIndexes).toHaveLength(12);
@@ -86,7 +85,7 @@ describe("image cache pressure", () => {
                 })
         });
 
-        await runDownload(createStressDownloadOptions(tasks, true), harness.dependencies);
+        await harness.run(createStressDownloadOptions(tasks, true));
 
         expect(harness.fetchedIndexes).toEqual(invalidIndexes);
         expect(harness.processedIndexes).toEqual(invalidIndexes);

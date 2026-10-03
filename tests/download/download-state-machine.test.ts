@@ -32,7 +32,7 @@ describe("DownloadStateMachine", () => {
     it("allows cancellation and failure only from running states", () => {
         expect(canTransitionDownloadPhase("downloading", "cancelling")).toBe(true);
         expect(canTransitionDownloadPhase("preparing-export", "failed")).toBe(true);
-        expect(canTransitionDownloadPhase("released", "cancelling")).toBe(false);
+        expect(canTransitionDownloadPhase("export-ready", "cancelling")).toBe(false);
         expect(canTransitionDownloadPhase("cancelled", "downloading")).toBe(false);
     });
 

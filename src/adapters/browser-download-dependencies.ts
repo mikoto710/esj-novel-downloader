@@ -6,7 +6,7 @@ import type {
     CoverCacheRepository,
     CoverFetcherPort,
     DownloadDependencies,
-    DownloadRuntimePort,
+    DownloadCancellationPort,
     DownloadSnapshot,
     DownloadUiPort
 } from "../core/download/contracts";
@@ -15,7 +15,6 @@ import { getConcurrency } from "../core/config";
 import { parseChapterHtml } from "../core/parser";
 import {
     abortActiveDownload,
-    setCachedData,
     startRuntimeCacheSession,
     state,
     subscribeDownloadCancellation,
@@ -35,7 +34,6 @@ import {
     confirmIncompleteChapters,
     createDownloadPopup,
     promptProtectedChapterPassword,
-    showFormatChoice,
     showMappingFontFailure,
     updateMappingFontWarning
 } from "../ui/popups";
@@ -77,26 +75,13 @@ function recordInlineImageFailures(
     });
 }
 
-// 将现有页面级全局状态包装为 runtime port，避免 coordinator 直接依赖 state 单例
-const runtime: DownloadRuntimePort = {
-    get chapters() {
-        return state.globalChaptersMap;
-    },
+const cancellation: DownloadCancellationPort = {
     get signal() {
         return state.abortController?.signal;
     },
-    get activeBookLock() {
-        return state.activeBookLock;
-    },
-    get originalTitle() {
-        return state.originalTitle;
-    },
     isCancellationRequested: () => state.abortFlag,
     requestCancellation: abortActiveDownload,
-    subscribeCancellation: subscribeDownloadCancellation,
-    startCacheSession: startRuntimeCacheSession,
-    updateCacheSession: updateRuntimeCacheSession,
-    setExportData: setCachedData
+    subscribeCancellation: subscribeDownloadCancellation
 };
 
 function updateDownloadStatus(status: string): void {
@@ -205,8 +190,7 @@ const ui: DownloadUiPort = {
     updateMappingFontWarning,
     showMappingFontFailure,
     showTerminalFailure: showDownloadTerminalFailure,
-    cleanup: () => fullCleanup(state.originalTitle),
-    showFormatChoice
+    cleanup: () => fullCleanup(state.originalTitle)
 };
 
 subscribeInterfaceLocaleChange(() => {
@@ -219,6 +203,7 @@ const protectedChapterDetector = { isProtected: isProtectedChapterHtml };
 
 // 解析正文并根据当前设置处理或移除图片
 const chapterProcessor: ChapterProcessorPort = {
+    normalizeCached: normalizeChapterMappingFont,
     async process(html, task, imageEnabled, signal) {
         const result = parseChapterHtml(html, task.title);
         const normalized = await normalizeChapterMappingFont(
@@ -324,17 +309,17 @@ const cache: ChapterCacheRepository = {
     clearForTask: clearBookCacheForTask
 };
 
-// 下载核心只查询锁状态，获取、心跳和释放仍由页面任务生命周期管理
-const lock: BookLockService = {
-    owns: ownsActiveBookDownloadLock,
-    shouldDiscardCache: shouldDiscardBookDownloadCache
-};
-
 /**
- * 创建浏览器全本下载所需的 dependencies
+ * 创建本次下载使用的浏览器依赖
  */
 export function createBrowserDownloadDependencies(): DownloadDependencies {
     const requestGate = new BrowserRequestGate();
+    let taskStarted = false;
+    const activeLock = state.activeBookLock;
+    const lock: BookLockService = {
+        owns: () => ownsActiveBookDownloadLock(activeLock),
+        shouldDiscardCache: () => shouldDiscardBookDownloadCache(activeLock)
+    };
     // 授权开始前普通章节请求必须完成
     const chapterFetcher: ChapterFetcherPort = {
         fetch(task, signal) {
@@ -347,7 +332,8 @@ export function createBrowserDownloadDependencies(): DownloadDependencies {
     const protectedChapterAuth = createBrowserProtectedChapterAuth(fetchWithTimeout, requestGate);
 
     return {
-        runtime,
+        chapters: state.globalChaptersMap,
+        cancellation,
         ui,
         chapterFetcher,
         chapterProcessor,
@@ -357,7 +343,29 @@ export function createBrowserDownloadDependencies(): DownloadDependencies {
         coverCache,
         cache,
         lock,
-        events: browserDiagnosticEvents,
+        events: {
+            emit(event) {
+                // 页面会话只是核心快照的显示副本，不反向驱动下载状态
+                if (event.type === "task-started") {
+                    taskStarted = true;
+                    startRuntimeCacheSession(event.meta, event.taskId, event.cachedChapterCount);
+                } else if (taskStarted && (event.type === "snapshot-updated" || event.type === "phase-changed")) {
+                    const snapshot = event.snapshot;
+                    updateRuntimeCacheSession({
+                        completedCount: snapshot.completedCount,
+                        cachedChapterCount: state.globalChaptersMap.size,
+                        status:
+                            snapshot.phase === "cancelled"
+                                ? "cancelled"
+                                : snapshot.phase === "export-ready"
+                                  ? "export-ready"
+                                  : "downloading",
+                        hasExportData: snapshot.hasExportData
+                    });
+                }
+                browserDiagnosticEvents.emit(event);
+            }
+        },
         scheduler: {
             sleep,
             sleepWithAbort: (ms) => sleepWithAbort(ms, state.abortController?.signal),

@@ -349,7 +349,7 @@ async function prepareExportPopup(data = createCachedData()) {
     ]);
     state.cachedData = data;
     state.originalTitle = document.title;
-    showFormatChoice();
+    showFormatChoice(data);
     return { state, showFormatChoice };
 }
 

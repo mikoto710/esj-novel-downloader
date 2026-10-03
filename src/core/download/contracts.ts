@@ -1,16 +1,7 @@
-import type {
-    BookDownloadLock,
-    BookCover,
-    CacheMeta,
-    CachedData,
-    Chapter,
-    DownloadCancellationMode,
-    RuntimeCacheSession,
-    SourcePageType
-} from "../../types";
+import type { BookCover, CacheMeta, CachedData, Chapter, DownloadCancellationMode, SourcePageType } from "../../types";
 import type { DomainMessage, DomainMessageParams } from "../messages";
 import type { StorageFailure } from "../cache/storage-error";
-import type { MappingFontErrorCode, MappingFontErrorReason } from "../mapping-font";
+import type { MappingFontErrorCode, MappingFontErrorReason, NormalizedChapterMapping } from "../mapping-font";
 
 /**
  * 下载核心接收的单章任务
@@ -138,7 +129,7 @@ export type ProtectedChapterDecision =
     | { action: "cancel" };
 
 /**
- * 页面适配层启动一次全本下载所需的数据
+ * 页面适配层启动一次书籍下载所需的数据
  */
 export interface DownloadOptions {
     bookId: string;
@@ -170,12 +161,9 @@ export type DownloadPhase =
     | "flushing-cache"
     | "preparing-export"
     | "export-ready"
-    | "completed"
     | "cancelling"
     | "cancelled"
-    | "failed"
-    | "releasing-lock"
-    | "released";
+    | "failed";
 
 /**
  * 取消终态对应的缓存处理结果
@@ -265,6 +253,7 @@ export interface IncompleteChapterDetection {
  * 观察者不得通过事件直接修改下载状态
  */
 export type DownloadEvent =
+    | { type: "task-started"; meta: CacheMeta; taskId: string; cachedChapterCount: number }
     | { type: "phase-changed"; previous: DownloadPhase; current: DownloadPhase; snapshot: DownloadSnapshot }
     | { type: "snapshot-updated"; snapshot: DownloadSnapshot }
     | { type: "cache-write-started"; chapterCount: number }
@@ -294,21 +283,21 @@ export type DownloadEvent =
       };
 
 /**
- * 当前页面运行状态的兼容边界
- * coordinator 通过该接口使用章节和取消状态，不直接访问全局 state 单例
+ * 取消能力独立于章节数据和页面状态
  */
-export interface DownloadRuntimePort {
-    readonly chapters: Map<number, Chapter>;
+export interface DownloadCancellationPort {
     readonly signal: AbortSignal | undefined;
-    readonly activeBookLock: BookDownloadLock | null;
-    readonly originalTitle: string;
     isCancellationRequested(): boolean;
     requestCancellation(mode?: DownloadCancellationMode): void;
     subscribeCancellation(listener: (mode: DownloadCancellationMode) => void): () => void;
-    startCacheSession(meta: CacheMeta, taskId: string, initialChapterCount: number): void;
-    updateCacheSession(progress: Partial<RuntimeCacheSession>): void;
-    setExportData(data: CachedData): void;
 }
+
+/**
+ * 成功携带可直接导出的快照；取消不替换调用方已有结果
+ */
+export type DownloadResult =
+    | { status: "ready"; data: CachedData }
+    | { status: "cancelled"; outcome: DownloadCancellationOutcome };
 
 /**
  * DOM、标题、进度条和弹窗更新接口
@@ -333,7 +322,6 @@ export interface DownloadUiPort {
     showMappingFontFailure(failures: readonly MappingFontFailure[]): void;
     showTerminalFailure(failure: DownloadTerminalFailure): void;
     cleanup(): void;
-    showFormatChoice(): void;
 }
 
 /**
@@ -347,6 +335,7 @@ export interface ChapterFetcherPort {
  * 章节解析和图片处理接口
  */
 export interface ChapterProcessorPort {
+    normalizeCached(chapter: Chapter, signal?: AbortSignal): Promise<NormalizedChapterMapping>;
     process(html: string, task: DownloadTask, imageEnabled: boolean, signal?: AbortSignal): Promise<Chapter>;
 }
 
@@ -385,8 +374,8 @@ export interface ChapterCacheRepository {
  * 下载锁查询接口，锁的获取与释放由外层任务生命周期负责
  */
 export interface BookLockService {
-    owns(lock: BookDownloadLock | null): Promise<boolean>;
-    shouldDiscardCache(lock: BookDownloadLock | null): Promise<boolean>;
+    owns(): Promise<boolean>;
+    shouldDiscardCache(): Promise<boolean>;
 }
 
 /**
@@ -425,7 +414,8 @@ export interface DownloadEnvironmentPort {
  * 完成一次下载所需的业务端口
  */
 export interface DownloadPorts {
-    runtime: DownloadRuntimePort;
+    chapters: Map<number, Chapter>;
+    cancellation: DownloadCancellationPort;
     ui: DownloadUiPort;
     chapterFetcher: ChapterFetcherPort;
     chapterProcessor: ChapterProcessorPort;

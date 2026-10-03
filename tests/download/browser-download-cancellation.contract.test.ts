@@ -171,6 +171,38 @@ describe("browser download cancellation contracts", () => {
         }
     });
 
+    it("accepts discard escalation after cancellation has started saving", async () => {
+        const saveStarted = createDeferred<void>();
+        const writeAborted = createDeferred<void>();
+        mocks.sleepWithAbort.mockImplementation(async () => {
+            if (runtime.state.globalChaptersMap.size > 0) runtime.abortActiveDownload("flush");
+        });
+        mocks.saveCache.mockImplementationOnce((_bookId, _taskId, _entries, _meta, signal?: AbortSignal) => {
+            saveStarted.resolve();
+            return new Promise<boolean>((resolve) =>
+                signal?.addEventListener(
+                    "abort",
+                    () => {
+                        writeAborted.resolve();
+                        resolve(false);
+                    },
+                    { once: true }
+                )
+            );
+        });
+
+        const download = runtime.batchDownload(createBrowserDownloadOptions(createBrowserDownloadTasks(1)));
+        await saveStarted.promise;
+        expect(mocks.shouldDiscard).toHaveBeenCalledOnce();
+        runtime.abortActiveDownload("discard");
+        await writeAborted.promise;
+        await download;
+
+        expect(mocks.saveCache).toHaveBeenCalledOnce();
+        expect(mocks.showTerminalFailure).not.toHaveBeenCalled();
+        expect(runtime.state.cachedData).toBeNull();
+    });
+
     it("aborts the active cache write immediately when cancellation discards progress", async () => {
         const saveStarted = createDeferred<void>();
         const writeAborted = createDeferred<void>();

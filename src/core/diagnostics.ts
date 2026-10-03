@@ -22,6 +22,9 @@ const DIAGNOSTIC_MESSAGE_LIMIT = 2_000;
 const DIAGNOSTIC_ACTIVE_STALE_MS = 24 * 60 * 60 * 1000;
 export const DIAGNOSTIC_CLOSE_UNCONFIRMED_MS = 30 * 60 * 1000;
 
+// 只在历史诊断中兼容旧阶段，当前下载不再驱动这些状态
+type DiagnosticPhase = DownloadPhase | "completed" | "releasing-lock" | "released";
+
 export type DiagnosticResult = "running" | "success" | "cancelled" | "failed" | "interrupted";
 
 export interface DiagnosticApplicationInfo {
@@ -63,7 +66,7 @@ export interface DiagnosticFailure {
 export interface DiagnosticEventRecord {
     at: number;
     type: string;
-    phase?: DownloadPhase;
+    phase?: DiagnosticPhase;
     details?: Record<string, string | number | boolean | null>;
 }
 
@@ -95,7 +98,7 @@ export interface DiagnosticExportRecord {
 }
 
 export interface DiagnosticTaskSummary {
-    phase: DownloadPhase;
+    phase: DiagnosticPhase;
     totalChapters: number;
     restoredChapters: number;
     fetchedChapters: number;

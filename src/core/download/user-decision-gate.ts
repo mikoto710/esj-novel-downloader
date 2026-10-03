@@ -1,3 +1,6 @@
+import type { DownloadCancellationPort } from "./contracts";
+import { isCancellationError } from "./errors";
+
 interface PendingDecision<T> {
     operation: () => Promise<T>;
     signal?: AbortSignal;
@@ -68,5 +71,24 @@ export class UserDecisionGate {
                 this.active = false;
                 this.drain();
             });
+    }
+}
+
+/**
+ * 取消排队中的弹窗时返回约定值，其余错误交给任务收尾
+ */
+export async function runUserDecision<T>(
+    gate: UserDecisionGate,
+    cancellation: DownloadCancellationPort,
+    operation: () => Promise<T>,
+    cancelled: T
+): Promise<T> {
+    try {
+        return await gate.run(operation, cancellation.signal);
+    } catch (error) {
+        if (cancellation.isCancellationRequested() || isCancellationError(error)) {
+            return cancelled;
+        }
+        throw error;
     }
 }

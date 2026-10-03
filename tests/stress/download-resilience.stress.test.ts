@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import { runDownload } from "../../src/core/download/coordinator";
 import type { DownloadPhase, DownloadSnapshot } from "../../src/core/download/contracts";
 import { createChapter, createChapterImage, createDeferred, createDownloadTask } from "../support";
 import { createStressDownloadHarness, createStressDownloadOptions } from "./download-stress-harness";
@@ -20,18 +19,15 @@ describe("download resilience pressure", () => {
             imageEnabled: true
         });
 
-        await runDownload(
-            {
-                ...createStressDownloadOptions(selectedTasks, true),
-                selection: {
-                    mode: "range",
-                    sourceTotalChapters: sourceTasks.length,
-                    startIndex: 2_975,
-                    endIndex: 2_999
-                }
-            },
-            harness.dependencies
-        );
+        await harness.run({
+            ...createStressDownloadOptions(selectedTasks, true),
+            selection: {
+                mode: "range",
+                sourceTotalChapters: sourceTasks.length,
+                startIndex: 2_975,
+                endIndex: 2_999
+            }
+        });
 
         expect(harness.fetchedIndexes).toEqual([]);
         expect(harness.exportData?.chapters).toHaveLength(25);
@@ -60,7 +56,7 @@ describe("download resilience pressure", () => {
             }
         });
 
-        const downloadPromise = runDownload(createStressDownloadOptions(tasks), harness.dependencies);
+        const downloadPromise = harness.run(createStressDownloadOptions(tasks));
         await firstWriteStarted.promise;
         await Promise.resolve();
 
@@ -95,7 +91,7 @@ describe("download resilience pressure", () => {
             }
         };
 
-        await runDownload(createStressDownloadOptions(tasks), harness.dependencies);
+        await harness.run(createStressDownloadOptions(tasks));
 
         expect(cancellationTriggered).toBe(true);
         expect(harness.snapshots.at(-1)).toMatchObject({
@@ -104,7 +100,7 @@ describe("download resilience pressure", () => {
             hasExportData: false
         });
         expect(harness.exportData).toBeNull();
-        expect(harness.dependencies.ui.showFormatChoice).not.toHaveBeenCalled();
+        expect(harness.result?.status).toBe("cancelled");
         if (phase === "downloading") {
             expect(harness.fetchedIndexes.length).toBeGreaterThanOrEqual(50);
             expect(harness.fetchedIndexes.length).toBeLessThan(300);

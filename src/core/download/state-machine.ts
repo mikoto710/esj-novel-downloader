@@ -1,7 +1,6 @@
 import type { DownloadEventSink, DownloadPhase, DownloadSnapshot } from "./contracts";
 
 // 取消和失败可以从多个运行阶段进入，因此与单向主流程分开描述
-const TERMINAL_PHASES = new Set<DownloadPhase>(["completed", "cancelled", "failed"]);
 const CANCELLABLE_PHASES = new Set<DownloadPhase>([
     "preparing",
     "restoring-cache",
@@ -20,7 +19,7 @@ const RUNNING_PHASES = new Set<DownloadPhase>([
     "export-ready"
 ]);
 
-// 主流程只允许向前推进，releasing-lock/released 暂时由页面任务 finalizer 驱动
+// 锁释放由外层生命周期负责，下载成功停在 export-ready
 const FORWARD_TRANSITIONS: Readonly<Record<DownloadPhase, ReadonlySet<DownloadPhase>>> = {
     idle: new Set(["preparing"]),
     preparing: new Set(["restoring-cache"]),
@@ -29,13 +28,10 @@ const FORWARD_TRANSITIONS: Readonly<Record<DownloadPhase, ReadonlySet<DownloadPh
     "checking-integrity": new Set(["flushing-cache", "preparing-export"]),
     "flushing-cache": new Set(["checking-integrity", "preparing-export"]),
     "preparing-export": new Set(["export-ready"]),
-    "export-ready": new Set(["completed", "releasing-lock"]),
-    completed: new Set(["releasing-lock"]),
+    "export-ready": new Set(),
     cancelling: new Set(["cancelled", "failed"]),
-    cancelled: new Set(["releasing-lock"]),
-    failed: new Set(["releasing-lock"]),
-    "releasing-lock": new Set(["released"]),
-    released: new Set()
+    cancelled: new Set(),
+    failed: new Set()
 };
 
 /**
@@ -50,9 +46,6 @@ export function canTransitionDownloadPhase(from: DownloadPhase, to: DownloadPhas
         return true;
     }
     if (to === "failed" && RUNNING_PHASES.has(from)) {
-        return true;
-    }
-    if (to === "releasing-lock" && TERMINAL_PHASES.has(from)) {
         return true;
     }
     return FORWARD_TRANSITIONS[from].has(to);

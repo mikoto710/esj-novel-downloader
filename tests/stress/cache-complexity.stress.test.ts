@@ -2,7 +2,6 @@
 
 import { IDBFactory } from "fake-indexeddb";
 import { describe, expect, it, vi } from "vitest";
-import { runDownload } from "../../src/core/download/coordinator";
 import { runWorkerPool } from "../../src/core/download/worker-pool";
 import type { Chapter } from "../../src/types";
 import { createChapter, createDownloadTask } from "../support";
@@ -60,7 +59,7 @@ describe("3000 chapter cache complexity", () => {
         );
         const harness = createStressDownloadHarness({ tasks, chapters: cachedChapters });
 
-        await runDownload(createStressDownloadOptions(tasks), harness.dependencies);
+        await harness.run(createStressDownloadOptions(tasks));
 
         expect(harness.fetchedIndexes).toEqual(Array.from({ length: 25 }, (_, index) => index + 2_975));
         expect(harness.processedIndexes).toEqual(harness.fetchedIndexes);

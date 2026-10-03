@@ -1,11 +1,15 @@
+import { normalizeChapterMappingFont } from "../../src/core/mapping-font";
+import { runDownload } from "../../src/core/download/coordinator";
 import { vi } from "vitest";
 import type {
     DownloadDependencies,
+    DownloadOptions,
+    DownloadResult,
     DownloadEvent,
     DownloadSnapshot,
     DownloadTask
 } from "../../src/core/download/contracts";
-import type { CachedData, Chapter, DownloadCancellationMode } from "../../src/types";
+import type { Chapter, DownloadCancellationMode } from "../../src/types";
 import { createChapter, RecordingDownloadEvents } from "../support";
 
 interface StressDownloadHarnessOptions {
@@ -30,7 +34,7 @@ export function createStressDownloadHarness(options: StressDownloadHarnessOption
     const controller = new AbortController();
     const cancellationListeners = new Set<(mode: DownloadCancellationMode) => void>();
     let cancellationMode: DownloadCancellationMode | null = null;
-    let exportData: CachedData | null = null;
+    let result: DownloadResult | null = null;
 
     const requestCancellation = vi.fn((mode: DownloadCancellationMode = "flush") => {
         if (cancellationMode === "discard" || (cancellationMode === "flush" && mode === "flush")) {
@@ -44,21 +48,14 @@ export function createStressDownloadHarness(options: StressDownloadHarnessOption
     });
 
     const dependencies: DownloadDependencies = {
-        runtime: {
-            chapters,
+        chapters,
+        cancellation: {
             signal: controller.signal,
-            activeBookLock: null,
-            originalTitle: "Stress Test",
             isCancellationRequested: () => cancellationMode !== null,
             requestCancellation,
             subscribeCancellation(listener) {
                 cancellationListeners.add(listener);
                 return () => cancellationListeners.delete(listener);
-            },
-            startCacheSession: vi.fn(),
-            updateCacheSession: vi.fn(),
-            setExportData(data) {
-                exportData = data;
             }
         },
         ui: {
@@ -73,8 +70,7 @@ export function createStressDownloadHarness(options: StressDownloadHarnessOption
             updateMappingFontWarning: vi.fn(),
             showMappingFontFailure: vi.fn(),
             showTerminalFailure: vi.fn(),
-            cleanup: vi.fn(),
-            showFormatChoice: vi.fn()
+            cleanup: vi.fn()
         },
         chapterFetcher: {
             async fetch(task) {
@@ -83,6 +79,7 @@ export function createStressDownloadHarness(options: StressDownloadHarnessOption
             }
         },
         chapterProcessor: {
+            normalizeCached: normalizeChapterMappingFont,
             async process(_html, task) {
                 processedIndexes.push(task.index);
                 return options.processChapter?.(task) ?? createChapter(task.index);
@@ -136,8 +133,15 @@ export function createStressDownloadHarness(options: StressDownloadHarnessOption
         persistedBatches,
         snapshots,
         requestCancellation,
+        async run(options: DownloadOptions) {
+            result = await runDownload(options, dependencies);
+            return result;
+        },
+        get result() {
+            return result;
+        },
         get exportData() {
-            return exportData;
+            return result?.status === "ready" ? result.data : null;
         }
     };
 }

@@ -28,7 +28,7 @@ describe("mapped font export UI", () => {
     it("disables TXT visibly while keeping HTML and EPUB available", () => {
         state.cachedData = createCachedData({ chapters: [createMappedChapter()] });
 
-        showFormatChoice();
+        showFormatChoice(state.cachedData);
 
         const txt = document.querySelector("#esj-txt") as HTMLButtonElement;
         const epub = document.querySelector("#esj-epub") as HTMLButtonElement;
@@ -43,7 +43,7 @@ describe("mapped font export UI", () => {
 
     it("shows a second confirmation before generating a mapped EPUB", () => {
         state.cachedData = createCachedData({ chapters: [createMappedChapter()] });
-        showFormatChoice();
+        showFormatChoice(state.cachedData);
 
         (document.querySelector("#esj-epub") as HTMLButtonElement).click();
 
@@ -56,7 +56,7 @@ describe("mapped font export UI", () => {
     it("keeps TXT enabled for a normal book", () => {
         state.cachedData = createCachedData({ chapters: [createChapter()] });
 
-        showFormatChoice();
+        showFormatChoice(state.cachedData);
 
         expect((document.querySelector("#esj-txt") as HTMLButtonElement).disabled).toBe(false);
         expect(document.querySelector("#esj-format-mapping-warning")).toBeNull();

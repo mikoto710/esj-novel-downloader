@@ -71,16 +71,15 @@ function showExportFailure(format: "TXT" | "EPUB" | "HTML", stage: ExportFailure
 /**
  * 显示 TXT、EPUB 和 HTML 格式选择弹窗
  */
-export function showFormatChoice(): void {
-    if (!state.cachedData) {
+export function showFormatChoice(exportData: CachedData | null = state.cachedData): void {
+    if (!exportData) {
         showMessagePopup({ tone: "info", title: t("export.none.title"), message: t("export.none.message") });
         return;
     }
-
+    const data = exportData;
     fullCleanup();
     disposeActiveFormatLocaleRefresh?.();
 
-    const data = state.cachedData as CachedData;
     const mappedChapters = data.chapters.filter((chapter) => Boolean(chapter.mappingFont));
     const mappingSummary: MappingFontSummary = {
         chapterCount: mappedChapters.length,
@@ -148,6 +147,7 @@ export function showFormatChoice(): void {
             : ""
     ]);
 
+    // 每种格式独立防重，弹窗持有的结果不跟随后续任务变化
     const exporting = new Set<"epub" | "html">();
 
     const btnTxt = el(
@@ -237,6 +237,7 @@ export function showFormatChoice(): void {
     acquirePageActionGroupLockForPopup(popup);
     enableDrag(popup, ".esj-common-header");
 
+    // 原地更新按钮文案，保留进行中的生成状态和事件绑定
     const refreshFormatChoiceText = () => {
         const headerLabel = header.querySelector("span");
         if (headerLabel) {

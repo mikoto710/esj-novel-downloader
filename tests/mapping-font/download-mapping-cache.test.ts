@@ -1,9 +1,8 @@
 // @vitest-environment jsdom
 
 import { describe, expect, it, vi } from "vitest";
-import { runDownload } from "../../src/core/download/coordinator";
-import type { DownloadDependencies } from "../../src/core/download/contracts";
-import type { CachedData, Chapter } from "../../src/types";
+import { createDownloadHarness } from "../support/download-harness";
+import type { Chapter } from "../../src/types";
 import { createChapter, createDownloadTask } from "../support";
 
 function createWoff2Bytes(): Uint8Array {
@@ -25,89 +24,32 @@ describe("mapped font cache normalization", () => {
         const task = createDownloadTask();
         const chapters = new Map<number, Chapter>([[0, createChapter(0, { content: createLegacyMappedContent() })]]);
         const writes: Map<number, Chapter>[] = [];
-        let exportData: CachedData | null = null;
-        const ui = {
-            prepare: vi.fn(),
-            update: vi.fn(),
-            confirmMappingFontDownload: vi.fn(async () => true),
-            confirmIncompleteChapters: vi.fn(async () => "export-with-placeholders" as const),
-            promptProtectedChapterPassword: vi.fn(async () => ({ action: "skip-current" }) as const),
-            closeProtectedChapterPrompt: vi.fn(),
-            updateMappingFontWarning: vi.fn(),
-            showMappingFontFailure: vi.fn(),
-            showTerminalFailure: vi.fn(),
-            cleanup: vi.fn(),
-            showFormatChoice: vi.fn()
-        };
-        const dependencies: DownloadDependencies = {
-            runtime: {
-                chapters,
-                signal: new AbortController().signal,
-                activeBookLock: null,
-                originalTitle: "Test",
-                isCancellationRequested: () => false,
-                requestCancellation: vi.fn(),
-                subscribeCancellation: () => () => undefined,
-                startCacheSession: vi.fn(),
-                updateCacheSession: vi.fn(),
-                setExportData(data) {
-                    exportData = data;
-                }
-            },
-            ui,
-            chapterFetcher: { fetch: vi.fn(async () => "") },
-            chapterProcessor: { process: vi.fn(async () => createChapter()) },
-            protectedChapterDetector: { isProtected: () => false },
-            protectedChapterAuth: {
-                unlock: async () => ({ kind: "protocol-error", code: "response-invalid" })
-            },
-            coverFetcher: { fetch: async () => null },
-            coverCache: { load: async () => null, put: async () => true },
-            cache: {
-                async putBatch(_bookId, _taskId, entries) {
-                    writes.push(new Map(entries));
-                    return true;
-                },
-                finishForTask: async () => true,
-                clearForTask: async () => true
-            },
-            lock: { owns: async () => true, shouldDiscardCache: async () => false },
-            events: { emit: () => undefined },
-            scheduler: {
-                sleep: async () => undefined,
-                sleepWithAbort: async () => undefined,
-                randomDelay: () => 0,
-                schedule: () => () => undefined
-            },
-            settings: { getConcurrency: () => 1 },
-            environment: {
-                currentUrl: () => "https://www.esjzone.cc/detail/100.html",
-                now: () => Date.parse("2026-01-01T00:00:00.000Z")
-            },
-            log: vi.fn()
+        const harness = createDownloadHarness([task], chapters);
+        const { ui, dependencies } = harness;
+        dependencies.chapterFetcher = { fetch: vi.fn(async () => "") };
+        dependencies.cache.putBatch = async (_bookId, _taskId, entries) => {
+            writes.push(new Map(entries));
+            return true;
         };
 
-        await runDownload(
-            {
-                bookId: "100",
-                taskId: "task-100",
-                bookName: "Test book",
-                introTxt: "Intro\n",
-                description: "Description",
-                tags: [],
-                sourcePageType: "detail",
-                imageEnabled: false,
-                tasks: [task]
-            },
-            dependencies
-        );
+        await harness.run({
+            bookId: "100",
+            taskId: "task-100",
+            bookName: "Test book",
+            introTxt: "Intro\n",
+            description: "Description",
+            tags: [],
+            sourcePageType: "detail",
+            imageEnabled: false,
+            tasks: [task]
+        });
 
         expect(dependencies.chapterFetcher.fetch).not.toHaveBeenCalled();
         expect(ui.confirmMappingFontDownload).toHaveBeenCalledOnce();
         expect(writes).toHaveLength(1);
         expect(writes[0].get(0)?.mappingFont?.blob.size).toBe(64);
         expect(writes[0].get(0)?.content).not.toContain("data:text/css");
-        expect((exportData as CachedData | null)?.chapters[0].mappingFont?.family).toBe("1");
+        expect(harness.exportData?.chapters[0].mappingFont?.family).toBe("1");
     });
 
     it("summarizes all restored mapped chapters before consent and fetches only missing chapters", async () => {
@@ -117,83 +59,27 @@ describe("mapped font cache normalization", () => {
             [1, createChapter(1, { content: createLegacyMappedContent("2") })]
         ]);
         const fetchedIndexes: number[] = [];
-        const ui = {
-            prepare: vi.fn(),
-            update: vi.fn(),
-            confirmMappingFontDownload: vi.fn(async () => true),
-            confirmIncompleteChapters: vi.fn(async () => "export-with-placeholders" as const),
-            promptProtectedChapterPassword: vi.fn(async () => ({ action: "skip-current" }) as const),
-            closeProtectedChapterPrompt: vi.fn(),
-            updateMappingFontWarning: vi.fn(),
-            showMappingFontFailure: vi.fn(),
-            showTerminalFailure: vi.fn(),
-            cleanup: vi.fn(),
-            showFormatChoice: vi.fn()
+        const harness = createDownloadHarness(tasks, chapters);
+        const { ui, dependencies } = harness;
+        dependencies.chapterFetcher = {
+            fetch: vi.fn(async (task) => {
+                fetchedIndexes.push(task.index);
+                return `<p>${task.title}</p>`;
+            })
         };
-        const dependencies: DownloadDependencies = {
-            runtime: {
-                chapters,
-                signal: new AbortController().signal,
-                activeBookLock: null,
-                originalTitle: "Test",
-                isCancellationRequested: () => false,
-                requestCancellation: vi.fn(),
-                subscribeCancellation: () => () => undefined,
-                startCacheSession: vi.fn(),
-                updateCacheSession: vi.fn(),
-                setExportData: vi.fn()
-            },
-            ui,
-            chapterFetcher: {
-                fetch: vi.fn(async (task) => {
-                    fetchedIndexes.push(task.index);
-                    return `<p>${task.title}</p>`;
-                })
-            },
-            chapterProcessor: {
-                process: vi.fn(async (_html, task) => createChapter(task.index))
-            },
-            protectedChapterDetector: { isProtected: () => false },
-            protectedChapterAuth: {
-                unlock: async () => ({ kind: "protocol-error", code: "response-invalid" })
-            },
-            coverFetcher: { fetch: async () => null },
-            coverCache: { load: async () => null, put: async () => true },
-            cache: {
-                putBatch: async () => true,
-                finishForTask: async () => true,
-                clearForTask: async () => true
-            },
-            lock: { owns: async () => true, shouldDiscardCache: async () => false },
-            events: { emit: () => undefined },
-            scheduler: {
-                sleep: async () => undefined,
-                sleepWithAbort: async () => undefined,
-                randomDelay: () => 0,
-                schedule: () => () => undefined
-            },
-            settings: { getConcurrency: () => 5 },
-            environment: {
-                currentUrl: () => "https://www.esjzone.cc/detail/100.html",
-                now: () => Date.parse("2026-01-01T00:00:00.000Z")
-            },
-            log: vi.fn()
-        };
+        dependencies.settings.getConcurrency = () => 5;
 
-        await runDownload(
-            {
-                bookId: "100",
-                taskId: "task-100",
-                bookName: "Test book",
-                introTxt: "Intro\n",
-                description: "Description",
-                tags: [],
-                sourcePageType: "detail",
-                imageEnabled: false,
-                tasks
-            },
-            dependencies
-        );
+        await harness.run({
+            bookId: "100",
+            taskId: "task-100",
+            bookName: "Test book",
+            introTxt: "Intro\n",
+            description: "Description",
+            tags: [],
+            sourcePageType: "detail",
+            imageEnabled: false,
+            tasks
+        });
 
         expect(ui.confirmMappingFontDownload).toHaveBeenCalledOnce();
         expect(ui.confirmMappingFontDownload).toHaveBeenCalledWith(

@@ -1,28 +1,62 @@
 import { describe, expect, it, vi } from "vitest";
-import { runDownload } from "../../src/core/download/coordinator";
+import { createDownloadHarness as createHarness } from "../support/download-harness";
 import type {
-    DownloadDependencies,
     DownloadOptions,
     DownloadEvent,
     IncompleteChapterDecision,
-    IncompleteChapterDetection,
-    DownloadSnapshot,
-    DownloadTask,
-    ProtectedChapterDecision,
     ProtectedChapterPrompt,
-    ProtectedChapterUnlockResult
+    ProtectedChapterUnlockResult,
+    DownloadTask,
+    ProtectedChapterDecision
 } from "../../src/core/download/contracts";
-import type { CachedData, Chapter, RuntimeCacheSession } from "../../src/types";
-import {
-    createChapter,
-    createDeferred,
-    createDownloadTask,
-    FakeChapterFetcher,
-    RecordingDownloadEvents
-} from "../support";
+import type { Chapter } from "../../src/types";
+import { createChapter, createDeferred, createDownloadTask } from "../support";
 import { MappingFontError } from "../../src/core/mapping-font";
 
 describe("runDownload characterization", () => {
+    it("returns the export snapshot only after the cache writer finishes", async () => {
+        const tasks = [createDownloadTask()];
+        const harness = createHarness(tasks);
+        const started = createDeferred<void>();
+        const finish = createDeferred<boolean>();
+        harness.dependencies.cache.clearForTask = async () => {
+            started.resolve();
+            return finish.promise;
+        };
+        const download = harness.run(createOptions(tasks));
+        await started.promise;
+        expect(harness.result).toBeNull();
+        finish.resolve(true);
+        const result = await download;
+        expect(result).toMatchObject({
+            status: "ready",
+            data: { chapters: [expect.objectContaining({ title: tasks[0].title })] }
+        });
+    });
+
+    it("keeps persisted chapters when export assembly fails", async () => {
+        const tasks = [createDownloadTask()];
+        const harness = createHarness(tasks);
+        const options = createOptions(tasks);
+        Object.defineProperty(options, "tags", {
+            get() {
+                throw new Error("export-metadata-invalid");
+            }
+        });
+        await expect(harness.run(options)).rejects.toThrow("export-metadata-invalid");
+        expect(harness.cacheClears).toEqual([]);
+        expect(harness.result).toBeNull();
+        expect(harness.dependencies.chapters.has(tasks[0].index)).toBe(true);
+    });
+
+    it("returns cancellation explicitly without an export snapshot", async () => {
+        const tasks = [createDownloadTask()];
+        const harness = createHarness(tasks);
+        harness.dependencies.cancellation.requestCancellation("flush");
+        expect(await harness.run(createOptions(tasks))).toEqual({ status: "cancelled", outcome: "saved" });
+        expect(harness.cacheClears).toEqual([]);
+    });
+
     it("downloads a middle range by absolute index without counting or exporting outside cache", async () => {
         const tasks = Array.from({ length: 20 }, (_, order) => createDownloadTask(order + 100));
         const chapters = new Map<number, Chapter>([
@@ -32,7 +66,7 @@ describe("runDownload characterization", () => {
         ]);
         const harness = createHarness(tasks, chapters);
 
-        await runDownload(
+        await harness.run(
             createOptions(tasks, {
                 selection: {
                     mode: "range",
@@ -40,8 +74,7 @@ describe("runDownload characterization", () => {
                     startIndex: 100,
                     endIndex: 119
                 }
-            }),
-            harness.dependencies
+            })
         );
 
         expect(harness.processedIndexes).toEqual(Array.from({ length: 18 }, (_, order) => order + 102));
@@ -65,7 +98,10 @@ describe("runDownload characterization", () => {
             cachedChapterCount: 20,
             persistedCount: 20
         });
-        expect(harness.runtimeSession).toMatchObject({ cachedChapterCount: 21, totalChapters: 120 });
+        expect(harness.events.ofType("task-started")[0]).toMatchObject({
+            cachedChapterCount: 3,
+            meta: { totalChapters: 120 }
+        });
     });
 
     it("retries an uncertain range writer close once before publishing export data", async () => {
@@ -77,11 +113,10 @@ describe("runDownload characterization", () => {
             .mockResolvedValueOnce(true);
         harness.dependencies.cache.finishForTask = finishForTask;
 
-        await runDownload(
+        await harness.run(
             createOptions(tasks, {
                 selection: { mode: "range", sourceTotalChapters: 20, startIndex: 10, endIndex: 11 }
-            }),
-            harness.dependencies
+            })
         );
 
         expect(finishForTask).toHaveBeenCalledTimes(2);
@@ -108,7 +143,7 @@ describe("runDownload characterization", () => {
             })
         );
 
-        await runDownload(createOptions(tasks), harness.dependencies);
+        await harness.run(createOptions(tasks));
 
         expect(harness.ui.promptProtectedChapterPassword).toHaveBeenCalledWith(
             expect.objectContaining({ task: tasks[1], totalChapters: 3 }),
@@ -138,10 +173,10 @@ describe("runDownload characterization", () => {
         });
         harness.dependencies.protectedChapterAuth.unlock = vi.fn(() => unlock.promise);
 
-        const download = runDownload(createOptions(tasks), harness.dependencies);
+        const download = harness.run(createOptions(tasks));
         await vi.waitFor(() => expect(harness.dependencies.protectedChapterAuth.unlock).toHaveBeenCalledOnce());
 
-        expect(harness.ui.showFormatChoice).not.toHaveBeenCalled();
+        expect(harness.exportData).toBeNull();
         expect(harness.cacheClears).toHaveLength(0);
         expect(harness.ui.snapshots.at(-1)).toMatchObject({
             readyChapterCount: 0,
@@ -153,7 +188,7 @@ describe("runDownload characterization", () => {
 
         unlock.resolve({ kind: "unlocked", html: "<p>unlocked body</p>" });
         await download;
-        expect(harness.ui.showFormatChoice).toHaveBeenCalledOnce();
+        expect(harness.result?.status).toBe("ready");
         expect(harness.ui.snapshots.at(-1)).toMatchObject({
             readyChapterCount: 1,
             protectedDetectedCount: 1,
@@ -177,7 +212,7 @@ describe("runDownload characterization", () => {
             .mockRejectedValueOnce(new Error("still offline"))
             .mockResolvedValueOnce({ kind: "unlocked", html: "<p>unlocked body</p>" });
 
-        await runDownload(createOptions(tasks), harness.dependencies);
+        await harness.run(createOptions(tasks));
 
         expect(harness.dependencies.protectedChapterAuth.unlock).toHaveBeenCalledTimes(3);
         expect(harness.ui.promptProtectedChapterPassword).toHaveBeenCalledTimes(2);
@@ -206,7 +241,7 @@ describe("runDownload characterization", () => {
             .mockResolvedValueOnce({ kind: "protocol-error", code: "token-invalid" })
             .mockResolvedValueOnce({ kind: "unlocked", html: "<p>unlocked body</p>" });
 
-        await runDownload(createOptions(tasks), harness.dependencies);
+        await harness.run(createOptions(tasks));
 
         expect(harness.dependencies.protectedChapterAuth.unlock).toHaveBeenCalledTimes(3);
         expect(harness.ui.promptProtectedChapterPassword.mock.calls[1][0]).toMatchObject({
@@ -238,7 +273,7 @@ describe("runDownload characterization", () => {
             })
         );
 
-        await runDownload(createOptions(tasks), harness.dependencies);
+        await harness.run(createOptions(tasks));
 
         expect(harness.ui.promptProtectedChapterPassword).toHaveBeenCalledTimes(2);
         expect(harness.ui.promptProtectedChapterPassword.mock.calls[1][0]).toMatchObject({
@@ -247,7 +282,7 @@ describe("runDownload characterization", () => {
         });
         expect(harness.dependencies.protectedChapterAuth.unlock).toHaveBeenCalledOnce();
         expect(harness.ui.confirmIncompleteChapters).not.toHaveBeenCalled();
-        expect(harness.dependencies.runtime.chapters.has(0)).toBe(true);
+        expect(harness.dependencies.chapters.has(0)).toBe(true);
         expect(harness.exportData?.chapters).toHaveLength(1);
         expect(harness.ui.snapshots.at(-1)).toMatchObject({
             readyChapterCount: 1,
@@ -265,7 +300,7 @@ describe("runDownload characterization", () => {
         harness.dependencies.protectedChapterDetector.isProtected = () => true;
         harness.ui.promptProtectedChapterPassword.mockResolvedValue({ action: "skip-all" });
 
-        await runDownload(createOptions(tasks), harness.dependencies);
+        await harness.run(createOptions(tasks));
 
         expect(harness.ui.promptProtectedChapterPassword).toHaveBeenCalledTimes(2);
         expect(harness.dependencies.protectedChapterAuth.unlock).not.toHaveBeenCalled();
@@ -296,7 +331,7 @@ describe("runDownload characterization", () => {
             })
         );
 
-        await runDownload(createOptions(tasks), harness.dependencies);
+        await harness.run(createOptions(tasks));
 
         expect(harness.ui.promptProtectedChapterPassword).toHaveBeenCalledTimes(3);
         expect(harness.ui.confirmIncompleteChapters).toHaveBeenCalledOnce();
@@ -329,13 +364,13 @@ describe("runDownload characterization", () => {
                     })
             );
 
-        const download = runDownload(createOptions(tasks), harness.dependencies);
+        const download = harness.run(createOptions(tasks));
         await vi.waitFor(() => expect(harness.ui.promptProtectedChapterPassword).toHaveBeenCalledTimes(2));
 
-        harness.dependencies.runtime.requestCancellation("flush");
+        harness.dependencies.cancellation.requestCancellation("flush");
         await download;
 
-        expect(harness.ui.showFormatChoice).not.toHaveBeenCalled();
+        expect(harness.exportData).toBeNull();
         expect(harness.ui.snapshots.at(-1)).toMatchObject({
             phase: "cancelled",
             cancellationRequested: true,
@@ -362,12 +397,12 @@ describe("runDownload characterization", () => {
                 })
         );
 
-        const download = runDownload(createOptions(tasks), harness.dependencies);
+        const download = harness.run(createOptions(tasks));
         await vi.waitFor(() => expect(harness.dependencies.protectedChapterAuth.unlock).toHaveBeenCalledOnce());
         cancelPendingAuthorization?.();
         await download;
 
-        expect(harness.dependencies.runtime.requestCancellation).toHaveBeenCalledWith("flush");
+        expect(harness.dependencies.cancellation.requestCancellation).toHaveBeenCalledWith("flush");
         expect(harness.ui.snapshots.at(-1)).toMatchObject({
             phase: "cancelled",
             cancellationRequested: true,
@@ -379,13 +414,13 @@ describe("runDownload characterization", () => {
         const tasks = [createDownloadTask(0), createDownloadTask(1)];
         const harness = createHarness(tasks, new Map([[0, createChapter(0)]]));
 
-        await runDownload(createOptions(tasks), harness.dependencies);
+        await harness.run(createOptions(tasks));
 
         expect(harness.fetcher.calls.map((task) => task.index)).toEqual([1]);
         expect(harness.processedIndexes).toEqual([1]);
         expect(harness.exportData?.chapters.map((chapter) => chapter.title)).toEqual(["第 1 章", "第 2 章"]);
         expect(harness.cacheClears).toEqual([{ bookId: "100", taskId: "task-100" }]);
-        expect(harness.ui.showFormatChoice).toHaveBeenCalledOnce();
+        expect(harness.result?.status).toBe("ready");
         expect(harness.ui.cleanup).toHaveBeenCalledOnce();
     });
 
@@ -399,7 +434,7 @@ describe("runDownload characterization", () => {
             ])
         );
 
-        await runDownload(createOptions(tasks), harness.dependencies);
+        await harness.run(createOptions(tasks));
 
         expect(harness.fetcher.calls.map((task) => task.index)).toEqual([2]);
         expect(harness.processedIndexes).toEqual([2]);
@@ -419,7 +454,7 @@ describe("runDownload characterization", () => {
         const sleepWithAbort = vi.fn(async () => undefined);
         harness.dependencies.scheduler.sleepWithAbort = sleepWithAbort;
 
-        await runDownload(createOptions(tasks), harness.dependencies);
+        await harness.run(createOptions(tasks));
 
         expect(sleepWithAbort).toHaveBeenCalledTimes(3);
         expect(sleepWithAbort).toHaveBeenCalledWith(0);
@@ -439,22 +474,22 @@ describe("runDownload characterization", () => {
         const chapters = new Map(tasks.map((task) => [task.index, createChapter(task.index)]));
         const harness = createHarness(tasks, chapters);
         harness.dependencies.scheduler.sleepWithAbort = vi.fn(async () => {
-            harness.dependencies.runtime.requestCancellation();
+            harness.dependencies.cancellation.requestCancellation();
         });
 
-        await runDownload(createOptions(tasks), harness.dependencies);
+        await harness.run(createOptions(tasks));
 
         expect(harness.fetcher.calls).toHaveLength(0);
         expect(harness.exportData).toBeNull();
         expect(harness.ui.snapshots).toContainEqual(expect.objectContaining({ phase: "cancelled" }));
-        expect(harness.ui.showFormatChoice).not.toHaveBeenCalled();
+        expect(harness.exportData).toBeNull();
     });
 
     it("publishes structured phases and progress while preserving small-download results", async () => {
         const tasks = [createDownloadTask(0), createDownloadTask(1)];
         const harness = createHarness(tasks);
 
-        await runDownload(createOptions(tasks), harness.dependencies);
+        await harness.run(createOptions(tasks));
 
         expect(
             harness.events
@@ -492,7 +527,7 @@ describe("runDownload characterization", () => {
         harness.dependencies.chapterProcessor.process = async (_html, task) =>
             createMappedChapter(task.index, String(task.index + 1));
 
-        await runDownload(createOptions(tasks), harness.dependencies);
+        await harness.run(createOptions(tasks));
 
         expect(harness.ui.confirmMappingFontDownload).toHaveBeenCalledOnce();
         expect(harness.ui.confirmMappingFontDownload).toHaveBeenCalledWith(
@@ -500,7 +535,7 @@ describe("runDownload characterization", () => {
             expect.any(AbortSignal)
         );
         expect(harness.ui.updateMappingFontWarning).toHaveBeenLastCalledWith({ chapterCount: 2, fontBytes: 128 });
-        expect(harness.ui.showFormatChoice).toHaveBeenCalledOnce();
+        expect(harness.result?.status).toBe("ready");
     });
 
     it("stops without publishing export data when mapped chapter consent is rejected", async () => {
@@ -510,10 +545,10 @@ describe("runDownload characterization", () => {
             createMappedChapter(task.index, String(task.index + 1));
         harness.ui.confirmMappingFontDownload.mockResolvedValue(false);
 
-        await runDownload(createOptions(tasks), harness.dependencies);
+        await harness.run(createOptions(tasks));
 
         expect(harness.fetcher.calls.map((task) => task.index)).toEqual([0]);
-        expect(harness.ui.showFormatChoice).not.toHaveBeenCalled();
+        expect(harness.exportData).toBeNull();
         expect(harness.exportData).toBeNull();
         expect(harness.ui.cleanup).toHaveBeenCalledOnce();
     });
@@ -525,7 +560,7 @@ describe("runDownload characterization", () => {
             throw new MappingFontError("woff2-invalid", "woff2-signature-invalid");
         };
 
-        await expect(runDownload(createOptions(tasks), harness.dependencies)).rejects.toMatchObject({
+        await expect(harness.run(createOptions(tasks))).rejects.toMatchObject({
             code: "font-source-invalid",
             reason: "chapter-structure-invalid",
             params: { count: 1 }
@@ -544,7 +579,7 @@ describe("runDownload characterization", () => {
             harness.ui.showMappingFontFailure.mock.invocationCallOrder[0]
         );
         expect(harness.ui.showTerminalFailure).not.toHaveBeenCalled();
-        expect(harness.ui.showFormatChoice).not.toHaveBeenCalled();
+        expect(harness.exportData).toBeNull();
     });
 
     it("retries an unexpected storage abort once and still completes", async () => {
@@ -556,11 +591,11 @@ describe("runDownload characterization", () => {
             .mockResolvedValueOnce(true);
         harness.dependencies.cache.putBatch = putBatch;
 
-        await runDownload(createOptions(tasks), harness.dependencies);
+        await harness.run(createOptions(tasks));
 
         expect(putBatch).toHaveBeenCalledTimes(2);
         expect(harness.dependencies.log).toHaveBeenCalledWith(expect.objectContaining({ code: "cache-write-retry" }));
-        expect(harness.ui.showFormatChoice).toHaveBeenCalledOnce();
+        expect(harness.result?.status).toBe("ready");
     });
 
     it("propagates a classified storage failure without turning it into user cancellation", async () => {
@@ -568,13 +603,13 @@ describe("runDownload characterization", () => {
         const harness = createHarness(tasks);
         harness.dependencies.cache.putBatch = vi.fn(async () => false);
 
-        await expect(runDownload(createOptions(tasks), harness.dependencies)).rejects.toMatchObject({
+        await expect(harness.run(createOptions(tasks))).rejects.toMatchObject({
             reason: "ownership-lost",
             operation: "write"
         });
 
-        expect(harness.dependencies.runtime.requestCancellation).not.toHaveBeenCalled();
-        expect(harness.ui.showFormatChoice).not.toHaveBeenCalled();
+        expect(harness.dependencies.cancellation.requestCancellation).not.toHaveBeenCalled();
+        expect(harness.exportData).toBeNull();
         expect(harness.ui.snapshots.at(-1)).toMatchObject({
             phase: "failed",
             storageFailure: { reason: "ownership-lost", operation: "write" }
@@ -606,7 +641,7 @@ describe("runDownload characterization", () => {
             throw new Error("offline");
         });
 
-        await runDownload(createOptions(tasks), harness.dependencies);
+        await harness.run(createOptions(tasks));
 
         expect(harness.ui.confirmIncompleteChapters).toHaveBeenCalledOnce();
         expect(harness.ui.confirmIncompleteChapters).toHaveBeenCalledWith(
@@ -618,7 +653,7 @@ describe("runDownload characterization", () => {
         expect(harness.exportData?.chapters[0].content).toContain("第 &lt;script&gt; 章");
         expect(harness.exportData?.chapters[0].content).not.toContain("<script>");
         expect(harness.exportData?.exportContext?.chapterSummary).toEqual({ totalCount: 1, missingCount: 1 });
-        expect(harness.dependencies.runtime.chapters.size).toBe(0);
+        expect(harness.dependencies.chapters.size).toBe(0);
         expect(harness.ui.snapshots.at(-1)).toMatchObject({
             phase: "export-ready",
             cachedChapterCount: 0,
@@ -644,7 +679,7 @@ describe("runDownload characterization", () => {
         harness.dependencies.chapterFetcher.fetch = fetch;
         harness.ui.confirmIncompleteChapters.mockResolvedValue("retry");
 
-        await runDownload(createOptions(tasks), harness.dependencies);
+        await harness.run(createOptions(tasks));
 
         expect(fetch).toHaveBeenCalledTimes(7);
         expect(harness.ui.confirmIncompleteChapters).toHaveBeenCalledOnce();
@@ -663,7 +698,7 @@ describe("runDownload characterization", () => {
             .mockResolvedValueOnce("retry")
             .mockResolvedValueOnce("export-with-placeholders");
 
-        await runDownload(createOptions(tasks), harness.dependencies);
+        await harness.run(createOptions(tasks));
 
         expect(harness.ui.confirmIncompleteChapters).toHaveBeenCalledTimes(2);
         expect(harness.events.ofType("incomplete-chapters-decided")).toEqual([
@@ -690,7 +725,7 @@ describe("runDownload characterization", () => {
         };
         harness.ui.confirmIncompleteChapters.mockResolvedValue("retry");
 
-        await expect(runDownload(createOptions(tasks), harness.dependencies)).rejects.toMatchObject({
+        await expect(harness.run(createOptions(tasks))).rejects.toMatchObject({
             code: "font-source-invalid",
             reason: "chapter-structure-invalid",
             params: { count: 1 }
@@ -705,7 +740,7 @@ describe("runDownload characterization", () => {
                 params: {}
             })
         ]);
-        expect(harness.ui.showFormatChoice).not.toHaveBeenCalled();
+        expect(harness.exportData).toBeNull();
     });
 
     it("cancels and preserves the current cache when the user declines incomplete export", async () => {
@@ -716,12 +751,12 @@ describe("runDownload characterization", () => {
         });
         harness.ui.confirmIncompleteChapters.mockResolvedValue("cancel");
 
-        await runDownload(createOptions(tasks), harness.dependencies);
+        await harness.run(createOptions(tasks));
 
-        expect(harness.dependencies.runtime.requestCancellation).toHaveBeenCalledWith("flush");
+        expect(harness.dependencies.cancellation.requestCancellation).toHaveBeenCalledWith("flush");
         expect(harness.exportData).toBeNull();
         expect(harness.cacheClears).toHaveLength(0);
-        expect(harness.ui.showFormatChoice).not.toHaveBeenCalled();
+        expect(harness.exportData).toBeNull();
         expect(harness.ui.snapshots.at(-1)).toMatchObject({
             phase: "cancelled",
             cancellationOutcome: "saved",
@@ -742,13 +777,13 @@ describe("runDownload characterization", () => {
                 })
         );
 
-        const download = runDownload(createOptions(tasks), harness.dependencies);
+        const download = harness.run(createOptions(tasks));
         await vi.waitFor(() => expect(harness.ui.confirmIncompleteChapters).toHaveBeenCalledOnce());
-        harness.dependencies.runtime.requestCancellation("flush");
+        harness.dependencies.cancellation.requestCancellation("flush");
         await download;
 
         expect(harness.ui.snapshots.at(-1)).toMatchObject({ phase: "cancelled", cancellationOutcome: "saved" });
-        expect(harness.ui.showFormatChoice).not.toHaveBeenCalled();
+        expect(harness.exportData).toBeNull();
     });
 
     it("does not prompt for chapters that only retain image failures", async () => {
@@ -756,7 +791,7 @@ describe("runDownload characterization", () => {
         const harness = createHarness(tasks);
         harness.dependencies.chapterProcessor.process = async () => createChapter(0, { imageErrors: 1 });
 
-        await runDownload(createOptions(tasks, { imageEnabled: true }), harness.dependencies);
+        await harness.run(createOptions(tasks, { imageEnabled: true }));
 
         expect(harness.ui.confirmIncompleteChapters).not.toHaveBeenCalled();
         expect(harness.exportData?.chapters).toHaveLength(1);
@@ -773,149 +808,6 @@ function createMappedChapter(index: number, family: string): Chapter {
             sha256: family.padStart(64, "a")
         }
     });
-}
-
-function createHarness(tasks: DownloadTask[], chapters = new Map<number, Chapter>()) {
-    const fetcher = new FakeChapterFetcher();
-    for (const task of tasks) {
-        fetcher.succeed(task.url, `<p>${task.title}</p>`);
-    }
-    const events = new RecordingDownloadEvents<DownloadEvent>();
-    const processedIndexes: number[] = [];
-    const cacheClears: Array<{ bookId: string; taskId: string }> = [];
-    const cacheFinishes: Array<{ bookId: string; taskId: string; totalChapters: number }> = [];
-    const ui = {
-        snapshots: [] as DownloadSnapshot[],
-        prepare: vi.fn(),
-        update(snapshot: DownloadSnapshot) {
-            this.snapshots.push(snapshot);
-        },
-        confirmMappingFontDownload: vi.fn(async () => true),
-        confirmIncompleteChapters: vi.fn<
-            (detection: IncompleteChapterDetection, signal?: AbortSignal) => Promise<IncompleteChapterDecision>
-        >(async () => "export-with-placeholders"),
-        promptProtectedChapterPassword: vi.fn(
-            async (
-                _prompt: ProtectedChapterPrompt,
-                _signal?: AbortSignal,
-                _onPendingDecision?: (
-                    decision: Extract<ProtectedChapterDecision, { action: "skip-current" | "skip-all" | "cancel" }>
-                ) => void
-            ): Promise<ProtectedChapterDecision> => ({ action: "skip-current" })
-        ),
-        closeProtectedChapterPrompt: vi.fn(),
-        updateMappingFontWarning: vi.fn(),
-        showMappingFontFailure: vi.fn(),
-        showTerminalFailure: vi.fn(),
-        cleanup: vi.fn(),
-        showFormatChoice: vi.fn()
-    };
-    const protectedChapterDetector = { isProtected: vi.fn(() => false) };
-    const protectedChapterAuth = {
-        unlock: vi.fn(
-            async (): Promise<ProtectedChapterUnlockResult> => ({
-                kind: "protocol-error",
-                code: "response-invalid"
-            })
-        )
-    };
-    let exportData: CachedData | null = null;
-    let runtimeSession: RuntimeCacheSession | null = null;
-    let cancellationRequested = false;
-    const abortController = new AbortController();
-
-    const log = vi.fn();
-    const dependencies: DownloadDependencies = {
-        runtime: {
-            chapters,
-            signal: abortController.signal,
-            activeBookLock: null,
-            originalTitle: "Test",
-            isCancellationRequested: () => cancellationRequested,
-            requestCancellation: vi.fn(() => {
-                cancellationRequested = true;
-                abortController.abort();
-            }),
-            subscribeCancellation: () => () => undefined,
-            startCacheSession(meta, taskId, initialChapterCount) {
-                runtimeSession = {
-                    ...meta,
-                    taskId,
-                    completedCount: 0,
-                    cachedChapterCount: initialChapterCount,
-                    status: "downloading",
-                    hasExportData: false
-                };
-            },
-            updateCacheSession(progress) {
-                if (runtimeSession) {
-                    runtimeSession = { ...runtimeSession, ...progress };
-                }
-            },
-            setExportData(data) {
-                exportData = data;
-            }
-        },
-        ui,
-        chapterFetcher: fetcher,
-        chapterProcessor: {
-            async process(_html, task) {
-                processedIndexes.push(task.index);
-                return createChapter(task.index);
-            }
-        },
-        protectedChapterDetector,
-        protectedChapterAuth,
-        coverFetcher: { fetch: async () => null },
-        coverCache: { load: async () => null, put: async () => true },
-        cache: {
-            putBatch: async () => true,
-            async finishForTask(bookId, taskId, meta) {
-                cacheFinishes.push({ bookId, taskId, totalChapters: meta.totalChapters });
-                return true;
-            },
-            async clearForTask(bookId, taskId) {
-                cacheClears.push({ bookId, taskId });
-                return true;
-            }
-        },
-        lock: {
-            owns: async () => true,
-            shouldDiscardCache: async () => false
-        },
-        events,
-        scheduler: {
-            sleep: async () => undefined,
-            sleepWithAbort: async () => undefined,
-            randomDelay: () => 0,
-            schedule: () => () => undefined
-        },
-        settings: {
-            getConcurrency: () => 1
-        },
-        environment: {
-            currentUrl: () => "https://www.esjzone.cc/detail/100.html",
-            now: () => Date.parse("2026-01-01T00:00:00.000Z")
-        },
-        log
-    };
-
-    return {
-        dependencies,
-        events,
-        fetcher,
-        processedIndexes,
-        cacheClears,
-        cacheFinishes,
-        ui,
-        log,
-        get exportData() {
-            return exportData;
-        },
-        get runtimeSession() {
-            return runtimeSession;
-        }
-    };
 }
 
 function createOptions(tasks: DownloadTask[], overrides: Partial<DownloadOptions> = {}): DownloadOptions {
