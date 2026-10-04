@@ -198,6 +198,26 @@ describe("browser download cancellation contracts", () => {
         expect(result).toEqual({ status: "cancelled", outcome: "discarded" });
     });
 
+    it("reports failed cancellation saving without claiming progress was saved or clearing old cache", async () => {
+        mocks.sleepWithAbort.mockImplementation(async () => {
+            if (runtime.task.chapters.size > 0) runtime.abortActiveDownload("flush");
+        });
+        mocks.saveCache.mockRejectedValue(new DOMException("storage full", "QuotaExceededError"));
+
+        const result = await runtime.batchDownload(createBrowserDownloadOptions(createBrowserDownloadTasks(1)));
+
+        expect(result).toEqual({ status: "cancelled", outcome: "save-failed" });
+        expect(mocks.showTerminalFailure).toHaveBeenCalledWith(
+            expect.objectContaining({
+                kind: "cancellation",
+                outcome: "save-failed",
+                storageFailure: expect.objectContaining({ reason: "quota-exceeded", operation: "write" })
+            })
+        );
+        expect(mocks.clearCache).not.toHaveBeenCalled();
+        expect(mocks.fullCleanup).toHaveBeenCalledOnce();
+    });
+
     it("aborts the active cache write immediately when cancellation discards progress", async () => {
         const saveStarted = createDeferred<void>();
         const writeAborted = createDeferred<void>();

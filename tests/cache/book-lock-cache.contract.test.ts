@@ -211,4 +211,58 @@ describe("book lock contracts", () => {
         expect(restored.map?.get(0)?.content).toBe("persisted");
         await locks.releaseBookDownloadLock(acquired.lock);
     });
+
+    it("rolls back chapters and manifest when a transaction aborts after their requests succeed", async () => {
+        vi.stubGlobal("BroadcastChannel", undefined);
+        const storage = await import("../../src/core/cache/book-cache");
+        const repository = await import("../../src/core/cache/indexeddb-repository");
+        const original = createChapter(0, { content: "persisted" });
+        const meta = createCacheMeta({ bookId: "107", totalChapters: 1, updatedAt: Date.now() });
+        await storage.claimBookCache("107", "task-107", false);
+        await storage.putBookCacheBatchForTask("107", "task-107", new Map([[0, original]]), meta);
+        const manifest = await repository.readCacheManifestV3("107");
+        const put = IDBObjectStore.prototype.put;
+        const writtenChapters: number[] = [];
+        let manifestWritten = false;
+        const injected = vi.spyOn(IDBObjectStore.prototype, "put").mockImplementation(function (
+            this: IDBObjectStore,
+            value,
+            key
+        ) {
+            const request = put.call(this, value, key);
+            if (this.name === "records" && Array.isArray(key) && key[1] === "107") {
+                const index = key[2];
+                if (key[0] === "chapter" && typeof index === "number") {
+                    request.addEventListener("success", () => writtenChapters.push(index));
+                }
+                if (key[0] === "manifest")
+                    request.addEventListener("success", () => {
+                        manifestWritten = true;
+                        this.transaction.abort();
+                    });
+            }
+            return request;
+        });
+
+        try {
+            await expect(
+                storage.putBookCacheBatchForTask(
+                    "107",
+                    "task-107",
+                    new Map([
+                        [0, createChapter(0, { content: "replacement" })],
+                        [1, createChapter(1)]
+                    ]),
+                    { ...meta, totalChapters: 2, updatedAt: meta.updatedAt + 1 }
+                )
+            ).rejects.toMatchObject({ operation: "write" });
+        } finally {
+            injected.mockRestore();
+        }
+
+        expect(writtenChapters).toEqual(expect.arrayContaining([0, 1]));
+        expect(manifestWritten).toBe(true);
+        expect(await repository.readCacheManifestV3("107")).toEqual(manifest);
+        expect(await repository.readCacheChaptersV3("107")).toEqual(new Map([[0, original]]));
+    });
 });
