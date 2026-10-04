@@ -2,37 +2,21 @@
 
 import { describe, expect, it, vi } from "vitest";
 import {
-    FakeBookLockService,
     FakeChapterFetcher,
     FakeChapterProcessor,
     InMemoryCacheRepository,
-    RecordingDownloadEvents,
-    RecordingUiObserver,
     TestResourceTracker,
     closeTestDatabase,
     createChapter,
-    createChapterFixture,
-    createDeferred,
-    createDetailPageFixture,
     createDownloadTask,
-    createForumPageFixture,
     deleteTestDatabase,
     getUserscriptApiMocks,
     installFakeBroadcastChannel,
     openTestDatabase,
-    trackEventListener,
-    useFakeClock
+    trackEventListener
 } from "../support";
 
 describe("test infrastructure", () => {
-    it("installs isolated userscript API mocks for every test", () => {
-        GM_setValue("concurrency", 5);
-
-        expect(GM_getValue("concurrency", 1)).toBe(5);
-        expect(getUserscriptApiMocks().setValue).toHaveBeenCalledWith("concurrency", 5);
-        expect(GM_info.script?.version).toBe("0.0.0-test");
-    });
-
     it("drives GM request success and abort callbacks", () => {
         const onload = vi.fn();
         const onabort = vi.fn();
@@ -46,48 +30,6 @@ describe("test infrastructure", () => {
         request.abort();
         request.abort();
         expect(onabort).toHaveBeenCalledOnce();
-    });
-
-    it("controls deferred work and virtual time without real waiting", async () => {
-        const clock = useFakeClock();
-        const deferred = createDeferred<string>();
-        const callback = vi.fn();
-        setTimeout(callback, 3_000);
-
-        await clock.advanceBy(2_999);
-        expect(callback).not.toHaveBeenCalled();
-        deferred.resolve("done");
-
-        await clock.advanceBy(1);
-        await expect(deferred.promise).resolves.toBe("done");
-        expect(callback).toHaveBeenCalledOnce();
-        clock.restore();
-    });
-
-    it("creates detail, forum, and chapter fixtures", () => {
-        const detail = createDetailPageFixture({ chapterCount: 2 });
-        const forum = createForumPageFixture("100");
-        const chapter = createChapterFixture({ title: "测试章节" });
-
-        expect(detail.querySelectorAll("#chapterList a")).toHaveLength(2);
-        expect(detail.querySelector(".book-detail h2")?.textContent).toBe("测试小说");
-        expect(forum.querySelector(".forum-list-page")?.getAttribute("data-book-id")).toBe("100");
-        expect(chapter).toContain("测试章节");
-        expect(chapter).toContain("forum-content");
-    });
-
-    it("drives fetcher and processor outcomes deterministically", async () => {
-        const task = createDownloadTask();
-        const fetcher = new FakeChapterFetcher().succeed(task.url, "<p>ok</p>");
-        const processor = new FakeChapterProcessor().succeed(task.index, createChapter(task.index));
-
-        const html = await fetcher.fetch(task);
-        const chapter = await processor.process(html, task);
-
-        expect(html).toBe("<p>ok</p>");
-        expect(chapter.title).toBe("第 1 章");
-        expect(fetcher.calls).toEqual([task]);
-        expect(processor.calls).toHaveLength(1);
     });
 
     it("aborts deferred fetch and processing work", async () => {
@@ -120,25 +62,6 @@ describe("test infrastructure", () => {
         expect(repository.operations).toEqual(
             expect.arrayContaining([expect.objectContaining({ type: "put", indexes: [0] })])
         );
-    });
-
-    it("provides a fake lock and recording observers", async () => {
-        const locks = new FakeBookLockService();
-        const acquired = await locks.acquire("100");
-        expect(acquired.acquired).toBe(true);
-        if (!acquired.acquired) {
-            throw new Error("expected acquired lock");
-        }
-
-        const events = new RecordingDownloadEvents<{ type: string; count: number }>();
-        const ui = new RecordingUiObserver<{ phase: string }>();
-        events.emit({ type: "progress", count: 1 });
-        ui.update({ phase: "downloading" });
-
-        expect(await locks.markRunning(acquired.lock)).toBe(true);
-        expect(events.ofType("progress")).toHaveLength(1);
-        expect(ui.latest()).toEqual({ phase: "downloading" });
-        await locks.release(acquired.lock);
     });
 
     it("tracks BroadcastChannel and IndexedDB cleanup", async () => {

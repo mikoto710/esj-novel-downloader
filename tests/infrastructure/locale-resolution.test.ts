@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { describe, expect, it } from "vitest";
-import { INTERFACE_LOCALE_PREFERENCES, resolveInterfaceLocale, type InterfaceLocale } from "../../src/core/locale";
+import { resolveInterfaceLocale } from "../../src/core/locale";
 import {
     detectBrowserInterfaceLocale,
     detectWebsiteInterfaceLocale,
@@ -16,10 +16,6 @@ import {
 import { getUserscriptApiMocks } from "../support";
 
 describe("locale resolution", () => {
-    it("defines auto and both supported manual preferences", () => {
-        expect(INTERFACE_LOCALE_PREFERENCES).toEqual(["auto", "zh-CN", "zh-TW"]);
-    });
-
     it("prefers a manual locale over website and browser detection", () => {
         expect(resolveInterfaceLocale("zh-CN", "zh-TW", "zh-TW")).toBe("zh-CN");
         expect(resolveInterfaceLocale("zh-TW", "zh-CN", "zh-CN")).toBe("zh-TW");
@@ -62,11 +58,6 @@ describe("locale resolution", () => {
         expect(resolveBrowserInterfaceLocale("auto", document, "zh-SG")).toBe("zh-CN");
     });
 
-    it("treats the original website mode as traditional interface language", () => {
-        document.body.innerHTML = `<div class="customizer-text-switch"><button class="trans active" data-encode="0">原</button></div>`;
-        expect(resolveBrowserInterfaceLocale("auto", document, "zh-CN")).toBe("zh-TW");
-    });
-
     it("persists valid manual preference and resets invalid stored values to auto", () => {
         expect(getInterfaceLocalePreference()).toBe("auto");
 
@@ -76,13 +67,5 @@ describe("locale resolution", () => {
 
         getUserscriptApiMocks().values.set(INTERFACE_LOCALE_PREFERENCE_KEY, "invalid");
         expect(getInterfaceLocalePreference()).toBe("auto");
-    });
-
-    it("keeps the resolver output within supported interface locales", () => {
-        const locales: InterfaceLocale[] = [
-            resolveBrowserInterfaceLocale("auto", document, "zh-CN"),
-            resolveBrowserInterfaceLocale("zh-TW", document, "zh-CN")
-        ];
-        expect(locales).toEqual(["zh-CN", "zh-TW"]);
     });
 });

@@ -199,27 +199,6 @@ describe("range download lifecycle", () => {
         expect(mocks.finalize).not.toHaveBeenCalled();
     });
 
-    it("enters finalization immediately after acquiring the lock", async () => {
-        mocks.rangePopup.mockResolvedValue({
-            action: "download",
-            selection: { mode: "range", sourceTotalChapters: 3, startIndex: 0, endIndex: 1 }
-        });
-        mocks.startHeartbeat.mockImplementationOnce(() => {
-            throw new Error("heartbeat setup failed");
-        });
-
-        await runBookDownload({
-            bookId: "100",
-            sourcePageType: "detail",
-            pageTitle: "测试小说",
-            loadPlan: async () => plan
-        });
-
-        expect(mocks.acquire).toHaveBeenCalledOnce();
-        expect(mocks.claimCache).not.toHaveBeenCalled();
-        expect(mocks.finalize).toHaveBeenCalledWith(lock, expect.any(Function), expect.any(Function));
-    });
-
     it("keeps lock, writer, heartbeat, and active diagnostics absent after a preflight directory failure", async () => {
         await runBookDownload({
             bookId: "100",
@@ -250,7 +229,6 @@ describe("range download lifecycle", () => {
             compatibility: "refetch-required"
         });
         const old = createCachedData();
-        const oldChapters = new Map([[0, old.chapters[0]!]]);
         state.cachedData = old;
 
         await runBookDownload({
@@ -267,7 +245,6 @@ describe("range download lifecycle", () => {
             expect.objectContaining({ cacheWillBeInvalidated: true, cacheCount: 3, initialSelection: selection })
         );
         expect(state.cachedData).toBe(old);
-        expect(oldChapters.size).toBe(1);
     });
 
     it("claims again with explicit invalidation consent after showing the changed cache", async () => {

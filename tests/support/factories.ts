@@ -1,14 +1,5 @@
 import type { DownloadTask } from "../../src/core/download/contracts";
-import type {
-    AppState,
-    BookDownloadLock,
-    BookMetadata,
-    CacheMeta,
-    CachedData,
-    Chapter,
-    ChapterImage,
-    RuntimeCacheSession
-} from "../../src/types";
+import type { BookDownloadLock, BookMetadata, CacheMeta, CachedData, Chapter, ChapterImage } from "../../src/types";
 
 const BASE_TIME = Date.parse("2026-01-01T00:00:00.000Z");
 
@@ -103,22 +94,6 @@ export function createBookLock(overrides: Partial<BookDownloadLock> = {}): BookD
 }
 
 /**
- * 创建当前页缓存会话测试数据
- */
-export function createRuntimeCacheSession(overrides: Partial<RuntimeCacheSession> = {}): RuntimeCacheSession {
-    const meta = createCacheMeta(overrides);
-    return {
-        ...meta,
-        taskId: "task-100",
-        completedCount: 0,
-        bookChapterCount: 0,
-        status: "downloading",
-        hasExportData: false,
-        ...overrides
-    };
-}
-
-/**
  * 创建可导出缓存测试数据
  */
 export function createCachedData(overrides: Partial<CachedData> = {}): CachedData {
@@ -136,19 +111,6 @@ export function createCachedData(overrides: Partial<CachedData> = {}): CachedDat
             chapterSummary: { totalCount: chapters.length, missingCount: 0 },
             imageEnabled: false
         },
-        ...overrides
-    };
-}
-
-/**
- * 创建隔离的页面显示状态
- */
-export function createTestState(overrides: Partial<AppState> = {}): AppState {
-    return {
-        originalTitle: "ESJZone Test",
-        cachedData: null,
-        runtimeCacheSession: null,
-        activeDownload: null,
         ...overrides
     };
 }

@@ -1,7 +1,7 @@
 import type { DownloadTask } from "../../src/core/download/contracts";
-import type { BookDownloadLock, CacheStatus, Chapter } from "../../src/types";
+import type { CacheStatus, Chapter } from "../../src/types";
 import { createAbortError, createDeferred, type Deferred } from "./async";
-import { createBookLock, createChapter } from "./factories";
+import { createChapter } from "./factories";
 
 type FetchPlan =
     | { type: "success"; html: string }
@@ -198,98 +198,6 @@ export class InMemoryCacheRepository {
 }
 
 /**
- * 下载锁操作记录
- */
-export type LockOperation =
-    | { type: "acquire"; bookId: string }
-    | { type: "running"; bookId: string; taskId: string }
-    | { type: "heartbeat"; bookId: string; taskId: string }
-    | { type: "cancel"; bookId: string; discard: boolean }
-    | { type: "release"; bookId: string; taskId: string };
-
-/**
- * 模拟下载锁竞争、心跳和取消请求
- */
-export class FakeBookLockService {
-    readonly operations: LockOperation[] = [];
-    private readonly locks = new Map<string, BookDownloadLock>();
-    private readonly conflicts = new Map<string, BookDownloadLock>();
-
-    setConflict(bookId: string, lock = createBookLock({ bookId, taskId: `conflict-${bookId}` })): this {
-        this.conflicts.set(bookId, lock);
-        return this;
-    }
-
-    async acquire(
-        bookId: string
-    ): Promise<{ acquired: true; lock: BookDownloadLock } | { acquired: false; lock: BookDownloadLock }> {
-        this.operations.push({ type: "acquire", bookId });
-        const conflict = this.conflicts.get(bookId);
-        if (conflict) {
-            return { acquired: false, lock: { ...conflict } };
-        }
-        const lock = createBookLock({ bookId, taskId: `task-${bookId}` });
-        this.locks.set(bookId, lock);
-        return { acquired: true, lock: { ...lock } };
-    }
-
-    async markRunning(lock: BookDownloadLock): Promise<boolean> {
-        if (!this.owns(lock)) {
-            return false;
-        }
-        this.locks.set(lock.bookId, { ...lock, status: "running" });
-        this.operations.push({ type: "running", bookId: lock.bookId, taskId: lock.taskId });
-        return true;
-    }
-
-    owns(lock: BookDownloadLock): boolean {
-        return this.locks.get(lock.bookId)?.taskId === lock.taskId;
-    }
-
-    async heartbeat(lock: BookDownloadLock): Promise<boolean> {
-        if (!this.owns(lock)) {
-            return false;
-        }
-        const current = this.locks.get(lock.bookId)!;
-        this.locks.set(lock.bookId, { ...current, heartbeatAt: Date.now() });
-        this.operations.push({ type: "heartbeat", bookId: lock.bookId, taskId: lock.taskId });
-        return true;
-    }
-
-    replaceOwner(bookId: string, taskId = `replacement-${bookId}`): BookDownloadLock {
-        const replacement = createBookLock({ bookId, taskId, status: "running" });
-        this.locks.set(bookId, replacement);
-        return { ...replacement };
-    }
-
-    getLock(bookId: string): BookDownloadLock | null {
-        const lock = this.locks.get(bookId);
-        return lock ? { ...lock } : null;
-    }
-
-    async requestCancellation(bookId: string, discard: boolean): Promise<boolean> {
-        const lock = this.locks.get(bookId);
-        if (!lock) {
-            return false;
-        }
-        this.locks.set(bookId, {
-            ...lock,
-            cancelRequestedAt: Date.now(),
-            discardCacheOnCancel: discard
-        });
-        this.operations.push({ type: "cancel", bookId, discard });
-        return true;
-    }
-
-    async release(lock: BookDownloadLock): Promise<void> {
-        if (this.owns(lock)) {
-            this.locks.delete(lock.bookId);
-        }
-        this.operations.push({ type: "release", bookId: lock.bookId, taskId: lock.taskId });
-    }
-}
-
-/**
  * 记录下载核心发布的事件
  */
 export class RecordingDownloadEvents<TEvent = unknown> {
@@ -303,21 +211,6 @@ export class RecordingDownloadEvents<TEvent = unknown> {
         return this.events.filter(
             (event) => typeof event === "object" && event !== null && "type" in event && event.type === type
         );
-    }
-}
-
-/**
- * 记录下载核心提交的界面快照
- */
-export class RecordingUiObserver<TSnapshot = unknown> {
-    readonly snapshots: TSnapshot[] = [];
-
-    update(snapshot: TSnapshot): void {
-        this.snapshots.push(snapshot);
-    }
-
-    latest(): TSnapshot | undefined {
-        return this.snapshots.at(-1);
     }
 }
 

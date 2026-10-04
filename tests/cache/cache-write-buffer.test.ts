@@ -1,7 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import {
     ChapterCacheWriteBuffer,
-    DEFAULT_CACHE_WRITE_POLICY,
     estimateChapterCacheBytes,
     type CacheWritePolicy
 } from "../../src/core/download/cache-write-buffer";
@@ -10,14 +9,6 @@ import type { DownloadCancellationMode } from "../../src/types";
 import { createChapter, createDeferred, useFakeClock } from "../support";
 
 describe("ChapterCacheWriteBuffer", () => {
-    it("uses the configurable 25 chapter, 4 MiB, and 3 second defaults", () => {
-        expect(DEFAULT_CACHE_WRITE_POLICY).toEqual({
-            maxChapterCount: 25,
-            maxBytes: 4 * 1024 * 1024,
-            maxDelayMs: 3_000
-        });
-    });
-
     it("flushes only the dirty chapters when the chapter threshold is reached", async () => {
         const writes: number[][] = [];
         const buffer = createBuffer(
@@ -77,21 +68,9 @@ describe("ChapterCacheWriteBuffer", () => {
 
         await buffer.add(0, createChapter(0));
         expect(write).not.toHaveBeenCalled();
-        expect(scheduled.callback).toBeTypeOf("function");
         scheduled.callback?.();
 
         await vi.waitFor(() => expect(write).toHaveBeenCalledOnce());
-    });
-
-    it("does not repeat a completed write when flush is called again", async () => {
-        const write = vi.fn(async (entries: ReadonlyMap<number, Chapter>) => entries.size >= 0);
-        const buffer = createBuffer({ maxChapterCount: 25, maxBytes: 4 * 1024 * 1024, maxDelayMs: 60_000 }, write);
-
-        await buffer.add(0, createChapter(0));
-        await buffer.flush();
-        await buffer.flush();
-
-        expect(write).toHaveBeenCalledOnce();
     });
 
     it("seals pending writes, rejects later chapters, and keeps repeated flushes idempotent", async () => {

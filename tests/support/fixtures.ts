@@ -59,17 +59,6 @@ export function createDetailPageFixture(options: DetailPageFixtureOptions = {}):
 }
 
 /**
- * 创建论坛列表页 DOM 夹具
- */
-export function createForumPageFixture(bookId = "100"): Document {
-    return parseHtmlFixture(`<!doctype html>
-        <html>
-            <head><title>测试论坛书籍 - ESJZone</title></head>
-            <body><main class="forum-list-page" data-book-id="${escapeFixtureAttribute(bookId)}"></main></body>
-        </html>`);
-}
-
-/**
  * 创建章节页 HTML 夹具
  */
 export function createChapterFixture(options: ChapterFixtureOptions = {}): string {
