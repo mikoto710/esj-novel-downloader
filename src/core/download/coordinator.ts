@@ -104,8 +104,11 @@ export async function runDownload(
         }
         return reportFailure(error, dependencies, progress, cache, pipeline);
     } finally {
-        pipeline.dispose();
-        cache.dispose();
+        try {
+            pipeline.dispose();
+        } finally {
+            cache.dispose();
+        }
     }
 }
 

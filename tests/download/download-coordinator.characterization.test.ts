@@ -14,6 +14,19 @@ import { createChapter, createDeferred, createDownloadTask } from "../support";
 import { MappingFontError } from "../../src/core/mapping-font";
 
 describe("runDownload characterization", () => {
+    it("removes cache cancellation listeners even when prompt teardown fails", async () => {
+        const tasks = [createDownloadTask()];
+        const harness = createHarness(tasks);
+        const unsubscribe = vi.fn();
+        harness.dependencies.cancellation.subscribeCancellation = () => unsubscribe;
+        harness.ui.closeProtectedChapterPrompt.mockImplementationOnce(() => {
+            throw new Error("prompt teardown");
+        });
+
+        await expect(harness.run(createOptions(tasks))).rejects.toThrow("prompt teardown");
+        expect(unsubscribe).toHaveBeenCalledOnce();
+    });
+
     it("returns the export snapshot only after the cache writer finishes", async () => {
         const tasks = [createDownloadTask()];
         const harness = createHarness(tasks);
