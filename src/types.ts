@@ -175,8 +175,11 @@ export interface CachedData {
     chapters: Chapter[];
     metadata: BookMetadata;
     epubBlob: Blob | null;
+    // 派生产物的设置键，正文和导出归属不随此设置改变
+    epubTagPageEnabled?: boolean;
     exportContext?: {
         bookId: string;
+        taskId?: string;
         rawBookName?: string;
         pageUrl: string;
         sourcePageType: Extract<SourcePageType, "detail" | "forum">;

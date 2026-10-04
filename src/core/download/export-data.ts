@@ -94,6 +94,7 @@ export function createExportData(
         epubBlob: null,
         exportContext: {
             bookId: options.bookId,
+            taskId: options.taskId,
             rawBookName: options.rawBookName || options.bookName,
             pageUrl: options.pageUrl || scope.meta.pageUrl,
             sourcePageType: options.sourcePageType === "forum" ? "forum" : "detail",

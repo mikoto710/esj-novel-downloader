@@ -104,6 +104,86 @@ describe("full-book export recovery contracts", () => {
         ]);
     });
 
+    it("does not restore an EPUB cache invalidated while generation is pending", async () => {
+        const { setEpubTagPageSetting } = await import("../../src/core/config");
+        const { invalidateCachedEpub } = await import("../../src/core/state");
+        setEpubTagPageSetting(false);
+        const pending = createDeferred<Blob>();
+        mocks.buildEpub.mockReturnValueOnce(pending.promise);
+        const { state } = await prepareExportPopup();
+        click("#esj-epub");
+        await vi.waitFor(() => expect(mocks.buildEpub).toHaveBeenCalledOnce());
+        setEpubTagPageSetting(true);
+        invalidateCachedEpub();
+        pending.resolve(new Blob(["old settings"]));
+        await vi.waitFor(() => expect(mocks.triggerDownload).toHaveBeenCalledOnce());
+        expect(state.cachedData?.epubBlob).toBeNull();
+        click("#esj-epub");
+        await vi.waitFor(() => expect(mocks.triggerDownload).toHaveBeenCalledTimes(2));
+        expect(mocks.buildEpub).toHaveBeenLastCalledWith(state.cachedData?.chapters, state.cachedData?.metadata, true);
+    });
+
+    it("rebuilds EPUB when another page changes the tag setting", async () => {
+        const { setEpubTagPageSetting } = await import("../../src/core/config");
+        setEpubTagPageSetting(false);
+        const { state } = await prepareExportPopup();
+        click("#esj-epub");
+        await vi.waitFor(() => expect(mocks.triggerDownload).toHaveBeenCalledOnce());
+        setEpubTagPageSetting(true);
+        click("#esj-epub");
+        await vi.waitFor(() => expect(mocks.triggerDownload).toHaveBeenCalledTimes(2));
+        expect(mocks.buildEpub).toHaveBeenCalledTimes(2);
+        expect(mocks.buildEpub).toHaveBeenLastCalledWith(state.cachedData?.chapters, state.cachedData?.metadata, true);
+    });
+
+    it("records a retained export against its source task after another task fails", async () => {
+        const diagnostics = await import("../../src/adapters/browser-diagnostics");
+        const input = {
+            bookId: "100",
+            bookTitle: "Book",
+            pageUrl: "https://example.test/book",
+            sourcePageType: "detail" as const,
+            imageEnabled: false
+        };
+        diagnostics.startBrowserDiagnosticSession({ ...input, taskId: "original-export" });
+        diagnostics.finishBrowserDiagnosticSession("original-export", "success");
+        const data = createCachedData();
+        await prepareExportPopup({ ...data, exportContext: { ...data.exportContext!, taskId: "original-export" } });
+        diagnostics.startBrowserDiagnosticSession({ ...input, taskId: "later-failure" });
+        diagnostics.finishBrowserDiagnosticSession("later-failure", "failed");
+        click("#esj-txt");
+        const sessions = diagnostics.listBrowserDiagnosticSessions().history;
+        expect(sessions.find((session) => session.taskId === "original-export")?.exports).toEqual([
+            expect.objectContaining({ outcome: "success", format: "txt" })
+        ]);
+        expect(sessions.find((session) => session.taskId === "later-failure")?.exports).toEqual([]);
+    });
+
+    it("restores the title while the source task is still releasing its lock", async () => {
+        const data = createCachedData();
+        await prepareExportPopup({ ...data, exportContext: { ...data.exportContext!, taskId: "source-task" } });
+        const { activateDownload, createDownloadCancellation } = await import("../../src/core/state");
+        activateDownload("100", "source-task", createDownloadCancellation());
+        click("#esj-epub");
+        await vi.waitFor(() => expect(mocks.triggerDownload).toHaveBeenCalledOnce());
+        expect(document.title).toBe("ESJZone Test");
+    });
+
+    it("keeps the new task title when a closed format popup finishes EPUB generation", async () => {
+        const pending = createDeferred<Blob>();
+        mocks.buildEpub.mockReturnValueOnce(pending.promise);
+        await prepareExportPopup();
+        click("#esj-epub");
+        await vi.waitFor(() => expect(mocks.buildEpub).toHaveBeenCalledOnce());
+        click("#esj-format .esj-common-header button");
+        const { activateDownload, createDownloadCancellation } = await import("../../src/core/state");
+        activateDownload("200", "new-task", createDownloadCancellation());
+        document.title = "[1/3] new task";
+        pending.resolve(new Blob(["epub"]));
+        await vi.waitFor(() => expect(mocks.triggerDownload).toHaveBeenCalledOnce());
+        expect(document.title).toBe("[1/3] new task");
+    });
+
     it("keeps HTML retryable after consecutive generation failures", async () => {
         mocks.buildHtml.mockRejectedValue(new Error("缺少已校验的映射字体"));
         await prepareExportPopup();

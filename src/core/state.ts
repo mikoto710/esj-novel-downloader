@@ -91,6 +91,7 @@ export function publishCachedExport(data: CachedData, taskId: string): void {
 export function invalidateCachedEpub(): void {
     if (state.cachedData) {
         state.cachedData.epubBlob = null;
+        delete state.cachedData.epubTagPageEnabled;
     }
 }
 

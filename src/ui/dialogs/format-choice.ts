@@ -1,5 +1,6 @@
 import type { CachedData } from "../../types";
 import type { MappingFontSummary } from "../../core/download/contracts";
+import { state } from "../../core/state";
 import { buildEpub } from "../../core/export/epub";
 import { buildHtml } from "../../core/export/html";
 import { getEpubTagPageSetting, getImageDownloadSetting } from "../../core/config";
@@ -42,23 +43,34 @@ function getExportErrorDetails(error: unknown): string {
     return `${details.slice(0, MAX_EXPORT_ERROR_DETAIL_LENGTH)}\n${t("export.failure.truncated")}`;
 }
 
-function showExportFailure(format: "TXT" | "EPUB" | "HTML", stage: ExportFailureStage, error: unknown): void {
+function showExportFailure(
+    format: "TXT" | "EPUB" | "HTML",
+    stage: ExportFailureStage,
+    error: unknown,
+    taskId?: string
+): void {
     const details = getExportErrorDetails(error);
     const stageText = t(stage === "generate" ? "export.stage.generate" : "export.stage.download");
-    recordBrowserDiagnosticExport({
-        scope: "full",
-        format: diagnosticExportFormat[format],
-        outcome: "failed",
-        generated: stage === "download",
-        downloadTriggered: false,
-        failureStage: stage
-    });
-    recordBrowserDiagnosticFailure({
-        scope: "export",
-        stage: `${format.toLowerCase()}-${stage}`,
-        code: error instanceof Error ? error.name || "export-failed" : "export-failed",
-        message: details
-    });
+    recordBrowserDiagnosticExport(
+        {
+            scope: "full",
+            format: diagnosticExportFormat[format],
+            outcome: "failed",
+            generated: stage === "download",
+            downloadTriggered: false,
+            failureStage: stage
+        },
+        taskId
+    );
+    recordBrowserDiagnosticFailure(
+        {
+            scope: "export",
+            stage: `${format.toLowerCase()}-${stage}`,
+            code: error instanceof Error ? error.name || "export-failed" : "export-failed",
+            message: details
+        },
+        taskId
+    );
     showMessagePopup({
         tone: "error",
         title: t("export.failure.title", { format, stage: stageText }),
@@ -167,7 +179,7 @@ export function showFormatChoice(data: CachedData): void {
                       try {
                           blob = new Blob([data.txt], { type: "text/plain;charset=utf-8" });
                       } catch (error) {
-                          showExportFailure("TXT", "generate", error);
+                          showExportFailure("TXT", "generate", error, data.exportContext?.taskId);
                           return;
                       }
                       try {
@@ -176,7 +188,7 @@ export function showFormatChoice(data: CachedData): void {
                           void recordBookExport("txt");
                       } catch (error) {
                           console.error(error);
-                          showExportFailure("TXT", "download", error);
+                          showExportFailure("TXT", "download", error, data.exportContext?.taskId);
                       }
                   }
         },
@@ -316,21 +328,28 @@ export function showFormatChoice(data: CachedData): void {
                 recordCancelledExport(format);
                 return;
             }
+            const epubTagPageEnabled = format === "epub" && getEpubTagPageSetting();
+            if (format === "epub" && data.epubTagPageEnabled !== epubTagPageEnabled) {
+                data.epubBlob = null;
+            }
             let blob = format === "epub" ? data.epubBlob : null;
             if (!blob) {
                 button.textContent = t("export.generating");
                 if (format === "epub") {
                     button.style.background = "#7ab8d6";
-                    document.title = t("export.documentTitle", { title: oldTitle });
+                    if (popup.isConnected) {
+                        document.title = t("export.documentTitle", { title: oldTitle });
+                    }
                 }
                 log(t(format === "epub" ? "export.log.buildEpub" : "export.log.buildHtml"));
                 blob =
                     format === "epub"
-                        ? await buildEpub(data.chapters, data.metadata, getEpubTagPageSetting())
+                        ? await buildEpub(data.chapters, data.metadata, epubTagPageEnabled)
                         : await buildHtml(data.chapters, data.metadata);
-                if (format === "epub") {
-                    // 生成成功即缓存，触发下载失败后可直接重试
+                if (format === "epub" && getEpubTagPageSetting() === epubTagPageEnabled) {
+                    // 设置未改变才缓存，避免异步生成把已失效的产物写回
                     data.epubBlob = blob;
+                    data.epubTagPageEnabled = epubTagPageEnabled;
                 }
             }
 
@@ -341,12 +360,17 @@ export function showFormatChoice(data: CachedData): void {
             void recordBookExport(format);
         } catch (error) {
             console.error(error);
-            showExportFailure(label, stage, error);
+            showExportFailure(label, stage, error, data.exportContext?.taskId);
         } finally {
             exporting.delete(format);
             button.disabled = false;
             button.style.background = originalBg;
-            if (format === "epub") {
+            if (
+                format === "epub" &&
+                (!state.activeDownload || state.activeDownload.taskId === data.exportContext?.taskId) &&
+                (!disposeActiveFormatLocaleRefresh || disposeActiveFormatLocaleRefresh === disposeLocaleRefresh)
+            ) {
+                // 旧弹窗后台生成结束时，不覆盖后来任务或格式窗口的标题
                 document.title = oldTitle;
             }
             refreshFormatChoiceText();
@@ -354,25 +378,31 @@ export function showFormatChoice(data: CachedData): void {
     }
 
     function recordSuccessfulExport(format: "txt" | "epub" | "html"): void {
-        recordBrowserDiagnosticExport({
-            scope: "full",
-            format,
-            outcome: "success",
-            generated: true,
-            downloadTriggered: true,
-            failureStage: null
-        });
+        recordBrowserDiagnosticExport(
+            {
+                scope: "full",
+                format,
+                outcome: "success",
+                generated: true,
+                downloadTriggered: true,
+                failureStage: null
+            },
+            data.exportContext?.taskId
+        );
     }
 
     function recordCancelledExport(format: "epub" | "html"): void {
-        recordBrowserDiagnosticExport({
-            scope: "full",
-            format,
-            outcome: "cancelled",
-            generated: false,
-            downloadTriggered: false,
-            failureStage: null
-        });
+        recordBrowserDiagnosticExport(
+            {
+                scope: "full",
+                format,
+                outcome: "cancelled",
+                generated: false,
+                downloadTriggered: false,
+                failureStage: null
+            },
+            data.exportContext?.taskId
+        );
     }
 
     function recordBookExport(format: "txt" | "epub" | "html"): Promise<void> {
