@@ -1,6 +1,6 @@
 # Project Boundaries
 
-For download entry, cache, cancellation, protected chapters, or export changes, read the repository's [ARCHITECTURE.md](../../../../ARCHITECTURE.md). It is the maintained source for call paths, state ownership, browser seams, and representative tests.
+For download entry, cache, cancellation, protected chapters, or export changes, read the repository's [docs/architecture.md](../../../../docs/architecture.md). It is the maintained source for call paths, state ownership, browser seams, and representative tests.
 
 - `scrapers/book-download.ts` owns selection, atomic cache confirmation, book-lock acquisition, and finalization.
 - `adapters/browser-download-dependencies.ts` receives explicit task chapters, cancellation, lock, and title to assemble browser capabilities; `core/download/coordinator.ts` returns explicit ready/cancelled results.

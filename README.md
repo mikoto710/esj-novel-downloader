@@ -133,4 +133,4 @@ npm run build
 
 `npm run build:fast` 只执行 TypeScript 类型检查和 Rollup，不运行自动化测试、ESLint 或格式检查，不能代替提交、CI 或发布前的完整 `npm run build`。`npm run format` 会直接修改文件，执行后应检查差异。构建产物位于 `dist/esj-novel-downloader.user.js`。
 
-下载流程、状态归属和代码阅读顺序见 [`ARCHITECTURE.md`](ARCHITECTURE.md)。贡献流程、代码规范和发布要求见 [`CONTRIBUTING.md`](CONTRIBUTING.md)，测试目录与隔离约定见 [`tests/README.md`](tests/README.md)。
+下载流程、状态归属和代码阅读顺序见 [`docs/architecture.md`](docs/architecture.md)。贡献流程、代码规范和发布要求见 [`CONTRIBUTING.md`](CONTRIBUTING.md)，测试目录与隔离约定见 [`docs/testing.md`](docs/testing.md)。

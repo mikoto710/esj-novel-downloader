@@ -46,7 +46,7 @@
 
 ## 下载生命周期覆盖
 
-真实调用路线与状态所有者见 [`ARCHITECTURE.md`](../ARCHITECTURE.md)；按其中的业务边界选择测试，避免为文件拆分重复增加同一契约。
+真实调用路线与状态所有者见 [`docs/architecture.md`](architecture.md)；按其中的业务边界选择测试，避免为文件拆分重复增加同一契约。
 
 修改下载流程时，应根据影响范围覆盖：
 
@@ -65,11 +65,11 @@
 
 状态所有权的代表回归：
 
-- `cache/runtime-cache-ownership.contract.test.ts`：真实 state 和同步订阅，旧导出＋新会话、远程接管／清除、旧事件复核、运行中核心的所有权退出、显式清理归属和 EPUB 失效。
-- `download/browser-download-flow.contract.test.ts`：显式任务输入、晚到回调、核心启动前失败与语言订阅清理；`browser-download-cancellation.contract.test.ts` 覆盖信号隔离及 discard 升级。
-- `download/download-progress.test.ts`：阶段校验、不可反写的快照和范围就绪数；`download-coordinator.characterization.test.ts` 保留密码、字体、范围与重试行为，并覆盖弹窗清理失败后的监听释放。
-- `export/export-recovery.contract.test.ts`：生成中或其他页面改变 EPUB 设置时重建派生产物；格式失败仍能重试，旧结果的诊断与标题恢复遵守任务归属。
-- `download/task-finalizer.test.ts`：清理失败、心跳退出异常和释放失败仍保留新任务操作入口。
+- `tests/cache/runtime-cache-ownership.contract.test.ts`：真实 state 和同步订阅，旧导出＋新会话、远程接管／清除、旧事件复核、运行中核心的所有权退出、显式清理归属和 EPUB 失效。
+- `tests/download/browser-download-flow.contract.test.ts`：显式任务输入、晚到回调、核心启动前失败与语言订阅清理；`browser-download-cancellation.contract.test.ts` 覆盖信号隔离及 discard 升级。
+- `tests/download/download-progress.test.ts`：阶段校验、不可反写的快照和范围就绪数；`download-coordinator.characterization.test.ts` 保留密码、字体、范围与重试行为，并覆盖弹窗清理失败后的监听释放。
+- `tests/export/export-recovery.contract.test.ts`：生成中或其他页面改变 EPUB 设置时重建派生产物；格式失败仍能重试，旧结果的诊断与标题恢复遵守任务归属。
+- `tests/download/task-finalizer.test.ts`：清理失败、心跳退出异常和释放失败仍保留新任务操作入口。
 
 Browser harness 显式创建本次任务并传入，不再预设共享 Map 或取消控制器；同步回归单独使用 fake channel，避免由 harness 屏蔽同步导致覆盖缺口。
 
@@ -136,6 +136,6 @@ npm run test:stress
 | 隔离浏览器自动化               | Chrome 154.0.8037.97；使用临时配置和 GM fixture shim，无真实 Tampermonkey。详情／论坛、全本／范围、续传、再次导出、三种格式触发及语言切换通过；不计为真实扩展验收 |
 | Chrome + Tampermonkey 实际矩阵 | 待维护者按上方清单测试并补充版本、场景和结果；已确认稍后测试                                                                                                      |
 | Firefox + Violentmonkey        | 未验证                                                                                                                                                            |
-| 主流程阅读与规则定位           | 待维护者阅读 `ARCHITECTURE.md` 后确认；已确认稍后阅读                                                                                                             |
+| 主流程阅读与规则定位           | 待维护者阅读 `docs/architecture.md` 后确认；已确认稍后阅读                                                                                                        |
 
 代码与自动化完成不代表本轮关闭；真实扩展矩阵和维护者阅读确认仍是待验收项。

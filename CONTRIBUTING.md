@@ -42,7 +42,7 @@ npm run test:stress
 
 ## 架构边界
 
-修改下载入口、缓存、取消、密码或导出流程前，先读 [`ARCHITECTURE.md`](ARCHITECTURE.md)。其中记录实际调用链、状态所有者和代表测试；从 `coordinator.runDownload` 阅读业务阶段，再进入相应模块。
+修改下载入口、缓存、取消、密码或导出流程前，先读 [`docs/architecture.md`](docs/architecture.md)。其中记录实际调用链、状态所有者和代表测试；从 `coordinator.runDownload` 阅读业务阶段，再进入相应模块。
 
 - 浏览器实现由 `adapters/` 装配；下载内核通过明确输入、能力和返回结果协作，ESLint 检查直接依赖边界。
 - `core/cache/` 是持久化实现，`adapters/book-download-lifecycle.ts` 负责浏览器任务收尾；下载内核不包含浏览器收尾例外。
@@ -76,7 +76,7 @@ npm run test:stress
 
 优先覆盖下载、缓存、取消、导出和界面交互等可观察业务结果，不为追求覆盖率重复测试相同展示逻辑。纯逻辑测试默认使用 Node 环境；只有依赖 DOM、DOMParser、页面注入或浏览器展示契约时才使用 jsdom。
 
-详细测试约定见 [`tests/README.md`](tests/README.md)。
+详细测试约定见 [`docs/testing.md`](docs/testing.md)。
 
 涉及浏览器下载、页面注入或 userscript API 时，应在 PR 中说明：
 

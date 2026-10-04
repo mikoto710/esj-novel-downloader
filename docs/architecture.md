@@ -4,16 +4,16 @@
 
 ## 从哪里开始
 
-| 要看什么                         | 入口                                                                                                                                                                                |
-| -------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 页面目录与书籍信息               | [`scrapers/detail.ts`](src/scrapers/detail.ts)、[`scrapers/forum.ts`](src/scrapers/forum.ts) 的 `loadPlan`                                                                          |
-| 选择范围、缓存确认、取得与释放锁 | [`scrapers/book-download.ts`](src/scrapers/book-download.ts) 的 `runBookDownload`、`executeBookDownload` 与 [`book-download-lifecycle.ts`](src/adapters/book-download-lifecycle.ts) |
-| 下载阶段顺序                     | [`coordinator.ts`](src/core/download/coordinator.ts) 的 `runDownload`                                                                                                               |
-| 正文抓取、补抓、缺章选择         | [`chapter-pipeline.ts`](src/core/download/chapter-pipeline.ts)                                                                                                                      |
-| 密码与字体决策                   | [`protected-chapters.ts`](src/core/download/protected-chapters.ts)、[`mapped-chapters.ts`](src/core/download/mapped-chapters.ts)                                                    |
-| 落盘、背压、取消保存             | [`task-cache-writer.ts`](src/core/download/task-cache-writer.ts)、[`cache-write-buffer.ts`](src/core/download/cache-write-buffer.ts)                                                |
-| 导出快照与格式生成               | [`export-data.ts`](src/core/download/export-data.ts)、[`format-choice.ts`](src/ui/dialogs/format-choice.ts)                                                                         |
-| 浏览器实现                       | [`browser-download-dependencies.ts`](src/adapters/browser-download-dependencies.ts)                                                                                                 |
+| 要看什么                         | 入口                                                                                                                                                                                      |
+| -------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 页面目录与书籍信息               | [`scrapers/detail.ts`](../src/scrapers/detail.ts)、[`scrapers/forum.ts`](../src/scrapers/forum.ts) 的 `loadPlan`                                                                          |
+| 选择范围、缓存确认、取得与释放锁 | [`scrapers/book-download.ts`](../src/scrapers/book-download.ts) 的 `runBookDownload`、`executeBookDownload` 与 [`book-download-lifecycle.ts`](../src/adapters/book-download-lifecycle.ts) |
+| 下载阶段顺序                     | [`coordinator.ts`](../src/core/download/coordinator.ts) 的 `runDownload`                                                                                                                  |
+| 正文抓取、补抓、缺章选择         | [`chapter-pipeline.ts`](../src/core/download/chapter-pipeline.ts)                                                                                                                         |
+| 密码与字体决策                   | [`protected-chapters.ts`](../src/core/download/protected-chapters.ts)、[`mapped-chapters.ts`](../src/core/download/mapped-chapters.ts)                                                    |
+| 落盘、背压、取消保存             | [`task-cache-writer.ts`](../src/core/download/task-cache-writer.ts)、[`cache-write-buffer.ts`](../src/core/download/cache-write-buffer.ts)                                                |
+| 导出快照与格式生成               | [`export-data.ts`](../src/core/download/export-data.ts)、[`format-choice.ts`](../src/ui/dialogs/format-choice.ts)                                                                         |
+| 浏览器实现                       | [`browser-download-dependencies.ts`](../src/adapters/browser-download-dependencies.ts)                                                                                                    |
 
 ## 模块依赖与运行调用
 
@@ -49,7 +49,7 @@ core/download 通过传入的能力调用浏览器实现
 
 4. 全本 `cache.finish` 先 seal 待写批次，再清理本书缓存。`runDownload` 返回 `{ status: "ready", data }`，页面以 taskId 校验后发布这份结果并调用 `showFormatChoice(data)`；外层 `finally` 处理清除请求，随后停心跳并释放书籍锁。
 
-代表测试：[`browser-download-flow.contract.test.ts`](tests/download/browser-download-flow.contract.test.ts)、[`download-lifecycle.contract.test.ts`](tests/download/download-lifecycle.contract.test.ts)。
+代表测试：[`browser-download-flow.contract.test.ts`](../tests/download/browser-download-flow.contract.test.ts)、[`download-lifecycle.contract.test.ts`](../tests/download/download-lifecycle.contract.test.ts)。
 
 ### 范围成功
 
@@ -57,7 +57,7 @@ core/download 通过传入的能力调用浏览器实现
 
 `cache.finish` 先 seal，再调用 `finishForTask` 关闭 writer，保留整书累计缓存。手动选择第 1 章到最后一章会规范化为全本，成功后清缓存。
 
-代表测试：[`download-selection.test.ts`](tests/download/download-selection.test.ts)、[`range-download-lifecycle.contract.test.ts`](tests/download/range-download-lifecycle.contract.test.ts)、[`book-lock-cache.contract.test.ts`](tests/cache/book-lock-cache.contract.test.ts)。
+代表测试：[`download-selection.test.ts`](../tests/download/download-selection.test.ts)、[`range-download-lifecycle.contract.test.ts`](../tests/download/range-download-lifecycle.contract.test.ts)、[`book-lock-cache.contract.test.ts`](../tests/cache/book-lock-cache.contract.test.ts)。
 
 ### 取消保留与停止清除
 
@@ -68,7 +68,7 @@ core/download 通过传入的能力调用浏览器实现
 - 核心 `finally` 关闭密码队列、密码弹窗及 buffer 监听；页面 `finally` 停心跳并释放锁。即使缓存清理失败，也继续释放资源。
 - 取消返回 `{ status: "cancelled", outcome }`，失败抛出异常；两者均不替换上次可导出的结果。
 
-代表测试：[`browser-download-cancellation.contract.test.ts`](tests/download/browser-download-cancellation.contract.test.ts)、[`cache-write-buffer.test.ts`](tests/cache/cache-write-buffer.test.ts)、[`task-finalizer.test.ts`](tests/download/task-finalizer.test.ts)、[`download-resilience.stress.test.ts`](tests/stress/download-resilience.stress.test.ts)。
+代表测试：[`browser-download-cancellation.contract.test.ts`](../tests/download/browser-download-cancellation.contract.test.ts)、[`cache-write-buffer.test.ts`](../tests/cache/cache-write-buffer.test.ts)、[`task-finalizer.test.ts`](../tests/download/task-finalizer.test.ts)、[`download-resilience.stress.test.ts`](../tests/stress/download-resilience.stress.test.ts)。
 
 ## 状态由谁维护
 
@@ -99,9 +99,9 @@ core/download 通过传入的能力调用浏览器实现
 
 ## 改一条规则时
 
-- 缓存是否兼容：改 `image-cache-compatibility.ts`，检查 [`cache-preview.contract.test.ts`](tests/cache/cache-preview.contract.test.ts)。预览不授权清理；正式 claim 在同一写事务检查兼容性和确认，未确认不写入、不迁移清理、不发 claimed 事件。
+- 缓存是否兼容：改 `image-cache-compatibility.ts`，检查 [`cache-preview.contract.test.ts`](../tests/cache/cache-preview.contract.test.ts)。预览不授权清理；正式 claim 在同一写事务检查兼容性和确认，未确认不写入、不迁移清理、不发 claimed 事件。
 - 密码错误如何处理：看 `protected-chapters.ts`；站点授权协议看 `browser-protected-chapter.ts`。拒绝的密码不能变成普通失败章节或缓存记录。
-- 会话／导出清理与跨页失效：看 `state.ts`、`cache/manager.ts` 和 [`runtime-cache-ownership.contract.test.ts`](tests/cache/runtime-cache-ownership.contract.test.ts)。已有结果与新任务独立，活动章节表不由同步事件清空。
-- 导出生成与重试：看 `format-choice.ts` 和 [`export-recovery.contract.test.ts`](tests/export/export-recovery.contract.test.ts)。缺章占位只加入导出快照。
+- 会话／导出清理与跨页失效：看 `state.ts`、`cache/manager.ts` 和 [`runtime-cache-ownership.contract.test.ts`](../tests/cache/runtime-cache-ownership.contract.test.ts)。已有结果与新任务独立，活动章节表不由同步事件清空。
+- 导出生成与重试：看 `format-choice.ts` 和 [`export-recovery.contract.test.ts`](../tests/export/export-recovery.contract.test.ts)。缺章占位只加入导出快照。
 
-注释保持就近、简短：方法说明一句职责，阶段边界说明不直观的顺序。修改流程时同时检查这里的入口与代表测试；验证命令和隔离约定见 [`tests/README.md`](tests/README.md)。
+注释保持就近、简短：方法说明一句职责，阶段边界说明不直观的顺序。修改流程时同时检查这里的入口与代表测试；验证命令和隔离约定见 [`docs/testing.md`](testing.md)。
