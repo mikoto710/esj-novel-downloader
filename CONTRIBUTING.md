@@ -45,9 +45,11 @@ npm run test:stress
 修改下载入口、缓存、取消、密码或导出流程前，先读 [`ARCHITECTURE.md`](ARCHITECTURE.md)。其中记录实际调用链、状态所有者和代表测试；从 `coordinator.runDownload` 阅读业务阶段，再进入相应模块。
 
 - 浏览器实现由 `adapters/` 装配；下载内核通过明确输入、能力和返回结果协作，ESLint 检查直接依赖边界。
-- `core/cache/` 是持久化实现，`task-finalizer.ts` 是浏览器任务收尾，不能只按 `core/` 目录名判断环境依赖。
+- `core/cache/` 是持久化实现，`adapters/book-download-lifecycle.ts` 负责浏览器任务收尾；下载内核不包含浏览器收尾例外。
 - 核心层输出稳定消息代码，由 adapter / UI 本地化；小说正文、书籍元数据、原始链接及站点协议文本保持原样。
 - 全本与范围共享书籍锁和缓存；成功、失败、取消都经过统一收尾。缓存格式或取消语义变化先说明兼容方案。
+- 每次下载显式传入章节表、锁与取消能力；页面 state 只持有操作入口、显示摘要和最近导出。旧任务回调必须校验 taskId。
+- 本次范围就绪数 `readyChapterCount` 与整书库存 `bookChapterCount` 分开；清理摘要、续传缓存和导出结果分别操作。
 
 ## 提交流程
 

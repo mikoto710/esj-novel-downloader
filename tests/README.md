@@ -63,6 +63,16 @@
 
 范围下载还应覆盖：绝对章节索引、选中范围计数、范围外缓存隔离、`finishForTask()` 写入关闭、关闭后延迟写入、同书全本／范围互斥、实际导出后才写入历史，以及 3000 章高缓存命中与图片 Blob 压力场景。
 
+状态所有权的代表回归：
+
+- `cache/runtime-cache-ownership.contract.test.ts`：真实 state 和同步订阅，旧导出＋新会话、远程接管／清除、旧事件复核、运行中核心的所有权退出、显式清理归属和 EPUB 失效。
+- `download/browser-download-flow.contract.test.ts`：显式任务输入、晚到回调、核心启动前失败与语言订阅清理；`browser-download-cancellation.contract.test.ts` 覆盖信号隔离及 discard 升级。
+- `download/download-progress.test.ts`：阶段校验、不可反写的快照和范围就绪数；`download-coordinator.characterization.test.ts` 保留密码、字体、范围与重试行为，并覆盖弹窗清理失败后的监听释放。
+- `export/export-recovery.contract.test.ts`：生成中或其他页面改变 EPUB 设置时重建派生产物；格式失败仍能重试，旧结果的诊断与标题恢复遵守任务归属。
+- `download/task-finalizer.test.ts`：清理失败、心跳退出异常和释放失败仍保留新任务操作入口。
+
+Browser harness 显式创建本次任务并传入，不再预设共享 Map 或取消控制器；同步回归单独使用 fake channel，避免由 harness 屏蔽同步导致覆盖缺口。
+
 涉及生命周期时，还应确认 timer、listener、channel、数据库和任务锁均已释放。
 
 ## 命令与完成口径
@@ -109,3 +119,23 @@ npm run test:stress
 - 弹窗尺寸、滚动和视觉状态。
 
 涉及这些场景时，应记录实际使用的浏览器和 userscript 管理器。
+
+整改验收还需记录以下实际场景，合成浏览器 fixture 只能计为自动化证据：
+
+- 详情／论坛：全本、范围、续传、再次导出，TXT / HTML / EPUB。
+- 已有导出后再执行失败、普通停止、停止清理或跨页接管：旧结果可用，当前 writer 按归属收尾。
+- 同书冲突、远程停止、保存中升级清理、旧通知晚到，不影响新任务或另一书。
+- 密码拒绝／跳过、字体确认、缺章重试／占位、插图不兼容确认、语言切换和 EPUB 设置失效。
+- 记录 Chrome 与 Tampermonkey 版本和实际结果；Firefox / Violentmonkey 未测时写明未测。
+- 维护者从 `runBookDownload` 和 `runDownload` 说明数据来源、阶段、分支与退出，并定位修改密码／缓存规则的模块。
+
+### 本轮验收记录（2026-10-04）
+
+| 验收项                         | 状态与证据                                                                                                                                                        |
+| ------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 隔离浏览器自动化               | Chrome 154.0.8037.97；使用临时配置和 GM fixture shim，无真实 Tampermonkey。详情／论坛、全本／范围、续传、再次导出、三种格式触发及语言切换通过；不计为真实扩展验收 |
+| Chrome + Tampermonkey 实际矩阵 | 待维护者按上方清单测试并补充版本、场景和结果；已确认稍后测试                                                                                                      |
+| Firefox + Violentmonkey        | 未验证                                                                                                                                                            |
+| 主流程阅读与规则定位           | 待维护者阅读 `ARCHITECTURE.md` 后确认；已确认稍后阅读                                                                                                             |
+
+代码与自动化完成不代表本轮关闭；真实扩展矩阵和维护者阅读确认仍是待验收项。
