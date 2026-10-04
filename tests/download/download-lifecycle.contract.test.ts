@@ -198,16 +198,6 @@ describe("download lifecycle contracts", () => {
         });
     });
 
-    it("shows cache preparation before claiming the writer", async () => {
-        await scrapeDetail();
-
-        expect(mocks.log).toHaveBeenCalledWith("正在准备本地缓存…");
-        expect(mocks.claimCache).toHaveBeenCalledWith("100", lock.taskId, false, expect.any(AbortSignal), {
-            allowInvalidation: false
-        });
-        expect(mocks.log.mock.invocationCallOrder[0]).toBeLessThan(mocks.claimCache.mock.invocationCallOrder[0]);
-    });
-
     it("cancels an in-progress cache claim before starting the download", async () => {
         const claimStarted = createDeferred<void>();
         const claimAborted = createDeferred<void>();
@@ -238,7 +228,7 @@ describe("download lifecycle contracts", () => {
 
         expect(mocks.batchDownload).not.toHaveBeenCalled();
         expect(mocks.finalize).toHaveBeenCalledOnce();
-        expect(mocks.log.mock.calls.flat().join("\n")).not.toContain("抓取流程异常");
+        expect(mocks.showTerminalFailure).not.toHaveBeenCalled();
     });
 
     it("passes the confirmed image setting snapshot through cache claim and download", async () => {

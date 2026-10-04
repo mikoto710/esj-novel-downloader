@@ -62,28 +62,16 @@ describe("download history chapter summary locale", () => {
         ]);
     });
 
-    it("formats structured counts in Taiwanese wording and keeps legacy text readable", async () => {
+    it("keeps structured range counts and legacy chapter text readable", async () => {
         createDownloadHistoryPopup();
 
         await vi.waitFor(() => {
             const text = document.querySelector("#esj-download-history")?.textContent;
-            expect(text).toContain("共 12 章（其中 2 章為缺章說明）");
-            expect(text).toContain("第 101–120 章，共 20 章（其中 1 章為缺章說明）");
-            expect(text).toContain("範圍");
+            expect(text).toContain("12");
+            expect(text).toContain("101–120");
+            expect(text).toContain("20");
             expect(text).toContain("舊版章節文字");
         });
-    });
-
-    it("uses a compact delete label with a descriptive title", async () => {
-        createDownloadHistoryPopup();
-        await vi.waitFor(() => expect(document.querySelectorAll("#esj-download-history tbody tr")).toHaveLength(3));
-
-        const deleteButton = document.querySelector(
-            "#esj-download-history tbody tr:first-child td:last-child button:last-child"
-        ) as HTMLButtonElement;
-
-        expect(deleteButton.textContent).toBe("刪除");
-        expect(deleteButton.title).toBe("刪除紀錄");
     });
 
     it("resizes adjacent columns and preserves their widths across locale refresh", async () => {
@@ -94,33 +82,35 @@ describe("download history chapter summary locale", () => {
         const columns = Array.from(table.querySelectorAll<HTMLTableColElement>("col"));
         const headers = Array.from(table.querySelectorAll<HTMLTableCellElement>("thead th"));
         const handles = Array.from(table.querySelectorAll<HTMLElement>(".esj-history-column-resizer"));
-        const columnWidths = [210, 120, 90, 80, 80, 140, 90, 120, 70];
+        const columnWidths = headers.map(() => 120);
         vi.spyOn(table, "getBoundingClientRect").mockReturnValue({ width: 1000 } as DOMRect);
         headers.forEach((header, index) => {
             vi.spyOn(header, "getBoundingClientRect").mockReturnValue({ width: columnWidths[index] } as DOMRect);
         });
 
-        expect(handles).toHaveLength(8);
         handles[0].dispatchEvent(new MouseEvent("mousedown", { bubbles: true, button: 0, clientX: 210 }));
         document.dispatchEvent(new MouseEvent("mousemove", { clientX: 240 }));
         document.dispatchEvent(new MouseEvent("mouseup"));
 
-        expect(columns[0].style.width).toBe("24%");
-        expect(columns[1].style.width).toBe("9%");
+        const resizedWidths = columns.map((column) => column.style.width);
+        expect(parseFloat(resizedWidths[0])).toBeGreaterThan((columnWidths[0] / 1000) * 100);
+        expect(parseFloat(resizedWidths[1])).toBeLessThan((columnWidths[1] / 1000) * 100);
+        expect(parseFloat(resizedWidths[0]) + parseFloat(resizedWidths[1])).toBeCloseTo(
+            ((columnWidths[0] + columnWidths[1]) / 1000) * 100
+        );
 
         setInterfaceLocalePreference("zh-CN");
         publishInterfaceLocaleChange();
 
         expect(headers[0].querySelector(".esj-history-column-resizer")).toBe(handles[0]);
-        expect(columns[0].style.width).toBe("24%");
-        expect(columns[1].style.width).toBe("9%");
-        expect(headers[0].textContent).toContain("书名");
+        expect(columns.map((column) => column.style.width)).toEqual(resizedWidths);
     });
 
     it("refreshes the open table in place and preserves active filters", async () => {
         createDownloadHistoryPopup();
         await vi.waitFor(() => expect(document.querySelectorAll("#esj-download-history tbody tr")).toHaveLength(3));
         const popup = document.querySelector("#esj-download-history") as HTMLElement;
+        const previousText = popup.textContent;
         const selects = Array.from(popup.querySelectorAll("select")) as HTMLSelectElement[];
         selects[0].value = "book";
         selects[1].value = "epub";
@@ -132,7 +122,9 @@ describe("download history chapter summary locale", () => {
 
         expect(document.querySelector("#esj-download-history")).toBe(popup);
         expect(selects.map((select) => select.value)).toEqual(["book", "epub", "detail"]);
-        expect(popup.textContent).toContain("下载记录");
-        expect(popup.textContent).toContain("共 12 章（其中 2 章为缺失占位）");
+        expect(popup.textContent).not.toBe(previousText);
+        expect(popup.textContent).toContain("Structured Book");
+        expect(popup.textContent).not.toContain("Range Book");
+        expect(popup.textContent).not.toContain("Legacy Book");
     });
 });

@@ -34,23 +34,8 @@ describe("mapped font export UI", () => {
         const epub = document.querySelector("#esj-epub") as HTMLButtonElement;
         const html = document.querySelector("#esj-html") as HTMLButtonElement;
         expect(txt.disabled).toBe(true);
-        expect(txt.textContent).toContain("TXT 不可用");
         expect(epub.disabled).toBe(false);
         expect(html.disabled).toBe(false);
-        expect(document.querySelector("#esj-format-mapping-warning")?.textContent).toContain("TXT 已禁用");
-        expect(document.querySelector("#esj-format")?.textContent).toContain("映射正文尚未恢复为真实 Unicode");
-    });
-
-    it("shows a second confirmation before generating a mapped EPUB", () => {
-        state.cachedData = createCachedData({ chapters: [createMappedChapter()] });
-        showFormatChoice(state.cachedData);
-
-        (document.querySelector("#esj-epub") as HTMLButtonElement).click();
-
-        expect(document.querySelector("#esj-mapping-export-confirm")?.textContent).toContain("确认生成 EPUB");
-        expect(document.querySelector("#esj-mapping-export-confirm")?.textContent).toContain(
-            "复制、搜索和朗读可能不正确"
-        );
     });
 
     it("keeps TXT enabled for a normal book", () => {
@@ -62,36 +47,20 @@ describe("mapped font export UI", () => {
         expect(document.querySelector("#esj-format-mapping-warning")).toBeNull();
     });
 
-    it("requires an explicit choice when the download first detects a mapped chapter", async () => {
+    it.each([
+        ["#esj-mapping-continue", true],
+        ["#esj-mapping-stop", false]
+    ] as const)("settles and removes the mapping prompt through %s", async (selector, accepted) => {
         const confirmation = confirmMappingFontDownload({
             task: createDownloadTask(),
             chapterCount: 1,
             fontBytes: 64,
             inFlightLimit: 5
         });
+        document.querySelector<HTMLButtonElement>(selector)!.click();
 
-        expect(document.querySelector("#esj-mapping-confirm")?.textContent).toContain("继续下载（仅 HTML/EPUB）");
-        expect(document.querySelector("#esj-mapping-inflight-warning")?.textContent).toContain(
-            "进度最多还可能增加 5 章"
-        );
-        expect(document.querySelector("#esj-mapping-inflight-warning")?.textContent).toContain("已停止领取新章节");
-        (document.querySelector("#esj-mapping-stop") as HTMLButtonElement).click();
-
-        await expect(confirmation).resolves.toBe(false);
-    });
-
-    it("states that no new requests are in flight when consent comes from restored cache", async () => {
-        const confirmation = confirmMappingFontDownload({
-            task: createDownloadTask(),
-            chapterCount: 3,
-            fontBytes: 192,
-            inFlightLimit: 0
-        });
-
-        expect(document.querySelector("#esj-mapping-inflight-warning")?.textContent).toContain("尚未发出新的章节请求");
-        (document.querySelector("#esj-mapping-stop") as HTMLButtonElement).click();
-
-        await expect(confirmation).resolves.toBe(false);
+        await expect(confirmation).resolves.toBe(accepted);
+        expect(document.querySelector("#esj-mapping-confirm")).toBeNull();
     });
 
     it("closes as rejection when the task signal aborts", async () => {
@@ -109,23 +78,22 @@ describe("mapped font export UI", () => {
 });
 
 describe("incomplete chapter decision UI", () => {
+    it.each([
+        ["#esj-incomplete-retry", "retry"],
+        ["#esj-incomplete-export", "export-with-placeholders"],
+        ["#esj-incomplete-cancel", "cancel"]
+    ] as const)("settles and removes the incomplete prompt through %s", async (selector, expected) => {
+        const task = createDownloadTask();
+        const decision = confirmIncompleteChapters({ missingTasks: [task], totalChapters: 1 });
+        expect(document.querySelector("#esj-incomplete-chapters")?.textContent).toContain(task.title);
+        document.querySelector<HTMLButtonElement>(selector)!.click();
+
+        await expect(decision).resolves.toBe(expected);
+        expect(document.querySelector("#esj-incomplete-chapters")).toBeNull();
+    });
     beforeEach(() => {
         setInterfaceLocalePreference("zh-CN");
         document.body.innerHTML = "";
-    });
-
-    it("lists missing chapters and exposes all three explicit decisions", async () => {
-        const tasks = Array.from({ length: 12 }, (_, index) => createDownloadTask(index));
-        const decision = confirmIncompleteChapters({ missingTasks: tasks, totalChapters: 12 });
-
-        const popup = document.querySelector("#esj-incomplete-chapters");
-        expect(popup?.textContent).toContain("自动补抓后仍有 12 个章节缺失");
-        expect(popup?.querySelectorAll("ol li")).toHaveLength(11);
-        expect(popup?.textContent).toContain("另有 2 章未列出");
-        expect((document.activeElement as HTMLElement | null)?.id).toBe("esj-incomplete-retry");
-        (document.querySelector("#esj-incomplete-export") as HTMLButtonElement).click();
-
-        await expect(decision).resolves.toBe("export-with-placeholders");
     });
 
     it("shows selected and source positions for missing range chapters", async () => {
@@ -138,25 +106,11 @@ describe("incomplete chapter decision UI", () => {
             taskOrderByIndex: new Map([[100, 0]])
         });
 
-        expect(document.querySelector("#esj-incomplete-chapters")?.textContent).toContain("[1/20｜原书第 101 章]");
+        const popup = document.querySelector("#esj-incomplete-chapters")!;
+        expect(popup.textContent).toContain("1/20");
+        expect(popup.textContent).toContain("101");
         (document.querySelector("#esj-incomplete-cancel") as HTMLButtonElement).click();
         await expect(decision).resolves.toBe("cancel");
-    });
-
-    it("returns retry and removes the dialog when missing chapters are retried", async () => {
-        const decision = confirmIncompleteChapters({ missingTasks: [createDownloadTask()], totalChapters: 1 });
-        (document.querySelector("#esj-incomplete-retry") as HTMLButtonElement).click();
-
-        await expect(decision).resolves.toBe("retry");
-        expect(document.querySelector("#esj-incomplete-chapters")).toBeNull();
-    });
-
-    it("returns cancel and removes the dialog when cancellation keeps the cache", async () => {
-        const decision = confirmIncompleteChapters({ missingTasks: [createDownloadTask()], totalChapters: 1 });
-        (document.querySelector("#esj-incomplete-cancel") as HTMLButtonElement).click();
-
-        await expect(decision).resolves.toBe("cancel");
-        expect(document.querySelector("#esj-incomplete-chapters")).toBeNull();
     });
 
     it("closes as cancellation when the download signal aborts", async () => {

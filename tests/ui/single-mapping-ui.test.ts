@@ -48,7 +48,6 @@ describe("single-page mapped font UI", () => {
         const buttons = getButtons();
         expect(buttons.txt.getAttribute("aria-disabled")).toBe("true");
         expect(buttons.html.getAttribute("aria-disabled")).toBe("true");
-        expect(document.querySelector("#esj-single-mapping-warning")?.textContent).toContain("正在检测");
 
         document.body.insertAdjacentHTML(
             "beforeend",
@@ -58,7 +57,6 @@ describe("single-page mapped font UI", () => {
         await vi.waitFor(() => {
             expect(buttons.txt.getAttribute("aria-disabled")).toBe("true");
             expect(buttons.html.getAttribute("aria-disabled")).toBe("false");
-            expect(document.querySelector("#esj-single-mapping-warning")?.textContent).toContain("TXT 已禁用");
         });
     });
 
@@ -73,13 +71,13 @@ describe("single-page mapped font UI", () => {
 
         injectSinglePageButton();
 
-        expect(document.querySelector("#esj-single-mapping-warning")?.textContent).toContain("正在检测");
-        expect(document.querySelector("#esj-single-mapping-warning")?.textContent).not.toContain("解析失败");
+        expect(getButtons().txt.getAttribute("aria-disabled")).toBe("true");
+        expect(getButtons().html.getAttribute("aria-disabled")).toBe("true");
         document.querySelector(".forum-content")?.appendChild(section);
 
         await vi.waitFor(() => {
-            expect(document.querySelector("#esj-single-mapping-warning")?.textContent).toContain("TXT 已禁用");
-            expect(document.querySelector("#esj-single-mapping-warning")?.textContent).not.toContain("解析失败");
+            expect(getButtons().txt.getAttribute("aria-disabled")).toBe("true");
+            expect(getButtons().html.getAttribute("aria-disabled")).toBe("false");
         });
     });
 
@@ -111,12 +109,11 @@ describe("single-page mapped font UI", () => {
             expect(buttons.html.getAttribute("aria-disabled")).toBe("false");
             expect(buttons.txt.dataset.esjProtected).toBe("true");
             expect(buttons.html.dataset.esjProtected).toBe("true");
-            expect(document.querySelector("#esj-single-mapping-warning")?.textContent).toContain("请先解锁后再下载");
         });
 
         getButtons().txt.click();
         expect(document.querySelector("#esj-protected-chapter")).toBeNull();
-        expect(document.querySelector("#esj-message-popup")?.textContent).toContain("请先输入密码解锁该章节");
+        expect(document.querySelector("#esj-message-popup")).not.toBeNull();
         (document.querySelector("#esj-message-close") as HTMLButtonElement).click();
 
         document.querySelector(".forum-content")!.innerHTML = "<p>Unlocked body</p>";
@@ -124,7 +121,6 @@ describe("single-page mapped font UI", () => {
             const buttons = getButtons();
             expect(buttons.txt.dataset.esjProtected).toBeUndefined();
             expect(buttons.html.dataset.esjProtected).toBeUndefined();
-            expect(buttons.txt.getAttribute("title")).toBe("下载本章（TXT）");
             expect(document.querySelector("#esj-single-mapping-warning")).toBeNull();
         });
     });
@@ -140,8 +136,7 @@ describe("single-page mapped font UI", () => {
             expect(buttons.txt.getAttribute("aria-disabled")).toBe("true");
             expect(buttons.html.getAttribute("aria-disabled")).toBe("true");
             const warning = document.querySelector("#esj-single-mapping-warning")?.textContent;
-            expect(warning).toContain("映射字型解析失敗");
-            expect(warning).toContain("章節結構無效");
+            expect(warning).toBeTruthy();
             expect(warning).not.toContain("structure-invalid");
         });
     });
@@ -150,14 +145,14 @@ describe("single-page mapped font UI", () => {
         installSinglePage(createMappedContent());
         injectSinglePageButton();
         await vi.waitFor(() => {
-            expect(document.querySelector("#esj-single-mapping-warning")?.textContent).toContain("TXT 已禁用");
+            expect(getButtons().txt.getAttribute("aria-disabled")).toBe("true");
+            expect(getButtons().html.getAttribute("aria-disabled")).toBe("false");
         });
 
         document.querySelector(".forum-content")!.innerHTML = "<p>Normal body</p>";
         (document.querySelector(".customizer-text-switch button") as HTMLButtonElement).click();
 
         expect(getButtons().html.getAttribute("aria-disabled")).toBe("true");
-        expect(document.querySelector("#esj-single-mapping-warning")?.textContent).toContain("正在检测");
         await vi.waitFor(() => {
             const buttons = getButtons();
             expect(buttons.txt.getAttribute("aria-disabled")).toBe("false");

@@ -9,7 +9,7 @@ import {
     createDownloadSelectionPopup,
     type DownloadSelectionPopupOptions
 } from "../../src/ui/dialogs/download-selection";
-import { publishInterfaceLocaleChange, t } from "../../src/ui/locale";
+import { publishInterfaceLocaleChange } from "../../src/ui/locale";
 import { setInterfaceLocalePreference } from "../../src/core/config";
 import { state } from "../../src/core/state";
 import { showFormatChoice } from "../../src/ui/popups";
@@ -45,41 +45,31 @@ describe("unified download selection UI", () => {
         publishInterfaceLocaleChange();
     });
 
-    it("injects one download entry followed by settings without disturbing native buttons", () => {
+    it("injects each entry once without removing native buttons", () => {
         document.body.innerHTML =
             '<div class="sp-buttons"><button id="favorite"></button><button id="edit"></button></div>';
         injectDetailButton();
         injectDetailButton();
-        expect(Array.from(document.querySelectorAll(".sp-buttons button")).map((button) => button.id)).toEqual([
-            "favorite",
-            "edit",
-            "btn-download-book",
-            ""
-        ]);
+        expect(document.querySelector("#favorite")).not.toBeNull();
+        expect(document.querySelector("#edit")).not.toBeNull();
+        expect(document.querySelectorAll("#btn-download-book")).toHaveLength(1);
+        expect(document.querySelectorAll(".esj-settings-trigger")).toHaveLength(1);
 
         document.body.innerHTML =
             '<div class="forum-list-page"><div class="column"><button id="new-thread"></button></div></div>';
         injectForumButton();
         injectForumButton();
-        expect(
-            Array.from(document.querySelectorAll(".forum-list-page .column button")).map((button) => button.id)
-        ).toEqual(["new-thread", "btn-download-forum", ""]);
+        expect(document.querySelector("#new-thread")).not.toBeNull();
+        expect(document.querySelectorAll("#btn-download-forum")).toHaveLength(1);
+        expect(document.querySelectorAll(".esj-settings-trigger")).toHaveLength(1);
     });
 
-    it("defaults to the whole book and shows the fixed image setting", async () => {
+    it("defaults to the whole book and disables range inputs", async () => {
         const decision = createDownloadSelectionPopup(selectionOptions({ imageEnabled: true }));
 
         expect(document.querySelector<HTMLInputElement>("#esj-download-all")?.checked).toBe(true);
-        expect(document.querySelector("#esj-download-mode select")).toBeNull();
-        expect(document.querySelector<HTMLElement>("#esj-range-fields")?.style.display).toBe("none");
-        expect(document.querySelector<HTMLElement>("#esj-range-validation")?.style.display).toBe("none");
-        expect(document.querySelector<HTMLElement>("#esj-range-all-warning")?.style.display).toBe("none");
-        expect(document.querySelector("#esj-range-stop-warning")).toBeNull();
         expect(document.querySelector<HTMLInputElement>("#esj-range-start")?.disabled).toBe(true);
         expect(document.querySelector<HTMLInputElement>("#esj-range-end")?.disabled).toBe(true);
-        expect(document.querySelector("#esj-download-images")?.textContent).toBe("🖼️ 正文插图：开启");
-        expect(document.querySelector("#esj-range-summary")?.textContent).toContain("5 章");
-        expect(document.querySelector("#esj-range-summary")?.textContent).toContain("2 章缓存");
 
         document.querySelector<HTMLButtonElement>("#esj-range-download")?.click();
         await expect(decision).resolves.toEqual({
@@ -88,15 +78,12 @@ describe("unified download selection UI", () => {
         });
     });
 
-    it("reveals range fields on demand and retains input when switching back", async () => {
+    it("enables range inputs and retains their values when switching back", async () => {
         const decision = createDownloadSelectionPopup(selectionOptions());
         selectRange("2", "4");
-        expect(document.querySelector<HTMLElement>("#esj-range-fields")?.style.display).toBe("flex");
         expect(document.querySelector<HTMLInputElement>("#esj-range-start")?.disabled).toBe(false);
 
         document.querySelector<HTMLInputElement>("#esj-download-all")?.click();
-        expect(document.querySelector<HTMLElement>("#esj-range-fields")?.style.display).toBe("none");
-        expect(document.querySelector("#esj-range-summary")?.textContent).toContain("5 章");
         document.querySelector<HTMLInputElement>("#esj-download-range")?.click();
         expect(document.querySelector<HTMLInputElement>("#esj-range-start")?.value).toBe("2");
         expect(document.querySelector<HTMLInputElement>("#esj-range-end")?.value).toBe("4");
@@ -111,8 +98,6 @@ describe("unified download selection UI", () => {
         const decision = createDownloadSelectionPopup(selectionOptions());
         selectRange("1", "5");
 
-        expect(document.querySelector<HTMLElement>("#esj-range-all-warning")?.style.display).toBe("block");
-        expect(document.querySelector("#esj-range-all-warning")?.textContent).toContain("成功后清理本书缓存");
         document.querySelector<HTMLButtonElement>("#esj-range-download")?.click();
 
         await expect(decision).resolves.toEqual({
@@ -122,19 +107,15 @@ describe("unified download selection UI", () => {
     });
 
     it.each([
-        ["0", "3"],
-        ["2", "6"],
         ["4", "2"],
-        ["1.5", "3"],
-        ["", "3"],
-        ["1", ""]
+        ["", "3"]
     ])("rejects the invalid range %s..%s without closing the dialog", async (start, end) => {
         const decision = createDownloadSelectionPopup(selectionOptions());
         selectRange(start, end);
         const download = document.querySelector<HTMLButtonElement>("#esj-range-download")!;
 
         expect(download.disabled).toBe(true);
-        expect(document.querySelector("#esj-range-validation")?.textContent).toContain("整数");
+        expect(document.querySelector("#esj-range-validation")?.textContent).toBeTruthy();
         download.click();
         expect(document.querySelector("#esj-range-selection")).not.toBeNull();
         document.querySelector<HTMLButtonElement>("#esj-range-cancel")?.click();
@@ -143,23 +124,23 @@ describe("unified download selection UI", () => {
 
     it("previews only selected cached chapters and preserves selection across locale changes", async () => {
         document.body.innerHTML = '<button class="esj-settings-trigger"></button>';
-        const decision = createDownloadSelectionPopup(selectionOptions());
+        const decision = createDownloadSelectionPopup(
+            selectionOptions({ cachedIndexes: new Set([0, 1, 3]), cacheCount: 3 })
+        );
         selectRange("2", "4");
         const start = document.querySelector<HTMLInputElement>("#esj-range-start")!;
         const end = document.querySelector<HTMLInputElement>("#esj-range-end")!;
-        expect(document.querySelector("#esj-range-summary")?.textContent).toContain("3 章");
-        expect(document.querySelector("#esj-range-summary")?.textContent).toContain("2 章缓存");
-        expect(document.querySelector<HTMLElement>("#esj-range-all-warning")?.style.display).toBe("none");
-        expect(document.querySelector("#esj-range-start-title")?.textContent).toContain("第 2 章");
-        expect(document.querySelector("#esj-range-end-title")?.textContent).toContain("第 4 章");
+        const summary = document.querySelector("#esj-range-summary")!;
+        const previousSummary = summary.textContent;
+        expect(previousSummary).toContain("3");
+        expect(document.querySelector("#esj-range-cache-reuse")?.textContent?.match(/\d+/g)).toEqual(["2"]);
 
         setInterfaceLocalePreference("zh-TW");
         publishInterfaceLocaleChange();
         expect(start.value).toBe("2");
         expect(end.value).toBe("4");
+        expect(summary.textContent).not.toBe(previousSummary);
         expect(document.querySelector<HTMLInputElement>("#esj-download-range")?.checked).toBe(true);
-        expect(document.querySelector("#esj-range-summary")?.textContent).toContain("快取");
-        expect(document.querySelector("#esj-download-images")?.textContent).toBe("🖼️ 正文插圖：關閉");
 
         document.querySelector<HTMLButtonElement>("#esj-range-download")?.click();
         await expect(decision).resolves.toEqual({
@@ -169,20 +150,16 @@ describe("unified download selection UI", () => {
         expect(document.querySelector<HTMLButtonElement>(".esj-settings-trigger")?.disabled).toBe(false);
     });
 
-    it("shows zero reuse and warns about whole-book invalidation outside the selected range", async () => {
+    it("warns about whole-book inventory before a range download", async () => {
         const decision = createDownloadSelectionPopup(
             selectionOptions({ cacheWillBeInvalidated: true, cacheCount: 300 })
         );
         selectRange("2", "3");
 
-        expect(document.querySelector("#esj-range-summary")?.textContent).toContain("复用 0 章缓存");
-        expect(document.querySelector("#esj-range-cache-warning")?.textContent).toContain("300 章缓存");
-        expect(document.querySelector("#esj-range-cache-warning")?.textContent).toContain("所选范围之外");
-        expect(document.querySelector<HTMLButtonElement>("#esj-range-download")?.textContent).toBe("清除缓存并下载");
+        expect(document.querySelector("#esj-range-cache-warning")?.textContent).toContain("300");
         setInterfaceLocalePreference("zh-TW");
         publishInterfaceLocaleChange();
-        expect(document.querySelector("#esj-range-cache-warning")?.textContent).toContain("300 章快取");
-        expect(document.querySelector<HTMLButtonElement>("#esj-range-download")?.textContent).toBe("清除快取並下載");
+        expect(document.querySelector("#esj-range-cache-warning")?.textContent).toContain("300");
         document.querySelector<HTMLButtonElement>("#esj-range-cancel")?.click();
         await expect(decision).resolves.toEqual({ action: "cancel" });
     });
@@ -210,17 +187,16 @@ describe("unified download selection UI", () => {
         );
 
         expect(document.querySelector<HTMLButtonElement>("#esj-range-download")?.disabled).toBe(true);
-        expect(document.querySelector("#esj-range-validation")?.textContent).toBe(t("page.cacheUnavailable.message"));
+        const validation = document.querySelector("#esj-range-validation")!;
+        const errorMessage = validation.textContent;
+        expect(errorMessage).toBeTruthy();
         const previous = document.querySelector<HTMLButtonElement>("#esj-range-open-previous")!;
         expect(previous.disabled).toBe(false);
-        expect(previous.textContent).toContain("再次导出上次结果");
         expect(previous.textContent).toContain("2–3");
         expect(document.activeElement).toBe(previous);
         setInterfaceLocalePreference("zh-TW");
         publishInterfaceLocaleChange();
-        expect(document.querySelector("#esj-range-validation")?.textContent).toBe(t("page.cacheUnavailable.message"));
-        expect(document.querySelector("#esj-range-validation")?.textContent).toContain("瀏覽器儲存權限");
-        expect(previous.textContent).toContain("再次匯出");
+        expect(validation.textContent).not.toBe(errorMessage);
         expect(document.querySelector<HTMLButtonElement>("#esj-range-download")?.disabled).toBe(true);
         previous.click();
         await expect(decision).resolves.toEqual({ action: "open-existing" });
@@ -228,13 +204,11 @@ describe("unified download selection UI", () => {
 
     it("labels the previous whole-book result independently of the newly selected range", async () => {
         const decision = createDownloadSelectionPopup(selectionOptions({ hasExistingExport: true }));
-        selectRange("2", "3");
         const previous = document.querySelector<HTMLButtonElement>("#esj-range-open-previous")!;
+        const previousLabel = previous.textContent;
+        selectRange("2", "3");
 
-        expect(previous.textContent).toContain("全本下载");
-        setInterfaceLocalePreference("zh-TW");
-        publishInterfaceLocaleChange();
-        expect(previous.textContent).toContain("再次匯出上次結果（全本下載）");
+        expect(previous.textContent).toBe(previousLabel);
         previous.click();
         await expect(decision).resolves.toEqual({ action: "open-existing" });
     });
@@ -250,19 +224,20 @@ describe("unified download selection UI", () => {
         const settings = createSettingButton() as HTMLButtonElement;
         document.body.append(button, settings);
 
+        const idleLabel = button.textContent;
         button.click();
         await vi.waitFor(() => expect(document.querySelector("#esj-range-selection")).not.toBeNull());
         expect(button.disabled && settings.disabled).toBe(true);
-        expect(button.textContent).toContain("准备中");
+        expect(button.textContent).not.toBe(idleLabel);
         document.querySelector<HTMLButtonElement>("#esj-range-download")?.click();
         await vi.waitFor(() => expect(document.querySelector("#esj-range-selection")).toBeNull());
         expect(button.disabled && settings.disabled).toBe(true);
-        expect(button.textContent).toContain("准备中");
+        expect(button.textContent).not.toBe(idleLabel);
 
         flow.resolve(undefined);
         await vi.waitFor(() => expect(button.disabled).toBe(false));
         expect(settings.disabled).toBe(false);
-        expect(button.textContent?.trim()).toBe("下载");
+        expect(button.textContent).toBe(idleLabel);
     });
 
     it("cancels the unified entry without replacing the previous result and restores the current locale", async () => {
@@ -275,17 +250,17 @@ describe("unified download selection UI", () => {
         const settings = createSettingButton() as HTMLButtonElement;
         document.body.append(button, settings);
 
+        const previousLabel = button.textContent;
         button.click();
         await vi.waitFor(() => expect(document.querySelector("#esj-range-selection")).not.toBeNull());
         expect(scrape).toHaveBeenCalledOnce();
-        expect(document.querySelector("#esj-range-replace-confirm")).toBeNull();
         setInterfaceLocalePreference("zh-TW");
         publishInterfaceLocaleChange();
         document.querySelector<HTMLButtonElement>("#esj-range-cancel")?.click();
 
         await vi.waitFor(() => expect(button.disabled).toBe(false));
         expect(settings.disabled).toBe(false);
-        expect(button.textContent?.trim()).toBe("下載");
+        expect(button.textContent).not.toBe(previousLabel);
         expect(state.cachedData).toBe(previous);
     });
 

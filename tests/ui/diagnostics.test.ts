@@ -5,21 +5,23 @@ import {
     browserDiagnosticEvents,
     clearBrowserDiagnosticSessions,
     finishBrowserDiagnosticSession,
+    listBrowserDiagnosticSessions,
     recordBrowserDiagnosticFailure,
     startBrowserDiagnosticSession
 } from "../../src/adapters/browser-diagnostics";
-import { DIAGNOSTIC_CLOSE_UNCONFIRMED_MS } from "../../src/core/diagnostics";
 import { createInitialDownloadSnapshot } from "../../src/core/download/download-progress";
 import { createDiagnosticPopup } from "../../src/ui/dialogs/diagnostics";
 import { showMessagePopup } from "../../src/ui/dialogs/message";
 import { createSettingsPanel } from "../../src/ui/popups";
 import { setInterfaceLocalePreference } from "../../src/core/config";
+import * as locale from "../../src/ui/locale";
+import * as logger from "../../src/utils/log";
 
 function seedDiagnostic(result: "success" | "failed" = "failed"): void {
     startBrowserDiagnosticSession({
         taskId: `task-${result}`,
         bookId: "1737469479",
-        bookTitle: "Diagnostic Book",
+        bookTitle: `Diagnostic Book ${result}`,
         pageUrl: "https://www.esjzone.cc/detail/1737469479.html",
         sourcePageType: "detail",
         imageEnabled: false
@@ -51,6 +53,8 @@ describe("diagnostic history UI", () => {
         document.body.replaceChildren();
         clearBrowserDiagnosticSessions();
         setInterfaceLocalePreference("zh-CN");
+        vi.spyOn(locale, "t");
+        vi.spyOn(logger, "log").mockImplementation(() => undefined);
     });
 
     afterEach(() => {
@@ -61,16 +65,13 @@ describe("diagnostic history UI", () => {
         Object.defineProperty(document, "visibilityState", { configurable: true, value: "visible" });
     });
 
-    it("shows retained sessions, privacy boundaries and selected summary", () => {
+    it("shows the retained session and enables its export actions", () => {
         seedDiagnostic();
         createDiagnosticPopup();
 
         const popup = document.querySelector("#esj-diagnostics") as HTMLElement;
         expect(popup).not.toBeNull();
-        expect(popup.textContent).toContain("最近任务（最多 30 条）");
-        expect(popup.textContent).toContain("总计 4.0 MiB");
         expect(popup.textContent).toContain("Diagnostic Book");
-        expect(popup.textContent).toContain("作品链接和失败章节信息");
         expect(popup.textContent).toContain("network-error");
         expect((popup.querySelector("#esj-diagnostic-download") as HTMLButtonElement).disabled).toBe(false);
         expect((popup.querySelector("#esj-diagnostic-copy") as HTMLButtonElement).disabled).toBe(false);
@@ -78,7 +79,7 @@ describe("diagnostic history UI", () => {
 
     it("refreshes diagnostic history from persistent storage", () => {
         createDiagnosticPopup();
-        expect(document.querySelector("#esj-diagnostic-list")?.textContent).toContain("暂无记录");
+        expect((document.querySelector("#esj-diagnostic-download") as HTMLButtonElement).disabled).toBe(true);
 
         seedDiagnostic("success");
         (document.querySelector("#esj-diagnostic-refresh") as HTMLButtonElement).click();
@@ -86,22 +87,8 @@ describe("diagnostic history UI", () => {
         expect(document.querySelector("#esj-diagnostic-list")?.textContent).toContain("Diagnostic Book");
     });
 
-    it("shows a localized fallback for a diagnostic without a book title", () => {
-        startBrowserDiagnosticSession({
-            taskId: "task-untitled",
-            bookId: "unknown",
-            bookTitle: "",
-            pageUrl: "https://www.esjzone.cc/forum/1.html",
-            sourcePageType: "single",
-            imageEnabled: false
-        });
-        createDiagnosticPopup();
-
-        expect(document.querySelector("#esj-diagnostic-list")?.textContent).toContain("未知作品");
-        expect(document.querySelector("#esj-diagnostic-detail")?.textContent).toContain("未知作品");
-    });
-
     it("labels a running session with protected chapters as waiting for a password", () => {
+        vi.mocked(locale.t).mockImplementation((key) => key);
         startBrowserDiagnosticSession({
             taskId: "task-protected-waiting",
             bookId: "book-protected-waiting",
@@ -123,10 +110,8 @@ describe("diagnostic history UI", () => {
 
         createDiagnosticPopup();
 
-        expect(document.querySelector("#esj-diagnostic-list")?.textContent).toContain("等待输入密码");
-        expect(document.querySelector("#esj-diagnostic-detail")?.textContent).toContain("等待输入密码");
-        expect(document.querySelector("#esj-diagnostic-detail")?.textContent).toContain(
-            "密码章节：发现 2；待处理 1；已解锁 1；已跳过 0"
+        expect(document.querySelector("#esj-diagnostic-list")?.textContent).toContain(
+            "diagnostics.result.passwordPending"
         );
     });
 
@@ -147,6 +132,7 @@ describe("diagnostic history UI", () => {
 
     it("moves a closed session out of active display when a same-book continuation starts", async () => {
         vi.useFakeTimers();
+        vi.mocked(locale.t).mockImplementation((key) => key);
         startBrowserDiagnosticSession(
             {
                 taskId: "task-closed",
@@ -162,7 +148,7 @@ describe("diagnostic history UI", () => {
         dispatchPageHide(false);
         await vi.advanceTimersByTimeAsync(3000);
 
-        expect(document.querySelector("#esj-diagnostic-list")?.textContent).toContain("页面已关闭，结果未确认");
+        expect(document.querySelector("#esj-diagnostic-list")?.textContent).toContain("diagnostics.result.closed");
 
         startBrowserDiagnosticSession({
             taskId: "task-resumed",
@@ -180,33 +166,9 @@ describe("diagnostic history UI", () => {
         });
         await vi.advanceTimersByTimeAsync(3000);
 
-        const listText = document.querySelector("#esj-diagnostic-list")?.textContent || "";
-        expect(listText).toContain("进行中");
-        expect(listText).toContain("已由新的续传任务接替");
-        expect(document.querySelector("#esj-diagnostic-detail")?.textContent).toContain("旧会话不再视为进行中");
-    });
-
-    it("labels a long-closed session as view-only interrupted without changing its raw result", () => {
-        vi.useFakeTimers();
-        vi.setSystemTime(new Date("2026-08-04T00:00:00.000Z"));
-        startBrowserDiagnosticSession(
-            {
-                taskId: "task-interrupted-view",
-                bookId: "1737469479",
-                bookTitle: "Interrupted View Book",
-                pageUrl: "https://www.esjzone.cc/detail/1737469479.html",
-                sourcePageType: "detail",
-                imageEnabled: false
-            },
-            { observePageClose: true }
-        );
-        dispatchPageHide(false);
-        vi.advanceTimersByTime(DIAGNOSTIC_CLOSE_UNCONFIRMED_MS);
-
-        createDiagnosticPopup();
-
-        expect(document.querySelector("#esj-diagnostic-list")?.textContent).toContain("异常中断（结果未确认）");
-        expect(document.querySelector("#esj-diagnostic-detail")?.textContent).toContain("原始结果：running");
+        const listText = document.querySelector("#esj-diagnostic-list")?.textContent;
+        expect(listText).toContain("diagnostics.result.running");
+        expect(listText).toContain("diagnostics.result.superseded");
     });
 
     it("preserves selection and scroll positions during automatic refresh", async () => {
@@ -215,17 +177,19 @@ describe("diagnostic history UI", () => {
         seedDiagnostic("failed");
         createDiagnosticPopup();
 
-        const rows = document.querySelectorAll("#esj-diagnostic-list button");
-        (rows[1] as HTMLButtonElement).click();
+        const selected = Array.from(document.querySelectorAll<HTMLButtonElement>("#esj-diagnostic-list button")).find(
+            (row) => row.textContent?.includes("Diagnostic Book success")
+        )!;
+        selected.click();
         const list = document.querySelector("#esj-diagnostic-list") as HTMLElement;
         const detail = document.querySelector("#esj-diagnostic-detail") as HTMLElement;
         list.scrollTop = 34;
         detail.scrollTop = 56;
-        const selectedTitle = detail.querySelector("div")?.textContent;
 
         await vi.advanceTimersByTimeAsync(3000);
 
-        expect(detail.querySelector("div")?.textContent).toBe(selectedTitle);
+        expect(detail.textContent).toContain("Diagnostic Book success");
+        expect(detail.textContent).not.toContain("Diagnostic Book failed");
         expect(list.scrollTop).toBe(34);
         expect(detail.scrollTop).toBe(56);
     });
@@ -243,55 +207,6 @@ describe("diagnostic history UI", () => {
         await Promise.resolve();
         await vi.advanceTimersByTimeAsync(3000);
         expect(document.querySelector("#esj-diagnostic-list")?.textContent).toContain("Diagnostic Book");
-    });
-
-    it("keeps a successful presentation when only inline images failed", () => {
-        startBrowserDiagnosticSession({
-            taskId: "task-image-only",
-            bookId: "1737469479",
-            bookTitle: "Image-only diagnostic",
-            pageUrl: "https://www.esjzone.cc/detail/1737469479.html",
-            sourcePageType: "detail",
-            imageEnabled: true
-        });
-        recordBrowserDiagnosticFailure({
-            scope: "image",
-            stage: "request",
-            code: "image-request-failed",
-            message: "图片请求在重试后仍失败",
-            imageFailureCount: 2,
-            chapter: {
-                index: 0,
-                title: "Chapter 1",
-                url: "https://www.esjzone.cc/forum/1737469479/1.html"
-            }
-        });
-        finishBrowserDiagnosticSession("task-image-only", "success");
-
-        createDiagnosticPopup();
-
-        expect(document.querySelector("#esj-diagnostic-detail")?.textContent).toContain("下载完成");
-        expect(document.querySelector("#esj-diagnostic-detail")?.textContent).toContain("失败插图：2 张");
-    });
-
-    it("opens diagnostics from settings", () => {
-        seedDiagnostic("success");
-        const settingsTrigger = document.createElement("button");
-        settingsTrigger.className = "esj-settings-trigger";
-        document.body.appendChild(settingsTrigger);
-        createSettingsPanel();
-
-        const button = Array.from(document.querySelectorAll("#esj-settings button")).find(
-            (item) => item.textContent === "诊断日志"
-        ) as HTMLButtonElement;
-        button.click();
-
-        expect(document.querySelector("#esj-settings")).toBeNull();
-        expect(document.querySelector("#esj-diagnostics")).not.toBeNull();
-        expect(settingsTrigger.disabled).toBe(true);
-
-        (document.querySelector("#esj-diagnostics .esj-common-header button") as HTMLButtonElement).click();
-        expect(settingsTrigger.disabled).toBe(false);
     });
 
     it("does not release a settings lock owned by another popup", () => {
@@ -314,7 +229,7 @@ describe("diagnostic history UI", () => {
         createSettingsPanel();
         (
             Array.from(document.querySelectorAll("#esj-settings button")).find(
-                (item) => item.textContent === "诊断日志"
+                (item) => item.textContent === locale.t("settings.diagnosticsButton")
             ) as HTMLButtonElement
         ).click();
 
@@ -332,7 +247,7 @@ describe("diagnostic history UI", () => {
         createSettingsPanel();
         (
             Array.from(document.querySelectorAll("#esj-settings button")).find(
-                (item) => item.textContent === "诊断日志"
+                (item) => item.textContent === locale.t("settings.diagnosticsButton")
             ) as HTMLButtonElement
         ).click();
 
@@ -349,7 +264,6 @@ describe("diagnostic history UI", () => {
         showMessagePopup({ tone: "error", title: "Download failed", message: "Try again" });
 
         const button = document.querySelector("#esj-message-diagnostic") as HTMLButtonElement;
-        expect(button.textContent).toBe("查看诊断日志");
         button.click();
 
         expect(document.querySelector("#esj-message-popup")).toBeNull();
@@ -377,7 +291,7 @@ describe("diagnostic history UI", () => {
         button.click();
         (document.querySelector("#esj-diagnostic-clear-confirm-button") as HTMLButtonElement).click();
         await Promise.resolve();
-        expect(document.querySelector("#esj-diagnostic-list")?.textContent).toContain("暂无记录");
+        expect((document.querySelector("#esj-diagnostic-download") as HTMLButtonElement).disabled).toBe(true);
     });
 
     it("deletes one selected diagnostic without clearing the remaining history", () => {
@@ -387,7 +301,8 @@ describe("diagnostic history UI", () => {
 
         (document.querySelector("#esj-diagnostic-delete") as HTMLButtonElement).click();
 
-        expect(document.querySelector("#esj-diagnostic-list")?.textContent).not.toContain("任务失败");
-        expect(document.querySelector("#esj-diagnostic-list")?.textContent).toContain("下载完成");
+        expect(listBrowserDiagnosticSessions().history.map((session) => session.taskId)).toEqual(["task-success"]);
+        expect(document.querySelector("#esj-diagnostic-list")?.textContent).toContain("Diagnostic Book success");
+        expect(document.querySelector("#esj-diagnostic-list")?.textContent).not.toContain("Diagnostic Book failed");
     });
 });

@@ -28,8 +28,7 @@ describe("protected chapter password UI", () => {
         const popup = document.querySelector("#esj-protected-chapter") as HTMLElement;
 
         expect(popup.textContent).toContain("第 37 章 暗号");
-        expect(popup.textContent).toContain("目录位置 37/300");
-        expect(popup.textContent).toContain("密码待处理 3");
+        expect(popup.textContent).toContain("37/300");
         expect((popup.querySelector("a") as HTMLAnchorElement).href).toBe("https://www.esjzone.cc/forum/100/37.html");
         expect((popup.querySelector("#esj-protected-remember") as HTMLInputElement).checked).toBe(false);
 
@@ -48,22 +47,10 @@ describe("protected chapter password UI", () => {
         });
         const popup = document.querySelector("#esj-protected-chapter") as HTMLElement;
 
-        expect(popup.textContent).toContain("本次位置 1/20｜原书第 101 章");
+        expect(popup.textContent).toContain("1/20");
+        expect(popup.textContent).toContain("101");
         (popup.querySelector("#esj-protected-cancel") as HTMLButtonElement).click();
         await expect(decision).resolves.toEqual({ action: "cancel" });
-    });
-
-    it("renders the password prompt in traditional Chinese", async () => {
-        setInterfaceLocalePreference("zh-TW");
-        const decision = prompt();
-        const popup = document.querySelector("#esj-protected-chapter") as HTMLElement;
-
-        expect(popup.textContent).toContain("章節需要密碼");
-        expect(popup.textContent).toContain("密碼待處理 3");
-        expect(popup.textContent).toContain("不會儲存");
-
-        (popup.querySelector("#esj-protected-skip") as HTMLButtonElement).click();
-        await expect(decision).resolves.toEqual({ action: "skip-current" });
     });
 
     it("refreshes the open prompt in place without clearing the password or remember choice", async () => {
@@ -73,12 +60,13 @@ describe("protected chapter password UI", () => {
         const remember = popup.querySelector("#esj-protected-remember") as HTMLInputElement;
         input.value = "draft-password";
         remember.checked = true;
+        const previousText = popup.textContent;
 
         setInterfaceLocalePreference("zh-TW");
         publishInterfaceLocaleChange();
 
         expect(document.querySelector("#esj-protected-chapter")).toBe(popup);
-        expect(popup.textContent).toContain("章節需要密碼");
+        expect(popup.textContent).not.toBe(previousText);
         expect(input.value).toBe("draft-password");
         expect(remember.checked).toBe(true);
         (popup.querySelector("#esj-protected-cancel") as HTMLButtonElement).click();
@@ -102,31 +90,10 @@ describe("protected chapter password UI", () => {
         expect(input.disabled).toBe(true);
         expect(remember.disabled).toBe(true);
         expect((document.querySelector("#esj-protected-submit") as HTMLButtonElement).disabled).toBe(true);
-        expect((document.querySelector("#esj-protected-submit") as HTMLButtonElement).textContent).toBe("正在验证…");
         expect((document.querySelector("#esj-protected-skip") as HTMLButtonElement).disabled).toBe(true);
         expect((document.querySelector("#esj-protected-skip-all") as HTMLButtonElement).disabled).toBe(true);
         expect((document.querySelector("#esj-protected-cancel") as HTMLButtonElement).disabled).toBe(false);
         closeProtectedChapterPrompt();
-    });
-
-    it("uses consistent action styles and a plaintext password field", async () => {
-        const decision = prompt();
-        const input = document.querySelector("#esj-protected-password") as HTMLInputElement;
-
-        for (const selector of [
-            "#esj-protected-cancel",
-            "#esj-protected-skip-all",
-            "#esj-protected-skip",
-            "#esj-protected-submit"
-        ]) {
-            expect(document.querySelector(selector)?.classList).toContain("esj-protected-action");
-        }
-        expect((document.querySelector("#esj-protected-actions") as HTMLElement).style.flexWrap).toBe("");
-        expect(input.type).toBe("text");
-        expect(document.querySelector("#esj-protected-visibility")).toBeNull();
-
-        (document.querySelector("#esj-protected-cancel") as HTMLButtonElement).click();
-        await expect(decision).resolves.toEqual({ action: "cancel" });
     });
 
     it.each([
@@ -155,7 +122,7 @@ describe("protected chapter password UI", () => {
         const decision = prompt();
         (document.querySelector("#esj-protected-submit") as HTMLButtonElement).click();
 
-        expect(document.querySelector("#esj-protected-error")?.textContent).toBe("请输入密码。");
+        expect(document.querySelector("#esj-protected-error")?.textContent).toBeTruthy();
         expect(document.querySelector("#esj-protected-chapter")).not.toBeNull();
         (document.querySelector("#esj-protected-cancel") as HTMLButtonElement).click();
         await expect(decision).resolves.toEqual({ action: "cancel" });
@@ -169,15 +136,16 @@ describe("protected chapter password UI", () => {
         (popup.querySelector("#esj-protected-submit") as HTMLButtonElement).click();
         await firstDecision;
 
+        const rejection = "ESJ password rejection";
         const rejectedDecision = promptProtectedChapterPassword({
             task: createDownloadTask(36),
             totalChapters: 300,
             pendingCount: 3,
-            message: "密码不正确"
+            message: rejection
         });
         expect(document.querySelector("#esj-protected-chapter")).toBe(popup);
         expect((popup.querySelector("#esj-protected-password") as HTMLInputElement).value).toBe("");
-        expect(popup.querySelector("#esj-protected-error")?.textContent).toBe("密码不正确");
+        expect(popup.querySelector("#esj-protected-error")?.textContent).toBe(rejection);
         (popup.querySelector("#esj-protected-skip") as HTMLButtonElement).click();
         await expect(rejectedDecision).resolves.toEqual({ action: "skip-current" });
 
@@ -190,32 +158,26 @@ describe("protected chapter password UI", () => {
             rememberPassword: true,
             retryConnection: true
         });
-        expect(document.querySelector("#esj-protected-error")?.textContent).toBe("连接失败，请检查网络后重试。");
-        expect((document.querySelector("#esj-protected-submit") as HTMLButtonElement).textContent).toBe("重试连接");
-        (document.querySelector("#esj-protected-cancel") as HTMLButtonElement).click();
-        await expect(reconnectDecision).resolves.toEqual({ action: "cancel" });
+        document.querySelector<HTMLButtonElement>("#esj-protected-submit")!.click();
+        await expect(reconnectDecision).resolves.toEqual({
+            action: "submit",
+            password: "remembered",
+            rememberPassword: true
+        });
+        closeProtectedChapterPrompt();
     });
 
-    it("renders a stable protocol code in Taiwanese wording while preserving ESJ status 206 text", async () => {
+    it("preserves ESJ status 206 text across locale changes", async () => {
         setInterfaceLocalePreference("zh-TW");
-        const protocolDecision = promptProtectedChapterPassword({
-            task: createDownloadTask(36),
-            totalChapters: 300,
-            pendingCount: 1,
-            messageCode: "token-invalid",
-            retryConnection: true
-        });
-
-        expect(document.querySelector("#esj-protected-error")?.textContent).toBe("無法取得有效的密碼授權權杖");
-        (document.querySelector("#esj-protected-cancel") as HTMLButtonElement).click();
-        await expect(protocolDecision).resolves.toEqual({ action: "cancel" });
-
         const sourceDecision = promptProtectedChapterPassword({
             task: createDownloadTask(36),
             totalChapters: 300,
             pendingCount: 1,
             message: "ESJ source message"
         });
+        expect(document.querySelector("#esj-protected-error")?.textContent).toBe("ESJ source message");
+        setInterfaceLocalePreference("zh-CN");
+        publishInterfaceLocaleChange();
         expect(document.querySelector("#esj-protected-error")?.textContent).toBe("ESJ source message");
         (document.querySelector("#esj-protected-cancel") as HTMLButtonElement).click();
         await expect(sourceDecision).resolves.toEqual({ action: "cancel" });

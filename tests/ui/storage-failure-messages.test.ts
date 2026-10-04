@@ -1,34 +1,24 @@
 import { describe, expect, it, vi } from "vitest";
 import { formatStorageFailure, formatStorageFailureText } from "../../src/ui/messages/storage-failure";
 
-vi.mock("../../src/ui/locale", () => ({
-    t: (key: string) =>
-        ({
-            "download.storage.quotaExceeded": "浏览器存储空间不足",
-            "download.storage.databaseUnavailable": "IndexedDB 当前不可用",
-            "download.storage.flushTimeout": "缓存写入超时"
-        })[key] || key
-}));
+vi.mock("../../src/ui/locale", () => ({ t: (key: string) => key }));
 
 describe("storage failure messages", () => {
-    it("formats a stable reason in the current locale", () => {
+    it("maps a classified reason without leaking its internal operation", () => {
         expect(
-            formatStorageFailure({
-                reason: "quota-exceeded",
-                operation: "write",
-                message: "quota-exceeded:write"
-            })
-        ).toBe("浏览器存储空间不足");
+            formatStorageFailure({ reason: "quota-exceeded", operation: "write", message: "quota-exceeded:write" })
+        ).toBe("download.storage.quotaExceeded");
     });
 
-    it("keeps distinct technical detail after the localized summary", () => {
+    it("keeps distinct technical detail after the summary", () => {
         expect(formatStorageFailureText("database-unavailable", "IndexedDB disabled")).toBe(
-            "IndexedDB 当前不可用：IndexedDB disabled"
+            "download.storage.databaseUnavailable：IndexedDB disabled"
         );
     });
 
-    it("does not duplicate detail matching the localized summary", () => {
-        expect(formatStorageFailureText("flush-timeout", "缓存写入超时")).toBe("缓存写入超时");
+    it("does not duplicate detail matching the summary", () => {
+        const summary = "download.storage.flushTimeout";
+        expect(formatStorageFailureText("flush-timeout", summary)).toBe(summary);
     });
 
     it("keeps an unknown reason visible for forward compatibility", () => {

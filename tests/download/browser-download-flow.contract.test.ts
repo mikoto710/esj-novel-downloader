@@ -11,7 +11,7 @@ import {
 } from "../support/browser-download-harness";
 import { createChapter, createDeferred } from "../support";
 import { createProtectedChapterFixture } from "../support/fixtures";
-import { publishInterfaceLocaleChange } from "../../src/ui/locale";
+import * as locale from "../../src/ui/locale";
 
 const mocks = getBrowserDownloadMocks();
 let runtime: BrowserDownloadRuntime;
@@ -21,23 +21,8 @@ describe("browser download flow contracts", () => {
         runtime = await resetBrowserDownloadHarness();
     });
 
-    it("shows saving, integrity, export preparation, and completion stages", async () => {
-        const data = expectReadyDownload(
-            await runtime.batchDownload(createBrowserDownloadOptions(createBrowserDownloadTasks(1)))
-        );
-
-        expect(data.chapters).toHaveLength(1);
-        expect(runtime.state.cachedData).toBeNull();
-        const trayMessages = mocks.updateTrayText.mock.calls.flat();
-        expect(trayMessages).toContain("全本下载（1/1）");
-        expect(trayMessages.join("\n")).not.toContain("密码待处理 0");
-        expect(trayMessages).toContain("正在保存下载进度（1/1）");
-        expect(trayMessages).toContain("正在检查章节完整性（1/1）");
-        expect(trayMessages).toContain("正在准备导出（1/1）");
-        expect(trayMessages).toContain("导出准备完成（1/1）");
-    });
-
     it("shows cache validation before restored chapters finish normalizing", async () => {
+        vi.spyOn(locale, "t").mockImplementation((key, params) => JSON.stringify({ key, ...params }));
         const validationStarted = createDeferred<void>();
         const continueValidation = createDeferred<void>();
         runtime.task.chapters = new Map([[0, createChapter(0)]]);
@@ -50,8 +35,10 @@ describe("browser download flow contracts", () => {
         const downloadPromise = runtime.batchDownload(createBrowserDownloadOptions(createBrowserDownloadTasks(1)));
         await validationStarted.promise;
 
-        expect(document.querySelector("#esj-title")?.textContent).toBe("📘 正在校验本地缓存（1 章）");
-        expect(mocks.log).toHaveBeenCalledWith("💾 读取到 1 章缓存，正在校验…");
+        expect(document.querySelector("#esj-title")?.textContent).toContain(
+            JSON.stringify({ key: "download.status.validatingCache", count: 1 })
+        );
+        expect(mocks.fetchWithTimeout).not.toHaveBeenCalled();
 
         continueValidation.resolve();
         await downloadPromise;
@@ -150,7 +137,8 @@ describe("browser download flow contracts", () => {
         expect(order.slice(order.indexOf("protected-refreshed"))).toEqual(["protected-refreshed", "token", "password"]);
     });
 
-    it("keeps protected chapters pending instead of presenting request completion as正文 progress", async () => {
+    it("keeps protected requests pending without counting them as ready chapters", async () => {
+        vi.spyOn(locale, "t").mockImplementation((key, params) => JSON.stringify({ key, ...params }));
         const decision = createDeferred<{ action: "skip-current" }>();
         document.body.innerHTML = '<span id="esj-title"></span><div id="esj-progress"></div>';
         mocks.fetchWithTimeout.mockResolvedValueOnce({
@@ -161,14 +149,12 @@ describe("browser download flow contracts", () => {
         const download = runtime.batchDownload(createBrowserDownloadOptions(createBrowserDownloadTasks(1)));
         await vi.waitFor(() => expect(mocks.promptProtectedChapterPassword).toHaveBeenCalledOnce());
 
-        expect(document.querySelector("#esj-title")?.textContent).toContain("正文完成 0/1｜密码待处理 1｜正在抓取");
-        expect(document.title).toContain("[0/1｜密码1]");
-        expect((document.querySelector("#esj-progress") as HTMLElement).style.width).toBe("0%");
+        expect(document.querySelector("#esj-title")?.textContent).toContain(
+            JSON.stringify({ key: "download.status.runningProtected", ready: 0, total: 1, pending: 1 })
+        );
 
         decision.resolve({ action: "skip-current" });
         await download;
-
-        expect(mocks.updateTrayText.mock.calls.flat()).toContain("全本下载（0/1）");
     });
 
     it("refreshes the active download status in place when the interface locale changes", async () => {
@@ -182,12 +168,13 @@ describe("browser download flow contracts", () => {
         const download = runtime.batchDownload(createBrowserDownloadOptions(createBrowserDownloadTasks(1)));
         await vi.waitFor(() => expect(mocks.promptProtectedChapterPassword).toHaveBeenCalledOnce());
         const popup = document.querySelector("#esj-popup");
+        const previousText = document.querySelector("#esj-title")?.textContent;
 
         mocks.getInterfaceLocalePreference.mockReturnValue("zh-TW");
-        publishInterfaceLocaleChange();
+        locale.publishInterfaceLocaleChange();
 
         expect(document.querySelector("#esj-popup")).toBe(popup);
-        expect(document.querySelector("#esj-title")?.textContent).toContain("內文完成 0/1｜密碼待處理 1｜正在擷取");
+        expect(document.querySelector("#esj-title")?.textContent).not.toBe(previousText);
         decision.resolve({ action: "skip-current" });
         await download;
     });

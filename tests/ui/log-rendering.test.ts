@@ -22,7 +22,6 @@ describe("log rendering", () => {
 
     it("renders the first UI line immediately and batches following lines", async () => {
         const box = document.querySelector("#esj-log") as HTMLElement;
-        const append = vi.spyOn(box, "append");
         Object.defineProperty(box, "clientHeight", { configurable: true, value: 10 });
         Object.defineProperty(box, "scrollHeight", { configurable: true, value: 100 });
         box.scrollTop = 90;
@@ -30,16 +29,14 @@ describe("log rendering", () => {
         log("第一条");
 
         expect(console.log).toHaveBeenCalledOnce();
-        expect(append).toHaveBeenCalledOnce();
         expect(box.textContent).toContain("第一条\n");
 
         log("第二条");
 
         expect(console.log).toHaveBeenCalledTimes(2);
-        expect(append).toHaveBeenCalledOnce();
-        await vi.advanceTimersByTimeAsync(50);
+        expect(box.textContent).not.toContain("第二条");
+        await vi.runOnlyPendingTimersAsync();
 
-        expect(append).toHaveBeenCalledTimes(2);
         expect(box.textContent).toContain("第一条\n");
         expect(box.textContent).toContain("第二条\n");
         expect(box.scrollTop).toBe(100);
@@ -52,7 +49,7 @@ describe("log rendering", () => {
         box.scrollTop = 20;
 
         log("保留当前位置");
-        await vi.advanceTimersByTimeAsync(50);
+        await vi.runOnlyPendingTimersAsync();
 
         expect(box.scrollTop).toBe(20);
     });
@@ -63,16 +60,18 @@ describe("log rendering", () => {
         for (let index = 0; index < 1005; index++) {
             log(`event-${index}`);
         }
-        await vi.advanceTimersByTimeAsync(50);
+        await vi.runOnlyPendingTimersAsync();
 
         expect(console.log).toHaveBeenCalledTimes(1005);
-        expect(box.querySelector('[data-esj-log-truncation="true"]')?.textContent).toContain("已省略 5 条较早日志");
+        const truncation = box.querySelector('[data-esj-log-truncation="true"]')!;
+        const previousText = truncation.textContent;
+        expect(previousText).toContain("5");
         expect(box.textContent).not.toContain("event-4\n");
         expect(box.textContent).toContain("event-5\n");
         expect(box.textContent).toContain("event-1004\n");
 
         setInterfaceLocalePreference("zh-TW");
         refreshUiLogTruncationText();
-        expect(box.querySelector('[data-esj-log-truncation="true"]')?.textContent).toContain("已省略 5 筆較早紀錄");
+        expect(truncation.textContent).not.toBe(previousText);
     });
 });

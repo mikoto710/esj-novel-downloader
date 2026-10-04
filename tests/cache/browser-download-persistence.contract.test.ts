@@ -68,9 +68,12 @@ describe("browser download persistence contracts", () => {
             runtime.batchDownload(createBrowserDownloadOptions(createBrowserDownloadTasks(5)))
         ).rejects.toMatchObject({ reason: "ownership-lost", operation: "write" });
 
-        const messages = mocks.log.mock.calls.flat().join("\n");
-        expect(messages).not.toContain("进度已保存");
-        expect(messages).toContain("下载进度未保存");
+        expect(mocks.showTerminalFailure).toHaveBeenCalledWith(
+            expect.objectContaining({
+                kind: "download",
+                storageFailure: expect.objectContaining({ reason: "ownership-lost" })
+            })
+        );
         expect(runtime.task.cancellation.isCancellationRequested()).toBe(false);
         expect(mocks.saveCache).toHaveBeenCalledOnce();
     });
@@ -83,8 +86,12 @@ describe("browser download persistence contracts", () => {
         ).rejects.toMatchObject({ reason: "quota-exceeded", operation: "write" });
 
         expect(mocks.saveCache).toHaveBeenCalledTimes(2);
-        expect(mocks.log).toHaveBeenCalledWith(expect.stringContaining("正在进行一次安全重试"));
-        expect(mocks.log).toHaveBeenCalledWith(expect.stringContaining("浏览器存储空间不足"));
+        expect(mocks.showTerminalFailure).toHaveBeenCalledWith(
+            expect.objectContaining({
+                kind: "download",
+                storageFailure: expect.objectContaining({ reason: "quota-exceeded" })
+            })
+        );
         expect(runtime.task.cancellation.isCancellationRequested()).toBe(false);
     });
 

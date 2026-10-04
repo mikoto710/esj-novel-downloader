@@ -1,20 +1,12 @@
-// @vitest-environment jsdom
-
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { showCacheDiscardFailure, showDownloadTerminalFailure } from "../../src/ui/messages/download-terminal";
-import { setInterfaceLocalePreference } from "../../src/core/config";
+import { showMessagePopup } from "../../src/ui/dialogs/message";
 
-vi.mock("../../src/adapters/browser-diagnostics", () => ({
-    listBrowserDiagnosticSessions: () => ({ schemaVersion: 1, active: [], history: [] })
-}));
+vi.mock("../../src/ui/locale", () => ({ t: (key: string) => key }));
+vi.mock("../../src/ui/dialogs/message", () => ({ showMessagePopup: vi.fn() }));
 
 describe("download terminal notices", () => {
-    beforeEach(() => {
-        document.body.innerHTML = "";
-        setInterfaceLocalePreference("zh-CN");
-    });
-
-    it("uses the common popup for an unexpected download failure", () => {
+    it("passes unexpected failures and their technical detail to the common popup", () => {
         showDownloadTerminalFailure({
             kind: "download",
             code: "Error",
@@ -22,45 +14,45 @@ describe("download terminal notices", () => {
             storageFailure: null
         });
 
-        const popup = document.querySelector("#esj-message-popup") as HTMLElement;
-        expect(popup.dataset.tone).toBe("error");
-        expect(popup.textContent).toContain("下载任务失败");
-        expect(popup.textContent).toContain("parser failed");
-        expect(document.querySelector("#esj-message-close")).not.toBeNull();
+        expect(showMessagePopup).toHaveBeenCalledWith(
+            expect.objectContaining({
+                tone: "error",
+                title: "download.terminal.failed.title",
+                details: expect.stringContaining("parser failed")
+            })
+        );
     });
 
-    it("explains that the latest progress may be missing after a cancellation timeout", () => {
+    it("keeps cancellation timeout distinct from a saved stop", () => {
         showDownloadTerminalFailure({
             kind: "cancellation",
             outcome: "save-timed-out",
-            storageFailure: { reason: "flush-timeout", operation: "flush", message: "缓存写入超时" }
+            storageFailure: { reason: "flush-timeout", operation: "flush", message: "flush-timeout:flush" }
         });
 
-        expect(document.querySelector("#esj-message-popup")?.textContent).toContain("进度保存超时");
-        expect(document.querySelector("#esj-message-popup")?.textContent).toContain("最后一次成功写入的缓存");
+        expect(showMessagePopup).toHaveBeenCalledWith(
+            expect.objectContaining({
+                tone: "error",
+                title: "download.terminal.saveTimeout.title",
+                message: "download.terminal.saveTimeout.message",
+                details: expect.stringContaining("flush-timeout")
+            })
+        );
     });
 
     it("keeps cache discard failure distinct from cancellation itself", () => {
         showCacheDiscardFailure({
             reason: "transaction-aborted",
             operation: "clear",
-            message: "IndexedDB 事务意外中止"
+            message: "transaction-aborted:clear"
         });
 
-        expect(document.querySelector("#esj-message-popup")?.textContent).toContain("缓存清理失败");
-        expect(document.querySelector("#esj-message-popup")?.textContent).toContain("任务已经停止");
-    });
-
-    it("renders terminal storage failures in the current traditional Chinese locale", () => {
-        setInterfaceLocalePreference("zh-TW");
-
-        showDownloadTerminalFailure({
-            kind: "cancellation",
-            outcome: "save-timed-out",
-            storageFailure: { reason: "flush-timeout", operation: "flush", message: "缓存写入超时" }
-        });
-
-        expect(document.querySelector("#esj-message-popup")?.textContent).toContain("進度儲存逾時");
-        expect(document.querySelector("#esj-message-popup")?.textContent).toContain("快取寫入逾時");
+        expect(showMessagePopup).toHaveBeenCalledWith(
+            expect.objectContaining({
+                tone: "error",
+                title: "download.terminal.discardFailed.title",
+                details: expect.stringContaining("transaction-aborted")
+            })
+        );
     });
 });

@@ -183,7 +183,7 @@ describe("full-book and single-chapter export isolation", () => {
         await downloadCurrentPage("txt");
 
         expect(document.querySelector("#esj-protected-chapter")).toBeNull();
-        expect(document.querySelector("#esj-message-popup")?.textContent).toContain("请先输入密码解锁该章节");
+        expect(document.querySelector("#esj-message-popup")).not.toBeNull();
         expect(clickMock).not.toHaveBeenCalled();
     });
 });

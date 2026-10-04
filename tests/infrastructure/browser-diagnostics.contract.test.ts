@@ -17,6 +17,7 @@ import {
 } from "../../src/adapters/browser-diagnostics";
 import { createInitialDownloadSnapshot } from "../../src/core/download/download-progress";
 import { setInterfaceLocalePreference } from "../../src/core/config";
+import * as locale from "../../src/ui/locale";
 
 describe("browser diagnostic persistence", () => {
     beforeEach(() => {
@@ -49,7 +50,10 @@ describe("browser diagnostic persistence", () => {
 
         const session = listBrowserDiagnosticSessions().active[0];
         expect(session.schemaVersion).toBe(1);
-        expect(formatBrowserDiagnosticSummary(session)).toContain("范围：第 101–120 章，本次 20 章／全书 120 章");
+        vi.spyOn(locale, "t").mockImplementation((key, params) => JSON.stringify({ key, ...params }));
+        expect(formatBrowserDiagnosticSummary(session)).toContain(
+            JSON.stringify({ key: "diagnostics.summary.range", start: 101, end: 120, count: 20, sourceTotal: 120 })
+        );
     });
 
     it("persists a completed session with settings, logs and controlled book details", () => {
@@ -119,15 +123,16 @@ describe("browser diagnostic persistence", () => {
             { at: expect.any(Number), level: "info", code: "download-started", params: { concurrency: 3 } }
         ]);
 
+        const originalMessage = JSON.parse(createBrowserDiagnosticExport(session).json).session.logs[0].message;
         setInterfaceLocalePreference("zh-TW");
         const exported = JSON.parse(createBrowserDiagnosticExport(session).json) as { session: typeof session };
         expect(exported.session.logs[0]).toMatchObject({
             level: "info",
             code: "download-started",
-            params: { concurrency: 3 },
-            message: "已啟動 3 個下載執行緒…"
+            params: { concurrency: 3 }
         });
-        expect(formatBrowserDiagnosticSummary(session)).toContain("已啟動 3 個下載執行緒…");
+        expect(exported.session.logs[0].message).not.toBe(originalMessage);
+        expect(formatBrowserDiagnosticSummary(session)).toContain(exported.session.logs[0].message!);
     });
 
     it("formats missing application and book details without persisting localized fallbacks", () => {
@@ -153,15 +158,16 @@ describe("browser diagnostic persistence", () => {
             userscriptManager: "Tampermonkey"
         });
         expect(session.book.title).toBe("");
-        expect(JSON.stringify(session)).not.toContain("版本未知");
-        expect(JSON.stringify(session)).not.toContain("未知作品");
 
-        setInterfaceLocalePreference("zh-TW");
+        const translate = vi.spyOn(locale, "t").mockImplementation((key) => key);
         const summary = formatBrowserDiagnosticSummary(session);
-        expect(summary).toContain("ESJ Novel Downloader 版本未知");
-        expect(summary).toContain("Chrome（版本未知） / Tampermonkey");
-        expect(summary).toContain("作品：未知作品（unknown）");
-        expect(createBrowserDiagnosticExport(session).filename).toContain("esj-diagnostic-未知作品-");
+        expect(summary).toContain("diagnostics.summary.versionUnknown");
+        expect(summary).toContain("diagnostics.summary.book");
+        expect(translate).toHaveBeenCalledWith("diagnostics.summary.book", {
+            title: "diagnostics.summary.unknownBook",
+            bookId: "unknown"
+        });
+        expect(createBrowserDiagnosticExport(session).filename).toContain("diagnostics.summary.unknownBook");
     });
 
     it("keeps failed chapter location and export failures after download completion", () => {
@@ -226,8 +232,12 @@ describe("browser diagnostic persistence", () => {
         finishBrowserDiagnosticSession("task-localized-failure", "failed");
         const session = listBrowserDiagnosticSessions().history[0];
 
+        const originalSummary = formatBrowserDiagnosticSummary(session);
         setInterfaceLocalePreference("zh-TW");
-        expect(formatBrowserDiagnosticSummary(session)).toContain("多次嘗試後仍無法取得圖片");
+        const translate = vi.spyOn(locale, "t");
+        expect(formatBrowserDiagnosticSummary(session)).not.toBe(originalSummary);
+        expect(translate).toHaveBeenCalledWith("diagnostics.failure.imageRequestFailed");
+        expect(session.failures[0].message).toBe("image-request-failed");
     });
 
     it("keeps inline image failures inside a successful diagnostic session", () => {
@@ -362,7 +372,10 @@ describe("browser diagnostic persistence", () => {
         });
 
         const session = listBrowserDiagnosticSessions().active[0];
-        expect(formatBrowserDiagnosticSummary(session)).toContain("密码章节：发现 3；待处理 1；已解锁 1；已跳过 1");
+        vi.spyOn(locale, "t").mockImplementation((key, params) => JSON.stringify({ key, ...params }));
+        expect(formatBrowserDiagnosticSummary(session)).toContain(
+            JSON.stringify({ key: "diagnostics.summary.protected", detected: 3, pending: 1, resolved: 1, skipped: 1 })
+        );
         expect(session.failures).toEqual([]);
         expect(session.events.at(-1)).toMatchObject({
             type: "protected-chapter-password-rejected",

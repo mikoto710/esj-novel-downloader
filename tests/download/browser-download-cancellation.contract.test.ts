@@ -128,8 +128,7 @@ describe("browser download cancellation contracts", () => {
         await clearAborted.promise;
         const result = await downloadPromise;
 
-        expect(result.status).toBe("cancelled");
-        expect(mocks.log.mock.calls.flat().join("\n")).toContain("进度已保存");
+        expect(result).toEqual({ status: "cancelled", outcome: "saved" });
     });
 
     it("bounds cancellation while a cache write is pending", async () => {
@@ -157,7 +156,6 @@ describe("browser download cancellation contracts", () => {
             await expect(outcome).resolves.toBe("settled");
             expect(mocks.saveCache).toHaveBeenCalledOnce();
             expect(mocks.fullCleanup).toHaveBeenCalledOnce();
-            expect(mocks.log.mock.calls.flat().join("\n")).toContain("进度保存超时");
             expect(mocks.showTerminalFailure).toHaveBeenCalledOnce();
             expect(mocks.showTerminalFailure).toHaveBeenCalledWith(
                 expect.objectContaining({ kind: "cancellation", outcome: "save-timed-out" })
@@ -233,9 +231,7 @@ describe("browser download cancellation contracts", () => {
         expect(result).toEqual({ status: "cancelled", outcome: "discarded" });
 
         expect(mocks.saveCache).toHaveBeenCalledOnce();
-        expect(mocks.log.mock.calls.flat().join("\n")).toContain("正在清理缓存");
-        expect(document.querySelector("#esj-title")?.textContent).toBe("📘 任务已停止");
-        expect(document.querySelector("#esj-cancel")?.textContent).toBe("已停止");
+        expect(document.querySelector<HTMLButtonElement>("#esj-cancel")?.disabled).toBe(true);
     });
     it("keeps cancellation isolated and only allows discard upgrades", async () => {
         const { createDownloadCancellation, activateDownload, releaseActiveDownload } =

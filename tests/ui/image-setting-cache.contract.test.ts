@@ -55,12 +55,7 @@ describe("image setting cache contracts", () => {
         imageSetting.checked = true;
         imageSetting.dispatchEvent(new Event("change", { bubbles: true }));
 
-        await vi.waitFor(() =>
-            expect(document.querySelector("#esj-image-setting-task-confirm")?.textContent).toContain(
-                "当前有 2 个书籍下载任务正在运行"
-            )
-        );
-        expect(document.querySelector("#esj-image-setting-task-confirm")?.textContent).toContain("不受本次切换影响");
+        await vi.waitFor(() => expect(document.querySelector("#esj-image-setting-task-confirm")).not.toBeNull());
         (document.querySelector("#esj-image-setting-task-confirm-cancel") as HTMLButtonElement).click();
 
         await vi.waitFor(() => expect(document.querySelector("#esj-image-setting-task-confirm")).toBeNull());

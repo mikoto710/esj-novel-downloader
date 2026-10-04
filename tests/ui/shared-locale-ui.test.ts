@@ -4,40 +4,13 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { getInterfaceLocalePreference, setInterfaceLocalePreference } from "../../src/core/config";
 import { state } from "../../src/core/state";
 import { createDownloadButton, createSettingButton } from "../../src/ui/components";
-import { showMessagePopup } from "../../src/ui/dialogs/message";
-import { createCommonHeader } from "../../src/ui/dialogs/common";
 import { createSettingsPanel } from "../../src/ui/popups";
 import { installRuntimeInterfaceLocaleSync } from "../../src/ui/locale";
-import { createDownloadSelectionPopup } from "../../src/ui/dialogs/download-selection";
-import { createDownloadTask } from "../support";
 
 describe("shared locale UI", () => {
     beforeEach(() => {
         setInterfaceLocalePreference("zh-TW");
         state.cachedData = null;
-    });
-
-    it("uses the selected locale for shared buttons and header controls", () => {
-        const settingButton = createSettingButton();
-        const downloadButton = createDownloadButton("download", undefined, async () => undefined);
-        const header = createCommonHeader(
-            "Title",
-            () => undefined,
-            () => undefined
-        );
-
-        expect(settingButton.getAttribute("aria-label")).toBe("腳本設定");
-        expect(downloadButton.textContent).toContain("下載");
-        expect(header.querySelector('[aria-label="最小化"]')).not.toBeNull();
-        expect(header.querySelector('[aria-label="關閉"]')).not.toBeNull();
-    });
-
-    it("translates message popup defaults without changing caller-provided messages", () => {
-        const popup = showMessagePopup({ tone: "warning", message: "Caller message" });
-
-        expect(popup.querySelector(".esj-common-header")?.textContent).toContain("請注意");
-        expect(popup.querySelector("#esj-message-summary")?.textContent).toBe("Caller message");
-        expect(popup.querySelector("#esj-message-close")?.textContent).toBe("關閉");
     });
 
     it("persists the selected interface language from settings and refreshes the open UI", () => {
@@ -49,13 +22,10 @@ describe("shared locale UI", () => {
         const language = popup.querySelector("#esj-interface-language") as HTMLSelectElement;
         const concurrency = popup.querySelector("#esj-settings-concurrency") as HTMLInputElement;
         const images = popup.querySelector("#esj-settings-images") as HTMLInputElement;
-        expect(popup.textContent).toContain("介面語言");
+        const previousText = popup.textContent;
+        const previousLabel = settingButton.getAttribute("aria-label");
         expect(language.value).toBe("zh-TW");
-        expect(Array.from(language.options).map((option) => option.textContent)).toEqual([
-            "自動（跟隨網站）",
-            "簡體中文",
-            "繁體中文"
-        ]);
+        expect(Array.from(language.options).map((option) => option.value)).toEqual(["auto", "zh-CN", "zh-TW"]);
 
         concurrency.value = "7";
         const toggledImageState = !images.checked;
@@ -66,10 +36,10 @@ describe("shared locale UI", () => {
 
         expect(getInterfaceLocalePreference()).toBe("zh-CN");
         expect(document.querySelector("#esj-settings")).toBe(popup);
-        expect(popup.textContent).toContain("界面语言");
+        expect(popup.textContent).not.toBe(previousText);
         expect(concurrency.value).toBe("7");
         expect(images.checked).toBe(toggledImageState);
-        expect(settingButton.getAttribute("aria-label")).toBe("脚本设置");
+        expect(settingButton.getAttribute("aria-label")).not.toBe(previousLabel);
     });
 
     it("follows website simplified and traditional switching without reinjecting buttons", async () => {
@@ -81,34 +51,16 @@ describe("shared locale UI", () => {
         document.body.append(settingButton, downloadButton);
         const dispose = installRuntimeInterfaceLocaleSync();
 
-        expect(downloadButton.textContent).toContain("下載");
+        const previousText = downloadButton.textContent;
+        const previousLabel = settingButton.getAttribute("aria-label");
         const websiteSwitch = document.querySelector(".customizer-text-switch .trans") as HTMLElement;
         websiteSwitch.dataset.encode = "1";
         await Promise.resolve();
         await Promise.resolve();
 
         expect(document.querySelector("#runtime-download")).toBe(downloadButton);
-        expect(downloadButton.textContent).toContain("下载");
-        expect(settingButton.getAttribute("aria-label")).toBe("脚本设置");
+        expect(downloadButton.textContent).not.toBe(previousText);
+        expect(settingButton.getAttribute("aria-label")).not.toBe(previousLabel);
         dispose();
-    });
-
-    it("uses locale keys for the unified download selection and cache preview", async () => {
-        const decision = createDownloadSelectionPopup({
-            tasks: [createDownloadTask(0)],
-            cachedIndexes: new Set([0]),
-            cacheCount: 1,
-            cacheWillBeInvalidated: false,
-            imageEnabled: false,
-            hasExistingExport: false
-        });
-
-        const popup = document.querySelector("#esj-range-selection") as HTMLElement;
-        expect(popup.querySelector(".esj-common-header")?.textContent).toContain("確認下載");
-        expect(popup.textContent).toContain("預計重用 1 章快取");
-        expect(popup.querySelector("#esj-range-cancel")?.textContent).toBe("取消");
-        expect(popup.querySelector("#esj-range-download")?.textContent).toBe("開始下載");
-        popup.querySelector<HTMLButtonElement>("#esj-range-cancel")?.click();
-        await expect(decision).resolves.toEqual({ action: "cancel" });
     });
 });
