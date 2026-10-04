@@ -184,14 +184,12 @@ export type DownloadTerminalFailure =
       };
 
 /**
- * 下载核心对外发布的进度快照
- * restored fetched processed persisted 分别表示恢复获取处理和持久化进度
- * completedCount 兼容现有任务决策计数
- * readyChapterCount 和兼容字段 cachedChapterCount 均为本次范围内可导出的正文数
+ * 本次下载范围的阶段和计数快照
  */
 export interface DownloadSnapshot {
     phase: DownloadPhase;
     scheduledCount: number;
+    // 恢复、获取、处理和落盘分别计数，正文就绪数独立计算
     restoredCount: number;
     fetchedCount: number;
     processedCount: number;
@@ -204,7 +202,6 @@ export interface DownloadSnapshot {
     protectedPendingCount: number;
     protectedResolvedCount: number;
     protectedSkippedCount: number;
-    cachedChapterCount: number;
     cancellationRequested: boolean;
     cancellationOutcome: DownloadCancellationOutcome | null;
     storageFailure: StorageFailure | null;
@@ -253,7 +250,7 @@ export interface IncompleteChapterDetection {
  * 观察者不得通过事件直接修改下载状态
  */
 export type DownloadEvent =
-    | { type: "task-started"; meta: CacheMeta; taskId: string; cachedChapterCount: number }
+    | { type: "task-started"; meta: CacheMeta; taskId: string; bookChapterCount: number }
     | { type: "phase-changed"; previous: DownloadPhase; current: DownloadPhase; snapshot: DownloadSnapshot }
     | { type: "snapshot-updated"; snapshot: DownloadSnapshot }
     | { type: "cache-write-started"; chapterCount: number }

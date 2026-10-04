@@ -196,13 +196,13 @@ describe("browser download flow contracts", () => {
         const { activateDownload, createDownloadCancellation, startRuntimeCacheSession } =
             await import("../../src/core/state");
         const { createCacheMeta, createBookLock } = await import("../support");
-        const { createInitialDownloadSnapshot } = await import("../../src/core/download/state-machine");
+        const { createInitialDownloadSnapshot } = await import("../../src/core/download/download-progress");
         const dependencies = createBrowserDownloadDependencies(runtime.task);
         dependencies.events.emit({
             type: "task-started",
             meta: createCacheMeta(),
             taskId: "task-100",
-            cachedChapterCount: 0
+            bookChapterCount: 0
         });
         const nextLock = createBookLock({ bookId: "200", taskId: "task-200" });
         const nextCancellation = createDownloadCancellation();
@@ -215,13 +215,13 @@ describe("browser download flow contracts", () => {
             type: "task-started",
             meta: createCacheMeta(),
             taskId: "task-100",
-            cachedChapterCount: 0
+            bookChapterCount: 0
         });
         dependencies.ui.update(snapshot);
         dependencies.ui.cleanup();
         dependencies.ui.showTerminalFailure({ kind: "cancellation", outcome: "ownership-lost", storageFailure: null });
         expect(document.querySelector("#esj-title")?.textContent).toBe("new task");
-        expect(runtime.state.runtimeCacheSession).toMatchObject({ taskId: "task-200", cachedChapterCount: 9 });
+        expect(runtime.state.runtimeCacheSession).toMatchObject({ taskId: "task-200", bookChapterCount: 9 });
         expect(mocks.fullCleanup).not.toHaveBeenCalled();
         expect(mocks.showTerminalFailure).not.toHaveBeenCalled();
         await dependencies.scheduler.sleepWithAbort(10);

@@ -95,7 +95,7 @@ export async function listManagedCaches(): Promise<CacheListItem[]> {
             }
 
             const persistentChapterCount = existing?.persistentChapterCount || 0;
-            const progressCount = Math.max(runtime.completedCount, runtime.cachedChapterCount, persistentChapterCount);
+            const progressCount = Math.max(runtime.completedCount, runtime.bookChapterCount, persistentChapterCount);
 
             const rawBookName = runtime.rawBookName || existing?.rawBookName;
             result.set(runtime.bookId, {
@@ -107,7 +107,7 @@ export async function listManagedCaches(): Promise<CacheListItem[]> {
                 totalChapters: runtime.totalChapters || existing?.totalChapters || null,
                 progressCount,
                 persistentChapterCount,
-                runtimeChapterCount: runtime.cachedChapterCount,
+                runtimeChapterCount: runtime.bookChapterCount,
                 runtimeCompletedCount: runtime.completedCount,
                 updatedAt: Math.max(existing?.updatedAt || 0, runtime.updatedAt),
                 sourcePageType: runtime.sourcePageType || existing?.sourcePageType || "unknown",

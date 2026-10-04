@@ -141,8 +141,8 @@ function createBrowserDownloadUi(task: BrowserDownloadTask): DownloadUiPort {
             const phaseStatus: Partial<Record<DownloadSnapshot["phase"], string>> = {
                 preparing: t("download.status.initializing"),
                 "restoring-cache":
-                    snapshot.cachedChapterCount > 0
-                        ? t("download.status.validatingCache", { count: snapshot.cachedChapterCount })
+                    snapshot.readyChapterCount > 0
+                        ? t("download.status.validatingCache", { count: snapshot.readyChapterCount })
                         : t("download.status.preparingCache"),
                 "flushing-cache": t("download.status.savingProgress", {
                     ready: snapshot.readyChapterCount,
@@ -402,7 +402,7 @@ export function createBrowserDownloadDependencies(task: BrowserDownloadTask): Do
                 // 页面会话只是核心快照的显示副本，不反向驱动下载状态
                 if (isCurrentDownload(activeLock.taskId) && event.type === "task-started") {
                     taskStarted = true;
-                    startRuntimeCacheSession(event.meta, event.taskId, event.cachedChapterCount);
+                    startRuntimeCacheSession(event.meta, event.taskId, event.bookChapterCount);
                 } else if (
                     taskStarted &&
                     isCurrentDownload(activeLock.taskId) &&
@@ -412,7 +412,7 @@ export function createBrowserDownloadDependencies(task: BrowserDownloadTask): Do
                     updateRuntimeCacheSession(
                         {
                             completedCount: snapshot.completedCount,
-                            cachedChapterCount: chapters.size,
+                            bookChapterCount: chapters.size,
                             status:
                                 snapshot.phase === "cancelled"
                                     ? "cancelled"

@@ -102,7 +102,7 @@ export function startRuntimeCacheSession(meta: CacheMeta, taskId: string, initia
         ...meta,
         taskId,
         completedCount: 0,
-        cachedChapterCount: initialChapterCount,
+        bookChapterCount: initialChapterCount,
         status: "downloading",
         hasExportData: false
     };

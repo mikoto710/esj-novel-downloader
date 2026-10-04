@@ -74,7 +74,7 @@ describe("3000 chapter cache complexity", () => {
             processedCount: 25,
             persistedCount: 3_000,
             completedCount: 3_000,
-            cachedChapterCount: 3_000,
+            readyChapterCount: 3_000,
             hasExportData: true
         });
     });

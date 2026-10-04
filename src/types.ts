@@ -130,7 +130,7 @@ export interface CacheMeta {
 export interface RuntimeCacheSession extends CacheMeta {
     taskId: string;
     completedCount: number;
-    cachedChapterCount: number;
+    bookChapterCount: number;
     status: CacheStatus;
     hasExportData: boolean;
 }

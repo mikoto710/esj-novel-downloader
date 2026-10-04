@@ -9,7 +9,7 @@ import {
     startBrowserDiagnosticSession
 } from "../../src/adapters/browser-diagnostics";
 import { DIAGNOSTIC_CLOSE_UNCONFIRMED_MS } from "../../src/core/diagnostics";
-import { createInitialDownloadSnapshot } from "../../src/core/download/state-machine";
+import { createInitialDownloadSnapshot } from "../../src/core/download/download-progress";
 import { createDiagnosticPopup } from "../../src/ui/dialogs/diagnostics";
 import { showMessagePopup } from "../../src/ui/dialogs/message";
 import { createSettingsPanel } from "../../src/ui/popups";

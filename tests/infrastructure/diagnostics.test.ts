@@ -14,7 +14,7 @@ import {
     type DiagnosticStore,
     type StartDiagnosticSessionInput
 } from "../../src/core/diagnostics";
-import { createInitialDownloadSnapshot } from "../../src/core/download/state-machine";
+import { createInitialDownloadSnapshot } from "../../src/core/download/download-progress";
 
 class MemoryDiagnosticRepository implements DiagnosticRepository {
     store = createEmptyDiagnosticStore();
@@ -118,8 +118,7 @@ describe("diagnostic session retention", () => {
             protectedDetectedCount: 4,
             protectedPendingCount: 1,
             protectedResolvedCount: 2,
-            protectedSkippedCount: 1,
-            cachedChapterCount: 1_224
+            protectedSkippedCount: 1
         };
         manager.recordDownloadEvent("large-cache", { type: "snapshot-updated", snapshot });
 

@@ -95,11 +95,10 @@ describe("runDownload characterization", () => {
             scheduledCount: 20,
             restoredCount: 2,
             readyChapterCount: 20,
-            cachedChapterCount: 20,
             persistedCount: 20
         });
         expect(harness.events.ofType("task-started")[0]).toMatchObject({
-            cachedChapterCount: 3,
+            bookChapterCount: 3,
             meta: { totalChapters: 120 }
         });
     });
@@ -441,7 +440,7 @@ describe("runDownload characterization", () => {
         expect(harness.events.ofType("chapter-restored")).toHaveLength(2);
         expect(
             harness.ui.snapshots.find((snapshot) => snapshot.phase === "downloading" && snapshot.completedCount === 2)
-        ).toMatchObject({ restoredCount: 2, cachedChapterCount: 2 });
+        ).toMatchObject({ restoredCount: 2, readyChapterCount: 2 });
         expect(harness.dependencies.log).not.toHaveBeenCalledWith(
             expect.objectContaining({ code: "cache-restore-started", params: { count: 0 } })
         );
@@ -656,7 +655,7 @@ describe("runDownload characterization", () => {
         expect(harness.dependencies.chapters.size).toBe(0);
         expect(harness.ui.snapshots.at(-1)).toMatchObject({
             phase: "export-ready",
-            cachedChapterCount: 0,
+            readyChapterCount: 0,
             failedCount: 1
         });
         expect(harness.events.ofType("incomplete-chapters-decided")).toEqual([
@@ -684,7 +683,7 @@ describe("runDownload characterization", () => {
         expect(fetch).toHaveBeenCalledTimes(7);
         expect(harness.ui.confirmIncompleteChapters).toHaveBeenCalledOnce();
         expect(harness.exportData?.chapters[0].content).not.toContain("[章节缺失]");
-        expect(harness.ui.snapshots.at(-1)).toMatchObject({ failedCount: 0, cachedChapterCount: 1 });
+        expect(harness.ui.snapshots.at(-1)).toMatchObject({ failedCount: 0, readyChapterCount: 1 });
         expect(harness.dependencies.log).toHaveBeenCalledWith({ code: "missing-chapter-retry-saved" });
     });
 

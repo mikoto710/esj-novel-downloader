@@ -62,7 +62,7 @@ export async function runDownload(
             type: "task-started",
             meta: scope.meta,
             taskId: options.taskId,
-            cachedChapterCount: chapters.size
+            bookChapterCount: chapters.size
         });
         const restoredCount = scope.readyCount(chapters);
         if (restoredCount) {

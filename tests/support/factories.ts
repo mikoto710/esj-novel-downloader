@@ -111,7 +111,7 @@ export function createRuntimeCacheSession(overrides: Partial<RuntimeCacheSession
         ...meta,
         taskId: "task-100",
         completedCount: 0,
-        cachedChapterCount: 0,
+        bookChapterCount: 0,
         status: "downloading",
         hasExportData: false,
         ...overrides
