@@ -109,6 +109,32 @@ describe("download lifecycle contracts", () => {
         mocks.finalize.mockResolvedValue({ cacheDiscarded: false, cacheClearFailure: null });
     });
 
+    it.each([
+        ["detail", scrapeDetail],
+        ["forum", scrapeForum]
+    ] as const)("reports an existing task before preparing the %s download", async (_source, scrape) => {
+        const previous = createCachedData();
+        state.cachedData = previous;
+        const fetchPage = vi.fn();
+        vi.stubGlobal("fetch", fetchPage);
+        if (scrape === scrapeForum) {
+            window.history.replaceState({}, "", "/forum/100");
+        }
+        mocks.getConflict.mockResolvedValueOnce(lock);
+
+        await scrape();
+
+        expect(mocks.getConflict).toHaveBeenCalledWith("100");
+        expect(mocks.showConflict).toHaveBeenCalledWith(lock);
+        expect(fetchPage).not.toHaveBeenCalled();
+        expect(mocks.previewCache).not.toHaveBeenCalled();
+        expect(mocks.selectionPopup).not.toHaveBeenCalled();
+        expect(mocks.acquire).not.toHaveBeenCalled();
+        expect(mocks.claimCache).not.toHaveBeenCalled();
+        expect(mocks.finalize).not.toHaveBeenCalled();
+        expect(state.cachedData).toBe(previous);
+    });
+
     it.each(["success", "failure", "cancel"] as const)("finalizes exactly once after %s", async (outcome) => {
         if (outcome === "failure") {
             mocks.batchDownload.mockRejectedValueOnce(new Error("download failed"));

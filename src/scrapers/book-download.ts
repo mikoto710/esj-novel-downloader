@@ -11,6 +11,7 @@ import {
 } from "../core/state";
 import {
     acquireBookDownloadLock,
+    getConflictingBookDownloadLock,
     markBookDownloadRunning,
     startBookDownloadLockHeartbeat,
     updateBookDownloadLockTitle
@@ -66,7 +67,7 @@ interface RunBookDownloadOptions {
 }
 
 /**
- * 先选择下载范围，再取得锁并执行同一任务流程
+ * 预检冲突并选择范围，再取得锁执行同一任务流程
  */
 export async function runBookDownload(options: RunBookDownloadOptions): Promise<void> {
     const { bookId, sourcePageType } = options;
@@ -76,8 +77,17 @@ export async function runBookDownload(options: RunBookDownloadOptions): Promise<
     let plan: PreparedBook | undefined;
     let preview: BookCachePreviewResult | undefined;
     let preparationErrorKey: LocaleKey | undefined;
+    let storageStage: "lock-read" | "cache-read" = "lock-read";
 
     try {
+        // 预检只提前提示，确认后的原子获取仍负责互斥
+        const conflictingLock = await getConflictingBookDownloadLock(bookId);
+        if (conflictingLock) {
+            showBookDownloadInProgressPopup(conflictingLock);
+            return;
+        }
+
+        storageStage = "cache-read";
         plan = await options.loadPlan().catch((error: unknown) => {
             throw error instanceof BookPreflightError
                 ? error
@@ -103,7 +113,7 @@ export async function runBookDownload(options: RunBookDownloadOptions): Promise<
             imageEnabled,
             failure: {
                 scope: failure instanceof BookPreflightError ? "page" : "storage",
-                stage: failure instanceof BookPreflightError ? failure.stage : "cache-read",
+                stage: failure instanceof BookPreflightError ? failure.stage : storageStage,
                 code: failure instanceof BookPreflightError ? failure.code : failure.reason,
                 message: failure.message
             }

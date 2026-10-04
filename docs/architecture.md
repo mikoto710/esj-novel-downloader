@@ -34,7 +34,7 @@ core/download 通过传入的能力调用浏览器实现
 
 ### 全本成功
 
-1. 下载按钮调用 `scrapeDetail` / `scrapeForum` → `runBookDownload`。读取完整目录、固定插图设置，`previewBookCache` 只预览库存，再打开选择弹窗。
+1. 下载按钮调用 `scrapeDetail` / `scrapeForum` → `runBookDownload`。固定插图设置并只读预检同书冲突；已有任务立即提示，无冲突再读取完整目录、通过 `previewBookCache` 预览库存并打开选择弹窗。
 2. 选择全本后进入 `executeBookDownload`：创建本任务取消能力，acquire 书籍锁后立即进入 `try/finally`，登记停止入口、启动心跳并 `claimBookCache`；认领结果的 Map 留在该任务局部。如果最新缓存需要额外失效确认，先结束本次尝试并释放锁，再回到选择弹窗。
 3. `browser-download-dependencies.batchDownload(options, task)` 装配能力，`runDownload` 顺序执行：
 
@@ -48,6 +48,8 @@ core/download 通过传入的能力调用浏览器实现
     ```
 
 4. 全本 `cache.finish` 先 seal 待写批次，再清理本书缓存。`runDownload` 返回 `{ status: "ready", data }`，页面以 taskId 校验后发布这份结果并调用 `showFormatChoice(data)`；外层 `finally` 处理清除请求，随后停心跳并释放书籍锁。
+
+入口预检仅提前提示，不占锁；选择期间出现的新任务仍由确认后的原子获取拦截。预检读取失败时任务不启动，旧结果仍可再次导出。
 
 代表测试：[`browser-download-flow.contract.test.ts`](../tests/download/browser-download-flow.contract.test.ts)、[`download-lifecycle.contract.test.ts`](../tests/download/download-lifecycle.contract.test.ts)。
 

@@ -160,6 +160,7 @@ describe("range download lifecycle", () => {
         });
         await running;
 
+        expect(mocks.getConflict).toHaveBeenCalledWith("100");
         expect(mocks.acquire).toHaveBeenCalledWith("100", "detail");
         expect(mocks.createDownloadPopup).toHaveBeenCalledWith("range", expect.any(Function), "测试小说");
         expect(mocks.claimCache).toHaveBeenCalledWith("100", lock.taskId, false, expect.any(AbortSignal), {
@@ -178,7 +179,7 @@ describe("range download lifecycle", () => {
         );
     });
 
-    it("treats a lock acquired during selection as the authoritative conflict", async () => {
+    it("rejects a task acquired after a clear lock precheck", async () => {
         mocks.rangePopup.mockResolvedValue({
             action: "download",
             selection: { mode: "range", sourceTotalChapters: 3, startIndex: 0, endIndex: 1 }
@@ -192,6 +193,7 @@ describe("range download lifecycle", () => {
             loadPlan: async () => plan
         });
 
+        expect(mocks.getConflict).toHaveBeenCalledWith("100");
         expect(mocks.showConflict).toHaveBeenCalledWith(lock);
         expect(mocks.claimCache).not.toHaveBeenCalled();
         expect(mocks.finalize).not.toHaveBeenCalled();
@@ -295,6 +297,34 @@ describe("range download lifecycle", () => {
         expect(mocks.acquire).toHaveBeenCalledTimes(2);
         expect(mocks.finalize).toHaveBeenCalledTimes(2);
         expect(mocks.batchDownload).toHaveBeenCalledOnce();
+    });
+
+    it("keeps the previous export available when the lock precheck cannot be read", async () => {
+        const old = createCachedData();
+        state.cachedData = old;
+        const loadPlan = vi.fn(async () => plan);
+        mocks.getConflict.mockRejectedValueOnce(new Error("lock read failed"));
+        mocks.rangePopup.mockResolvedValueOnce({ action: "open-existing" });
+
+        await runBookDownload({
+            bookId: "100",
+            sourcePageType: "detail",
+            pageTitle: "Book",
+            loadPlan
+        });
+
+        expect(loadPlan).not.toHaveBeenCalled();
+        expect(mocks.previewCache).not.toHaveBeenCalled();
+        expect(mocks.recordPreflightFailure).toHaveBeenCalledWith(
+            expect.objectContaining({ failure: expect.objectContaining({ scope: "storage", stage: "lock-read" }) })
+        );
+        expect(mocks.rangePopup).toHaveBeenCalledWith(
+            expect.objectContaining({ hasExistingExport: true, preparationErrorKey: "page.cacheUnavailable.message" })
+        );
+        expect(mocks.showFormatChoice).toHaveBeenCalledWith(old);
+        expect(mocks.acquire).not.toHaveBeenCalled();
+        expect(mocks.claimCache).not.toHaveBeenCalled();
+        expect(state.cachedData).toBe(old);
     });
 
     it("reopens the previous export even when the cache preview fails", async () => {
