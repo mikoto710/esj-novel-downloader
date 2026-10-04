@@ -1,4 +1,4 @@
 interface:
-  display_name: "ESJ Regression Selector"
-  short_description: "Select focused regression coverage for ESJ downloader changes."
-  default_prompt: "Use $esj-regression-selector to choose and run regression checks for this change."
+    display_name: "ESJ Regression Selector"
+    short_description: "Choose ESJ boundary checks and real userscript page validation."
+    default_prompt: "Use $esj-regression-selector to select automated boundaries and real userscript page validation for this change."

@@ -1,24 +1,28 @@
 # Regression Matrix
 
-| Changed behavior                                                                                | Add or inspect                                                             | Required commands                                                                        |
-| ----------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
-| Pure parser, text, image, or formatting logic                                                   | nearest unit test; `tests/export/` for export output                       | targeted Vitest test; `npm run check`                                                    |
-| UI popup, rendered log, setting, or single-page action                                          | `tests/ui/` and nearest scraper/adapter contract                           | targeted Vitest test; `npm run check`                                                    |
-| Locale catalog, persisted presentation data, or runtime language switching                      | locale symmetry and terminology tests; affected open UI and adapter tests  | targeted Vitest test; `npm run check`; document Chrome + Tampermonkey language switching |
-| Browser API, download assembly, page injection                                                  | relevant `*.contract.test.ts`; `tests/support/browser-download-harness.ts` | targeted Vitest test; `npm run check`; document manual browser/userscript-manager check  |
-| Export, images, EPUB, HTML, or full-vs-single isolation                                         | `tests/export/`                                                            | targeted Vitest test; `npm run check`                                                    |
-| Mapping-font detection, cache normalization, or export binding                                  | `tests/mapping-font/` plus affected export tests                           | targeted Vitest test; `npm run check`                                                    |
-| Cache schema, legacy migration, history isolation, storage errors, cross-page sync              | `tests/cache/`                                                             | targeted Vitest test; `npm run check`; `npm run test:stress`                             |
-| Download scheduling, retry, worker pool, incremental writes, lock, cancel, resume, or lifecycle | `tests/download/` and relevant `tests/cache/`                              | targeted Vitest test; `npm run check`; `npm run test:stress`                             |
-| Broad cross-cutting change                                                                      | affected suites                                                            | `npm run build`; add `npm run test:stress` for any lifecycle/cache/concurrency change    |
-| Release candidate                                                                              | affected suites                                                            | `npm run build`; `npm run test:stress`                                                  |
+Use `docs/testing.md` as the maintained source for automation selection and the real-page checklist. This is a userscript: synthetic DOM and GM fixtures do not verify real page injection, permissions, native download triggers, or reader rendering.
 
-## Test conventions
+Report actual validation evidence in the current task or Pull Request. Do not add acceptance logs or run-specific status to repository documentation.
 
-- `*.test.ts`: pure logic, state machine, retry, worker pool, cache writes.
-- `*.contract.test.ts`: stable behavior across page adapters, core, locks, cache, and exports.
-- `*.characterization.test.ts`: preserve confirmed complex behavior before refactoring.
-- For a popup with multiple decisions, click every action directly and assert its result, cleanup, and relevant side effects.
-- For localization, assert catalog symmetry, intentional Taiwanese terminology, locale-neutral persistence, and updates to already-open interfaces. Never translate novel data or infer behavior by parsing translated output.
-- Keep pure logic in Node and reserve jsdom for tests that require browser document behavior. Do not add a broad presentation test when focused locale and component tests already cover the same contract.
-- Stress tests are excluded from normal test commands and cover 3000-chapter scale, high cache hit rates, image blobs, slow storage, backpressure, and cancellation.
+| Changed behavior                                                                  | Select evidence                                                                                                                              | Required checks                                                                                |
+| --------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| Ordinary popup, label, control, injection, locale refresh, dragging, or scrolling | Relevant real ESJZone page with Chrome + Tampermonkey; reuse an automated case only if a concrete asynchronous or data-loss boundary changed | `npm run build`; record real-page verification or mark it unverified                           |
+| Locale catalogs and locale-neutral persistence                                    | Existing key/interpolation and data-boundary checks; manually review Taiwanese terminology and switching on open pages                       | Focused existing tests; `npm run check`; record real-page language verification                |
+| Browser protocol, request isolation, authorization, or cancellation               | Existing protocol and cancellation contracts; real userscript permissions and password actions                                               | Focused existing tests; `npm run check`; add stress for changed lifecycle/queue behavior       |
+| Range, parser, image, or font input boundary                                      | Nearest existing pure/data test; add a synthetic case only for an uncovered input class                                                      | Focused tests; `npm run check`                                                                 |
+| Export data, images, fonts, and retained-result isolation                         | Existing output/resource and failure-recovery contracts; inspect affected files in real HTML/EPUB readers                                    | Focused tests; `npm run check`; record applicable reader/page verification                     |
+| Cache schema, migration, ownership, history separation, or cross-page state       | Existing repository and recovery contracts                                                                                                   | Focused tests; `npm run check`; `npm run test:stress`                                          |
+| Scheduling, retries, byte budgets, task locks, backpressure, or cancellation      | Existing core/lifecycle boundaries and relevant representative pressure cases                                                                | Focused tests; `npm run check`; `npm run test:stress`                                          |
+| Test cleanup                                                                      | Remaining affected suites and unused imports/helpers; keep data and asynchronous boundaries                                                  | `npm run build`; run remaining stress suite when its tests or lifecycle/cache tests change     |
+| Broad change or release candidate                                                 | Applicable boundaries plus actual browser/userscript-manager evidence                                                                        | `npm run build`; `npm run test:stress` for lifecycle/cache changes and every release candidate |
+
+## Keep coverage focused
+
+- Reuse one main automated proof per input/action/result. Do not duplicate normal success paths for each page entry or thin adapter wrapper.
+- Keep UI automation small: pending-decision cancellation, pending authorization, old asynchronous results, nested locks, retained inputs/results, and resource limits.
+- Normal button decisions, text, layout, language refresh, and page wiring belong to real-page verification. Record what was actually validated; fixture success does not satisfy that check.
+- Keep core tests in Node; use jsdom only for DOM-dependent boundaries or output structure.
+- Control races through deferred requests or structured state, and use fake clocks for deadlines. Assert independent business results, not shared formatter output or implementation call counts.
+- Retain representative pressure for large read-only previews, Blob byte budgets, selective invalid-cache recovery, range/inventory isolation, and slow-write backpressure. A large loop alone is not performance evidence.
+- Changes to tests should reduce redundant work rather than replace removed cases with another broad synthetic matrix.
+- Keep fault-injection contracts for storage unavailability, quota exhaustion, transaction aborts, read/write or migration failures, and lost locks/writers. Classification alone does not prove downstream retry, propagation, preserved data, or cleanup.

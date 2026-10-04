@@ -51,7 +51,7 @@ core/download 通过传入的能力调用浏览器实现
 
 入口预检仅提前提示，不占锁；选择期间出现的新任务仍由确认后的原子获取拦截。预检读取失败时任务不启动，旧结果仍可再次导出。
 
-代表测试：[`browser-download-flow.contract.test.ts`](../tests/download/browser-download-flow.contract.test.ts)、[`download-lifecycle.contract.test.ts`](../tests/download/download-lifecycle.contract.test.ts)。
+代表测试：[`download-lifecycle.contract.test.ts`](../tests/download/download-lifecycle.contract.test.ts)、[`download-coordinator.characterization.test.ts`](../tests/download/download-coordinator.characterization.test.ts)。普通页面接线按 [`docs/testing.md`](testing.md) 的实际页面清单验收；`browser-download-flow.contract.test.ts` 保留请求排序、任务隔离与启动失败清理边界。
 
 ### 范围成功
 

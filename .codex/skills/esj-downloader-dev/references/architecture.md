@@ -17,4 +17,4 @@ For download entry, cache, cancellation, protected chapters, or export changes, 
 - Protected-chapter passwords stay in task memory. Export placeholders stay out of chapter/cache data.
 - Core emits stable message codes. UI and adapters localize interface text; novel content, metadata, URLs, and ESJZone `status === 206` protocol text remain unchanged.
 
-Select focused checks with `esj-regression-selector`; tests use fixtures and isolated storage. Keep method JSDoc to a short Chinese sentence on three lines, with brief `//` comments for non-obvious ordering.
+Select automated boundaries and real userscript page validation with `esj-regression-selector` and [docs/testing.md](../../../../docs/testing.md). Synthetic fixtures and isolated storage prove only the boundary they exercise. Keep method JSDoc to a short Chinese sentence on three lines, with brief `//` comments for non-obvious ordering.

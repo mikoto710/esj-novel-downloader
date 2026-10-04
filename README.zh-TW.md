@@ -134,3 +134,5 @@ npm run build
 `npm run build:fast` 只會執行 TypeScript 型別檢查和 Rollup，不會執行自動化測試、ESLint 或格式檢查，因此不能取代提交、CI 或發布前的完整 `npm run build`。`npm run format` 會直接修改檔案，執行後應檢查差異。建置產物位於 `dist/esj-novel-downloader.user.js`。
 
 下載流程、狀態歸屬與程式碼閱讀順序請參閱 [`docs/architecture.md`](docs/architecture.md)。貢獻流程、程式碼規範和發布要求請參閱 [`CONTRIBUTING.md`](CONTRIBUTING.md)，測試目錄與隔離規則請參閱 [`docs/testing.md`](docs/testing.md)。
+
+自動化測試集中保護快取、取消、任務鎖、異常輸入與匯出資料等邊界。頁面注入、一般控制項操作、介面語言和閱讀器顯示透過實際頁面與 Tampermonkey 驗收，情境清單請參閱測試文件。

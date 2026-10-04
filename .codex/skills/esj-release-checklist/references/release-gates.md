@@ -9,22 +9,22 @@
 | Repository blockers         | open Issue and PR state relevant to the release                                                      |
 | Source quality              | `npm run build` and `npm run test:stress` from the release candidate source                          |
 | Scope                       | focused diff and user-visible change summary                                                         |
-| Documentation               | parity of affected README sections; consistency of changed contributor, test, and Skill commands    |
+| Documentation               | parity of affected README sections; consistency of changed contributor, test, and Skill commands     |
 | Regression selection        | `$esj-regression-selector` command record                                                            |
 | Artifact provenance         | confirm the userscript was built from the checked source                                             |
 | Tag policy                  | tag exactly matches `package.json`; prerelease commit is contained in `dev`, stable commit in `main` |
 
 ## Apply when relevant
 
-| Change area                                           | Additional evidence                                                                          |
-| ----------------------------------------------------- | -------------------------------------------------------------------------------------------- |
-| Cache/key/schema migration                            | legacy read/migration path, compatibility or invalidation behavior, storage-failure recovery |
-| Download state, locks, writes, retry, or cancellation | affected lifecycle tests and `npm run test:stress`                                           |
-| Download history                                      | cache/history isolation tests and clearing behavior                                          |
-| Export or images                                      | full-book and single-chapter output isolation; TXT/HTML/EPUB behavior as applicable          |
-| Mapping fonts                                         | strict detection, cache normalization, and exported-font binding                             |
-| Browser-facing behavior                               | manual verification with named browser and userscript manager                                |
-| Interface localization                                | catalog symmetry, locale-neutral data, and Chrome + Tampermonkey runtime switching           |
+| Change area                                           | Additional evidence                                                                                                                 |
+| ----------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| Cache/key/schema migration                            | legacy read/migration path, compatibility or invalidation behavior, storage-failure recovery                                        |
+| Download state, locks, writes, retry, or cancellation | affected lifecycle tests and `npm run test:stress`                                                                                  |
+| Download history                                      | cache/history isolation tests and clearing behavior                                                                                 |
+| Export or images                                      | full-book and single-chapter output isolation; TXT/HTML/EPUB behavior as applicable                                                 |
+| Mapping fonts                                         | strict detection, cache normalization, and exported-font binding                                                                    |
+| Browser-facing behavior                               | real-page checklist in `docs/testing.md`, with named browser and userscript manager; fixture evidence is separate                   |
+| Interface localization                                | catalog keys/interpolation and locale-neutral data boundaries; terminology review and Chrome + Tampermonkey switching on real pages |
 
 ## Decision wording
 

@@ -16,7 +16,7 @@ description: Implement, refactor, or diagnose ESJ Novel Downloader TypeScript us
 ## Keep changes reviewable
 
 - Make the smallest focused edit; do not combine unrelated formatting, dependency, or version changes.
-- Add a regression test for a defect. Use contract tests for stable cross-boundary behavior and characterization tests before refactoring established complex behavior.
+- Follow `docs/testing.md` when selecting evidence. Ordinary userscript page behavior is verified on real pages with a browser and userscript manager. Reuse existing automated boundaries; add a test only for a concrete uncovered data, asynchronous, protocol, or resource boundary that synthetic inputs can reliably reproduce.
 - Use `ui/dialogs/common.ts` and the existing dialog modules for user prompts; do not introduce `alert`.
 - Keep protected-chapter authorization in the browser adapter and expose only structured unlock results to the core. Passwords, tokens, cookies, authorization headers, and full response bodies must not enter cache, diagnostics, or logs; rejected passwords must not become ordinary retries, permanent failures, or chapter cache entries.
 - Snapshot task settings before cache claim and download startup so cross-page setting changes affect only future tasks.
