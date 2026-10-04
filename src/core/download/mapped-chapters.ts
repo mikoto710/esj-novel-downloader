@@ -6,7 +6,7 @@ import type { TaskCacheWriter } from "./task-cache-writer";
 import { MappingFontError } from "../mapping-font";
 import { runUserDecision, UserDecisionGate } from "./user-decision-gate";
 
-type MappingPorts = Pick<DownloadDependencies, "cancellation" | "events" | "log"> & {
+type MappingPorts = Pick<DownloadDependencies, "chapters" | "concurrency" | "cancellation" | "events" | "log"> & {
     ui: Pick<DownloadDependencies["ui"], "confirmMappingFontDownload" | "updateMappingFontWarning">;
     scheduler: Pick<DownloadDependencies["scheduler"], "sleepWithAbort">;
     chapterProcessor: Pick<DownloadDependencies["chapterProcessor"], "normalizeCached">;
@@ -19,12 +19,11 @@ const CACHE_RESTORE_YIELD_INTERVAL = 25;
 export function createMappedChapters(
     ports: MappingPorts,
     scope: DownloadScope,
-    chapters: Map<number, Chapter>,
     progress: DownloadProgress,
     cache: TaskCacheWriter,
-    decisions: UserDecisionGate,
-    concurrency: number
+    decisions: UserDecisionGate
 ) {
+    const { chapters, concurrency } = ports;
     let mappingConsentGranted = false;
     let mappingConsentPromise: Promise<boolean> | null = null;
     const mappedChapterIndexes = new Set<number>();

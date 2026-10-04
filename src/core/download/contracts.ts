@@ -393,21 +393,6 @@ export interface DownloadSchedulerPort {
 }
 
 /**
- * 下载设置读取接口
- */
-export interface DownloadSettingsPort {
-    getConcurrency(): number;
-}
-
-/**
- * 当前 URL 和系统时间接口
- */
-export interface DownloadEnvironmentPort {
-    currentUrl(): string;
-    now(): number;
-}
-
-/**
  * 完成一次下载所需的业务端口
  */
 export interface DownloadPorts {
@@ -430,7 +415,9 @@ export interface DownloadPorts {
  */
 export interface DownloadDependencies extends DownloadPorts {
     scheduler: DownloadSchedulerPort;
-    settings: DownloadSettingsPort;
-    environment: DownloadEnvironmentPort;
+    // 仅在启动时读取，任务过程中不反查页面设置
+    concurrency: number;
+    fallbackPageUrl: string;
+    startedAt: number;
     log(message: DownloadLog): void;
 }

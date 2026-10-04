@@ -116,11 +116,9 @@ export function createStressDownloadHarness(options: StressDownloadHarnessOption
             randomDelay: () => 0,
             schedule: () => () => undefined
         },
-        settings: { getConcurrency: () => options.concurrency ?? 5 },
-        environment: {
-            currentUrl: () => "https://www.esjzone.cc/detail/3000.html",
-            now: () => Date.parse("2026-01-01T00:00:00.000Z")
-        },
+        concurrency: options.concurrency ?? 5,
+        fallbackPageUrl: "https://www.esjzone.cc/detail/3000.html",
+        startedAt: Date.parse("2026-01-01T00:00:00.000Z"),
         log: vi.fn()
     };
 

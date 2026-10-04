@@ -1,3 +1,4 @@
+import { runDownload } from "../core/download/coordinator";
 import type {
     BookLockService,
     ChapterCacheRepository,
@@ -6,6 +7,8 @@ import type {
     CoverCacheRepository,
     CoverFetcherPort,
     DownloadDependencies,
+    DownloadOptions,
+    DownloadResult,
     DownloadCancellationPort,
     DownloadSnapshot,
     DownloadUiPort
@@ -101,6 +104,7 @@ function createBrowserDownloadUi(task: BrowserDownloadTask): DownloadUiPort {
     const isCurrent = () => isCurrentDownload(task.lock.taskId);
     let lastDownloadSnapshot: DownloadSnapshot | null = null;
     let activeDownloadMode: "all" | "range" = "all";
+    let cleaned = false;
 
     // 下载核心只发布快照，所有标题、进度条、托盘和弹窗更新在此落到 DOM
     const ui: DownloadUiPort = {
@@ -219,6 +223,10 @@ function createBrowserDownloadUi(task: BrowserDownloadTask): DownloadUiPort {
             }
         },
         cleanup() {
+            if (cleaned) {
+                return;
+            }
+            cleaned = true;
             unsubscribeLocale();
             if (isCurrent()) {
                 fullCleanup(originalTitle);
@@ -366,6 +374,9 @@ const cache: ChapterCacheRepository = {
  * 创建本次下载使用的浏览器依赖
  */
 export function createBrowserDownloadDependencies(task: BrowserDownloadTask): DownloadDependencies {
+    const concurrency = getConcurrency();
+    const fallbackPageUrl = location.href;
+    const startedAt = Date.now();
     const requestGate = new BrowserRequestGate();
     let taskStarted = false;
     const { lock: activeLock, chapters, cancellation } = task;
@@ -437,13 +448,22 @@ export function createBrowserDownloadDependencies(task: BrowserDownloadTask): Do
                 return () => window.clearTimeout(timer);
             }
         },
-        settings: {
-            getConcurrency
-        },
-        environment: {
-            currentUrl: () => location.href,
-            now: () => Date.now()
-        },
+        concurrency,
+        fallbackPageUrl,
+        startedAt,
         log: (message) => browserDiagnosticLog(message, activeLock.taskId, isCurrentDownload(activeLock.taskId))
     };
+}
+
+/**
+ * 装配本次任务的浏览器能力并返回下载结果
+ */
+export async function batchDownload(options: DownloadOptions, task: BrowserDownloadTask): Promise<DownloadResult> {
+    const dependencies = createBrowserDownloadDependencies(task);
+    try {
+        return await runDownload(options, dependencies);
+    } finally {
+        // 核心尚未进入 try 时也可能拒绝输入，浏览器订阅仍需关闭
+        dependencies.ui.cleanup();
+    }
 }

@@ -85,7 +85,7 @@ export interface BrowserDownloadRuntime {
 
 export async function resetBrowserDownloadHarness(): Promise<BrowserDownloadRuntime> {
     const [{ batchDownload }, stateRuntime] = await Promise.all([
-        import("../../src/adapters/batch-download"),
+        import("../../src/adapters/browser-download-dependencies"),
         import("../../src/core/state")
     ]);
     const { abortActiveDownload, createDownloadCancellation, activateDownload, state } = stateRuntime;

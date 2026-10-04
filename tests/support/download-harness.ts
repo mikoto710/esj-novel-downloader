@@ -112,13 +112,9 @@ export function createDownloadHarness(tasks: DownloadTask[], chapters = new Map<
             randomDelay: () => 0,
             schedule: () => () => undefined
         },
-        settings: {
-            getConcurrency: () => 1
-        },
-        environment: {
-            currentUrl: () => "https://www.esjzone.cc/detail/100.html",
-            now: () => Date.parse("2026-01-01T00:00:00.000Z")
-        },
+        concurrency: 1,
+        fallbackPageUrl: "https://www.esjzone.cc/detail/100.html",
+        startedAt: Date.parse("2026-01-01T00:00:00.000Z"),
         log
     };
 

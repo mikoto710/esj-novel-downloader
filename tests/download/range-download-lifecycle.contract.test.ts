@@ -44,8 +44,8 @@ vi.mock("../../src/core/cache/sync", () => ({
     subscribeCacheSync: vi.fn(() => vi.fn()),
     publishCacheSyncEvent: mocks.publishCacheSyncEvent
 }));
-vi.mock("../../src/adapters/batch-download", () => ({ batchDownload: mocks.batchDownload }));
-vi.mock("../../src/core/download/task-finalizer", () => ({ finalizeBookDownloadTask: mocks.finalize }));
+vi.mock("../../src/adapters/browser-download-dependencies", () => ({ batchDownload: mocks.batchDownload }));
+vi.mock("../../src/adapters/book-download-lifecycle", () => ({ finalizeBookDownloadTask: mocks.finalize }));
 vi.mock("../../src/ui/dialogs/download-selection", () => ({ createDownloadSelectionPopup: mocks.rangePopup }));
 vi.mock("../../src/ui/popups", () => ({
     createDownloadPopup: mocks.createDownloadPopup,

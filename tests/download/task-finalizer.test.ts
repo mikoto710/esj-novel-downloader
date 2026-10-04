@@ -19,7 +19,7 @@ vi.mock("../../src/core/state", async (importOriginal) => {
     const original = await importOriginal<typeof import("../../src/core/state")>();
     return { ...original, clearRuntimeCacheSession: mocks.clearRuntimeSession };
 });
-import { finalizeBookDownloadTask } from "../../src/core/download/task-finalizer";
+import { finalizeBookDownloadTask } from "../../src/adapters/book-download-lifecycle";
 import { activateDownload, createDownloadCancellation, state } from "../../src/core/state";
 
 describe("book download task finalization", () => {

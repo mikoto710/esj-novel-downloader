@@ -67,7 +67,7 @@ describe("mapped font cache normalization", () => {
                 return `<p>${task.title}</p>`;
             })
         };
-        dependencies.settings.getConcurrency = () => 5;
+        dependencies.concurrency = 5;
 
         await harness.run({
             bookId: "100",

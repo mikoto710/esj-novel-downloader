@@ -3,7 +3,7 @@ import type { DownloadDependencies, DownloadTask } from "./contracts";
 import type { DownloadScope } from "./download-scope";
 import type { DownloadProgress } from "./download-progress";
 import type { TaskCacheWriter } from "./task-cache-writer";
-import type { MappedChapters } from "./mapped-chapters";
+import { createMappedChapters } from "./mapped-chapters";
 import { createProtectedChapters, type ChapterTaskResult } from "./protected-chapters";
 import { scanChapterIntegrity, scanMissingChapterTasks, type ChapterIntegrityIssue } from "./integrity";
 import { DEFAULT_CHAPTER_RETRY_POLICY, runWithRetry } from "./retry-policy";
@@ -14,9 +14,25 @@ import { getErrorDetails } from "./errors";
 
 type ChapterPorts = Pick<
     DownloadDependencies,
-    "cancellation" | "chapterFetcher" | "chapterProcessor" | "protectedChapterDetector" | "scheduler" | "log" | "events"
+    | "chapters"
+    | "concurrency"
+    | "cancellation"
+    | "chapterFetcher"
+    | "chapterProcessor"
+    | "protectedChapterDetector"
+    | "protectedChapterAuth"
+    | "scheduler"
+    | "log"
+    | "events"
 > & {
-    ui: Pick<DownloadDependencies["ui"], "confirmIncompleteChapters">;
+    ui: Pick<
+        DownloadDependencies["ui"],
+        | "confirmIncompleteChapters"
+        | "confirmMappingFontDownload"
+        | "updateMappingFontWarning"
+        | "promptProtectedChapterPassword"
+        | "closeProtectedChapterPrompt"
+    >;
 };
 
 /**
@@ -25,13 +41,14 @@ type ChapterPorts = Pick<
 export function createChapterPipeline(
     ports: ChapterPorts,
     scope: DownloadScope,
-    chapters: Map<number, Chapter>,
     progress: DownloadProgress,
-    cache: TaskCacheWriter,
-    mapping: MappedChapters,
-    protectedChapters: ReturnType<typeof createProtectedChapters>,
-    decisions: UserDecisionGate
+    cache: TaskCacheWriter
 ) {
+    const { chapters, concurrency } = ports;
+    // 字体和密码分支共用本流程的决策队列，调用方只关心下载阶段
+    const decisions = new UserDecisionGate();
+    const mapping = createMappedChapters(ports, scope, progress, cache, decisions);
+    const protectedChapters = createProtectedChapters(ports, scope, progress, decisions);
     const shouldStop = () => ports.cancellation.isCancellationRequested() || Boolean(cache.failure);
     /**
      * 按既有重试策略获取正文，普通失败交给后续完整性检查
@@ -242,7 +259,7 @@ export function createChapterPipeline(
     /**
      * 并发抓取普通章节，并等待密码队列收尾
      */
-    async function download(concurrency: number): Promise<void> {
+    async function download(): Promise<void> {
         ports.log({ code: "download-started", params: { concurrency } });
         const consumer = protectedChapters.consume(processFetchedChapterHtml);
         let workerFailure: unknown;
@@ -391,5 +408,16 @@ export function createChapterPipeline(
             }
         }
     }
-    return { download, checkIntegrity, resolveIncomplete };
+    return {
+        restore: mapping.restore,
+        download,
+        checkIntegrity,
+        resolveIncomplete,
+        get mappingFailures() {
+            return mapping.failures;
+        },
+        dispose: () => protectedChapters.dispose()
+    };
 }
+
+export type ChapterPipeline = ReturnType<typeof createChapterPipeline>;

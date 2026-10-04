@@ -4,11 +4,8 @@ import { MappingFontError } from "../mapping-font";
 import { createDownloadScope } from "./download-scope";
 import { DownloadProgress } from "./download-progress";
 import { createTaskCacheWriter, type TaskCacheWriter } from "./task-cache-writer";
-import { createMappedChapters, type MappedChapters } from "./mapped-chapters";
-import { createProtectedChapters } from "./protected-chapters";
-import { createChapterPipeline } from "./chapter-pipeline";
+import { createChapterPipeline, type ChapterPipeline } from "./chapter-pipeline";
 import { createExportData, prepareCover } from "./export-data";
-import { UserDecisionGate } from "./user-decision-gate";
 import { getErrorDetails, isCancellationError } from "./errors";
 
 class DownloadCancelled extends Error {}
@@ -21,23 +18,11 @@ export async function runDownload(
     dependencies: DownloadDependencies
 ): Promise<DownloadResult> {
     const { chapters, cancellation, ui, events, log } = dependencies;
-    const scope = createDownloadScope(options, dependencies.environment);
-    const concurrency = Math.max(1, Math.floor(dependencies.settings.getConcurrency()) || 1);
+    const scope = createDownloadScope(options, dependencies);
+    const ports = { ...dependencies, concurrency: Math.max(1, Math.floor(dependencies.concurrency) || 1) };
     const progress = new DownloadProgress(scope, chapters, events, ui);
-    const decisions = new UserDecisionGate();
-    const cache = createTaskCacheWriter(dependencies, scope, chapters, progress);
-    const mapping = createMappedChapters(dependencies, scope, chapters, progress, cache, decisions, concurrency);
-    const protectedChapters = createProtectedChapters(dependencies, scope, progress, decisions);
-    const pipeline = createChapterPipeline(
-        dependencies,
-        scope,
-        chapters,
-        progress,
-        cache,
-        mapping,
-        protectedChapters,
-        decisions
-    );
+    const cache = createTaskCacheWriter(ports, scope, chapters, progress);
+    const pipeline = createChapterPipeline(ports, scope, progress, cache);
 
     function checkActive(): void {
         if (cancellation.isCancellationRequested()) {
@@ -70,7 +55,7 @@ export async function runDownload(
         }
 
         progress.transition("restoring-cache");
-        const restored = await mapping.restore();
+        const restored = await pipeline.restore();
         checkActive();
         if (!restored) {
             throw createStorageError("ownership-lost", "write");
@@ -78,7 +63,7 @@ export async function runDownload(
         const cover = prepareCover(scope, dependencies);
 
         progress.transition("downloading");
-        await pipeline.download(concurrency);
+        await pipeline.download();
         checkActive();
 
         // 每轮补抓都先落盘，再决定是否还需补章
@@ -114,12 +99,12 @@ export async function runDownload(
             try {
                 return await finishCancellation(dependencies, progress, cache);
             } catch (cancellationError) {
-                return reportFailure(cancellationError, dependencies, progress, cache, mapping);
+                return reportFailure(cancellationError, dependencies, progress, cache, pipeline);
             }
         }
-        return reportFailure(error, dependencies, progress, cache, mapping);
+        return reportFailure(error, dependencies, progress, cache, pipeline);
     } finally {
-        protectedChapters.dispose();
+        pipeline.dispose();
         cache.dispose();
     }
 }
@@ -167,7 +152,7 @@ function reportFailure(
     dependencies: Pick<DownloadDependencies, "ui" | "log" | "events">,
     progress: DownloadProgress,
     cache: TaskCacheWriter,
-    mapping: MappedChapters
+    pipeline: ChapterPipeline
 ): never {
     const { ui, log, events } = dependencies;
     const reported =
@@ -200,8 +185,8 @@ function reportFailure(
         : { errorName: details.name, detail: details.message };
     events.emit({ type: "download-failed", code, params, snapshot: progress.snapshot });
     ui.cleanup();
-    if (reported instanceof MappingFontError && mapping.failures.length) {
-        ui.showMappingFontFailure(mapping.failures);
+    if (reported instanceof MappingFontError && pipeline.mappingFailures.length) {
+        ui.showMappingFontFailure(pipeline.mappingFailures);
     } else {
         ui.showTerminalFailure({ kind: "download", code, params, storageFailure });
     }

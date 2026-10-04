@@ -230,4 +230,15 @@ describe("browser download flow contracts", () => {
         expect(mocks.ownsLock).toHaveBeenCalledWith(runtime.task.lock);
         expect(nextCancellation.isCancellationRequested()).toBe(false);
     });
+    it("cleans the browser presentation when invalid selection fails before core startup", async () => {
+        const options = createBrowserDownloadOptions(createBrowserDownloadTasks(1));
+        await expect(
+            runtime.batchDownload({
+                ...options,
+                selection: { mode: "range", sourceTotalChapters: 3, startIndex: 1, endIndex: 2 }
+            })
+        ).rejects.toThrow();
+        expect(mocks.fullCleanup).toHaveBeenCalledOnce();
+        expect(mocks.fetchWithTimeout).not.toHaveBeenCalled();
+    });
 });

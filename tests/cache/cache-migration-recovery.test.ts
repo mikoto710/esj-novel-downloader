@@ -42,10 +42,6 @@ vi.mock("../../src/core/book-lock", () => ({
     hasBookDownloadTaskPresence: vi.fn(() => false),
     listActiveBookDownloadLocks: vi.fn(async () => [])
 }));
-vi.mock("../../src/core/state", () => ({
-    resetGlobalState: vi.fn(),
-    state: { runtimeCacheSession: null }
-}));
 
 describe("v2 cache migration recovery", () => {
     const chapter = createChapter(0, { content: "legacy chapter" });

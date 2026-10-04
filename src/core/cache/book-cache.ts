@@ -1,6 +1,5 @@
 import type { BookCover, CacheMeta, Chapter, PersistentCacheEntry } from "../../types";
-import { hasBookDownloadTaskPresence, listActiveBookDownloadLocks } from "../book-lock";
-import { resetGlobalState, state } from "../state";
+import { hasBookDownloadTaskPresence } from "../book-lock";
 import {
     claimCacheV3,
     clearCacheV3,
@@ -445,21 +444,4 @@ export async function clearAllPersistentCaches(protectedBookIds: ReadonlySet<str
         console.error("清理缓存失败", error);
         throw normalizeStorageError(error, "clear");
     }
-}
-
-/**
- * 清理全部缓存，包括持久缓存和当前页内存状态
- */
-export async function clearAllCaches(): Promise<{ protectedBookIds: string[] }> {
-    const activeLocks = await listActiveBookDownloadLocks();
-    const protectedBookIds = new Set(activeLocks.map((lock) => lock.bookId));
-    const newlyProtected = await clearAllPersistentCaches(protectedBookIds);
-    newlyProtected.forEach((bookId) => protectedBookIds.add(bookId));
-
-    const runtimeBookId = state.runtimeCacheSession?.bookId;
-    if (!runtimeBookId || !protectedBookIds.has(runtimeBookId)) {
-        resetGlobalState();
-    }
-
-    return { protectedBookIds: Array.from(protectedBookIds) };
 }

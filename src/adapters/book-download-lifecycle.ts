@@ -1,14 +1,14 @@
-import { BookDownloadLock } from "../../types";
-import { releaseBookDownloadLock, shouldDiscardBookDownloadCache } from "../book-lock";
-import { clearBookCacheForTask } from "../cache/book-cache";
-import { clearRuntimeCacheSession, releaseActiveDownload } from "../state";
+import { BookDownloadLock } from "../types";
+import { releaseBookDownloadLock, shouldDiscardBookDownloadCache } from "../core/book-lock";
+import { clearBookCacheForTask } from "../core/cache/book-cache";
+import { clearRuntimeCacheSession, releaseActiveDownload } from "../core/state";
 import {
     createStorageError,
     normalizeStorageError,
     toStorageFailure,
     type StorageFailure
-} from "../cache/storage-error";
-import type { DownloadLog } from "./contracts";
+} from "../core/cache/storage-error";
+import type { DownloadLog } from "../core/download/contracts";
 
 /**
  * 书籍下载收尾时的缓存清理结果

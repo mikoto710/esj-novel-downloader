@@ -147,15 +147,6 @@ export function clearCachedExport(bookId?: string): void {
     state.cachedData = null;
 }
 
-/**
- * 重置所有全局状态
- */
-export function resetGlobalState(): void {
-    clearRuntimeCacheSession();
-    clearCachedExport();
-    console.log("内存状态已重置");
-}
-
 subscribeCacheSync(async (event) => {
     const runtime = state.runtimeCacheSession;
     if (!runtime || runtime.bookId !== event.bookId || event.type === "cache-saved") {

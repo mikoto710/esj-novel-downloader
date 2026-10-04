@@ -103,7 +103,7 @@ describe("runtime cache ownership", () => {
 
     it("preserves the export when stopping and discarding a new task", async () => {
         const previous = runtime.state.cachedData;
-        const { finalizeBookDownloadTask } = await import("../../src/core/download/task-finalizer");
+        const { finalizeBookDownloadTask } = await import("../../src/adapters/book-download-lifecycle");
         await finalizeBookDownloadTask(createBookLock({ taskId: "new-task" }), vi.fn());
         expect(runtime.state.cachedData).toBe(previous);
         expect(chapters.size).toBe(1);

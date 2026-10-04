@@ -55,8 +55,6 @@ export default [
 
     {
         files: ["src/core/download/**/*.ts"],
-        // 浏览器编排按职责排除，不以目录名推断纯核心
-        ignores: ["src/core/download/task-finalizer.ts"],
         rules: {
             "no-restricted-imports": [
                 "error",
@@ -84,8 +82,7 @@ export default [
                                 "**/utils/dom",
                                 "**/utils/request",
                                 "**/utils/download",
-                                "**/utils/log",
-                                "./task-finalizer"
+                                "**/utils/log"
                             ],
                             message: "下载内核通过 contracts 接收能力，浏览器实现放在 adapters"
                         }

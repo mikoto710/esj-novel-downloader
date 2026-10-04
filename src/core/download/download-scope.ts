@@ -1,11 +1,14 @@
 import type { CacheMeta, Chapter } from "../../types";
-import type { DownloadEnvironmentPort, DownloadOptions, DownloadTask } from "./contracts";
+import type { DownloadDependencies, DownloadOptions, DownloadTask } from "./contracts";
 import { resolveDownloadSelection } from "./selection";
 
 /**
  * 固定本次范围；章节索引始终沿用原书位置
  */
-export function createDownloadScope(options: DownloadOptions, environment: DownloadEnvironmentPort) {
+export function createDownloadScope(
+    options: DownloadOptions,
+    start: Pick<DownloadDependencies, "fallbackPageUrl" | "startedAt">
+) {
     const selection = resolveDownloadSelection(options);
     const indexes = new Set(options.tasks.map((task) => task.index));
     const taskOrderByIndex = new Map(options.tasks.map((task, order) => [task.index, order]));
@@ -14,11 +17,11 @@ export function createDownloadScope(options: DownloadOptions, environment: Downl
         bookName: options.bookName,
         rawBookName: options.rawBookName || options.bookName,
         author: options.author || "未知作者",
-        pageUrl: options.pageUrl || environment.currentUrl(),
+        pageUrl: options.pageUrl || start.fallbackPageUrl,
         totalChapters: selection.sourceTotalChapters,
         sourcePageType: options.sourcePageType || "unknown",
         imageEnabled: options.imageEnabled,
-        updatedAt: environment.now()
+        updatedAt: start.startedAt
     };
     return {
         options,

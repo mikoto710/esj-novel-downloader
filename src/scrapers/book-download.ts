@@ -18,9 +18,9 @@ import {
 import { claimBookCache, previewBookCache, type BookCachePreviewResult } from "../core/cache/book-cache";
 import { publishCacheSyncEvent } from "../core/cache/sync";
 import { getImageDownloadSetting } from "../core/config";
-import { batchDownload } from "../adapters/batch-download";
+import { batchDownload } from "../adapters/browser-download-dependencies";
 import { selectDownloadTasks } from "../core/download/selection";
-import { finalizeBookDownloadTask } from "../core/download/task-finalizer";
+import { finalizeBookDownloadTask } from "../adapters/book-download-lifecycle";
 import { normalizeStorageError, StorageError, toStorageFailure } from "../core/cache/storage-error";
 import { fullCleanup } from "../utils/dom";
 import { createDownloadPopup, showBookDownloadInProgressPopup, showFormatChoice } from "../ui/popups";

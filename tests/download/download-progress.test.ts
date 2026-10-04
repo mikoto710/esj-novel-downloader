@@ -22,7 +22,7 @@ function createProgress(count: number, restored: number, events: DownloadEventSi
             imageEnabled: false,
             tasks
         },
-        { currentUrl: () => "https://example.test", now: () => 0 }
+        { fallbackPageUrl: "https://example.test", startedAt: 0 }
     );
     const chapters = new Map(tasks.slice(0, restored).map((task) => [task.index, createChapter(task.index)]));
     return new DownloadProgress(scope, chapters, events, { update: () => undefined });
@@ -42,7 +42,7 @@ describe("DownloadProgress", () => {
                 tasks: [createDownloadTask(10), createDownloadTask(11)],
                 selection: { mode: "range", sourceTotalChapters: 20, startIndex: 10, endIndex: 11 }
             },
-            { currentUrl: () => "https://example.test/book", now: () => 0 }
+            { fallbackPageUrl: "https://example.test/book", startedAt: 0 }
         );
         const chapters = new Map([
             [0, createChapter(0)],
