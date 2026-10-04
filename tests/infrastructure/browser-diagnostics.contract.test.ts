@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
     browserDiagnosticLog,
     clearBrowserDiagnosticSessions,
@@ -16,6 +16,7 @@ import {
 } from "../../src/adapters/browser-diagnostics";
 import { createInitialDownloadSnapshot } from "../../src/core/download/download-progress";
 import { setInterfaceLocalePreference } from "../../src/core/config";
+import { getUserscriptApiMocks } from "../support/gm";
 
 describe("browser diagnostic persistence", () => {
     beforeEach(() => {
@@ -28,6 +29,57 @@ describe("browser diagnostic persistence", () => {
         Object.defineProperty(event, "persisted", { value: persisted });
         window.dispatchEvent(event);
     }
+
+    it("does not block a caller when diagnostic settings cannot be read", () => {
+        vi.spyOn(console, "warn").mockImplementation(() => undefined);
+        const gm = getUserscriptApiMocks();
+        gm.getValue.mockImplementation((key: string, fallback?: unknown) => {
+            if (key === "enable_epub_tag_page") throw new Error("GM read unavailable");
+            return gm.values.has(key) ? gm.values.get(key) : fallback;
+        });
+
+        expect(() =>
+            startBrowserDiagnosticSession(
+                {
+                    taskId: "task-unavailable-settings",
+                    bookId: "100",
+                    bookTitle: "Book",
+                    pageUrl: location.href,
+                    sourcePageType: "detail",
+                    imageEnabled: false
+                },
+                { observePageClose: true }
+            )
+        ).not.toThrow();
+        expect(listBrowserDiagnosticSessions().active).toEqual([]);
+    });
+
+    it.each(["read", "write"] as const)("allows preflight recovery when diagnostic storage cannot %s", (operation) => {
+        vi.spyOn(console, "warn").mockImplementation(() => undefined);
+        const gm = getUserscriptApiMocks();
+        if (operation === "read") {
+            gm.getValue.mockImplementation((key: string, fallback?: unknown) => {
+                if (key === "esj_diagnostic_sessions_v1") throw new Error("GM read unavailable");
+                return gm.values.has(key) ? gm.values.get(key) : fallback;
+            });
+        } else {
+            gm.setValue.mockImplementation((key: string, value: unknown) => {
+                if (key === "esj_diagnostic_sessions_v1") throw new Error("GM write unavailable");
+                gm.values.set(key, value);
+            });
+        }
+
+        expect(
+            recordBrowserPreflightDiagnosticFailure({
+                bookId: "100",
+                bookTitle: "Book",
+                pageUrl: location.href,
+                sourcePageType: "detail",
+                imageEnabled: false,
+                failure: { scope: "storage", stage: "cache-read", code: "database-unavailable", message: "Unavailable" }
+            })
+        ).toBeUndefined();
+    });
 
     it("persists a completed session with logs, exports and controlled book details", () => {
         startBrowserDiagnosticSession({
@@ -261,6 +313,7 @@ describe("browser diagnostic persistence", () => {
             }
         });
 
+        if (!session) throw new Error("expected a stored preflight diagnostic");
         expect(session.result).toBe("failed");
         expect(listBrowserDiagnosticSessions().active).toEqual([]);
         expect(session.failures).toEqual([

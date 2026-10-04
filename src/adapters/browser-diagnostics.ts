@@ -110,31 +110,37 @@ function getApplicationInfo(): StartDiagnosticSessionInput["application"] {
 /**
  * 创建浏览器侧诊断会话并固定任务启动时的应用与设置快照
  * @param options 控制未显式提供 taskId 的失败和导出记录是否回写到本会话，以及是否记录页面关闭
- * @returns 已保存的活动诊断会话
+ * @returns 活动诊断会话；诊断不可用时返回 undefined
  */
 export function startBrowserDiagnosticSession(
     input: Omit<StartDiagnosticSessionInput, "application" | "settings"> & {
         imageEnabled: boolean;
     },
     options: { rememberForLaterFailures?: boolean; observePageClose?: boolean } = {}
-): DiagnosticSession {
+): DiagnosticSession | undefined {
     currentTaskId = input.taskId;
     if (options.rememberForLaterFailures !== false) {
         lastTaskId = input.taskId;
     }
-    const session = manager.start({
-        ...input,
-        application: getApplicationInfo(),
-        settings: {
-            concurrency: getConcurrency(),
-            imageEnabled: input.imageEnabled,
-            epubTagPageEnabled: getEpubTagPageSetting()
+    try {
+        const session = manager.start({
+            ...input,
+            application: getApplicationInfo(),
+            settings: {
+                concurrency: getConcurrency(),
+                imageEnabled: input.imageEnabled,
+                epubTagPageEnabled: getEpubTagPageSetting()
+            }
+        });
+        if (options.observePageClose) {
+            observeBrowserDiagnosticPageClose(input.taskId);
         }
-    });
-    if (options.observePageClose) {
-        observeBrowserDiagnosticPageClose(input.taskId);
+        return session;
+    } catch (error) {
+        // 设置快照也可能读取失败；诊断不可用不能反向阻断预检、下载或导出
+        console.warn("初始化诊断日志失败", error);
+        return undefined;
     }
-    return session;
 }
 
 /**
@@ -145,13 +151,15 @@ export function recordBrowserPreflightDiagnosticFailure(
         imageEnabled: boolean;
         failure: RecordDiagnosticFailureInput;
     }
-): DiagnosticSession {
+): DiagnosticSession | undefined {
     // 缓存预读失败发生在下载锁创建前，不能依赖正常下载任务的 taskId
     const taskId = `preflight-${input.bookId}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    startBrowserDiagnosticSession({ ...input, taskId });
+    if (!startBrowserDiagnosticSession({ ...input, taskId })) {
+        return undefined;
+    }
     manager.recordFailure(taskId, input.failure);
     finishBrowserDiagnosticSession(taskId, "failed");
-    return manager.list().history.find((session) => session.taskId === taskId)!;
+    return manager.list().history.find((session) => session.taskId === taskId);
 }
 
 /**
