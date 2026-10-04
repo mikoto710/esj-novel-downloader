@@ -351,17 +351,20 @@ export function createBrowserDownloadDependencies(): DownloadDependencies {
                     startRuntimeCacheSession(event.meta, event.taskId, event.cachedChapterCount);
                 } else if (taskStarted && (event.type === "snapshot-updated" || event.type === "phase-changed")) {
                     const snapshot = event.snapshot;
-                    updateRuntimeCacheSession({
-                        completedCount: snapshot.completedCount,
-                        cachedChapterCount: state.globalChaptersMap.size,
-                        status:
-                            snapshot.phase === "cancelled"
-                                ? "cancelled"
-                                : snapshot.phase === "export-ready"
-                                  ? "export-ready"
-                                  : "downloading",
-                        hasExportData: snapshot.hasExportData
-                    });
+                    updateRuntimeCacheSession(
+                        {
+                            completedCount: snapshot.completedCount,
+                            cachedChapterCount: state.globalChaptersMap.size,
+                            status:
+                                snapshot.phase === "cancelled"
+                                    ? "cancelled"
+                                    : snapshot.phase === "export-ready"
+                                      ? "export-ready"
+                                      : "downloading",
+                            hasExportData: snapshot.hasExportData
+                        },
+                        activeLock?.taskId
+                    );
                 }
                 browserDiagnosticEvents.emit(event);
             }

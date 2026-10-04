@@ -1,5 +1,5 @@
 import { CacheListItem, CacheStatus, PersistentCacheEntry } from "../../types";
-import { clearRuntimeCacheSession, state } from "../state";
+import { clearCachedExport, clearRuntimeCacheSession, state } from "../state";
 import { clearAllPersistentCaches, clearBookCache, listBookCaches } from "./book-cache";
 import {
     getActiveBookDownloadLock,
@@ -121,6 +121,34 @@ export async function listManagedCaches(): Promise<CacheListItem[]> {
         }
     }
 
+    // 导出按结果自身归属列出，不能借用新任务的会话标记
+    const data = state.cachedData;
+    const context = data?.exportContext;
+    if (data && context) {
+        const existing = result.get(context.bookId);
+        const count = data.chapters.length;
+        result.set(context.bookId, {
+            bookId: context.bookId,
+            bookName: context.rawBookName || data.metadata.title,
+            ...(context.rawBookName ? { rawBookName: context.rawBookName } : {}),
+            author: data.metadata.author,
+            pageUrl: context.pageUrl,
+            totalChapters: context.selection?.sourceTotalChapters || existing?.totalChapters || count,
+            progressCount: Math.max(existing?.progressCount || 0, count),
+            persistentChapterCount: existing?.persistentChapterCount || 0,
+            runtimeChapterCount: Math.max(existing?.runtimeChapterCount || 0, count),
+            runtimeCompletedCount: existing?.runtimeCompletedCount || 0,
+            updatedAt: existing?.updatedAt || Date.now(),
+            sourcePageType: context.sourcePageType,
+            imageEnabled: context.imageEnabled,
+            sources: Array.from(new Set([...(existing?.sources || []), "runtime"])),
+            status: existing ? mergeStatus(existing.status, "export-ready") : "export-ready",
+            hasExportData: true,
+            isLegacy: existing?.isLegacy || false,
+            activeTask: false
+        });
+    }
+
     // 活动锁最终覆盖任务状态，避免把下载中的条目标记为普通缓存
     activeLocks.forEach((lock) => {
         const existing = result.get(lock.bookId);
@@ -168,6 +196,7 @@ export async function clearManagedCache(bookId: string, scope: CacheClearScope):
 
     if (scope === "runtime" || scope === "all") {
         clearRuntimeCacheSession(bookId);
+        clearCachedExport(bookId);
     }
 
     return { protectedBookIds: [] };
@@ -183,8 +212,14 @@ export async function clearAllManagedCaches(includeRuntime: boolean): Promise<Ca
     newlyProtected.forEach((bookId) => protectedBookIds.add(bookId));
 
     const runtimeBookId = state.runtimeCacheSession?.bookId;
-    if (includeRuntime && (!runtimeBookId || !protectedBookIds.has(runtimeBookId))) {
-        clearRuntimeCacheSession();
+    if (includeRuntime) {
+        if (!runtimeBookId || !protectedBookIds.has(runtimeBookId)) {
+            clearRuntimeCacheSession();
+        }
+        const exportBookId = state.cachedData?.exportContext?.bookId;
+        if (!exportBookId || !protectedBookIds.has(exportBookId)) {
+            clearCachedExport();
+        }
     }
 
     return { protectedBookIds: Array.from(protectedBookIds) };

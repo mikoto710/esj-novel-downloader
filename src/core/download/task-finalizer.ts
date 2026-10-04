@@ -58,7 +58,7 @@ export async function finalizeBookDownloadTask(
                 });
             }
             if (cacheDiscarded) {
-                clearRuntimeCacheSession(lock.bookId);
+                clearRuntimeCacheSession(lock.bookId, lock.taskId);
             }
         }
     } finally {

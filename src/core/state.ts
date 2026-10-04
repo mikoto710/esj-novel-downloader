@@ -8,6 +8,8 @@ import {
     RuntimeCacheSession
 } from "../types";
 import { subscribeCacheSync } from "./cache/sync";
+import { readCacheManifestV3 } from "./cache/indexeddb-repository";
+import { getActiveBookDownloadLock } from "./book-lock";
 
 type DownloadCancellationListener = (mode: DownloadCancellationMode) => void;
 
@@ -99,8 +101,8 @@ export function startRuntimeCacheSession(meta: CacheMeta, taskId: string, initia
 /**
  * 更新当前页会话缓存摘要
  */
-export function updateRuntimeCacheSession(progress: Partial<RuntimeCacheSession>): void {
-    if (!state.runtimeCacheSession) {
+export function updateRuntimeCacheSession(progress: Partial<RuntimeCacheSession>, taskId?: string): void {
+    if (!state.runtimeCacheSession || (taskId && state.runtimeCacheSession.taskId !== taskId)) {
         return;
     }
 
@@ -112,16 +114,27 @@ export function updateRuntimeCacheSession(progress: Partial<RuntimeCacheSession>
 }
 
 /**
- * 清理当前页会话缓存
+ * 移除指定任务摘要，保留章节表和最近导出
  */
-export function clearRuntimeCacheSession(bookId?: string): void {
-    if (bookId && state.runtimeCacheSession?.bookId !== bookId) {
+export function clearRuntimeCacheSession(bookId?: string, taskId?: string): void {
+    if (
+        (bookId && state.runtimeCacheSession?.bookId !== bookId) ||
+        (taskId && state.runtimeCacheSession?.taskId !== taskId)
+    ) {
         return;
     }
 
     state.runtimeCacheSession = null;
+}
+
+/**
+ * 显式清除对应书籍的导出结果
+ */
+export function clearCachedExport(bookId?: string): void {
+    if (bookId && state.cachedData?.exportContext?.bookId !== bookId) {
+        return;
+    }
     state.cachedData = null;
-    state.globalChaptersMap.clear();
 }
 
 /**
@@ -129,16 +142,36 @@ export function clearRuntimeCacheSession(bookId?: string): void {
  */
 export function resetGlobalState(): void {
     clearRuntimeCacheSession();
+    clearCachedExport();
     console.log("内存状态已重置");
 }
 
-subscribeCacheSync((event) => {
+subscribeCacheSync(async (event) => {
     const runtime = state.runtimeCacheSession;
-    if (!runtime || runtime.bookId !== event.bookId || runtime.hasExportData) {
+    if (!runtime || runtime.bookId !== event.bookId || event.type === "cache-saved") {
         return;
     }
 
-    if (event.type === "cache-cleared" || (event.type === "cache-claimed" && event.taskId !== runtime.taskId)) {
-        clearRuntimeCacheSession(event.bookId);
+    try {
+        // 旧页面的清除通知没有任务身份，先复核，避免晚到通知中断新 writer
+        const [manifest, lock] = await Promise.all([
+            readCacheManifestV3(event.bookId),
+            getActiveBookDownloadLock(event.bookId)
+        ]);
+        if (state.runtimeCacheSession?.taskId !== runtime.taskId) {
+            return;
+        }
+        const sameWriter = manifest && !manifest.cleared && manifest.writerTaskId === runtime.taskId;
+        const sameLock = lock?.taskId === runtime.taskId;
+        if ((sameWriter && (!lock || sameLock)) || (!manifest && sameLock)) {
+            return;
+        }
+        if (state.activeBookLock?.taskId === runtime.taskId) {
+            abortActiveDownload();
+        } else {
+            clearRuntimeCacheSession(event.bookId, runtime.taskId);
+        }
+    } catch {
+        // 读取失败不能证明所有权失效，交由 writer 和心跳在后续操作中判断
     }
 });
