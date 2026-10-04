@@ -8,6 +8,7 @@ import { acquirePageActionGroupLock } from "../../src/ui/page-action-lock";
 import { fullCleanup } from "../../src/utils/dom";
 import { createDownloadSelectionPopup } from "../../src/ui/dialogs/download-selection";
 import { createDownloadTask } from "../support";
+import { getUserscriptApiMocks } from "../support/gm";
 
 function createPageActions(download: () => Promise<void> = async () => undefined) {
     const downloadButton = createDownloadButton("download", undefined, download) as HTMLButtonElement;
@@ -84,5 +85,22 @@ describe("page action popup locks", () => {
         document.querySelector("#esj-settings")?.remove();
 
         await vi.waitFor(() => expectPageActionsDisabled(false));
+    });
+
+    it("does not strand page actions when the interface preference cannot be read", async () => {
+        const scrape = vi.fn(async () => undefined);
+        const { downloadButton } = createPageActions(scrape);
+        const gm = getUserscriptApiMocks();
+        gm.getValue.mockImplementation((key: string, fallback?: unknown) => {
+            if (key === "interface_locale_preference") throw new Error("GM read unavailable");
+            return gm.values.has(key) ? gm.values.get(key) : fallback;
+        });
+
+        downloadButton.click();
+
+        await vi.waitFor(() => {
+            expect(scrape).toHaveBeenCalledOnce();
+            expectPageActionsDisabled(false);
+        });
     });
 });

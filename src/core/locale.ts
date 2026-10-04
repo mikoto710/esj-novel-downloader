@@ -56,6 +56,7 @@ export const LOCALE_KEYS = [
     "button.settings",
     "settings.title",
     "settings.versionUnknown",
+    "settings.storageFailed",
     "settings.concurrency",
     "settings.cache",
     "settings.history",

@@ -19,6 +19,23 @@ import { createCommonHeader } from "./common";
 import { createCacheManagerPopup } from "./cache-manager";
 import { createDownloadHistoryPopup } from "./download-history";
 import { createDiagnosticPopup } from "./diagnostics";
+import { showMessagePopup } from "./message";
+
+function reportSettingsStorageFailure(error: unknown): void {
+    console.error("设置读写失败", error);
+    showMessagePopup({ tone: "error", message: t("settings.storageFailed") });
+}
+
+function saveSettingsChange(save: () => void, restore: () => void): boolean {
+    try {
+        save();
+        return true;
+    } catch (error) {
+        restore();
+        reportSettingsStorageFailure(error);
+        return false;
+    }
+}
 
 function confirmImageSettingChange(activeTaskCount: number): Promise<boolean> {
     document.querySelector("#esj-image-setting-task-confirm")?.remove();
@@ -95,7 +112,7 @@ export function createSettingsPanel(): void {
             : t("settings.versionUnknown");
 
     // 语言选择立即保存并通知已打开的界面刷新
-    const interfaceLocalePreference = getInterfaceLocalePreference();
+    let interfaceLocalePreference = getInterfaceLocalePreference();
     const interfaceLocaleSelect = bindInterfaceAttribute(
         el(
             "select",
@@ -103,9 +120,20 @@ export function createSettingsPanel(): void {
                 id: "esj-interface-language",
                 style: "min-width: 150px; padding: 6px; border: 1px solid #ccc; border-radius: 4px;",
                 onchange: (e: Event) => {
-                    const value = (e.target as HTMLSelectElement).value;
+                    const target = e.target as HTMLSelectElement;
+                    const value = target.value;
                     if (isInterfaceLocalePreference(value)) {
-                        setInterfaceLocalePreference(value);
+                        if (
+                            !saveSettingsChange(
+                                () => setInterfaceLocalePreference(value),
+                                () => {
+                                    target.value = interfaceLocalePreference;
+                                }
+                            )
+                        ) {
+                            return;
+                        }
+                        interfaceLocalePreference = value;
                         publishInterfaceLocaleChange();
                     }
                 }
@@ -130,7 +158,7 @@ export function createSettingsPanel(): void {
     );
 
     // 并发数输入框
-    const currentConcurrency = getConcurrency();
+    let currentConcurrency = getConcurrency();
     const inputConcurrency = el("input", {
         id: "esj-settings-concurrency",
         type: "number",
@@ -156,7 +184,17 @@ export function createSettingsPanel(): void {
                 target.value = "1";
             }
 
-            setConcurrency(val);
+            if (
+                !saveSettingsChange(
+                    () => setConcurrency(val),
+                    () => {
+                        target.value = currentConcurrency.toString();
+                    }
+                )
+            ) {
+                return;
+            }
+            currentConcurrency = val;
             log(t("settings.log.concurrency", { count: val }));
         },
         onblur: (e: Event) => {
@@ -164,7 +202,14 @@ export function createSettingsPanel(): void {
             const val = parseInt(target.value, 10);
             if (isNaN(val) || target.value === "") {
                 target.value = currentConcurrency.toString();
-                setConcurrency(currentConcurrency);
+                if (
+                    !saveSettingsChange(
+                        () => setConcurrency(currentConcurrency),
+                        () => undefined
+                    )
+                ) {
+                    return;
+                }
                 log(t("settings.log.concurrency", { count: currentConcurrency }));
             }
         }
@@ -208,7 +253,7 @@ export function createSettingsPanel(): void {
     );
 
     // 图片下载开关
-    const isImageEnabled = getImageDownloadSetting();
+    let isImageEnabled = getImageDownloadSetting();
 
     const checkboxInput = el("input", {
         id: "esj-settings-images",
@@ -217,21 +262,28 @@ export function createSettingsPanel(): void {
         onchange: async (e: Event) => {
             const input = e.target as HTMLInputElement;
             const checked = (e.target as HTMLInputElement).checked;
-            const previous = getImageDownloadSetting();
+            // 读取也可能失败，先保留本面板最后确认的值作为回退
+            let previous = isImageEnabled;
 
             // 等跨页任务确认后再保存设置；取消时恢复原开关
             input.disabled = true;
             try {
+                previous = getImageDownloadSetting();
+                isImageEnabled = previous;
                 const activeTasks = await listActiveBookDownloadLocks();
                 if (activeTasks.length > 0 && !(await confirmImageSettingChange(activeTasks.length))) {
                     input.checked = previous;
                     return;
                 }
+                setImageDownloadSetting(checked);
+                isImageEnabled = checked;
+            } catch (error) {
+                input.checked = previous;
+                reportSettingsStorageFailure(error);
+                return;
             } finally {
                 input.disabled = false;
             }
-            setImageDownloadSetting(checked);
-
             // 已有章节由后续任务按 imageEnabled 逐书判断，不在设置变更时全局清理
             log(
                 t("settings.log.image", {
@@ -247,14 +299,25 @@ export function createSettingsPanel(): void {
     ]);
 
     // EPUB 标签页开关
-    const isEpubTagPageEnabled = getEpubTagPageSetting();
+    let isEpubTagPageEnabled = getEpubTagPageSetting();
     const checkboxEpubTagPage = el("input", {
         id: "esj-settings-epub-tag-page",
         type: "checkbox",
         checked: isEpubTagPageEnabled,
         onchange: (e: Event) => {
-            const checked = (e.target as HTMLInputElement).checked;
-            setEpubTagPageSetting(checked);
+            const target = e.target as HTMLInputElement;
+            const checked = target.checked;
+            if (
+                !saveSettingsChange(
+                    () => setEpubTagPageSetting(checked),
+                    () => {
+                        target.checked = isEpubTagPageEnabled;
+                    }
+                )
+            ) {
+                return;
+            }
+            isEpubTagPageEnabled = checked;
 
             // 标签页改变后需重新生成 EPUB，已有正文结果继续复用
             invalidateCachedEpub();

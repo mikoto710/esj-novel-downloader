@@ -456,6 +456,7 @@ export const ZH_TW_MESSAGES = Object.freeze({
     "single.log.imagesFailed": "⚠️ 圖片處理失敗，將保留原連結",
     "single.log.completed": "✔ 單章下載完成（{format}）",
     "settings.log.image": "內文插圖下載已{state}",
+    "settings.storageFailed": "無法讀取或儲存設定，已還原原值。請稍後再試。",
     "settings.log.epubTag": "EPUB 標籤頁已{state}",
     "settings.log.concurrency": "下載執行緒數已更新為：{count}",
     "settings.log.initialized": "初始化參數：下載執行緒數：{concurrency}；插圖下載：{imageEnabled}"

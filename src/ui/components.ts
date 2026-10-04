@@ -72,22 +72,21 @@ export function createDownloadButton(
 
                 const releasePageActions = acquirePageActionGroupLock();
 
-                // 临时换成准备状态，结束后恢复原节点及其语言绑定
-                btn.replaceChildren(
-                    el("i", { className: "icon-refresh fa-spin" }),
-                    " ",
-                    bindInterfaceText(el("span"), "common.preparing")
-                );
-
                 try {
+                    // 文案准备也属于本次任务，异常时必须释放入口锁
+                    btn.replaceChildren(
+                        el("i", { className: "icon-refresh fa-spin" }),
+                        " ",
+                        bindInterfaceText(el("span"), "common.preparing")
+                    );
                     await scrapeFn();
                 } catch (error) {
                     console.error("Scrape Error", error);
                 } finally {
                     // 导出弹窗如仍存在会持有自己的锁；本入口只释放当前点击任务
+                    releasePageActions();
                     btn.replaceChildren(...originalNodes);
                     refreshBoundInterfaceText(btn);
-                    releasePageActions();
                 }
             }
         },

@@ -453,6 +453,7 @@ export const ZH_CN_MESSAGES = Object.freeze({
     "single.log.imagesFailed": "⚠️ 图片处理失败，将保留原链接",
     "single.log.completed": "✔ 单章下载完成（{format}）",
     "settings.log.image": "正文图片下载已{state}",
+    "settings.storageFailed": "无法读取或保存设置，已恢复原值。请稍后重试。",
     "settings.log.epubTag": "EPUB 标签页已{state}",
     "settings.log.concurrency": "下载线程数已更新为：{count}",
     "settings.log.initialized": "初始化参数：下载线程数：{concurrency}；插图下载：{imageEnabled}"

@@ -68,8 +68,13 @@ export function setEpubTagPageSetting(val: boolean): void {
  * 读取界面语言偏好
  */
 export function getInterfaceLocalePreference(): InterfaceLocalePreference {
-    const stored = GM_getValue<unknown>(INTERFACE_LOCALE_PREFERENCE_KEY, DEFAULT_INTERFACE_LOCALE_PREFERENCE);
-    return isInterfaceLocalePreference(stored) ? stored : DEFAULT_INTERFACE_LOCALE_PREFERENCE;
+    try {
+        const stored = GM_getValue<unknown>(INTERFACE_LOCALE_PREFERENCE_KEY, DEFAULT_INTERFACE_LOCALE_PREFERENCE);
+        return isInterfaceLocalePreference(stored) ? stored : DEFAULT_INTERFACE_LOCALE_PREFERENCE;
+    } catch {
+        // 语言偏好不可用时跟随页面语言，不能让界面文案阻断任务和资源释放
+        return DEFAULT_INTERFACE_LOCALE_PREFERENCE;
+    }
 }
 
 /**
