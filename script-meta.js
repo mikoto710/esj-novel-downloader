@@ -4,13 +4,18 @@ export default function getMeta() {
     const pkg = JSON.parse(fs.readFileSync("./package.json", "utf-8"));
 
     return {
+        // 保留原始名称与命名空间识别已安装脚本，通过本地化字段更新显示名称
         name: "ESJZone 全本下载",
+        "name:zh-CN": "ESJZone 小说下载器",
+        "name:zh-TW": "ESJZone 小說下載器",
         namespace: "https://github.com/mikoto710/esj-novel-downloader",
         homepageURL: "https://github.com/mikoto710/esj-novel-downloader",
         supportURL: "https://github.com/mikoto710/esj-novel-downloader/issues",
         version: pkg.version,
         description:
-            "在 ESJZone 小说详情页/论坛页注入下载按钮，支持 TXT/EPUB/HTML 全本导出、简介与标签元数据、插图嵌入和单章节导出",
+            "下载 ESJZone 小说，支持全本与连续章节范围的 TXT、EPUB、HTML 导出，单章支持 TXT、HTML，并提供缓存续传与插图嵌入",
+        "description:zh-TW":
+            "下載 ESJZone 小說，支援將全本與連續章節範圍匯出為 TXT、EPUB、HTML，單章支援 TXT、HTML，並提供快取接續下載與插圖嵌入",
         author: "Shigure Sora",
         license: "MIT",
         match: [
