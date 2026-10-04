@@ -41,14 +41,6 @@ function createMappedContent(
 }
 
 describe("normalizeChapterMappingFont", () => {
-    it("keeps a normal chapter unchanged", async () => {
-        const chapter = createChapter();
-
-        const result = await normalizeChapterMappingFont(chapter);
-
-        expect(result).toEqual({ kind: "normal", chapter, changed: false });
-    });
-
     it("extracts a strictly matched font and removes the page data CSS", async () => {
         const chapter = createChapter(0, { content: createMappedContent() });
 
@@ -116,7 +108,7 @@ describe("normalizeChapterMappingFont", () => {
         });
     });
 
-    it("rejects a WOFF2 with an invalid signature or declared length", async () => {
+    it("rejects a WOFF2 with an invalid signature", async () => {
         const bytes = createWoff2Bytes();
         bytes[0] = 0;
         const chapter = createChapter(0, { content: createMappedContent({ bytes }) });

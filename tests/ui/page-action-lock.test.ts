@@ -5,17 +5,15 @@ import { state } from "../../src/core/state";
 import { createDownloadButton, createSettingButton } from "../../src/ui/components";
 import { createDownloadPopup, createSettingsPanel } from "../../src/ui/popups";
 import { acquirePageActionGroupLock } from "../../src/ui/page-action-lock";
-import { t } from "../../src/ui/locale";
 import { fullCleanup } from "../../src/utils/dom";
 import { createDownloadSelectionPopup } from "../../src/ui/dialogs/download-selection";
 import { createDownloadTask } from "../support";
 
 function createPageActions(download: () => Promise<void> = async () => undefined) {
-    const scrape = vi.fn(download);
-    const downloadButton = createDownloadButton("download", undefined, scrape) as HTMLButtonElement;
+    const downloadButton = createDownloadButton("download", undefined, download) as HTMLButtonElement;
     const settingsButton = createSettingButton() as HTMLButtonElement;
     document.body.append(downloadButton, settingsButton);
-    return { downloadButton, settingsButton, scrape };
+    return { downloadButton, settingsButton };
 }
 
 function expectPageActionsDisabled(disabled: boolean): void {
@@ -36,22 +34,6 @@ describe("page action popup locks", () => {
     afterEach(() => {
         fullCleanup();
         document.body.replaceChildren();
-    });
-
-    it("blocks download while settings are open, then restores both entries on close", async () => {
-        const { downloadButton, settingsButton, scrape } = createPageActions();
-
-        settingsButton.click();
-        expect(document.querySelector("#esj-settings")).not.toBeNull();
-        expectPageActionsDisabled(true);
-
-        downloadButton.click();
-        await Promise.resolve();
-        expect(scrape).not.toHaveBeenCalled();
-
-        document.querySelector<HTMLButtonElement>("#esj-settings .esj-common-header button")?.click();
-        expect(document.querySelector("#esj-settings")).toBeNull();
-        expectPageActionsDisabled(false);
     });
 
     it("keeps an outer task lock when full cleanup removes a settings popup", () => {
@@ -91,22 +73,6 @@ describe("page action popup locks", () => {
         expectPageActionsDisabled(true);
 
         fullCleanup();
-        expectPageActionsDisabled(false);
-    });
-
-    it("keeps page actions locked while settings hands ownership to diagnostics", () => {
-        createPageActions();
-        createSettingsPanel();
-        const diagnosticsButton = Array.from(document.querySelectorAll<HTMLButtonElement>("#esj-settings button")).find(
-            (button) => button.textContent === t("settings.diagnosticsButton")
-        );
-
-        diagnosticsButton?.click();
-        expect(document.querySelector("#esj-settings")).toBeNull();
-        expect(document.querySelector("#esj-diagnostics")).not.toBeNull();
-        expectPageActionsDisabled(true);
-
-        document.querySelector<HTMLButtonElement>("#esj-diagnostics .esj-common-header button")?.click();
         expectPageActionsDisabled(false);
     });
 

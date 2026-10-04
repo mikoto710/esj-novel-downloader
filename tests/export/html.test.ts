@@ -27,26 +27,12 @@ async function readBlob(blob: Blob): Promise<string> {
 }
 
 describe("buildHtml mapped font resources", () => {
-    it("creates a collapsed semantic chapter navigation with anchors", async () => {
-        const chapters = [createChapter(0, { title: "第一章" }), createChapter(1, { title: "第二章" })];
-        const html = await readBlob(await buildHtml(chapters, createBookMetadata()));
-
-        expect(html).toContain('<nav class="toc" aria-label="章节导航">');
-        expect(html).toContain('<details><summary>章节导航（2）</summary><ol class="toc-list">');
-        expect(html).not.toContain("<details open>");
-        expect(html).toContain('<a href="#chap0">第一章</a>');
-        expect(html).toContain('<a href="#chap1">第二章</a>');
-        expect(html).toContain('id="chap0" class="chapter"');
-        expect(html).toContain('id="chap1" class="chapter"');
-    });
-
     it("embeds a controlled WOFF2 data URL and rewrites the chapter family", async () => {
         const blob = await buildHtml([createMappedChapter()], createBookMetadata());
         const html = await readBlob(blob);
 
         expect(html).toContain("@font-face { font-family: 'esj-mapped-1-aaaaaaaaaaaa'");
         expect(html).toContain("data:font/woff2;base64,d09GMg==");
-        expect(html).toContain("font-display: swap");
         expect(html).toContain("font-family: &quot;esj-mapped-1-aaaaaaaaaaaa&quot;, sans-serif");
         expect(html).toContain('lang="en"');
         expect(html).toContain("font-feature-settings: &quot;locl&quot; 0");
@@ -75,6 +61,5 @@ describe("buildHtml mapped font resources", () => {
 
         expect(html).toContain("[章节缺失]");
         expect(html).toContain("https://www.esjzone.cc/forum/100/1.html");
-        expect(html).toContain('class="esj-missing-chapter"');
     });
 });

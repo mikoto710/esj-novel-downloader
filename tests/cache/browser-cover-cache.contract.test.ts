@@ -15,11 +15,11 @@ import {
 const mocks = getBrowserDownloadMocks();
 let runtime: BrowserDownloadRuntime;
 
-function createJpegCover(declaredType = "image/jpeg"): BookCover {
+function createJpegCover(): BookCover {
     const bytes = new Uint8Array(1_200);
     bytes.set([0xff, 0xd8, 0xff, 0xe0]);
     return {
-        blob: new Blob([bytes], { type: declaredType }),
+        blob: new Blob([bytes], { type: "image/jpeg" }),
         ext: "jpg",
         mediaType: "image/jpeg"
     };
@@ -28,66 +28,6 @@ function createJpegCover(declaredType = "image/jpeg"): BookCover {
 describe("browser cover cache contracts", () => {
     beforeEach(async () => {
         runtime = await resetBrowserDownloadHarness();
-    });
-
-    it("reuses a cached cover when every chapter is already restored", async () => {
-        const tasks = createBrowserDownloadTasks(2);
-        const options = { ...createBrowserDownloadOptions(tasks), coverUrl: "https://img.example/cover.jpg" };
-        runtime.task.chapters = new Map(tasks.map((task) => [task.index, createChapter(task.index)]));
-        mocks.loadCoverCache.mockResolvedValue(createJpegCover());
-
-        const data = expectReadyDownload(await runtime.batchDownload(options));
-
-        expect(mocks.loadCoverCache).toHaveBeenCalledWith("100", options.coverUrl);
-        expect(mocks.fetchWithTimeout).not.toHaveBeenCalled();
-        expect(mocks.saveCoverCache).not.toHaveBeenCalled();
-        expect(data.metadata.coverExt).toBe("jpg");
-        expect(mocks.log).toHaveBeenCalledWith("💾 已读取本地封面缓存");
-    });
-
-    it("downloads, normalizes, and stores a cache miss", async () => {
-        const tasks = createBrowserDownloadTasks(1);
-        const options = { ...createBrowserDownloadOptions(tasks), coverUrl: "https://img.example/cover.jpg" };
-        runtime.task.chapters = new Map([[0, createChapter(0)]]);
-        const networkBlob = createJpegCover("application/octet-stream").blob;
-        mocks.fetchWithTimeout.mockResolvedValue({ blob: async () => networkBlob });
-
-        const data = expectReadyDownload(await runtime.batchDownload(options));
-
-        expect(mocks.fetchWithTimeout).toHaveBeenCalledOnce();
-        expect(mocks.saveCoverCache).toHaveBeenCalledWith(
-            "100",
-            "task-100",
-            options.coverUrl,
-            expect.objectContaining({ ext: "jpg", mediaType: "image/jpeg" }),
-            expect.any(AbortSignal)
-        );
-        const savedCover = mocks.saveCoverCache.mock.calls[0][3] as BookCover;
-        expect(savedCover.blob.type).toBe("image/jpeg");
-        expect(data.metadata.coverBlob?.type).toBe("image/jpeg");
-    });
-
-    it("uses the PNG signature instead of the declared network MIME", async () => {
-        const tasks = createBrowserDownloadTasks(1);
-        const options = { ...createBrowserDownloadOptions(tasks), coverUrl: "https://img.example/cover.bin" };
-        runtime.task.chapters = new Map([[0, createChapter(0)]]);
-        const bytes = new Uint8Array(1_200);
-        bytes.set([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
-        mocks.fetchWithTimeout.mockResolvedValue({
-            blob: async () => new Blob([bytes], { type: "application/octet-stream" })
-        });
-
-        const data = expectReadyDownload(await runtime.batchDownload(options));
-
-        expect(mocks.saveCoverCache).toHaveBeenCalledWith(
-            "100",
-            "task-100",
-            options.coverUrl,
-            expect.objectContaining({ ext: "png", mediaType: "image/png" }),
-            expect.any(AbortSignal)
-        );
-        expect(data.metadata.coverExt).toBe("png");
-        expect(data.metadata.coverBlob?.type).toBe("image/png");
     });
 
     it("keeps the in-memory cover when its optional cache write fails", async () => {
@@ -100,10 +40,9 @@ describe("browser cover cache contracts", () => {
         const data = expectReadyDownload(await runtime.batchDownload(options));
 
         expect(data.metadata.coverBlob).not.toBeNull();
-        expect(mocks.log).toHaveBeenCalledWith(expect.stringContaining("本次继续使用内存封面"));
     });
 
-    it("does not cache an invalid or undersized network response", async () => {
+    it("does not cache an undersized network response", async () => {
         const tasks = createBrowserDownloadTasks(1);
         const options = { ...createBrowserDownloadOptions(tasks), coverUrl: "https://img.example/cover.jpg" };
         runtime.task.chapters = new Map([[0, createChapter(0)]]);

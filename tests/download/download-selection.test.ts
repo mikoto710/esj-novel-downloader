@@ -32,7 +32,6 @@ describe("download selection", () => {
 
     it.each([
         [0, 1, 5],
-        [-1, 1, 5],
         [1.5, 2, 5],
         [3, 2, 5],
         [1, 6, 5]

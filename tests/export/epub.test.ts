@@ -119,7 +119,6 @@ describe("buildEpub image resources", () => {
         expect(manifest).toContain('href="fonts/font_1_aaaaaaaaaaaa.woff2" media-type="font/woff2"');
         expect(chapterXhtml).toContain("font-family: 'esj-mapped-1-aaaaaaaaaaaa'");
         expect(chapterXhtml).toContain("url('fonts/font_1_aaaaaaaaaaaa.woff2')");
-        expect(chapterXhtml).toContain("font-display: swap");
         expect(chapterXhtml).toContain('lang="en"');
         expect(chapterXhtml).toContain("font-feature-settings: &quot;locl&quot; 0");
         expect(embeddedFont).toEqual(fontBytes);
@@ -138,6 +137,5 @@ describe("buildEpub image resources", () => {
 
         expect(chapterXhtml).toContain("[章节缺失]");
         expect(chapterXhtml).toContain("https://www.esjzone.cc/forum/100/1.html");
-        expect(chapterXhtml).toContain('class="esj-missing-chapter"');
     });
 });

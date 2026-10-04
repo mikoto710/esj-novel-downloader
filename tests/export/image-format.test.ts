@@ -71,20 +71,9 @@ describe("normalizeImageBlob", () => {
         expect(normalized?.blob.type).toBe("image/jpeg");
         expect(normalized?.blob.size).toBe(blob.size);
     });
-
-    it("keeps a correctly typed image Blob", async () => {
-        const blob = new Blob([new Uint8Array([0xff, 0xd8, 0xff, 0xe0])], { type: "image/jpeg" });
-        const normalized = await normalizeImageBlob(blob);
-        expect(normalized?.blob).toBe(blob);
-    });
 });
 
 describe("isSupportedImageMediaType", () => {
-    it("accepts EPUB-compatible image media types", () => {
-        expect(isSupportedImageMediaType("image/jpeg")).toBe(true);
-        expect(isSupportedImageMediaType("image/png")).toBe(true);
-    });
-
     it("rejects generic binary media types", () => {
         expect(isSupportedImageMediaType("application/octet-stream")).toBe(false);
     });

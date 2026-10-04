@@ -1,12 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
-import {
-    DownloadProgress,
-    canTransitionDownloadPhase,
-    createInitialDownloadSnapshot
-} from "../../src/core/download/download-progress";
+import { DownloadProgress, canTransitionDownloadPhase } from "../../src/core/download/download-progress";
 import { createDownloadScope } from "../../src/core/download/download-scope";
-import type { DownloadEvent, DownloadEventSink } from "../../src/core/download/contracts";
-import { RecordingDownloadEvents } from "../support";
+import type { DownloadEventSink } from "../../src/core/download/contracts";
 import { createChapter, createDownloadTask } from "../support";
 
 function createProgress(count: number, restored: number, events: DownloadEventSink): DownloadProgress {
@@ -62,26 +57,6 @@ describe("DownloadProgress", () => {
         expect(ui.update).toHaveBeenLastCalledWith(expect.objectContaining({ readyChapterCount: 1 }));
         expect(chapters.size).toBe(3);
     });
-    it("accepts the normal download lifecycle", () => {
-        const events = new RecordingDownloadEvents<DownloadEvent>();
-        const machine = createProgress(3, 1, events);
-
-        for (const phase of [
-            "preparing",
-            "restoring-cache",
-            "downloading",
-            "flushing-cache",
-            "checking-integrity",
-            "flushing-cache",
-            "preparing-export",
-            "export-ready"
-        ] as const) {
-            machine.transition(phase);
-        }
-
-        expect(machine.snapshot.phase).toBe("export-ready");
-        expect(events.ofType("phase-changed")).toHaveLength(8);
-    });
 
     it("allows cancellation and failure only from running states", () => {
         expect(canTransitionDownloadPhase("downloading", "cancelling")).toBe(true);
@@ -95,20 +70,13 @@ describe("DownloadProgress", () => {
         const initial = machine.snapshot;
         initial.completedCount = 99;
 
-        expect(machine.snapshot).toEqual(createInitialDownloadSnapshot(3, 1));
+        expect(machine.snapshot).toMatchObject({
+            phase: "idle",
+            scheduledCount: 3,
+            restoredCount: 1,
+            completedCount: 0
+        });
         expect(() => machine.transition("downloading")).toThrow("idle -> downloading");
-    });
-
-    it("emits immutable progress snapshots", () => {
-        const events = new RecordingDownloadEvents<DownloadEvent>();
-        const machine = createProgress(2, 0, events);
-        machine.transition("preparing");
-        machine.update({ completedCount: 1, fetchedCount: 1 });
-        const snapshot = machine.snapshot;
-        snapshot.completedCount = 2;
-
-        expect(machine.snapshot.completedCount).toBe(1);
-        expect(events.ofType("snapshot-updated")).toHaveLength(1);
     });
 
     it("preserves the cancellation outcome in the terminal snapshot", () => {

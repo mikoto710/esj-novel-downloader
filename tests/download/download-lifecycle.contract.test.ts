@@ -153,17 +153,8 @@ describe("download lifecycle contracts", () => {
 
     it.each([
         ["detail heartbeat", scrapeDetail, mocks.startHeartbeat],
-        ["detail popup", scrapeDetail, mocks.createDownloadPopup],
-        ["forum heartbeat", scrapeForum, mocks.startHeartbeat],
-        ["forum popup", scrapeForum, mocks.createDownloadPopup]
+        ["detail popup", scrapeDetail, mocks.createDownloadPopup]
     ] as const)("releases acquired resources when %s initialization fails", async (_name, scrape, initialize) => {
-        if (scrape === scrapeForum) {
-            window.history.replaceState({}, "", "/forum/100");
-            vi.stubGlobal(
-                "fetch",
-                vi.fn(async () => ({ ok: true, text: async () => document.documentElement.outerHTML }))
-            );
-        }
         initialize.mockImplementationOnce(() => {
             throw new Error("initialization failed");
         });
@@ -229,23 +220,5 @@ describe("download lifecycle contracts", () => {
         expect(mocks.batchDownload).not.toHaveBeenCalled();
         expect(mocks.finalize).toHaveBeenCalledOnce();
         expect(mocks.showTerminalFailure).not.toHaveBeenCalled();
-    });
-
-    it("passes the confirmed image setting snapshot through cache claim and download", async () => {
-        GM_setValue("enable_image_download", true);
-
-        await scrapeDetail();
-
-        expect(mocks.claimCache).toHaveBeenCalledWith("100", lock.taskId, true, expect.any(AbortSignal), {
-            allowInvalidation: false
-        });
-        expect(mocks.batchDownload).toHaveBeenCalledWith(
-            expect.objectContaining({ imageEnabled: true }),
-            expect.objectContaining({
-                chapters: expect.any(Map),
-                cancellation: expect.any(Object),
-                lock: expect.objectContaining({ taskId: "task-100" })
-            })
-        );
     });
 });

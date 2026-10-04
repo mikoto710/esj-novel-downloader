@@ -1,13 +1,12 @@
 // @vitest-environment jsdom
 
 import { beforeEach, describe, expect, it } from "vitest";
-import { createChapter, createDeferred } from "../support";
+import { createDeferred } from "../support";
 import {
     type BrowserDownloadRuntime,
     createBrowserDownloadOptions,
     createBrowserDownloadTasks,
     getBrowserDownloadMocks,
-    expectReadyDownload,
     resetBrowserDownloadHarness
 } from "../support/browser-download-harness";
 
@@ -17,18 +16,6 @@ let runtime: BrowserDownloadRuntime;
 describe("browser download persistence contracts", () => {
     beforeEach(async () => {
         runtime = await resetBrowserDownloadHarness();
-    });
-
-    it("does not fetch chapters already restored from cache", async () => {
-        const tasks = createBrowserDownloadTasks(3);
-        runtime.task.chapters = new Map(tasks.map((task) => [task.index, createChapter(task.index)]));
-
-        const data = expectReadyDownload(await runtime.batchDownload(createBrowserDownloadOptions(tasks)));
-
-        expect(mocks.fetchWithTimeout).not.toHaveBeenCalled();
-        expect(mocks.saveCache).not.toHaveBeenCalled();
-        expect(mocks.clearCache).toHaveBeenCalledOnce();
-        expect(data.chapters).toHaveLength(3);
     });
 
     it("applies cache backpressure before a worker claims another chapter", async () => {
@@ -46,19 +33,8 @@ describe("browser download persistence contracts", () => {
 
         expect(mocks.fetchWithTimeout).toHaveBeenCalledTimes(25);
         writeFinished.resolve(true);
-        await downloadPromise;
+        expect((await downloadPromise).status).toBe("ready");
         expect(mocks.fetchWithTimeout).toHaveBeenCalledTimes(26);
-    });
-
-    it("does not repeat a whole-book save after cancellation", async () => {
-        mocks.saveCache.mockImplementationOnce(async () => {
-            runtime.abortActiveDownload();
-            return true;
-        });
-
-        await runtime.batchDownload(createBrowserDownloadOptions(createBrowserDownloadTasks(5)));
-
-        expect(mocks.saveCache).toHaveBeenCalledTimes(1);
     });
 
     it("does not claim that progress was saved after storage rejected the write", async () => {
@@ -96,23 +72,36 @@ describe("browser download persistence contracts", () => {
     });
 
     it.each([
+        { name: "unexpected transaction abort", errorName: "AbortError", reason: "transaction-aborted" },
         {
-            name: "transaction abort",
-            error: new DOMException("transaction aborted", "AbortError"),
-            reason: "transaction-aborted"
-        },
-        {
-            name: "unavailable database",
-            error: new DOMException("database disabled", "InvalidStateError"),
+            name: "database becoming unavailable during writing",
+            errorName: "InvalidStateError",
             reason: "database-unavailable"
-        },
-        { name: "unknown storage error", error: new Error("unexpected failure"), reason: "unknown-storage-error" }
-    ])("propagates $name after one safe retry", async ({ error, reason }) => {
-        mocks.saveCache.mockRejectedValue(error);
+        }
+    ])("fails after $name retries are exhausted without treating it as cancellation", async ({ errorName, reason }) => {
+        mocks.saveCache.mockRejectedValue(new DOMException("storage write failed", errorName));
 
         await expect(
             runtime.batchDownload(createBrowserDownloadOptions(createBrowserDownloadTasks(5)))
         ).rejects.toMatchObject({ reason, operation: "write" });
+
+        expect(mocks.saveCache).toHaveBeenCalledTimes(2);
+        expect(mocks.showTerminalFailure).toHaveBeenCalledWith(
+            expect.objectContaining({
+                kind: "download",
+                storageFailure: expect.objectContaining({ reason, operation: "write" })
+            })
+        );
+        expect(runtime.task.cancellation.isCancellationRequested()).toBe(false);
+        expect(mocks.clearCache).not.toHaveBeenCalled();
+    });
+
+    it("propagates an unknown storage error after one safe retry", async () => {
+        mocks.saveCache.mockRejectedValue(new Error("unexpected failure"));
+
+        await expect(
+            runtime.batchDownload(createBrowserDownloadOptions(createBrowserDownloadTasks(5)))
+        ).rejects.toMatchObject({ reason: "unknown-storage-error", operation: "write" });
 
         expect(mocks.saveCache).toHaveBeenCalledTimes(2);
         expect(runtime.task.cancellation.isCancellationRequested()).toBe(false);

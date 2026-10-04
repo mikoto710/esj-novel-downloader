@@ -19,26 +19,22 @@ describe("browser download cancellation contracts", () => {
         runtime = await resetBrowserDownloadHarness();
     });
 
-    it("passes the active abort signal to coordinator delays", async () => {
-        const result = await runtime.batchDownload(createBrowserDownloadOptions(createBrowserDownloadTasks(1)));
-
-        expect(result.status).toBe("ready");
-        expect(mocks.sleepWithAbort).toHaveBeenCalled();
-        expect(mocks.sleepWithAbort.mock.calls.every((call) => call[1] === runtime.task.cancellation.signal)).toBe(
-            true
-        );
-    });
-
-    it("does not fetch another chapter after cancellation reaches the retry queue", async () => {
+    it("does not request a claimed integrity retry when cancellation arrives before its fetch", async () => {
+        const diagnostics = await import("../../src/adapters/browser-diagnostics");
+        const browserDiagnosticLog = diagnostics.browserDiagnosticLog;
+        let reachedIntegrityRetry = false;
         mocks.fetchWithTimeout.mockRejectedValue(new Error("network"));
-        mocks.log.mockImplementation((message: string) => {
-            if (message.startsWith("补抓 [")) {
+        vi.spyOn(diagnostics, "browserDiagnosticLog").mockImplementation((message, ...args) => {
+            browserDiagnosticLog(message, ...args);
+            if (typeof message !== "string" && message.code === "chapter-integrity-retry") {
+                reachedIntegrityRetry = true;
                 runtime.abortActiveDownload();
             }
         });
 
         const result = await runtime.batchDownload(createBrowserDownloadOptions(createBrowserDownloadTasks(1)));
 
+        expect(reachedIntegrityRetry).toBe(true);
         expect(mocks.fetchWithTimeout).toHaveBeenCalledTimes(3);
         expect(result.status).toBe("cancelled");
         expect(mocks.fullCleanup).toHaveBeenCalledOnce();

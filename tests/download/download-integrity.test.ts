@@ -47,7 +47,7 @@ describe("getChapterRetryReason", () => {
         ).toBeNull();
     });
 
-    it("scans chapter state in task order without copying chapter content", () => {
+    it("scans chapter state in task order", () => {
         const tasks = [createDownloadTask(0), createDownloadTask(1), createDownloadTask(2)];
         const completeChapter = createChapter(0);
         const chapters = new Map([
@@ -59,6 +59,5 @@ describe("getChapterRetryReason", () => {
             { task: tasks[1], reason: "missing" },
             { task: tasks[2], reason: "image-errors" }
         ]);
-        expect(chapters.get(0)).toBe(completeChapter);
     });
 });

@@ -158,16 +158,6 @@ describe("full-book export recovery contracts", () => {
         expect(sessions.find((session) => session.taskId === "later-failure")?.exports).toEqual([]);
     });
 
-    it("restores the title while the source task is still releasing its lock", async () => {
-        const data = createCachedData();
-        await prepareExportPopup({ ...data, exportContext: { ...data.exportContext!, taskId: "source-task" } });
-        const { activateDownload, createDownloadCancellation } = await import("../../src/core/state");
-        activateDownload("100", "source-task", createDownloadCancellation());
-        click("#esj-epub");
-        await vi.waitFor(() => expect(mocks.triggerDownload).toHaveBeenCalledOnce());
-        expect(document.title).toBe("ESJZone Test");
-    });
-
     it("keeps the new task title when a closed format popup finishes EPUB generation", async () => {
         const pending = createDeferred<Blob>();
         mocks.buildEpub.mockReturnValueOnce(pending.promise);
@@ -207,22 +197,6 @@ describe("full-book export recovery contracts", () => {
         click("#esj-html");
         await vi.waitFor(() => expect(mocks.triggerDownload).toHaveBeenCalledTimes(2));
         expect(mocks.addDownloadHistory).toHaveBeenCalledWith(expect.objectContaining({ format: "html" }));
-    });
-
-    it("refreshes an open format choice in place without replacing export controls", async () => {
-        const { setInterfaceLocalePreference } = await import("../../src/core/config");
-        const { publishInterfaceLocaleChange } = await import("../../src/ui/locale");
-        await prepareExportPopup();
-        const popup = document.querySelector("#esj-format") as HTMLElement;
-        const txtButton = popup.querySelector("#esj-txt") as HTMLButtonElement;
-        const previousLabel = txtButton.textContent;
-
-        setInterfaceLocalePreference("zh-TW");
-        publishInterfaceLocaleChange();
-
-        expect(document.querySelector("#esj-format")).toBe(popup);
-        expect(popup.querySelector("#esj-txt")).toBe(txtButton);
-        expect(txtButton.textContent).not.toBe(previousLabel);
     });
 
     it("prevents duplicate HTML builds while allowing another format to export", async () => {

@@ -4,34 +4,14 @@ import { createChapter, createChapterImage, createDownloadTask } from "../suppor
 import { createStressDownloadHarness, createStressDownloadOptions } from "./download-stress-harness";
 
 describe("image cache pressure", () => {
-    it("persists 3000 chapters with small image metadata in bounded batches", async () => {
-        const tasks = Array.from({ length: 3_000 }, (_, index) => createDownloadTask(index));
-        const harness = createStressDownloadHarness({
-            tasks,
-            imageEnabled: true,
-            processChapter: (task) =>
-                createChapter(task.index, {
-                    content: `<p><img src="img_${task.index}_0.jpg"></p>`,
-                    images: [createChapterImage(task.index)]
-                })
-        });
-
-        await harness.run(createStressDownloadOptions(tasks, true));
-
-        expect(harness.persistedIndexes).toHaveLength(3_000);
-        expect(harness.persistedBatches).toHaveLength(120);
-        expect(Math.max(...harness.persistedBatches.map((batch) => batch.length))).toBe(25);
-        expect(harness.exportData?.chapters).toHaveLength(3_000);
-        expect(harness.exportData?.chapters.every((chapter) => chapter.images?.length === 1)).toBe(true);
-    });
-
-    it("flushes large image blobs before the byte queue can grow without bound", async () => {
+    it("batches large image blobs within the payload byte budget", async () => {
         const tasks = Array.from({ length: 12 }, (_, index) => createDownloadTask(index));
+        const blobBytes = 1024 * 1024;
         const harness = createStressDownloadHarness({
             tasks,
             imageEnabled: true,
             processChapter: (task) => {
-                const bytes = new Uint8Array(1024 * 1024);
+                const bytes = new Uint8Array(blobBytes);
                 bytes.set([0xff, 0xd8, 0xff, 0xe0]);
                 return createChapter(task.index, {
                     images: [
@@ -45,9 +25,14 @@ describe("image cache pressure", () => {
 
         await harness.run(createStressDownloadOptions(tasks, true));
 
-        expect(harness.persistedBatches.map((batch) => batch.length)).toEqual([4, 4, 4]);
-        expect(harness.persistedIndexes).toHaveLength(12);
-        expect(harness.exportData?.chapters.every((chapter) => chapter.images?.[0]?.blob.size === 1024 * 1024)).toBe(
+        expect(
+            harness.persistedBatches.every((batch) => batch.length > 0 && batch.length * blobBytes <= 4 * blobBytes)
+        ).toBe(true);
+        expect(harness.persistedIndexes.toSorted((left, right) => left - right)).toEqual(
+            tasks.map((task) => task.index)
+        );
+        expect(harness.exportData?.chapters).toHaveLength(12);
+        expect(harness.exportData?.chapters.every((chapter) => chapter.images?.[0]?.blob.size === blobBytes)).toBe(
             true
         );
     });

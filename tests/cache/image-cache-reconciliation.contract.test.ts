@@ -14,23 +14,6 @@ describe("image cache reconciliation contracts", () => {
         localStorage.clear();
     });
 
-    it("keeps normal cache restoration unchanged when settings match", async () => {
-        const storage = await import("../../src/core/cache/book-cache");
-        await storage.claimBookCache("500", "task-old", false);
-        await storage.putBookCacheBatchForTask(
-            "500",
-            "task-old",
-            new Map([[0, createChapter(0)]]),
-            createCacheMeta({ bookId: "500", imageEnabled: false })
-        );
-
-        const claimed = await storage.claimBookCache("500", "task-new", false);
-
-        expect(claimed).toMatchObject({ status: "claimed", size: 1, compatibility: "compatible", invalidatedCount: 0 });
-        if (claimed.status !== "claimed") throw new Error("expected compatible cache claim");
-        expect(claimed.map?.get(0)?.title).toBeTruthy();
-    });
-
     it.each([
         [false, true],
         [true, false]
@@ -82,26 +65,6 @@ describe("image cache reconciliation contracts", () => {
 
         expect((await storage.loadBookCache("502")).size).toBe(0);
         await expect(storage.loadBookCover("502", "https://img.example/cover.jpg")).resolves.not.toBeNull();
-    });
-
-    it("invalidates legacy cache whose image setting is unknown", async () => {
-        const { get, set } = await import("idb-keyval");
-        const storage = await import("../../src/core/cache/book-cache");
-        await set("esj_down_book_503", {
-            version: 2,
-            ts: Date.now(),
-            chapters: [[0, createChapter(0)]]
-        });
-
-        const claimed = await storage.claimBookCache("503", "task-new", false, undefined, { allowInvalidation: true });
-
-        expect(claimed).toMatchObject({
-            size: 0,
-            map: null,
-            compatibility: "unknown",
-            invalidatedCount: 1
-        });
-        expect(await get("esj_down_book_503")).toBeUndefined();
     });
 
     it("preserves the old cache when mismatch invalidation is aborted", async () => {

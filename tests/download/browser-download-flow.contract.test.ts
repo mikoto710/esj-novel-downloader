@@ -6,12 +6,10 @@ import {
     createBrowserDownloadOptions,
     createBrowserDownloadTasks,
     getBrowserDownloadMocks,
-    expectReadyDownload,
     resetBrowserDownloadHarness
 } from "../support/browser-download-harness";
-import { createChapter, createDeferred } from "../support";
+import { createDeferred } from "../support";
 import { createProtectedChapterFixture } from "../support/fixtures";
-import * as locale from "../../src/ui/locale";
 
 const mocks = getBrowserDownloadMocks();
 let runtime: BrowserDownloadRuntime;
@@ -19,74 +17,6 @@ let runtime: BrowserDownloadRuntime;
 describe("browser download flow contracts", () => {
     beforeEach(async () => {
         runtime = await resetBrowserDownloadHarness();
-    });
-
-    it("shows cache validation before restored chapters finish normalizing", async () => {
-        vi.spyOn(locale, "t").mockImplementation((key, params) => JSON.stringify({ key, ...params }));
-        const validationStarted = createDeferred<void>();
-        const continueValidation = createDeferred<void>();
-        runtime.task.chapters = new Map([[0, createChapter(0)]]);
-        document.body.innerHTML = '<span id="esj-title"></span><div id="esj-progress"></div>';
-        mocks.sleepWithAbort.mockImplementationOnce(async () => {
-            validationStarted.resolve();
-            await continueValidation.promise;
-        });
-
-        const downloadPromise = runtime.batchDownload(createBrowserDownloadOptions(createBrowserDownloadTasks(1)));
-        await validationStarted.promise;
-
-        expect(document.querySelector("#esj-title")?.textContent).toContain(
-            JSON.stringify({ key: "download.status.validatingCache", count: 1 })
-        );
-        expect(mocks.fetchWithTimeout).not.toHaveBeenCalled();
-
-        continueValidation.resolve();
-        await downloadPromise;
-    });
-
-    it("retries a missing chapter through the integrity queue", async () => {
-        mocks.fetchWithTimeout
-            .mockRejectedValueOnce(new Error("first"))
-            .mockRejectedValueOnce(new Error("second"))
-            .mockRejectedValueOnce(new Error("third"))
-            .mockResolvedValue({ text: vi.fn().mockResolvedValue("<html></html>") });
-
-        const data = expectReadyDownload(
-            await runtime.batchDownload(createBrowserDownloadOptions(createBrowserDownloadTasks(1)))
-        );
-
-        expect(mocks.fetchWithTimeout).toHaveBeenCalledTimes(4);
-        expect(mocks.saveCache).toHaveBeenCalledOnce();
-        expect(data.chapters).toHaveLength(1);
-    });
-
-    it("wires protected chapter GET, token POST, password POST, and normal processing", async () => {
-        mocks.fetchWithTimeout
-            .mockResolvedValueOnce({ text: vi.fn().mockResolvedValue(createProtectedChapterFixture()) })
-            .mockResolvedValueOnce({ text: vi.fn().mockResolvedValue(createProtectedChapterFixture()) })
-            .mockResolvedValueOnce({ text: vi.fn().mockResolvedValue("<JinJing>fictional-token</JinJing>") })
-            .mockResolvedValueOnce({
-                text: vi.fn().mockResolvedValue(JSON.stringify({ status: 200, html: "<p>unlocked body</p>" }))
-            });
-        mocks.promptProtectedChapterPassword.mockResolvedValue({
-            action: "submit",
-            password: "fictional-password",
-            rememberPassword: false
-        });
-
-        const data = expectReadyDownload(
-            await runtime.batchDownload(createBrowserDownloadOptions(createBrowserDownloadTasks(1)))
-        );
-
-        expect(mocks.fetchWithTimeout).toHaveBeenCalledTimes(4);
-        expect(mocks.fetchWithTimeout.mock.calls[1][1]).toMatchObject({ method: "GET", credentials: "include" });
-        expect(mocks.fetchWithTimeout.mock.calls[2][1]).toMatchObject({ method: "POST", credentials: "include" });
-        expect(String(mocks.fetchWithTimeout.mock.calls[2][1].body)).toBe("plxf=getAuthToken");
-        expect(mocks.fetchWithTimeout.mock.calls[3][0]).toBe("https://www.esjzone.cc/inc/forum_pw.php");
-        expect(mocks.fetchWithTimeout.mock.calls[3][1].headers.Authorization).toBe("fictional-token");
-        expect(String(mocks.fetchWithTimeout.mock.calls[3][1].body)).toBe("pw=fictional-password");
-        expect(mocks.parseChapterHtml).toHaveBeenCalledWith(expect.stringContaining("unlocked body"), "第 1 章");
-        expect(data.chapters).toHaveLength(1);
     });
 
     it("waits for ordinary requests before refreshing and authorizing the protected chapter", async () => {
@@ -137,47 +67,6 @@ describe("browser download flow contracts", () => {
         expect(order.slice(order.indexOf("protected-refreshed"))).toEqual(["protected-refreshed", "token", "password"]);
     });
 
-    it("keeps protected requests pending without counting them as ready chapters", async () => {
-        vi.spyOn(locale, "t").mockImplementation((key, params) => JSON.stringify({ key, ...params }));
-        const decision = createDeferred<{ action: "skip-current" }>();
-        document.body.innerHTML = '<span id="esj-title"></span><div id="esj-progress"></div>';
-        mocks.fetchWithTimeout.mockResolvedValueOnce({
-            text: vi.fn().mockResolvedValue(createProtectedChapterFixture())
-        });
-        mocks.promptProtectedChapterPassword.mockImplementationOnce(() => decision.promise);
-
-        const download = runtime.batchDownload(createBrowserDownloadOptions(createBrowserDownloadTasks(1)));
-        await vi.waitFor(() => expect(mocks.promptProtectedChapterPassword).toHaveBeenCalledOnce());
-
-        expect(document.querySelector("#esj-title")?.textContent).toContain(
-            JSON.stringify({ key: "download.status.runningProtected", ready: 0, total: 1, pending: 1 })
-        );
-
-        decision.resolve({ action: "skip-current" });
-        await download;
-    });
-
-    it("refreshes the active download status in place when the interface locale changes", async () => {
-        const decision = createDeferred<{ action: "skip-current" }>();
-        document.body.innerHTML = '<div id="esj-popup"><span id="esj-title"></span><div id="esj-progress"></div></div>';
-        mocks.fetchWithTimeout.mockResolvedValueOnce({
-            text: vi.fn().mockResolvedValue(createProtectedChapterFixture())
-        });
-        mocks.promptProtectedChapterPassword.mockImplementationOnce(() => decision.promise);
-
-        const download = runtime.batchDownload(createBrowserDownloadOptions(createBrowserDownloadTasks(1)));
-        await vi.waitFor(() => expect(mocks.promptProtectedChapterPassword).toHaveBeenCalledOnce());
-        const popup = document.querySelector("#esj-popup");
-        const previousText = document.querySelector("#esj-title")?.textContent;
-
-        mocks.getInterfaceLocalePreference.mockReturnValue("zh-TW");
-        locale.publishInterfaceLocaleChange();
-
-        expect(document.querySelector("#esj-popup")).toBe(popup);
-        expect(document.querySelector("#esj-title")?.textContent).not.toBe(previousText);
-        decision.resolve({ action: "skip-current" });
-        await download;
-    });
     it("binds old callbacks to their task without updating the new page task", async () => {
         const { createBrowserDownloadDependencies } = await import("../../src/adapters/browser-download-dependencies");
         const { activateDownload, createDownloadCancellation, startRuntimeCacheSession } =

@@ -1,7 +1,6 @@
 import type { DownloadTask } from "../../src/core/download/contracts";
 import type { CacheStatus, Chapter } from "../../src/types";
 import { createAbortError, createDeferred, type Deferred } from "./async";
-import { createChapter } from "./factories";
 
 type FetchPlan =
     | { type: "success"; html: string }
@@ -50,50 +49,6 @@ export class FakeChapterFetcher {
         queue.push(plan);
         this.plans.set(url, queue);
         return this;
-    }
-}
-
-type ProcessorPlan =
-    | { type: "success"; chapter: Chapter }
-    | { type: "failure"; error: Error }
-    | { type: "deferred"; deferred: Deferred<Chapter> };
-
-/**
- * 按章节索引模拟内容处理，并记录处理输入
- */
-export class FakeChapterProcessor {
-    readonly calls: Array<{ html: string; task: DownloadTask }> = [];
-    private readonly plans = new Map<number, ProcessorPlan>();
-
-    succeed(index: number, chapter: Chapter = createChapter(index)): this {
-        this.plans.set(index, { type: "success", chapter });
-        return this;
-    }
-
-    fail(index: number, error: Error = new Error("process failed")): this {
-        this.plans.set(index, { type: "failure", error });
-        return this;
-    }
-
-    defer(index: number): Deferred<Chapter> {
-        const deferred = createDeferred<Chapter>();
-        this.plans.set(index, { type: "deferred", deferred });
-        return deferred;
-    }
-
-    async process(html: string, task: DownloadTask, signal?: AbortSignal): Promise<Chapter> {
-        this.calls.push({ html, task: { ...task } });
-        if (signal?.aborted) {
-            throw createAbortError();
-        }
-        const plan = this.plans.get(task.index) ?? { type: "success", chapter: createChapter(task.index) };
-        if (plan.type === "failure") {
-            throw plan.error;
-        }
-        if (plan.type === "deferred") {
-            return waitForDeferred(plan.deferred, signal);
-        }
-        return structuredCloneChapter(plan.chapter);
     }
 }
 

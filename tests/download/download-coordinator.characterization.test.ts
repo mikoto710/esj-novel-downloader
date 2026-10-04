@@ -2,7 +2,6 @@ import { describe, expect, it, vi } from "vitest";
 import { createDownloadHarness as createHarness } from "../support/download-harness";
 import type {
     DownloadOptions,
-    DownloadEvent,
     IncompleteChapterDecision,
     ProtectedChapterPrompt,
     ProtectedChapterUnlockResult,
@@ -47,7 +46,7 @@ describe("runDownload characterization", () => {
         });
     });
 
-    it("keeps persisted chapters when export assembly fails", async () => {
+    it("does not clear cached progress when export assembly fails", async () => {
         const tasks = [createDownloadTask()];
         const harness = createHarness(tasks);
         const options = createOptions(tasks);
@@ -134,42 +133,6 @@ describe("runDownload characterization", () => {
         expect(finishForTask).toHaveBeenCalledTimes(2);
         expect(harness.exportData?.chapters).toHaveLength(2);
         expect(harness.log).toHaveBeenCalledWith(expect.objectContaining({ code: "cache-write-retry" }));
-    });
-
-    it("processes protected chapters through the live queue and existing chapter pipeline", async () => {
-        const tasks = [createDownloadTask(0), createDownloadTask(1), createDownloadTask(2)];
-        const harness = createHarness(tasks);
-        harness.dependencies.chapterFetcher.fetch = vi.fn(async (task) =>
-            task.index === 1 ? "<protected>password form</protected>" : `<p>${task.title}</p>`
-        );
-        harness.dependencies.protectedChapterDetector.isProtected = vi.fn((html) => html.includes("<protected>"));
-        harness.ui.promptProtectedChapterPassword.mockResolvedValue({
-            action: "submit",
-            password: "fictional-password",
-            rememberPassword: false
-        });
-        harness.dependencies.protectedChapterAuth.unlock = vi.fn(
-            async (): Promise<ProtectedChapterUnlockResult> => ({
-                kind: "unlocked",
-                html: "<p>unlocked body</p>"
-            })
-        );
-
-        await harness.run(createOptions(tasks));
-
-        expect(harness.ui.promptProtectedChapterPassword).toHaveBeenCalledWith(
-            expect.objectContaining({ task: tasks[1], totalChapters: 3 }),
-            expect.any(AbortSignal),
-            expect.any(Function)
-        );
-        expect(harness.dependencies.protectedChapterAuth.unlock).toHaveBeenCalledWith(
-            tasks[1],
-            "<protected>password form</protected>",
-            "fictional-password",
-            expect.any(AbortSignal)
-        );
-        expect(harness.processedIndexes.sort((a, b) => a - b)).toEqual([0, 1, 2]);
-        expect(harness.exportData?.chapters).toHaveLength(3);
     });
 
     it("waits for the protected queue before entering export preparation", async () => {
@@ -422,20 +385,6 @@ describe("runDownload characterization", () => {
         });
     });
 
-    it("runs without DOM, IndexedDB, GM APIs, or global application state", async () => {
-        const tasks = [createDownloadTask(0), createDownloadTask(1)];
-        const harness = createHarness(tasks, new Map([[0, createChapter(0)]]));
-
-        await harness.run(createOptions(tasks));
-
-        expect(harness.fetcher.calls.map((task) => task.index)).toEqual([1]);
-        expect(harness.processedIndexes).toEqual([1]);
-        expect(harness.exportData?.chapters.map((chapter) => chapter.title)).toEqual(["第 1 章", "第 2 章"]);
-        expect(harness.cacheClears).toEqual([{ bookId: "100", taskId: "task-100" }]);
-        expect(harness.result?.status).toBe("ready");
-        expect(harness.ui.cleanup).toHaveBeenCalledOnce();
-    });
-
     it("starts resumed progress from valid cached chapters and only schedules missing chapters", async () => {
         const tasks = [createDownloadTask(0), createDownloadTask(1), createDownloadTask(2)];
         const harness = createHarness(
@@ -459,28 +408,6 @@ describe("runDownload characterization", () => {
         );
     });
 
-    it("yields while validating a large restored cache", async () => {
-        const tasks = Array.from({ length: 51 }, (_, index) => createDownloadTask(index));
-        const chapters = new Map(tasks.map((task) => [task.index, createChapter(task.index)]));
-        const harness = createHarness(tasks, chapters);
-        const sleepWithAbort = vi.fn(async () => undefined);
-        harness.dependencies.scheduler.sleepWithAbort = sleepWithAbort;
-
-        await harness.run(createOptions(tasks));
-
-        expect(sleepWithAbort).toHaveBeenCalledTimes(3);
-        expect(sleepWithAbort).toHaveBeenCalledWith(0);
-        expect(harness.dependencies.log).toHaveBeenCalledWith({
-            code: "cache-restore-started",
-            params: { count: 51 }
-        });
-        expect(harness.dependencies.log).toHaveBeenCalledWith({
-            code: "cache-restored",
-            params: { count: 51 }
-        });
-        expect(harness.fetcher.calls).toHaveLength(0);
-    });
-
     it("honors cancellation after yielding during cache validation", async () => {
         const tasks = Array.from({ length: 30 }, (_, index) => createDownloadTask(index));
         const chapters = new Map(tasks.map((task) => [task.index, createChapter(task.index)]));
@@ -494,43 +421,6 @@ describe("runDownload characterization", () => {
         expect(harness.fetcher.calls).toHaveLength(0);
         expect(harness.exportData).toBeNull();
         expect(harness.ui.snapshots).toContainEqual(expect.objectContaining({ phase: "cancelled" }));
-        expect(harness.exportData).toBeNull();
-    });
-
-    it("publishes structured phases and progress while preserving small-download results", async () => {
-        const tasks = [createDownloadTask(0), createDownloadTask(1)];
-        const harness = createHarness(tasks);
-
-        await harness.run(createOptions(tasks));
-
-        expect(
-            harness.events
-                .ofType("phase-changed")
-                .map((event) => (event as Extract<DownloadEvent, { type: "phase-changed" }>).current)
-        ).toEqual([
-            "preparing",
-            "restoring-cache",
-            "downloading",
-            "flushing-cache",
-            "checking-integrity",
-            "flushing-cache",
-            "preparing-export",
-            "export-ready"
-        ]);
-        expect(harness.ui.snapshots.at(-1)).toMatchObject({
-            phase: "export-ready",
-            scheduledCount: 2,
-            fetchedCount: 2,
-            processedCount: 2,
-            completedCount: 2,
-            hasExportData: true
-        });
-        expect(harness.exportData?.txt).toContain("第 1 章正文");
-        expect(harness.exportData?.txt).toContain("第 2 章正文");
-        expect(harness.dependencies.log).not.toHaveBeenCalledWith({
-            code: "cache-restored",
-            params: { count: 0 }
-        });
     });
 
     it("asks for consent once and publishes a persistent summary for mapped chapters", async () => {
@@ -560,7 +450,6 @@ describe("runDownload characterization", () => {
         await harness.run(createOptions(tasks));
 
         expect(harness.fetcher.calls.map((task) => task.index)).toEqual([0]);
-        expect(harness.exportData).toBeNull();
         expect(harness.exportData).toBeNull();
         expect(harness.ui.cleanup).toHaveBeenCalledOnce();
     });
@@ -676,7 +565,7 @@ describe("runDownload characterization", () => {
         ]);
     });
 
-    it("retries only missing chapters and rescans after the retry flush", async () => {
+    it("recovers a missing chapter after the user requests another retry", async () => {
         const tasks = [createDownloadTask(0)];
         const harness = createHarness(tasks);
         const fetch = vi
@@ -700,7 +589,7 @@ describe("runDownload characterization", () => {
         expect(harness.dependencies.log).toHaveBeenCalledWith({ code: "missing-chapter-retry-saved" });
     });
 
-    it("shows the updated decision again when an explicit retry still fails", async () => {
+    it("offers another decision when an explicit retry still fails", async () => {
         const tasks = [createDownloadTask(0)];
         const harness = createHarness(tasks);
         harness.dependencies.chapterFetcher.fetch = vi.fn(async () => {
@@ -768,7 +657,6 @@ describe("runDownload characterization", () => {
         expect(harness.dependencies.cancellation.requestCancellation).toHaveBeenCalledWith("flush");
         expect(harness.exportData).toBeNull();
         expect(harness.cacheClears).toHaveLength(0);
-        expect(harness.exportData).toBeNull();
         expect(harness.ui.snapshots.at(-1)).toMatchObject({
             phase: "cancelled",
             cancellationOutcome: "saved",

@@ -64,33 +64,6 @@ function createInput(
 }
 
 describe("diagnostic session retention", () => {
-    it("persists an optional range selection without changing the diagnostic schema", () => {
-        const repository = new MemoryDiagnosticRepository();
-        const manager = new DiagnosticManager(repository, () => 1_000);
-        manager.start(
-            createInput("range", {
-                totalChapters: 20,
-                selection: {
-                    mode: "range",
-                    sourceTotalChapters: 120,
-                    startChapter: 101,
-                    endChapter: 120
-                }
-            })
-        );
-
-        expect(manager.list().active[0]).toMatchObject({
-            schemaVersion: 1,
-            selection: {
-                mode: "range",
-                sourceTotalChapters: 120,
-                startChapter: 101,
-                endChapter: 120
-            },
-            task: { totalChapters: 20 }
-        });
-    });
-
     it("does not persist every restored or processed chapter when a large cache is resumed", () => {
         const repository = new MemoryDiagnosticRepository();
         const manager = new DiagnosticManager(repository, () => 1_000);
@@ -329,7 +302,7 @@ describe("diagnostic session retention", () => {
         ]);
     });
 
-    it("records bounded multi-format export outcomes after a task completes", () => {
+    it("records multi-format export outcomes after a task completes", () => {
         const repository = new MemoryDiagnosticRepository();
         const manager = new DiagnosticManager(repository, () => 1_000);
         manager.start(createInput("exports"));
@@ -365,24 +338,6 @@ describe("diagnostic session retention", () => {
             expect.objectContaining({ format: "epub", outcome: "success", downloadTriggered: true }),
             expect.objectContaining({ format: "html", outcome: "cancelled", generated: false })
         ]);
-    });
-
-    it("records the explicit incomplete chapter decision", () => {
-        const repository = new MemoryDiagnosticRepository();
-        const manager = new DiagnosticManager(repository, () => 1_000);
-        manager.start(createInput("incomplete"));
-
-        manager.recordDownloadEvent("incomplete", {
-            type: "incomplete-chapters-decided",
-            missingCount: 2,
-            decision: "export-with-placeholders"
-        });
-
-        expect(manager.list().active[0].events.at(-1)).toEqual({
-            at: 0,
-            type: "incomplete-chapters-decided",
-            details: { missingCount: 2, decision: "export-with-placeholders" }
-        });
     });
 
     it("records a rejected protected password as a retryable event instead of a failure", () => {

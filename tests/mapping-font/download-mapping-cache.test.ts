@@ -20,7 +20,7 @@ function createLegacyMappedContent(family = "1"): string {
 }
 
 describe("mapped font cache normalization", () => {
-    it("extracts and atomically writes back a legacy embedded font without refetching", async () => {
+    it("writes normalized font and content in one batch without refetching", async () => {
         const task = createDownloadTask();
         const chapters = new Map<number, Chapter>([[0, createChapter(0, { content: createLegacyMappedContent() })]]);
         const writes: Map<number, Chapter>[] = [];

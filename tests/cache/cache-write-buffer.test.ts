@@ -1,9 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import {
-    ChapterCacheWriteBuffer,
-    estimateChapterCacheBytes,
-    type CacheWritePolicy
-} from "../../src/core/download/cache-write-buffer";
+import { ChapterCacheWriteBuffer, type CacheWritePolicy } from "../../src/core/download/cache-write-buffer";
 import type { Chapter } from "../../src/types";
 import type { DownloadCancellationMode } from "../../src/types";
 import { createChapter, createDeferred, useFakeClock } from "../support";
@@ -37,9 +33,10 @@ describe("ChapterCacheWriteBuffer", () => {
         expect(write.mock.calls[0][0]).toEqual(new Map([[0, createChapter(0)]]));
     });
 
-    it("includes the mapped font Blob and metadata in the byte estimate", () => {
-        const chapter = createChapter();
-        const plainBytes = estimateChapterCacheBytes(chapter);
+    it("flushes at the byte limit when mapped font data is queued", async () => {
+        const chapter = createChapter(0, { title: "", content: "", txtSegment: "" });
+        const write = vi.fn(async (_entries: ReadonlyMap<number, Chapter>) => true);
+        const buffer = createBuffer({ maxChapterCount: 25, maxBytes: 128, maxDelayMs: 60_000 }, write);
         const mappingFont = {
             family: "1",
             blob: new Blob([new Uint8Array(64)], { type: "font/woff2" }),
@@ -47,30 +44,38 @@ describe("ChapterCacheWriteBuffer", () => {
             sha256: "a".repeat(64)
         };
 
-        expect(estimateChapterCacheBytes({ ...chapter, mappingFont })).toBe(
-            plainBytes + 64 + new TextEncoder().encode("1font/woff2" + "a".repeat(64)).byteLength
-        );
+        await buffer.add(0, chapter);
+        expect(write).not.toHaveBeenCalled();
+        await buffer.add(1, { ...chapter, mappingFont });
+
+        expect(write).toHaveBeenCalledOnce();
+        expect(Array.from(write.mock.calls[0][0].keys())).toEqual([0, 1]);
     });
 
     it("flushes pending chapters when the maximum delay elapses", async () => {
-        const scheduled: { callback?: () => void } = {};
+        const clock = useFakeClock();
         const write = vi.fn(async (entries: ReadonlyMap<number, Chapter>) => entries.size >= 0);
         const buffer = new ChapterCacheWriteBuffer({
             policy: { maxChapterCount: 25, maxBytes: 4 * 1024 * 1024, maxDelayMs: 3_000 },
             write,
-            schedule: (_delayMs, callback) => {
-                scheduled.callback = callback;
-                return () => {
-                    delete scheduled.callback;
-                };
+            schedule: (delayMs, callback) => {
+                const timer = setTimeout(callback, delayMs);
+                return () => clearTimeout(timer);
             }
         });
 
-        await buffer.add(0, createChapter(0));
-        expect(write).not.toHaveBeenCalled();
-        scheduled.callback?.();
-
-        await vi.waitFor(() => expect(write).toHaveBeenCalledOnce());
+        try {
+            await buffer.add(0, createChapter(0));
+            await clock.advanceBy(2_999);
+            expect(write).not.toHaveBeenCalled();
+            await clock.advanceBy(1);
+            expect(write).toHaveBeenCalledOnce();
+            expect(write.mock.calls[0][0]).toEqual(new Map([[0, createChapter(0)]]));
+            expect(vi.getTimerCount()).toBe(0);
+        } finally {
+            buffer.dispose();
+            clock.restore();
+        }
     });
 
     it("seals pending writes, rejects later chapters, and keeps repeated flushes idempotent", async () => {

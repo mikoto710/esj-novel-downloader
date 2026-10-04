@@ -65,7 +65,7 @@ describe("ProtectedChapterQueue", () => {
         await expect(take).resolves.toBeNull();
     });
 
-    it("returns pending work and wakes consumers when the queue is cancelled", async () => {
+    it("returns pending work and closes the cancelled queue", async () => {
         const queue = new ProtectedChapterQueue();
         queue.enqueue(item(7));
         queue.enqueue(item(9));

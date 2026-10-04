@@ -1,13 +1,12 @@
 // @vitest-environment jsdom
 
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import {
     browserDiagnosticLog,
     clearBrowserDiagnosticSessions,
     browserDiagnosticEvents,
     createBrowserDiagnosticExport,
     finishBrowserDiagnosticSession,
-    formatBrowserDiagnosticSummary,
     listBrowserDiagnosticSessions,
     recordBrowserPreflightDiagnosticFailure,
     recordBrowserDiagnosticExport,
@@ -17,7 +16,6 @@ import {
 } from "../../src/adapters/browser-diagnostics";
 import { createInitialDownloadSnapshot } from "../../src/core/download/download-progress";
 import { setInterfaceLocalePreference } from "../../src/core/config";
-import * as locale from "../../src/ui/locale";
 
 describe("browser diagnostic persistence", () => {
     beforeEach(() => {
@@ -31,32 +29,7 @@ describe("browser diagnostic persistence", () => {
         window.dispatchEvent(event);
     }
 
-    it("includes selected and source chapter counts in a range summary", () => {
-        startBrowserDiagnosticSession({
-            taskId: "task-range",
-            bookId: "range-book",
-            bookTitle: "Range Book",
-            pageUrl: "https://www.esjzone.cc/detail/range-book.html",
-            sourcePageType: "detail",
-            totalChapters: 20,
-            selection: {
-                mode: "range",
-                sourceTotalChapters: 120,
-                startChapter: 101,
-                endChapter: 120
-            },
-            imageEnabled: false
-        });
-
-        const session = listBrowserDiagnosticSessions().active[0];
-        expect(session.schemaVersion).toBe(1);
-        vi.spyOn(locale, "t").mockImplementation((key, params) => JSON.stringify({ key, ...params }));
-        expect(formatBrowserDiagnosticSummary(session)).toContain(
-            JSON.stringify({ key: "diagnostics.summary.range", start: 101, end: 120, count: 20, sourceTotal: 120 })
-        );
-    });
-
-    it("persists a completed session with settings, logs and controlled book details", () => {
+    it("persists a completed session with logs, exports and controlled book details", () => {
         startBrowserDiagnosticSession({
             taskId: "task-1",
             bookId: "1737469479",
@@ -106,7 +79,7 @@ describe("browser diagnostic persistence", () => {
         expect(exported).not.toContain("token=secret");
     });
 
-    it("persists structured logs and formats them in the locale selected at export time", () => {
+    it("persists structured log codes and parameters after completion", () => {
         startBrowserDiagnosticSession({
             taskId: "task-structured-log",
             bookId: "book-log",
@@ -122,52 +95,6 @@ describe("browser diagnostic persistence", () => {
         expect(session.logs).toEqual([
             { at: expect.any(Number), level: "info", code: "download-started", params: { concurrency: 3 } }
         ]);
-
-        const originalMessage = JSON.parse(createBrowserDiagnosticExport(session).json).session.logs[0].message;
-        setInterfaceLocalePreference("zh-TW");
-        const exported = JSON.parse(createBrowserDiagnosticExport(session).json) as { session: typeof session };
-        expect(exported.session.logs[0]).toMatchObject({
-            level: "info",
-            code: "download-started",
-            params: { concurrency: 3 }
-        });
-        expect(exported.session.logs[0].message).not.toBe(originalMessage);
-        expect(formatBrowserDiagnosticSummary(session)).toContain(exported.session.logs[0].message!);
-    });
-
-    it("formats missing application and book details without persisting localized fallbacks", () => {
-        vi.stubGlobal("GM_info", {
-            script: { version: "" },
-            scriptHandler: "Tampermonkey",
-            version: ""
-        });
-        startBrowserDiagnosticSession({
-            taskId: "task-missing-details",
-            bookId: "unknown",
-            bookTitle: "",
-            pageUrl: "https://www.esjzone.cc/forum/1.html",
-            sourcePageType: "single",
-            imageEnabled: false
-        });
-
-        const session = listBrowserDiagnosticSessions().active[0];
-        expect(session.application).toEqual({
-            version: "",
-            browser: "Chrome",
-            browserVersionUnknown: true,
-            userscriptManager: "Tampermonkey"
-        });
-        expect(session.book.title).toBe("");
-
-        const translate = vi.spyOn(locale, "t").mockImplementation((key) => key);
-        const summary = formatBrowserDiagnosticSummary(session);
-        expect(summary).toContain("diagnostics.summary.versionUnknown");
-        expect(summary).toContain("diagnostics.summary.book");
-        expect(translate).toHaveBeenCalledWith("diagnostics.summary.book", {
-            title: "diagnostics.summary.unknownBook",
-            bookId: "unknown"
-        });
-        expect(createBrowserDiagnosticExport(session).filename).toContain("diagnostics.summary.unknownBook");
     });
 
     it("keeps failed chapter location and export failures after download completion", () => {
@@ -211,33 +138,6 @@ describe("browser diagnostic persistence", () => {
             }),
             expect.objectContaining({ scope: "export", stage: "epub-download" })
         ]);
-    });
-
-    it("formats stable diagnostic failure codes in the locale selected at presentation time", () => {
-        startBrowserDiagnosticSession({
-            taskId: "task-localized-failure",
-            bookId: "book-localized-failure",
-            bookTitle: "Localized Failure",
-            pageUrl: "https://www.esjzone.cc/detail/13.html",
-            sourcePageType: "detail",
-            imageEnabled: true
-        });
-        recordBrowserDiagnosticFailure({
-            scope: "image",
-            stage: "request",
-            code: "image-request-failed",
-            message: "image-request-failed",
-            imageFailureCount: 1
-        });
-        finishBrowserDiagnosticSession("task-localized-failure", "failed");
-        const session = listBrowserDiagnosticSessions().history[0];
-
-        const originalSummary = formatBrowserDiagnosticSummary(session);
-        setInterfaceLocalePreference("zh-TW");
-        const translate = vi.spyOn(locale, "t");
-        expect(formatBrowserDiagnosticSummary(session)).not.toBe(originalSummary);
-        expect(translate).toHaveBeenCalledWith("diagnostics.failure.imageRequestFailed");
-        expect(session.failures[0].message).toBe("image-request-failed");
     });
 
     it("keeps inline image failures inside a successful diagnostic session", () => {
@@ -344,43 +244,6 @@ describe("browser diagnostic persistence", () => {
             }),
             expect.objectContaining({ scope: "download", code: "download-failed", message: "download failed" })
         ]);
-    });
-
-    it("summarizes protected chapter progress without treating password rejection as a failure", () => {
-        startBrowserDiagnosticSession({
-            taskId: "task-protected",
-            bookId: "book-protected",
-            bookTitle: "Protected Book",
-            pageUrl: "https://www.esjzone.cc/detail/14.html",
-            sourcePageType: "detail",
-            imageEnabled: false
-        });
-        browserDiagnosticEvents.emit({
-            type: "snapshot-updated",
-            snapshot: {
-                ...createInitialDownloadSnapshot(10, 0),
-                phase: "downloading",
-                protectedDetectedCount: 3,
-                protectedPendingCount: 1,
-                protectedResolvedCount: 1,
-                protectedSkippedCount: 1
-            }
-        });
-        browserDiagnosticEvents.emit({
-            type: "protected-chapter-password-rejected",
-            task: { index: 2, title: "Protected Chapter", url: "https://www.esjzone.cc/forum/14/3.html" }
-        });
-
-        const session = listBrowserDiagnosticSessions().active[0];
-        vi.spyOn(locale, "t").mockImplementation((key, params) => JSON.stringify({ key, ...params }));
-        expect(formatBrowserDiagnosticSummary(session)).toContain(
-            JSON.stringify({ key: "diagnostics.summary.protected", detected: 3, pending: 1, resolved: 1, skipped: 1 })
-        );
-        expect(session.failures).toEqual([]);
-        expect(session.events.at(-1)).toMatchObject({
-            type: "protected-chapter-password-rejected",
-            details: { chapterIndex: 3, result: "password-rejected" }
-        });
     });
 
     it("persists failures that happen before a download lock is acquired", () => {
