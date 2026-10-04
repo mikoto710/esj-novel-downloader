@@ -203,7 +203,7 @@ export function createDownloadSelectionPopup(
                   "button",
                   {
                       id: "esj-range-open-previous",
-                      style: "align-self:flex-start;padding:0;background:transparent;border:none;color:#2b6f9f;cursor:pointer;font-size:12px;text-align:left;",
+                      style: "padding:8px 12px;background:#f3f8fc;border:1px solid #b8d5e8;border-radius:6px;color:#2b6f9f;cursor:pointer;white-space:nowrap;",
                       onclick: () => finish({ action: "open-existing" })
                   },
                   [t("range.openPrevious")]
@@ -270,7 +270,9 @@ export function createDownloadSelectionPopup(
                               count: previous.endChapter - previous.startChapter + 1
                           })
                         : t("range.modeAll");
-                openPreviousButton.textContent = `${t("range.openPrevious")}（${label}）`;
+                openPreviousButton.textContent = t("range.openPrevious");
+                openPreviousButton.title = `${t("range.openPrevious")}（${label}）`;
+                openPreviousButton.setAttribute("aria-label", openPreviousButton.title);
             }
             if (cacheWarning instanceof HTMLElement) {
                 cacheWarning.textContent = t("range.cacheDiscardWarning", { count: options.cacheCount });
@@ -347,20 +349,22 @@ export function createDownloadSelectionPopup(
                 el(
                     "div",
                     { style: "padding:16px;display:flex;flex-direction:column;gap:12px;overflow:auto;min-height:0;" },
-                    [
-                        mode,
-                        rangeFields,
-                        summary,
-                        validation,
-                        allWarning,
-                        cacheWarning,
-                        ...(openPreviousButton ? [openPreviousButton] : [])
-                    ]
+                    [mode, rangeFields, summary, validation, allWarning, cacheWarning]
                 ),
+
+                // 旧结果入口靠左，取消和开始下载作为一组靠右
                 el(
                     "div",
-                    { style: "padding:0 12px 12px;display:flex;justify-content:flex-end;gap:8px;flex-shrink:0;" },
-                    [cancelButton, downloadButton]
+                    {
+                        style: "padding:0 16px 16px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;flex-shrink:0;"
+                    },
+                    [
+                        ...(openPreviousButton ? [openPreviousButton] : []),
+                        el("div", { style: "margin-left:auto;display:flex;justify-content:flex-end;gap:8px;" }, [
+                            cancelButton,
+                            downloadButton
+                        ])
+                    ]
                 )
             ]
         );

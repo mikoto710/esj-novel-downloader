@@ -54,7 +54,7 @@ export const ZH_CN_MESSAGES = Object.freeze({
     "range.invalid": "请输入 1 到 {total} 之间的整数，并确保起始章节不大于结束章节。",
     "range.allEquivalent": "已选全部章节，按全本下载处理，成功后清理本书缓存。",
     "range.cacheDiscardWarning": "插图设置与缓存不兼容。开始将清除本书全部 {count} 章缓存，包括所选范围之外的章节。",
-    "range.openPrevious": "再次导出上次结果",
+    "range.openPrevious": "再次导出",
     "range.download": "开始下载",
     "range.clearAndDownload": "清除缓存并下载",
     "confirm.imageSettings.title": "⚠️ 切换插图设置",

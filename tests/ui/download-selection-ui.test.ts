@@ -192,23 +192,31 @@ describe("unified download selection UI", () => {
         expect(errorMessage).toBeTruthy();
         const previous = document.querySelector<HTMLButtonElement>("#esj-range-open-previous")!;
         expect(previous.disabled).toBe(false);
-        expect(previous.textContent).toContain("2–3");
+        expect(previous.title).toContain("2–3");
+        const previousLabel = previous.textContent;
+        const previousDescription = previous.title;
         expect(document.activeElement).toBe(previous);
         setInterfaceLocalePreference("zh-TW");
         publishInterfaceLocaleChange();
         expect(validation.textContent).not.toBe(errorMessage);
+        expect(previous.textContent).not.toBe(previousLabel);
+        expect(previous.title).not.toBe(previousDescription);
+        expect(previous.getAttribute("aria-label")).toContain("2–3");
         expect(document.querySelector<HTMLButtonElement>("#esj-range-download")?.disabled).toBe(true);
         previous.click();
         await expect(decision).resolves.toEqual({ action: "open-existing" });
+        expect(document.querySelector("#esj-range-selection")).toBeNull();
     });
 
-    it("labels the previous whole-book result independently of the newly selected range", async () => {
+    it("describes the previous whole-book result independently of the newly selected range", async () => {
         const decision = createDownloadSelectionPopup(selectionOptions({ hasExistingExport: true }));
         const previous = document.querySelector<HTMLButtonElement>("#esj-range-open-previous")!;
         const previousLabel = previous.textContent;
+        const previousDescription = previous.title;
         selectRange("2", "3");
 
         expect(previous.textContent).toBe(previousLabel);
+        expect(previous.title).toBe(previousDescription);
         previous.click();
         await expect(decision).resolves.toEqual({ action: "open-existing" });
     });

@@ -54,7 +54,7 @@ export const ZH_TW_MESSAGES = Object.freeze({
     "range.invalid": "請輸入 1 到 {total} 之間的整數，並確認起始章節不大於結束章節。",
     "range.allEquivalent": "已選全部章節，依全本下載處理，成功後清除本書快取。",
     "range.cacheDiscardWarning": "插圖設定與快取不相容。開始將清除本書全部 {count} 章快取，包括所選範圍之外的章節。",
-    "range.openPrevious": "再次匯出上次結果",
+    "range.openPrevious": "再次匯出",
     "range.download": "開始下載",
     "range.clearAndDownload": "清除快取並下載",
     "confirm.imageSettings.title": "⚠️ 切換插圖設定",
