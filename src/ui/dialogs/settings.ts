@@ -1,4 +1,4 @@
-import { state } from "../../core/state";
+import { invalidateCachedEpub } from "../../core/state";
 import {
     getConcurrency,
     setConcurrency,
@@ -257,9 +257,7 @@ export function createSettingsPanel(): void {
             setEpubTagPageSetting(checked);
 
             // 标签页改变后需重新生成 EPUB，已有正文结果继续复用
-            if (state.cachedData) {
-                state.cachedData.epubBlob = null;
-            }
+            invalidateCachedEpub();
 
             log(
                 t("settings.log.epubTag", {

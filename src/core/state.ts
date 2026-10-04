@@ -1,87 +1,97 @@
-import {
-    AppState,
-    BookDownloadLock,
-    CacheMeta,
-    CachedData,
-    Chapter,
-    DownloadCancellationMode,
-    RuntimeCacheSession
-} from "../types";
+import type { AppState, CacheMeta, CachedData, DownloadCancellationMode, RuntimeCacheSession } from "../types";
+import type { DownloadCancellationPort } from "./download/contracts";
 import { subscribeCacheSync } from "./cache/sync";
 import { readCacheManifestV3 } from "./cache/indexeddb-repository";
 import { getActiveBookDownloadLock } from "./book-lock";
 
-type DownloadCancellationListener = (mode: DownloadCancellationMode) => void;
-
-const cancellationListeners = new Set<DownloadCancellationListener>();
-
 /**
- * 当前页面共享的下载和导出状态
+ * 页面只保存任务操作入口、显示摘要和最近导出
  */
-export const state: AppState & { abortController: AbortController | null; activeBookLock: BookDownloadLock | null } = {
-    abortFlag: false,
-    cancellationMode: "flush",
+export const state: AppState = {
     originalTitle: document.title || "ESJZone",
     cachedData: null,
-    globalChaptersMap: new Map<number, Chapter>(),
     runtimeCacheSession: null,
-    abortController: null,
-    activeBookLock: null
+    activeDownload: null
 };
 
 /**
- * 设置中止状态
+ * 创建任务独立的取消意图和网络信号，discard 只可升级
  */
-export function setAbortFlag(val: boolean): void {
-    state.abortFlag = val;
+export function createDownloadCancellation(): DownloadCancellationPort & { readonly mode: DownloadCancellationMode } {
+    const controller = new AbortController();
+    const listeners = new Set<(mode: DownloadCancellationMode) => void>();
+    let requested = false;
+    let mode: DownloadCancellationMode = "flush";
+    return {
+        signal: controller.signal,
+        get mode() {
+            return mode;
+        },
+        isCancellationRequested: () => requested,
+        requestCancellation(next = "flush") {
+            if (requested && (mode === "discard" || next !== "discard")) {
+                return;
+            }
+            // 先固定意图再中止网络；缓存 writer 使用独立信号完成有界保存
+            mode = next;
+            requested = true;
+            controller.abort();
+            listeners.forEach((listener) => listener(mode));
+        },
+        subscribeCancellation(listener) {
+            listeners.add(listener);
+            return () => listeners.delete(listener);
+        }
+    };
 }
 
 /**
- * 缓存数据到全局状态
+ * 登记当前任务的停止入口，替换时先停止旧任务
  */
-export function setCachedData(data: CachedData): void {
-    state.cachedData = data;
+export function activateDownload(bookId: string, taskId: string, cancellation: DownloadCancellationPort): void {
+    state.activeDownload?.requestCancellation();
+    state.activeDownload = { bookId, taskId, requestCancellation: cancellation.requestCancellation };
+}
 
-    if (state.runtimeCacheSession) {
-        state.runtimeCacheSession.updatedAt = Date.now();
-        state.runtimeCacheSession.hasExportData = true;
+/**
+ * 判断回调是否仍属于页面当前任务
+ */
+export function isCurrentDownload(taskId: string): boolean {
+    return state.activeDownload?.taskId === taskId;
+}
+
+/**
+ * 移除已结束任务的操作入口，晚到收尾不影响新任务
+ */
+export function releaseActiveDownload(taskId: string): void {
+    if (isCurrentDownload(taskId)) {
+        state.activeDownload = null;
     }
 }
 
 /**
- * 重置控制器，用于中止 fetch 请求
- */
-export function resetAbortController() {
-    state.cancellationMode = "flush";
-    state.abortController = new AbortController();
-}
-
-/**
- * 中止当前下载任务及其正在进行的网络请求
- * @param mode 尚未落盘缓存的处理方式
+ * 将页面停止操作转发给当前任务
  */
 export function abortActiveDownload(mode: DownloadCancellationMode = "flush"): void {
-    const firstRequest = !state.abortFlag;
-    const escalatedToDiscard = state.cancellationMode !== "discard" && mode === "discard";
-    if (!firstRequest && !escalatedToDiscard) {
-        return;
-    }
-    // discard 可以覆盖已经发出的普通取消，普通取消不能降级远程清理请求
-    state.cancellationMode = mode;
-    setAbortFlag(true);
-    state.abortController?.abort();
-    for (const listener of cancellationListeners) {
-        listener(state.cancellationMode);
+    state.activeDownload?.requestCancellation(mode);
+}
+
+/**
+ * 仅由当前任务发布新的导出结果
+ */
+export function publishCachedExport(data: CachedData, taskId: string): void {
+    if (isCurrentDownload(taskId)) {
+        state.cachedData = data;
     }
 }
 
 /**
- * 订阅当前页下载任务的取消请求
- * @param listener 取消请求监听器
+ * 使最近导出的 EPUB 派生产物失效，正文继续复用
  */
-export function subscribeDownloadCancellation(listener: DownloadCancellationListener): () => void {
-    cancellationListeners.add(listener);
-    return () => cancellationListeners.delete(listener);
+export function invalidateCachedEpub(): void {
+    if (state.cachedData) {
+        state.cachedData.epubBlob = null;
+    }
 }
 
 /**
@@ -101,8 +111,8 @@ export function startRuntimeCacheSession(meta: CacheMeta, taskId: string, initia
 /**
  * 更新当前页会话缓存摘要
  */
-export function updateRuntimeCacheSession(progress: Partial<RuntimeCacheSession>, taskId?: string): void {
-    if (!state.runtimeCacheSession || (taskId && state.runtimeCacheSession.taskId !== taskId)) {
+export function updateRuntimeCacheSession(progress: Partial<RuntimeCacheSession>, taskId: string): void {
+    if (!state.runtimeCacheSession || state.runtimeCacheSession.taskId !== taskId) {
         return;
     }
 
@@ -166,7 +176,7 @@ subscribeCacheSync(async (event) => {
         if ((sameWriter && (!lock || sameLock)) || (!manifest && sameLock)) {
             return;
         }
-        if (state.activeBookLock?.taskId === runtime.taskId) {
+        if (isCurrentDownload(runtime.taskId)) {
             abortActiveDownload();
         } else {
             clearRuntimeCacheSession(event.bookId, runtime.taskId);

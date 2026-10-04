@@ -29,6 +29,7 @@ vi.mock("../../src/core/book-lock", () => ({
 
 let receive: (event: MessageEvent) => void;
 let runtime: typeof import("../../src/core/state");
+let chapters: Map<number, import("../../src/types").Chapter>;
 let manager: typeof import("../../src/core/cache/manager");
 
 async function send(event: object): Promise<void> {
@@ -60,13 +61,12 @@ describe("runtime cache ownership", () => {
         runtime = await import("../../src/core/state");
         manager = await import("../../src/core/cache/manager");
         runtime.state.cachedData = createCachedData();
-        runtime.state.globalChaptersMap = new Map([[0, createChapter()]]);
+        chapters = new Map([[0, createChapter()]]);
         runtime.startRuntimeCacheSession(createCacheMeta(), "new-task", 1);
     });
 
     it("clears a task summary without clearing the previous export or task chapters", () => {
         const previous = runtime.state.cachedData;
-        const chapters = runtime.state.globalChaptersMap;
         runtime.clearRuntimeCacheSession("100");
         expect(runtime.state.runtimeCacheSession).toBeNull();
         expect(runtime.state.cachedData).toBe(previous);
@@ -79,7 +79,7 @@ describe("runtime cache ownership", () => {
         await send({ type, bookId: "100", taskId: "remote-task" });
         expect(runtime.state.runtimeCacheSession).toBeNull();
         expect(runtime.state.cachedData).toBe(previous);
-        expect(runtime.state.globalChaptersMap.size).toBe(1);
+        expect(chapters.size).toBe(1);
     });
 
     it("ignores an old clear notification when the current writer still owns the cache", async () => {
@@ -87,7 +87,7 @@ describe("runtime cache ownership", () => {
         mocks.activeLock.mockResolvedValue(createBookLock({ taskId: "new-task" }));
         await send({ type: "cache-cleared", bookId: "100" });
         expect(runtime.state.runtimeCacheSession?.taskId).toBe("new-task");
-        expect(runtime.state.globalChaptersMap.size).toBe(1);
+        expect(chapters.size).toBe(1);
         expect(mocks.readManifest).toHaveBeenCalledWith("100");
     });
 
@@ -106,7 +106,7 @@ describe("runtime cache ownership", () => {
         const { finalizeBookDownloadTask } = await import("../../src/core/download/task-finalizer");
         await finalizeBookDownloadTask(createBookLock({ taskId: "new-task" }), vi.fn());
         expect(runtime.state.cachedData).toBe(previous);
-        expect(runtime.state.globalChaptersMap.size).toBe(1);
+        expect(chapters.size).toBe(1);
         expect(runtime.state.runtimeCacheSession).toBeNull();
     });
 
@@ -134,5 +134,32 @@ describe("runtime cache ownership", () => {
             sources: ["runtime"]
         });
         expect(items.find((item) => item.bookId === "200")).toMatchObject({ hasExportData: false });
+    });
+    it("requests task cancellation on ownership loss without clearing its chapter table", async () => {
+        const cancellation = runtime.createDownloadCancellation();
+        runtime.activateDownload("100", "new-task", cancellation);
+        mocks.readManifest.mockResolvedValue({ writerTaskId: "remote-task", cleared: false });
+        await send({ type: "cache-claimed", bookId: "100", taskId: "remote-task" });
+        expect(cancellation.isCancellationRequested()).toBe(true);
+        expect(chapters.size).toBe(1);
+        expect(runtime.state.cachedData).not.toBeNull();
+    });
+
+    it("ignores stale task progress and export publication", () => {
+        runtime.activateDownload("100", "new-task", runtime.createDownloadCancellation());
+        runtime.updateRuntimeCacheSession({ completedCount: 10 }, "old-task");
+        const previous = runtime.state.cachedData;
+        runtime.publishCachedExport(createCachedData(), "old-task");
+        expect(runtime.state.runtimeCacheSession?.completedCount).toBe(0);
+        expect(runtime.state.cachedData).toBe(previous);
+    });
+
+    it("invalidates only the derived EPUB when settings change", () => {
+        const data = runtime.state.cachedData!;
+        data.epubBlob = new Blob(["epub"]);
+        runtime.invalidateCachedEpub();
+        expect(runtime.state.cachedData).toBe(data);
+        expect(data.epubBlob).toBeNull();
+        expect(data.chapters).toHaveLength(1);
     });
 });

@@ -13,13 +13,7 @@ import type {
 import { ownsActiveBookDownloadLock, shouldDiscardBookDownloadCache } from "../core/book-lock";
 import { getConcurrency } from "../core/config";
 import { parseChapterHtml } from "../core/parser";
-import {
-    abortActiveDownload,
-    startRuntimeCacheSession,
-    state,
-    subscribeDownloadCancellation,
-    updateRuntimeCacheSession
-} from "../core/state";
+import { isCurrentDownload, startRuntimeCacheSession, updateRuntimeCacheSession } from "../core/state";
 import {
     clearBookCacheForTask,
     finishBookCacheForTask,
@@ -27,7 +21,7 @@ import {
     putBookCacheBatchForTask,
     putBookCoverForTask
 } from "../core/cache/book-cache";
-import type { Chapter } from "../types";
+import type { BookDownloadLock, Chapter, DownloadCancellationMode } from "../types";
 import {
     closeProtectedChapterPrompt,
     confirmMappingFontDownload,
@@ -46,256 +40,315 @@ import { fetchWithTimeout } from "../utils/request";
 import { removeImgTags } from "../utils/text";
 import { normalizeChapterMappingFont } from "../core/mapping-font";
 import { normalizeImageBlob } from "../utils/image-format";
-import { browserDiagnosticEvents, browserDiagnosticLog, recordBrowserDiagnosticFailure } from "./browser-diagnostics";
+import {
+    recordBrowserDownloadEvent,
+    browserDiagnosticLog,
+    recordBrowserDiagnosticFailure
+} from "./browser-diagnostics";
 import { showDownloadTerminalFailure } from "../ui/messages/download-terminal";
 import { createBrowserProtectedChapterAuth, isProtectedChapterHtml } from "./browser-protected-chapter";
 import { BrowserRequestGate } from "./browser-request-gate";
 import { subscribeInterfaceLocaleChange, t } from "../ui/locale";
 
 // 下载核心的浏览器实现边界
-// DOM、全局 state、网络、解析、图片、缓存和锁实现均限制在本模块中
+// 任务数据显式传入，DOM、网络、缓存和锁实现在此装配
 function getErrorMessage(error: unknown): string {
     return error instanceof Error ? error.message : String(error);
 }
 
 function recordInlineImageFailures(
     task: { index: number; title: string; url: string },
-    failures: ImageProcessingFailure[]
+    failures: ImageProcessingFailure[],
+    taskId: string
 ): void {
     // 插图故障只作为当前章节的附加诊断，不能影响下载核心的章节成功、补抓或导出终态
     failures.forEach((failure) => {
-        recordBrowserDiagnosticFailure({
-            scope: "image",
-            stage: failure.stage,
-            code: failure.code,
-            message: failure.message,
-            imageFailureCount: failure.count,
-            chapter: task
-        });
+        recordBrowserDiagnosticFailure(
+            {
+                scope: "image",
+                stage: failure.stage,
+                code: failure.code,
+                message: failure.message,
+                imageFailureCount: failure.count,
+                chapter: task
+            },
+            taskId
+        );
     });
 }
 
-const cancellation: DownloadCancellationPort = {
-    get signal() {
-        return state.abortController?.signal;
-    },
-    isCancellationRequested: () => state.abortFlag,
-    requestCancellation: abortActiveDownload,
-    subscribeCancellation: subscribeDownloadCancellation
-};
+export interface BrowserDownloadTask {
+    lock: BookDownloadLock;
+    chapters: Map<number, Chapter>;
+    cancellation: DownloadCancellationPort & { readonly mode: DownloadCancellationMode };
+    originalTitle: string;
+}
 
-function updateDownloadStatus(status: string): void {
+function updateDownloadStatus(status: string, originalTitle: string): void {
     const titleEl = document.querySelector("#esj-title") as HTMLElement | null;
     if (titleEl) {
         titleEl.textContent = "📘 " + status;
     }
-    document.title = `[${status}] ${state.originalTitle}`;
+    document.title = `[${status}] ${originalTitle}`;
     updateTrayText(status);
 }
 
-let lastDownloadSnapshot: DownloadSnapshot | null = null;
-let activeDownloadMode: "all" | "range" = "all";
+/**
+ * 进度显示和语言订阅只跟随本次任务
+ */
+function createBrowserDownloadUi(task: BrowserDownloadTask): DownloadUiPort {
+    const { originalTitle, cancellation } = task;
+    const isCurrent = () => isCurrentDownload(task.lock.taskId);
+    let lastDownloadSnapshot: DownloadSnapshot | null = null;
+    let activeDownloadMode: "all" | "range" = "all";
 
-// 下载核心只发布快照，所有标题、进度条、托盘和弹窗更新在此落到 DOM
-const ui: DownloadUiPort = {
-    prepare(selection) {
-        activeDownloadMode = selection.mode;
-        if (!document.querySelector("#esj-popup")) {
-            createDownloadPopup(selection.mode);
-        }
-    },
-    update(snapshot) {
-        lastDownloadSnapshot = snapshot;
-        if (snapshot.phase === "cancelling" || snapshot.phase === "cancelled") {
-            const cancelled = snapshot.phase === "cancelled";
-            const status = t(cancelled ? "download.status.stopped" : "download.status.stopping");
-            const titleEl = document.querySelector("#esj-title") as HTMLElement | null;
-            const cancelButton = document.querySelector("#esj-cancel") as HTMLButtonElement | null;
-            if (titleEl) {
-                titleEl.textContent = "📘 " + status;
+    // 下载核心只发布快照，所有标题、进度条、托盘和弹窗更新在此落到 DOM
+    const ui: DownloadUiPort = {
+        prepare(selection) {
+            if (!isCurrent()) {
+                return;
             }
-            if (cancelButton) {
-                cancelButton.disabled = true;
-                cancelButton.textContent = cancelled
-                    ? t("download.action.stopped")
-                    : state.cancellationMode === "discard"
-                      ? t("download.action.stopping")
-                      : t("download.action.saving");
-                cancelButton.style.backgroundColor = "#999";
+            activeDownloadMode = selection.mode;
+            if (!document.querySelector("#esj-popup")) {
+                createDownloadPopup(selection.mode, cancellation.requestCancellation, originalTitle);
             }
-            updateTrayText(status);
-            return;
+        },
+        update(snapshot) {
+            if (!isCurrent()) {
+                return;
+            }
+            lastDownloadSnapshot = snapshot;
+            if (snapshot.phase === "cancelling" || snapshot.phase === "cancelled") {
+                const cancelled = snapshot.phase === "cancelled";
+                const status = t(cancelled ? "download.status.stopped" : "download.status.stopping");
+                const titleEl = document.querySelector("#esj-title") as HTMLElement | null;
+                const cancelButton = document.querySelector("#esj-cancel") as HTMLButtonElement | null;
+                if (titleEl) {
+                    titleEl.textContent = "📘 " + status;
+                }
+                if (cancelButton) {
+                    cancelButton.disabled = true;
+                    cancelButton.textContent = cancelled
+                        ? t("download.action.stopped")
+                        : cancellation.mode === "discard"
+                          ? t("download.action.stopping")
+                          : t("download.action.saving");
+                    cancelButton.style.backgroundColor = "#999";
+                }
+                updateTrayText(status);
+                return;
+            }
+            const phaseStatus: Partial<Record<DownloadSnapshot["phase"], string>> = {
+                preparing: t("download.status.initializing"),
+                "restoring-cache":
+                    snapshot.cachedChapterCount > 0
+                        ? t("download.status.validatingCache", { count: snapshot.cachedChapterCount })
+                        : t("download.status.preparingCache"),
+                "flushing-cache": t("download.status.savingProgress", {
+                    ready: snapshot.readyChapterCount,
+                    total: snapshot.scheduledCount
+                }),
+                "checking-integrity": t("download.status.checkingIntegrity", {
+                    ready: snapshot.readyChapterCount,
+                    total: snapshot.scheduledCount
+                }),
+                "preparing-export": t("download.status.preparingExport", {
+                    ready: snapshot.readyChapterCount,
+                    total: snapshot.scheduledCount
+                }),
+                "export-ready": t("download.status.exportReady", {
+                    ready: snapshot.readyChapterCount,
+                    total: snapshot.scheduledCount
+                })
+            };
+            const status = phaseStatus[snapshot.phase];
+            if (status) {
+                updateDownloadStatus(status, originalTitle);
+                return;
+            }
+            if (
+                snapshot.phase !== "downloading" ||
+                snapshot.cancellationRequested ||
+                (snapshot.readyChapterCount === 0 &&
+                    snapshot.protectedPendingCount === 0 &&
+                    snapshot.protectedDetectedCount === 0)
+            ) {
+                return;
+            }
+            const { readyChapterCount: count, scheduledCount: total, protectedPendingCount: pending } = snapshot;
+            const downloadStatus =
+                pending > 0
+                    ? t(
+                          activeDownloadMode === "range"
+                              ? "download.status.runningRangeProtected"
+                              : "download.status.runningProtected",
+                          { ready: count, total, pending }
+                      )
+                    : t(activeDownloadMode === "range" ? "download.status.runningRange" : "download.status.running", {
+                          ready: count,
+                          total
+                      });
+            const progressEl = document.querySelector("#esj-progress") as HTMLElement | null;
+            updateDownloadStatus(downloadStatus, originalTitle);
+            document.title = `[${count}/${total}${pending > 0 ? t("download.status.protectedTitle", { pending }) : ""}] ${originalTitle}`;
+            if (progressEl) {
+                progressEl.style.width = (count / total) * 100 + "%";
+            }
+        },
+        confirmMappingFontDownload,
+        confirmIncompleteChapters,
+        promptProtectedChapterPassword,
+        closeProtectedChapterPrompt: () => {
+            if (isCurrent()) {
+                closeProtectedChapterPrompt();
+            }
+        },
+        updateMappingFontWarning(summary) {
+            if (isCurrent()) {
+                updateMappingFontWarning(summary);
+            }
+        },
+        showMappingFontFailure(failures) {
+            if (isCurrent()) {
+                showMappingFontFailure(failures);
+            }
+        },
+        showTerminalFailure(failure) {
+            if (isCurrent()) {
+                showDownloadTerminalFailure(failure);
+            }
+        },
+        cleanup() {
+            unsubscribeLocale();
+            if (isCurrent()) {
+                fullCleanup(originalTitle);
+            }
         }
-        const phaseStatus: Partial<Record<DownloadSnapshot["phase"], string>> = {
-            preparing: t("download.status.initializing"),
-            "restoring-cache":
-                snapshot.cachedChapterCount > 0
-                    ? t("download.status.validatingCache", { count: snapshot.cachedChapterCount })
-                    : t("download.status.preparingCache"),
-            "flushing-cache": t("download.status.savingProgress", {
-                ready: snapshot.readyChapterCount,
-                total: snapshot.scheduledCount
-            }),
-            "checking-integrity": t("download.status.checkingIntegrity", {
-                ready: snapshot.readyChapterCount,
-                total: snapshot.scheduledCount
-            }),
-            "preparing-export": t("download.status.preparingExport", {
-                ready: snapshot.readyChapterCount,
-                total: snapshot.scheduledCount
-            }),
-            "export-ready": t("download.status.exportReady", {
-                ready: snapshot.readyChapterCount,
-                total: snapshot.scheduledCount
-            })
-        };
-        const status = phaseStatus[snapshot.phase];
-        if (status) {
-            updateDownloadStatus(status);
-            return;
-        }
-        if (
-            snapshot.phase !== "downloading" ||
-            snapshot.cancellationRequested ||
-            (snapshot.readyChapterCount === 0 &&
-                snapshot.protectedPendingCount === 0 &&
-                snapshot.protectedDetectedCount === 0)
-        ) {
-            return;
-        }
-        const { readyChapterCount: count, scheduledCount: total, protectedPendingCount: pending } = snapshot;
-        const downloadStatus =
-            pending > 0
-                ? t(
-                      activeDownloadMode === "range"
-                          ? "download.status.runningRangeProtected"
-                          : "download.status.runningProtected",
-                      { ready: count, total, pending }
-                  )
-                : t(activeDownloadMode === "range" ? "download.status.runningRange" : "download.status.running", {
-                      ready: count,
-                      total
-                  });
-        const progressEl = document.querySelector("#esj-progress") as HTMLElement | null;
-        updateDownloadStatus(downloadStatus);
-        document.title = `[${count}/${total}${pending > 0 ? t("download.status.protectedTitle", { pending }) : ""}] ${state.originalTitle}`;
-        if (progressEl) {
-            progressEl.style.width = (count / total) * 100 + "%";
-        }
-    },
-    confirmMappingFontDownload,
-    confirmIncompleteChapters,
-    promptProtectedChapterPassword,
-    closeProtectedChapterPrompt,
-    updateMappingFontWarning,
-    showMappingFontFailure,
-    showTerminalFailure: showDownloadTerminalFailure,
-    cleanup: () => fullCleanup(state.originalTitle)
-};
+    };
 
-subscribeInterfaceLocaleChange(() => {
-    if (lastDownloadSnapshot && document.querySelector("#esj-popup")) {
-        ui.update(lastDownloadSnapshot);
-    }
-});
+    const unsubscribeLocale = subscribeInterfaceLocaleChange(() => {
+        if (isCurrent() && lastDownloadSnapshot && document.querySelector("#esj-popup")) {
+            ui.update(lastDownloadSnapshot);
+        }
+    });
+    return ui;
+}
 
 const protectedChapterDetector = { isProtected: isProtectedChapterHtml };
 
 // 解析正文并根据当前设置处理或移除图片
-const chapterProcessor: ChapterProcessorPort = {
-    normalizeCached: normalizeChapterMappingFont,
-    async process(html, task, imageEnabled, signal) {
-        const result = parseChapterHtml(html, task.title);
-        const normalized = await normalizeChapterMappingFont(
-            {
-                title: result.title,
-                content: result.contentHtml,
-                txtSegment: `${result.title}\n\n${result.author}\n\n${result.contentText}\n\n`
-            },
-            signal
-        );
-        let finalHtml = normalized.chapter.content;
-        let images: Chapter["images"] = [];
-        let imageErrors = 0;
-
-        if (imageEnabled) {
-            try {
-                const processed = await processHtmlImages(finalHtml, task.index, signal);
-                finalHtml = processed.processedHtml;
-                images = processed.images;
-                imageErrors = processed.failCount;
-                if (!signal?.aborted) {
-                    recordInlineImageFailures(task, processed.failures);
-                }
-            } catch (error) {
-                const matches = finalHtml.match(/<img\s/gi);
-                imageErrors = matches ? matches.length : 0;
-                if (!signal?.aborted && imageErrors > 0) {
-                    recordInlineImageFailures(task, [
-                        {
-                            stage: "processing",
-                            code: "image-processing-failed",
-                            message: t("image.processingFailure"),
-                            count: imageErrors
-                        }
-                    ]);
-                }
-                log(
-                    t("image.processingLog", {
-                        count: imageErrors,
-                        chapter: task.index + 1,
-                        title: task.title,
-                        detail: getErrorMessage(error)
-                    })
-                );
-            }
-        } else {
-            // 必须基于字体规范化后的正文去图，不能把已移除的页面 data CSS 再写回缓存
-            finalHtml = removeImgTags(finalHtml);
+function createChapterProcessor(taskId: string): ChapterProcessorPort {
+    const taskLog = (message: string) => {
+        if (isCurrentDownload(taskId)) {
+            log(message);
         }
-
-        return {
-            ...normalized.chapter,
-            content: finalHtml,
-            images,
-            imageErrors
-        };
-    }
-};
-
-// 封面是可选资源，任何获取异常都降级为无封面导出
-const coverFetcher: CoverFetcherPort = {
-    async fetch(url, signal) {
-        try {
-            log(t("cover.start"));
-            const response = await fetchWithTimeout(
-                url,
-                { method: "GET", referrerPolicy: "no-referrer", credentials: "omit" },
-                15000,
+    };
+    return {
+        normalizeCached: normalizeChapterMappingFont,
+        async process(html, task, imageEnabled, signal) {
+            const result = parseChapterHtml(html, task.title);
+            const normalized = await normalizeChapterMappingFont(
+                {
+                    title: result.title,
+                    content: result.contentHtml,
+                    txtSegment: `${result.title}\n\n${result.author}\n\n${result.contentText}\n\n`
+                },
                 signal
             );
-            const blob = await response.blob();
-            if (blob.size < 1000) {
-                log(t("cover.tooSmall"));
-                return null;
+            let finalHtml = normalized.chapter.content;
+            let images: Chapter["images"] = [];
+            let imageErrors = 0;
+
+            if (imageEnabled) {
+                try {
+                    const processed = await processHtmlImages(finalHtml, task.index, signal);
+                    finalHtml = processed.processedHtml;
+                    images = processed.images;
+                    imageErrors = processed.failCount;
+                    if (!signal?.aborted) {
+                        recordInlineImageFailures(task, processed.failures, taskId);
+                    }
+                } catch (error) {
+                    const matches = finalHtml.match(/<img\s/gi);
+                    imageErrors = matches ? matches.length : 0;
+                    if (!signal?.aborted && imageErrors > 0) {
+                        recordInlineImageFailures(
+                            task,
+                            [
+                                {
+                                    stage: "processing",
+                                    code: "image-processing-failed",
+                                    message: t("image.processingFailure"),
+                                    count: imageErrors
+                                }
+                            ],
+                            taskId
+                        );
+                    }
+                    taskLog(
+                        t("image.processingLog", {
+                            count: imageErrors,
+                            chapter: task.index + 1,
+                            title: task.title,
+                            detail: getErrorMessage(error)
+                        })
+                    );
+                }
+            } else {
+                // 必须基于字体规范化后的正文去图，不能把已移除的页面 data CSS 再写回缓存
+                finalHtml = removeImgTags(finalHtml);
             }
-            const normalized = await normalizeImageBlob(blob);
-            if (!normalized || (normalized.extension !== "jpg" && normalized.extension !== "png")) {
-                log(t("cover.invalidFormat"));
-                return null;
-            }
-            log(t("cover.completed"));
+
             return {
-                blob: normalized.blob,
-                ext: normalized.extension,
-                mediaType: normalized.extension === "png" ? "image/png" : "image/jpeg"
+                ...normalized.chapter,
+                content: finalHtml,
+                images,
+                imageErrors
             };
-        } catch (error) {
-            log(t("cover.skipped", { detail: getErrorMessage(error) }));
-            return null;
         }
-    }
-};
+    };
+}
+
+// 封面是可选资源，任何获取异常都降级为无封面导出
+function createCoverFetcher(taskId: string): CoverFetcherPort {
+    const taskLog = (message: string) => {
+        if (isCurrentDownload(taskId)) {
+            log(message);
+        }
+    };
+    return {
+        async fetch(url, signal) {
+            try {
+                taskLog(t("cover.start"));
+                const response = await fetchWithTimeout(
+                    url,
+                    { method: "GET", referrerPolicy: "no-referrer", credentials: "omit" },
+                    15000,
+                    signal
+                );
+                const blob = await response.blob();
+                if (blob.size < 1000) {
+                    taskLog(t("cover.tooSmall"));
+                    return null;
+                }
+                const normalized = await normalizeImageBlob(blob);
+                if (!normalized || (normalized.extension !== "jpg" && normalized.extension !== "png")) {
+                    taskLog(t("cover.invalidFormat"));
+                    return null;
+                }
+                taskLog(t("cover.completed"));
+                return {
+                    blob: normalized.blob,
+                    ext: normalized.extension,
+                    mediaType: normalized.extension === "png" ? "image/png" : "image/jpeg"
+                };
+            } catch (error) {
+                taskLog(t("cover.skipped", { detail: getErrorMessage(error) }));
+                return null;
+            }
+        }
+    };
+}
 
 const coverCache: CoverCacheRepository = {
     load: loadBookCover,
@@ -312,10 +365,11 @@ const cache: ChapterCacheRepository = {
 /**
  * 创建本次下载使用的浏览器依赖
  */
-export function createBrowserDownloadDependencies(): DownloadDependencies {
+export function createBrowserDownloadDependencies(task: BrowserDownloadTask): DownloadDependencies {
     const requestGate = new BrowserRequestGate();
     let taskStarted = false;
-    const activeLock = state.activeBookLock;
+    const { lock: activeLock, chapters, cancellation } = task;
+    const ui = createBrowserDownloadUi(task);
     const lock: BookLockService = {
         owns: () => ownsActiveBookDownloadLock(activeLock),
         shouldDiscardCache: () => shouldDiscardBookDownloadCache(activeLock)
@@ -332,29 +386,33 @@ export function createBrowserDownloadDependencies(): DownloadDependencies {
     const protectedChapterAuth = createBrowserProtectedChapterAuth(fetchWithTimeout, requestGate);
 
     return {
-        chapters: state.globalChaptersMap,
+        chapters,
         cancellation,
         ui,
         chapterFetcher,
-        chapterProcessor,
+        chapterProcessor: createChapterProcessor(activeLock.taskId),
         protectedChapterDetector,
         protectedChapterAuth,
-        coverFetcher,
+        coverFetcher: createCoverFetcher(activeLock.taskId),
         coverCache,
         cache,
         lock,
         events: {
             emit(event) {
                 // 页面会话只是核心快照的显示副本，不反向驱动下载状态
-                if (event.type === "task-started") {
+                if (isCurrentDownload(activeLock.taskId) && event.type === "task-started") {
                     taskStarted = true;
                     startRuntimeCacheSession(event.meta, event.taskId, event.cachedChapterCount);
-                } else if (taskStarted && (event.type === "snapshot-updated" || event.type === "phase-changed")) {
+                } else if (
+                    taskStarted &&
+                    isCurrentDownload(activeLock.taskId) &&
+                    (event.type === "snapshot-updated" || event.type === "phase-changed")
+                ) {
                     const snapshot = event.snapshot;
                     updateRuntimeCacheSession(
                         {
                             completedCount: snapshot.completedCount,
-                            cachedChapterCount: state.globalChaptersMap.size,
+                            cachedChapterCount: chapters.size,
                             status:
                                 snapshot.phase === "cancelled"
                                     ? "cancelled"
@@ -363,15 +421,15 @@ export function createBrowserDownloadDependencies(): DownloadDependencies {
                                       : "downloading",
                             hasExportData: snapshot.hasExportData
                         },
-                        activeLock?.taskId
+                        activeLock.taskId
                     );
                 }
-                browserDiagnosticEvents.emit(event);
+                recordBrowserDownloadEvent(activeLock.taskId, event);
             }
         },
         scheduler: {
             sleep,
-            sleepWithAbort: (ms) => sleepWithAbort(ms, state.abortController?.signal),
+            sleepWithAbort: (ms) => sleepWithAbort(ms, cancellation.signal),
             randomDelay: (minInclusive, maxInclusive) =>
                 Math.floor(Math.random() * (maxInclusive - minInclusive + 1)) + minInclusive,
             schedule: (delayMs, callback) => {
@@ -386,6 +444,6 @@ export function createBrowserDownloadDependencies(): DownloadDependencies {
             currentUrl: () => location.href,
             now: () => Date.now()
         },
-        log: browserDiagnosticLog
+        log: (message) => browserDiagnosticLog(message, activeLock.taskId, isCurrentDownload(activeLock.taskId))
     };
 }

@@ -20,7 +20,7 @@ vi.mock("../../src/core/state", async (importOriginal) => {
     return { ...original, clearRuntimeCacheSession: mocks.clearRuntimeSession };
 });
 import { finalizeBookDownloadTask } from "../../src/core/download/task-finalizer";
-import { state } from "../../src/core/state";
+import { activateDownload, createDownloadCancellation, state } from "../../src/core/state";
 
 describe("book download task finalization", () => {
     beforeEach(() => {
@@ -33,7 +33,7 @@ describe("book download task finalization", () => {
     it("returns a cache clear failure while still releasing the task lock", async () => {
         const lock = createBookLock();
         const stopHeartbeat = vi.fn();
-        state.activeBookLock = lock;
+        activateDownload(lock.bookId, lock.taskId, createDownloadCancellation());
         mocks.clearCache.mockRejectedValueOnce(new DOMException("transaction aborted", "AbortError"));
 
         const result = await finalizeBookDownloadTask(lock, stopHeartbeat);
@@ -44,7 +44,7 @@ describe("book download task finalization", () => {
         });
         expect(stopHeartbeat).toHaveBeenCalledOnce();
         expect(mocks.release).toHaveBeenCalledWith(lock, { cacheDiscarded: false });
-        expect(state.activeBookLock).toBeNull();
+        expect(state.activeDownload).toBeNull();
     });
 
     it("reports an ownership loss when the writer declines cache deletion", async () => {
@@ -55,5 +55,25 @@ describe("book download task finalization", () => {
 
         expect(result.cacheClearFailure).toMatchObject({ reason: "ownership-lost", operation: "clear" });
         expect(mocks.release).toHaveBeenCalledWith(lock, { cacheDiscarded: false });
+    });
+    it("releases ownership even when heartbeat teardown throws", async () => {
+        const lock = createBookLock();
+        activateDownload(lock.bookId, lock.taskId, createDownloadCancellation());
+        await expect(
+            finalizeBookDownloadTask(lock, () => {
+                throw new Error("heartbeat teardown");
+            })
+        ).rejects.toThrow("heartbeat teardown");
+        expect(mocks.release).toHaveBeenCalledWith(lock, { cacheDiscarded: true });
+        expect(state.activeDownload).toBeNull();
+    });
+
+    it("does not remove a new task handle when the old lock release fails", async () => {
+        const lock = createBookLock();
+        activateDownload("200", "task-200", createDownloadCancellation());
+        mocks.release.mockRejectedValueOnce(new Error("release failed"));
+        await expect(finalizeBookDownloadTask(lock, vi.fn())).rejects.toThrow("release failed");
+        expect(state.activeDownload?.taskId).toBe("task-200");
+        expect(mocks.clearRuntimeSession).toHaveBeenCalledWith(lock.bookId, lock.taskId);
     });
 });

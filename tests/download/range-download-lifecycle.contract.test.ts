@@ -93,11 +93,9 @@ describe("range download lifecycle", () => {
         vi.clearAllMocks();
         window.history.replaceState({}, "", "/detail/100.html");
         document.title = "测试小说";
-        state.abortFlag = false;
         state.cachedData = null;
-        state.globalChaptersMap = new Map();
         state.runtimeCacheSession = null;
-        state.activeBookLock = null;
+        state.activeDownload = null;
         mocks.getConflict.mockResolvedValue(null);
         mocks.rangePopup.mockResolvedValue({ action: "cancel" });
         mocks.batchDownload.mockResolvedValue({ status: "ready", data: createCachedData() });
@@ -163,7 +161,7 @@ describe("range download lifecycle", () => {
         await running;
 
         expect(mocks.acquire).toHaveBeenCalledWith("100", "detail");
-        expect(mocks.createDownloadPopup).toHaveBeenCalledWith("range");
+        expect(mocks.createDownloadPopup).toHaveBeenCalledWith("range", expect.any(Function), "测试小说");
         expect(mocks.claimCache).toHaveBeenCalledWith("100", lock.taskId, false, expect.any(AbortSignal), {
             allowInvalidation: false
         });
@@ -171,7 +169,8 @@ describe("range download lifecycle", () => {
             expect.objectContaining({
                 tasks: [tasks[1], tasks[2]],
                 selection: { mode: "range", sourceTotalChapters: 3, startIndex: 1, endIndex: 2 }
-            })
+            }),
+            expect.objectContaining({ lock, chapters: expect.any(Map), cancellation: expect.any(Object) })
         );
         expect(mocks.acquire.mock.invocationCallOrder[0]).toBeLessThan(mocks.claimCache.mock.invocationCallOrder[0]);
         expect(mocks.finalize.mock.invocationCallOrder[0]).toBeLessThan(
@@ -216,7 +215,7 @@ describe("range download lifecycle", () => {
 
         expect(mocks.acquire).toHaveBeenCalledOnce();
         expect(mocks.claimCache).not.toHaveBeenCalled();
-        expect(mocks.finalize).toHaveBeenCalledWith(lock, expect.any(Function), mocks.log);
+        expect(mocks.finalize).toHaveBeenCalledWith(lock, expect.any(Function), expect.any(Function));
     });
 
     it("keeps lock, writer, heartbeat, and active diagnostics absent after a preflight directory failure", async () => {
@@ -251,7 +250,6 @@ describe("range download lifecycle", () => {
         const old = createCachedData();
         const oldChapters = new Map([[0, old.chapters[0]!]]);
         state.cachedData = old;
-        state.globalChaptersMap = oldChapters;
 
         await runBookDownload({
             bookId: "100",
@@ -267,7 +265,7 @@ describe("range download lifecycle", () => {
             expect.objectContaining({ cacheWillBeInvalidated: true, cacheCount: 3, initialSelection: selection })
         );
         expect(state.cachedData).toBe(old);
-        expect(state.globalChaptersMap).toBe(oldChapters);
+        expect(oldChapters.size).toBe(1);
     });
 
     it("claims again with explicit invalidation consent after showing the changed cache", async () => {

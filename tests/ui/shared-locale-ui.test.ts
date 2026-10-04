@@ -14,7 +14,6 @@ import { createDownloadTask } from "../support";
 describe("shared locale UI", () => {
     beforeEach(() => {
         setInterfaceLocalePreference("zh-TW");
-        state.globalChaptersMap.clear();
         state.cachedData = null;
     });
 

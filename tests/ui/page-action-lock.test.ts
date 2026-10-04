@@ -31,7 +31,6 @@ describe("page action popup locks", () => {
         fullCleanup();
         document.body.replaceChildren();
         state.cachedData = null;
-        state.globalChaptersMap.clear();
     });
 
     afterEach(() => {

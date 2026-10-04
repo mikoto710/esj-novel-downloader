@@ -2,7 +2,13 @@ import type { DownloadSelection, DownloadTask } from "../core/download/contracts
 import type { SourcePageType } from "../types";
 import type { LocaleKey } from "../core/locale";
 import type { parseBookMetadata } from "../core/parser";
-import { abortActiveDownload, resetAbortController, setAbortFlag, state } from "../core/state";
+import {
+    activateDownload,
+    createDownloadCancellation,
+    isCurrentDownload,
+    publishCachedExport,
+    state
+} from "../core/state";
 import {
     acquireBookDownloadLock,
     markBookDownloadRunning,
@@ -24,7 +30,7 @@ import { showCacheDiscardFailure, showDownloadTerminalFailure } from "../ui/mess
 import { formatStorageFailure } from "../ui/messages/storage-failure";
 import { t } from "../ui/locale";
 import {
-    browserDiagnosticLog as log,
+    browserDiagnosticLog,
     finishBrowserDiagnosticSession,
     recordBrowserDiagnosticFailure,
     recordBrowserPreflightDiagnosticFailure,
@@ -151,25 +157,31 @@ async function executeBookDownload(
 ): Promise<BookCachePreviewResult | undefined> {
     const { bookId, sourcePageType } = options;
     const selectedTasks = selectDownloadTasks(plan.tasks, selection);
+    const cancellation = createDownloadCancellation();
     const lockResult = await acquireBookDownloadLock(bookId, sourcePageType);
     if (!lockResult.acquired) {
-        fullCleanup(state.originalTitle);
+        fullCleanup(options.pageTitle);
         showBookDownloadInProgressPopup(lockResult.lock);
         return;
     }
 
     const lock = lockResult.lock;
-    state.activeBookLock = lock;
+    const log = (message: Parameters<typeof browserDiagnosticLog>[0]) =>
+        browserDiagnosticLog(message, lock.taskId, isCurrentDownload(lock.taskId));
+    const cleanup = () => {
+        if (isCurrentDownload(lock.taskId)) {
+            fullCleanup(options.pageTitle);
+        }
+    };
     let stopHeartbeat: () => void = () => undefined;
     let diagnosticStarted = false;
     let downloadStarted = false;
     let exportReady = false;
 
     try {
-        setAbortFlag(false);
-        resetAbortController();
-        stopHeartbeat = startBookDownloadLockHeartbeat(lock, abortActiveDownload);
-        createDownloadPopup(selection.mode);
+        activateDownload(bookId, lock.taskId, cancellation);
+        stopHeartbeat = startBookDownloadLockHeartbeat(lock, cancellation.requestCancellation);
+        createDownloadPopup(selection.mode, cancellation.requestCancellation, options.pageTitle);
         startBrowserDiagnosticSession(
             {
                 taskId: lock.taskId,
@@ -190,14 +202,14 @@ async function executeBookDownload(
         );
         diagnosticStarted = true;
         log(t("page.cachePreparing"));
-        const claimedCache = await claimBookCache(bookId, lock.taskId, imageEnabled, state.abortController?.signal, {
+        const claimedCache = await claimBookCache(bookId, lock.taskId, imageEnabled, cancellation.signal, {
             allowInvalidation
         });
         if (claimedCache.status === "needs-confirmation") {
-            fullCleanup(state.originalTitle);
+            cleanup();
             return claimedCache;
         }
-        state.globalChaptersMap = claimedCache.map || new Map();
+        const chapters = claimedCache.map || new Map();
         if (claimedCache.invalidatedCount > 0) {
             log(
                 claimedCache.compatibility === "unknown"
@@ -205,14 +217,14 @@ async function executeBookDownload(
                     : t("page.cacheInvalidImageMismatch", { count: claimedCache.invalidatedCount })
             );
         }
-        if (state.abortFlag) {
-            fullCleanup(state.originalTitle);
+        if (cancellation.isCancellationRequested()) {
+            cleanup();
             return;
         }
 
         await updateBookDownloadLockTitle(lock, plan.meta.rawBookName || plan.meta.bookName);
-        if (state.abortFlag || !(await markBookDownloadRunning(lock))) {
-            if (!state.abortFlag) {
+        if (cancellation.isCancellationRequested() || !(await markBookDownloadRunning(lock))) {
+            if (!cancellation.isCancellationRequested()) {
                 recordBrowserDiagnosticFailure(
                     {
                         scope: "storage",
@@ -224,8 +236,8 @@ async function executeBookDownload(
                 );
             }
             log(t("page.notStarted"));
-            fullCleanup(state.originalTitle);
-            if (!state.abortFlag) {
+            cleanup();
+            if (!cancellation.isCancellationRequested()) {
                 showDownloadTerminalFailure({
                     kind: "cancellation",
                     outcome: "ownership-lost",
@@ -253,20 +265,29 @@ async function executeBookDownload(
         } as const;
         updateBrowserDiagnosticSession(downloadOptions);
         downloadStarted = true;
-        const result = await batchDownload(downloadOptions);
-        if (result.status === "ready") {
-            state.cachedData = result.data;
+        const result = await batchDownload(downloadOptions, {
+            lock,
+            chapters,
+            cancellation,
+            originalTitle: options.pageTitle
+        });
+        if (result.status === "ready" && isCurrentDownload(lock.taskId)) {
+            publishCachedExport(result.data, lock.taskId);
             exportReady = true;
             showFormatChoice(result.data);
         }
     } catch (error) {
         const details = error instanceof Error ? error : new Error(String(error));
-        if (state.abortFlag || details.name === "AbortError" || details.message === "User Aborted") {
-            fullCleanup(state.originalTitle);
+        if (
+            cancellation.isCancellationRequested() ||
+            details.name === "AbortError" ||
+            details.message === "User Aborted"
+        ) {
+            cleanup();
             return;
         }
         console.error(error);
-        if (!downloadStarted) {
+        if (!downloadStarted && isCurrentDownload(lock.taskId)) {
             recordBrowserDiagnosticFailure(
                 {
                     scope: error instanceof StorageError ? "storage" : "page",
@@ -283,7 +304,7 @@ async function executeBookDownload(
                     ? t("page.progressNotSaved", { detail: displayMessage })
                     : t("page.flowFailed", { detail: displayMessage })
             );
-            fullCleanup(state.originalTitle);
+            cleanup();
             showMessagePopup({
                 tone: "error",
                 title: t("page.startFailed.title"),
@@ -294,8 +315,12 @@ async function executeBookDownload(
     } finally {
         // 仅补齐提前退出的诊断，不覆盖核心已记录的终态
         if (diagnosticStarted) {
-            finishBrowserDiagnosticSession(lock.taskId, state.abortFlag ? "cancelled" : "failed");
+            finishBrowserDiagnosticSession(
+                lock.taskId,
+                cancellation.isCancellationRequested() ? "cancelled" : "failed"
+            );
         }
+        const wasCurrent = isCurrentDownload(lock.taskId);
         const finalization = await finalizeBookDownloadTask(lock, stopHeartbeat, log);
         if (finalization.cacheClearFailure) {
             recordBrowserDiagnosticFailure(
@@ -307,7 +332,9 @@ async function executeBookDownload(
                 },
                 lock.taskId
             );
-            showCacheDiscardFailure(finalization.cacheClearFailure);
+            if (wasCurrent && !state.activeDownload) {
+                showCacheDiscardFailure(finalization.cacheClearFailure);
+            }
         }
         if (exportReady && selection.mode === "range" && !finalization.cacheDiscarded) {
             publishCacheSyncEvent({ type: "cache-saved", bookId, taskId: lock.taskId });

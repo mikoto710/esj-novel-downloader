@@ -24,7 +24,7 @@ describe("browser download cancellation contracts", () => {
 
         expect(result.status).toBe("ready");
         expect(mocks.sleepWithAbort).toHaveBeenCalled();
-        expect(mocks.sleepWithAbort.mock.calls.every((call) => call[1] === runtime.state.abortController?.signal)).toBe(
+        expect(mocks.sleepWithAbort.mock.calls.every((call) => call[1] === runtime.task.cancellation.signal)).toBe(
             true
         );
     });
@@ -99,7 +99,7 @@ describe("browser download cancellation contracts", () => {
             imageEnabled: true
         });
 
-        expect(runtime.state.globalChaptersMap.size).toBe(0);
+        expect(runtime.task.chapters.size).toBe(0);
         expect(mocks.saveCache).not.toHaveBeenCalled();
         expect(result.status).toBe("cancelled");
     });
@@ -176,7 +176,7 @@ describe("browser download cancellation contracts", () => {
         const saveStarted = createDeferred<void>();
         const writeAborted = createDeferred<void>();
         mocks.sleepWithAbort.mockImplementation(async () => {
-            if (runtime.state.globalChaptersMap.size > 0) runtime.abortActiveDownload("flush");
+            if (runtime.task.chapters.size > 0) runtime.abortActiveDownload("flush");
         });
         mocks.saveCache.mockImplementationOnce((_bookId, _taskId, _entries, _meta, signal?: AbortSignal) => {
             saveStarted.resolve();
@@ -236,5 +236,29 @@ describe("browser download cancellation contracts", () => {
         expect(mocks.log.mock.calls.flat().join("\n")).toContain("正在清理缓存");
         expect(document.querySelector("#esj-title")?.textContent).toBe("📘 任务已停止");
         expect(document.querySelector("#esj-cancel")?.textContent).toBe("已停止");
+    });
+    it("keeps cancellation isolated and only allows discard upgrades", async () => {
+        const { createDownloadCancellation, activateDownload, releaseActiveDownload } =
+            await import("../../src/core/state");
+        const first = runtime.task.cancellation;
+        const listener = vi.fn();
+        const unsubscribe = first.subscribeCancellation(listener);
+        first.requestCancellation("flush");
+        first.requestCancellation("flush");
+        first.requestCancellation("discard");
+        first.requestCancellation("flush");
+        expect(first.mode).toBe("discard");
+        expect(listener.mock.calls).toEqual([["flush"], ["discard"]]);
+        unsubscribe();
+        const second = createDownloadCancellation();
+        activateDownload("200", "task-200", second);
+        releaseActiveDownload("task-100");
+        expect(runtime.state.activeDownload?.taskId).toBe("task-200");
+        expect(second.isCancellationRequested()).toBe(false);
+        expect(second.signal).not.toBe(first.signal);
+        first.requestCancellation("discard");
+        expect(second.isCancellationRequested()).toBe(false);
+        runtime.abortActiveDownload();
+        expect(second.isCancellationRequested()).toBe(true);
     });
 });

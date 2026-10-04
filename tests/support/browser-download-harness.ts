@@ -77,7 +77,8 @@ vi.mock("../../src/core/book-lock", () => ({
 }));
 
 export interface BrowserDownloadRuntime {
-    batchDownload: typeof import("../../src/adapters/batch-download").batchDownload;
+    batchDownload(options: import("../../src/core/download/contracts").DownloadOptions): Promise<DownloadResult>;
+    task: import("../../src/adapters/browser-download-dependencies").BrowserDownloadTask;
     abortActiveDownload: typeof import("../../src/core/state").abortActiveDownload;
     state: typeof import("../../src/core/state").state;
 }
@@ -87,17 +88,21 @@ export async function resetBrowserDownloadHarness(): Promise<BrowserDownloadRunt
         import("../../src/adapters/batch-download"),
         import("../../src/core/state")
     ]);
-    const { abortActiveDownload, resetAbortController, setAbortFlag, state } = stateRuntime;
+    const { abortActiveDownload, createDownloadCancellation, activateDownload, state } = stateRuntime;
     vi.clearAllMocks();
     document.body.innerHTML = "";
     document.title = "ESJZone Test";
     state.originalTitle = document.title;
     state.cachedData = null;
-    state.globalChaptersMap = new Map();
     state.runtimeCacheSession = null;
-    state.activeBookLock = createBookLock({ status: "running" });
-    setAbortFlag(false);
-    resetAbortController();
+    state.activeDownload = null;
+    const task = {
+        lock: createBookLock({ status: "running" }),
+        chapters: new Map<number, import("../../src/types").Chapter>(),
+        cancellation: createDownloadCancellation(),
+        originalTitle: document.title
+    };
+    activateDownload(task.lock.bookId, task.lock.taskId, task.cancellation);
 
     hoistedBrowserDownloadMocks.log.mockImplementation(() => undefined);
     hoistedBrowserDownloadMocks.sleepWithAbort.mockResolvedValue(undefined);
@@ -123,7 +128,7 @@ export async function resetBrowserDownloadHarness(): Promise<BrowserDownloadRunt
     }));
     hoistedBrowserDownloadMocks.ownsLock.mockResolvedValue(true);
     hoistedBrowserDownloadMocks.shouldDiscard.mockResolvedValue(false);
-    return { batchDownload, abortActiveDownload, state };
+    return { batchDownload: (options) => batchDownload(options, task), task, abortActiveDownload, state };
 }
 
 export function createBrowserDownloadTasks(count: number) {

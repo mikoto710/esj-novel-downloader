@@ -84,11 +84,9 @@ describe("download lifecycle contracts", () => {
         vi.clearAllMocks();
         window.history.replaceState({}, "", "/detail/100.html");
         installDocumentFixture(createDetailPageFixture({ bookId: "100", chapterCount: 2 }));
-        state.abortFlag = false;
         state.cachedData = null;
-        state.globalChaptersMap = new Map();
         state.runtimeCacheSession = null;
-        state.activeBookLock = null;
+        state.activeDownload = null;
 
         mocks.getConflict.mockResolvedValue(null);
         mocks.previewCache.mockResolvedValue({ valid: false, size: 0, indexes: [], compatibility: "compatible" });
@@ -116,7 +114,7 @@ describe("download lifecycle contracts", () => {
             mocks.batchDownload.mockRejectedValueOnce(new Error("download failed"));
         } else if (outcome === "cancel") {
             mocks.batchDownload.mockImplementationOnce(async () => {
-                state.abortFlag = true;
+                state.activeDownload?.requestCancellation();
                 return { status: "cancelled", outcome: "saved" };
             });
         }
@@ -225,6 +223,13 @@ describe("download lifecycle contracts", () => {
         expect(mocks.claimCache).toHaveBeenCalledWith("100", lock.taskId, true, expect.any(AbortSignal), {
             allowInvalidation: false
         });
-        expect(mocks.batchDownload).toHaveBeenCalledWith(expect.objectContaining({ imageEnabled: true }));
+        expect(mocks.batchDownload).toHaveBeenCalledWith(
+            expect.objectContaining({ imageEnabled: true }),
+            expect.objectContaining({
+                chapters: expect.any(Map),
+                cancellation: expect.any(Object),
+                lock: expect.objectContaining({ taskId: "task-100" })
+            })
+        );
     });
 });

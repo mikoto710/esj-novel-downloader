@@ -1,7 +1,7 @@
 import { BookDownloadLock } from "../../types";
 import { releaseBookDownloadLock, shouldDiscardBookDownloadCache } from "../book-lock";
 import { clearBookCacheForTask } from "../cache/book-cache";
-import { clearRuntimeCacheSession, state } from "../state";
+import { clearRuntimeCacheSession, releaseActiveDownload } from "../state";
 import {
     createStorageError,
     normalizeStorageError,
@@ -63,14 +63,15 @@ export async function finalizeBookDownloadTask(
         }
     } finally {
         // 即使缓存清理失败也要停止心跳，否则其他页面会持续认为任务存活
-        stopHeartbeat();
         try {
-            await releaseBookDownloadLock(lock, { cacheDiscarded });
+            try {
+                stopHeartbeat();
+            } finally {
+                await releaseBookDownloadLock(lock, { cacheDiscarded });
+            }
         } finally {
             // 锁释放异常时仍清理当前页引用，避免后续流程误用旧锁
-            if (state.activeBookLock?.taskId === lock.taskId) {
-                state.activeBookLock = null;
-            }
+            releaseActiveDownload(lock.taskId);
         }
     }
     return { cacheDiscarded, cacheClearFailure };

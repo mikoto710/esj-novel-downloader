@@ -40,7 +40,7 @@ describe("browser download flow contracts", () => {
     it("shows cache validation before restored chapters finish normalizing", async () => {
         const validationStarted = createDeferred<void>();
         const continueValidation = createDeferred<void>();
-        runtime.state.globalChaptersMap = new Map([[0, createChapter(0)]]);
+        runtime.task.chapters = new Map([[0, createChapter(0)]]);
         document.body.innerHTML = '<span id="esj-title"></span><div id="esj-progress"></div>';
         mocks.sleepWithAbort.mockImplementationOnce(async () => {
             validationStarted.resolve();
@@ -190,5 +190,44 @@ describe("browser download flow contracts", () => {
         expect(document.querySelector("#esj-title")?.textContent).toContain("內文完成 0/1｜密碼待處理 1｜正在擷取");
         decision.resolve({ action: "skip-current" });
         await download;
+    });
+    it("binds old callbacks to their task without updating the new page task", async () => {
+        const { createBrowserDownloadDependencies } = await import("../../src/adapters/browser-download-dependencies");
+        const { activateDownload, createDownloadCancellation, startRuntimeCacheSession } =
+            await import("../../src/core/state");
+        const { createCacheMeta, createBookLock } = await import("../support");
+        const { createInitialDownloadSnapshot } = await import("../../src/core/download/state-machine");
+        const dependencies = createBrowserDownloadDependencies(runtime.task);
+        dependencies.events.emit({
+            type: "task-started",
+            meta: createCacheMeta(),
+            taskId: "task-100",
+            cachedChapterCount: 0
+        });
+        const nextLock = createBookLock({ bookId: "200", taskId: "task-200" });
+        const nextCancellation = createDownloadCancellation();
+        activateDownload(nextLock.bookId, nextLock.taskId, nextCancellation);
+        startRuntimeCacheSession(createCacheMeta({ bookId: "200" }), nextLock.taskId, 9);
+        const snapshot = createInitialDownloadSnapshot(3, 1);
+        document.body.innerHTML = '<div id="esj-popup"><span id="esj-title">new task</span></div>';
+        dependencies.events.emit({ type: "snapshot-updated", snapshot });
+        dependencies.events.emit({
+            type: "task-started",
+            meta: createCacheMeta(),
+            taskId: "task-100",
+            cachedChapterCount: 0
+        });
+        dependencies.ui.update(snapshot);
+        dependencies.ui.cleanup();
+        dependencies.ui.showTerminalFailure({ kind: "cancellation", outcome: "ownership-lost", storageFailure: null });
+        expect(document.querySelector("#esj-title")?.textContent).toBe("new task");
+        expect(runtime.state.runtimeCacheSession).toMatchObject({ taskId: "task-200", cachedChapterCount: 9 });
+        expect(mocks.fullCleanup).not.toHaveBeenCalled();
+        expect(mocks.showTerminalFailure).not.toHaveBeenCalled();
+        await dependencies.scheduler.sleepWithAbort(10);
+        expect(mocks.sleepWithAbort).toHaveBeenCalledWith(10, runtime.task.cancellation.signal);
+        await dependencies.lock.owns();
+        expect(mocks.ownsLock).toHaveBeenCalledWith(runtime.task.lock);
+        expect(nextCancellation.isCancellationRequested()).toBe(false);
     });
 });

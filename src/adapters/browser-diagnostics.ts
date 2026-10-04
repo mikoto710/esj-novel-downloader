@@ -14,7 +14,13 @@ import {
     type RecordDiagnosticExportInput,
     type StartDiagnosticSessionInput
 } from "../core/diagnostics";
-import type { DownloadEventSink, DownloadLog, DownloadLogCode, DownloadOptions } from "../core/download/contracts";
+import type {
+    DownloadEvent,
+    DownloadEventSink,
+    DownloadLog,
+    DownloadLogCode,
+    DownloadOptions
+} from "../core/download/contracts";
 import { getConcurrency, getEpubTagPageSetting } from "../core/config";
 import { triggerDownload } from "../utils/download";
 import { log } from "../utils/log";
@@ -222,13 +228,15 @@ export function recordBrowserDiagnosticExport(input: RecordDiagnosticExportInput
 /**
  * 将日志写入 UI 和控制台，并在存在活动会话时追加诊断记录；诊断存储失败不影响前两项输出
  */
-export function browserDiagnosticLog(message: string | DownloadLog): void {
+export function browserDiagnosticLog(message: string | DownloadLog, taskId = currentTaskId, display = true): void {
     // 先保持原有 UI/控制台日志，再以最佳努力写入诊断；诊断异常不得改变下载行为
     const displayMessage = typeof message === "string" ? message : formatDownloadLog(message);
-    log(displayMessage);
-    if (currentTaskId) {
+    if (display) {
+        log(displayMessage);
+    }
+    if (taskId) {
         manager.recordLog(
-            currentTaskId,
+            taskId,
             typeof message === "string"
                 ? { level: "info", message }
                 : {
@@ -290,20 +298,26 @@ export function formatBrowserDiagnosticLog(entry: DiagnosticLogRecord): string {
     return entry.message || entry.code || "";
 }
 
+/**
+ * 将下载事件写回固定任务，终态不影响其他任务的观察
+ */
+export function recordBrowserDownloadEvent(taskId: string, event: DownloadEvent): void {
+    manager.recordDownloadEvent(taskId, event);
+    if (
+        (event.type === "phase-changed" && ["export-ready", "cancelled"].includes(event.current)) ||
+        event.type === "download-failed"
+    ) {
+        stopBrowserDiagnosticCloseObserver(taskId);
+        if (currentTaskId === taskId) {
+            currentTaskId = null;
+        }
+    }
+}
+
 export const browserDiagnosticEvents: DownloadEventSink = {
     emit(event) {
-        const taskId = currentTaskId;
-        if (!taskId) {
-            return;
-        }
-        manager.recordDownloadEvent(taskId, event);
-        if (event.type === "phase-changed" && ["export-ready", "cancelled"].includes(event.current)) {
-            stopBrowserDiagnosticCloseObserver(taskId);
-            currentTaskId = null;
-        }
-        if (event.type === "download-failed") {
-            stopBrowserDiagnosticCloseObserver(taskId);
-            currentTaskId = null;
+        if (currentTaskId) {
+            recordBrowserDownloadEvent(currentTaskId, event);
         }
     }
 };

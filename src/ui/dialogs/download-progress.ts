@@ -49,13 +49,17 @@ export function showBookDownloadInProgressPopup(lock: BookDownloadLock): void {
 /**
  * 清理脚本已创建的弹窗和托盘后，创建并挂载下载进度弹窗
  */
-export function createDownloadPopup(mode: "all" | "range" = "all"): HTMLElement {
-    fullCleanup(state.originalTitle);
+export function createDownloadPopup(
+    mode: "all" | "range" = "all",
+    cancel: () => void = abortActiveDownload,
+    originalTitle = state.originalTitle
+): HTMLElement {
+    fullCleanup(originalTitle);
 
     function onCancel() {
         // 保留进度窗口，等待当前任务保存进度并完成收尾
-        abortActiveDownload();
-        const btn = document.querySelector("#esj-cancel") as HTMLButtonElement;
+        cancel();
+        const btn = popup.querySelector("#esj-cancel") as HTMLButtonElement;
         if (btn) {
             btn.disabled = true;
             btn.textContent = t("download.popup.saving");
@@ -66,8 +70,10 @@ export function createDownloadPopup(mode: "all" | "range" = "all"): HTMLElement 
 
     function onClose() {
         // 关闭同时请求停止，缓存和锁仍由下载任务统一收尾
-        abortActiveDownload();
-        fullCleanup(state.originalTitle);
+        cancel();
+        if (popup.isConnected) {
+            fullCleanup(originalTitle);
+        }
     }
 
     function onMinimize() {

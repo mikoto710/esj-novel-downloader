@@ -141,26 +141,14 @@ export function createCachedData(overrides: Partial<CachedData> = {}): CachedDat
 }
 
 /**
- * 测试使用的可实例化应用状态
+ * 创建隔离的页面显示状态
  */
-export interface TestAppState extends AppState {
-    abortController: AbortController | null;
-    activeBookLock: BookDownloadLock | null;
-}
-
-/**
- * 创建隔离的应用状态测试数据
- */
-export function createTestState(overrides: Partial<TestAppState> = {}): TestAppState {
+export function createTestState(overrides: Partial<AppState> = {}): AppState {
     return {
-        abortFlag: false,
-        cancellationMode: "flush",
         originalTitle: "ESJZone Test",
         cachedData: null,
-        globalChaptersMap: new Map<number, Chapter>(),
         runtimeCacheSession: null,
-        abortController: new AbortController(),
-        activeBookLock: null,
+        activeDownload: null,
         ...overrides
     };
 }

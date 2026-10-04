@@ -190,10 +190,12 @@ export interface CachedData {
 
 // 全局状态接口
 export interface AppState {
-    abortFlag: boolean;
-    cancellationMode: DownloadCancellationMode;
     originalTitle: string;
     cachedData: CachedData | null;
-    globalChaptersMap: Map<number, Chapter>;
     runtimeCacheSession: RuntimeCacheSession | null;
+    activeDownload: {
+        bookId: string;
+        taskId: string;
+        requestCancellation(mode?: DownloadCancellationMode): void;
+    } | null;
 }

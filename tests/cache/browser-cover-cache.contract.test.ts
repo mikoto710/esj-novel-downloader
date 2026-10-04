@@ -33,7 +33,7 @@ describe("browser cover cache contracts", () => {
     it("reuses a cached cover when every chapter is already restored", async () => {
         const tasks = createBrowserDownloadTasks(2);
         const options = { ...createBrowserDownloadOptions(tasks), coverUrl: "https://img.example/cover.jpg" };
-        runtime.state.globalChaptersMap = new Map(tasks.map((task) => [task.index, createChapter(task.index)]));
+        runtime.task.chapters = new Map(tasks.map((task) => [task.index, createChapter(task.index)]));
         mocks.loadCoverCache.mockResolvedValue(createJpegCover());
 
         const data = expectReadyDownload(await runtime.batchDownload(options));
@@ -48,7 +48,7 @@ describe("browser cover cache contracts", () => {
     it("downloads, normalizes, and stores a cache miss", async () => {
         const tasks = createBrowserDownloadTasks(1);
         const options = { ...createBrowserDownloadOptions(tasks), coverUrl: "https://img.example/cover.jpg" };
-        runtime.state.globalChaptersMap = new Map([[0, createChapter(0)]]);
+        runtime.task.chapters = new Map([[0, createChapter(0)]]);
         const networkBlob = createJpegCover("application/octet-stream").blob;
         mocks.fetchWithTimeout.mockResolvedValue({ blob: async () => networkBlob });
 
@@ -70,7 +70,7 @@ describe("browser cover cache contracts", () => {
     it("uses the PNG signature instead of the declared network MIME", async () => {
         const tasks = createBrowserDownloadTasks(1);
         const options = { ...createBrowserDownloadOptions(tasks), coverUrl: "https://img.example/cover.bin" };
-        runtime.state.globalChaptersMap = new Map([[0, createChapter(0)]]);
+        runtime.task.chapters = new Map([[0, createChapter(0)]]);
         const bytes = new Uint8Array(1_200);
         bytes.set([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
         mocks.fetchWithTimeout.mockResolvedValue({
@@ -93,7 +93,7 @@ describe("browser cover cache contracts", () => {
     it("keeps the in-memory cover when its optional cache write fails", async () => {
         const tasks = createBrowserDownloadTasks(1);
         const options = { ...createBrowserDownloadOptions(tasks), coverUrl: "https://img.example/cover.jpg" };
-        runtime.state.globalChaptersMap = new Map([[0, createChapter(0)]]);
+        runtime.task.chapters = new Map([[0, createChapter(0)]]);
         mocks.fetchWithTimeout.mockResolvedValue({ blob: async () => createJpegCover().blob });
         mocks.saveCoverCache.mockRejectedValue(new Error("cover cache unavailable"));
 
@@ -106,7 +106,7 @@ describe("browser cover cache contracts", () => {
     it("does not cache an invalid or undersized network response", async () => {
         const tasks = createBrowserDownloadTasks(1);
         const options = { ...createBrowserDownloadOptions(tasks), coverUrl: "https://img.example/cover.jpg" };
-        runtime.state.globalChaptersMap = new Map([[0, createChapter(0)]]);
+        runtime.task.chapters = new Map([[0, createChapter(0)]]);
         mocks.fetchWithTimeout.mockResolvedValue({
             blob: async () => new Blob([new Uint8Array([0xff, 0xd8, 0xff])], { type: "image/jpeg" })
         });

@@ -40,7 +40,6 @@ function selectRange(startChapter: string, endChapter: string): void {
 describe("unified download selection UI", () => {
     beforeEach(() => {
         state.cachedData = null;
-        state.globalChaptersMap = new Map();
         state.runtimeCacheSession = null;
         setInterfaceLocalePreference("zh-CN");
         publishInterfaceLocaleChange();
