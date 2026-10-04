@@ -54,6 +54,27 @@ export default [
     },
 
     {
+        files: ["tests/ui/**/*.test.ts", "tests/download/browser-*.test.ts", "tests/export/export-recovery.contract.test.ts"],
+        rules: {
+            "no-restricted-syntax": [
+                "error",
+                {
+                    selector: "CallExpression[callee.property.name=/^(toMatchSnapshot|toMatchInlineSnapshot|toMatchFileSnapshot|toHaveStyle|toHaveClass)$/]",
+                    message: "UI 测试检查交互与结果，禁止固定界面快照、样式或 CSS 类"
+                },
+                {
+                    selector: "CallExpression[callee.property.name=/^(toBe|toEqual|toStrictEqual|toMatch|toContain|toContainEqual)$/][arguments.0.type=Literal]:has(CallExpression[callee.name=expect]):has(MemberExpression[property.name=/^(style|className|classList)$/])",
+                    message: "禁止用样式常量断言 UI；拖拽等交互应比较动作前后的变化"
+                },
+                {
+                    selector: "CallExpression[callee.property.name=/^(toBe|toEqual|toStrictEqual|toMatch|toContain|toContainEqual)$/][arguments.0.type=Literal]:has(CallExpression[callee.name=expect]):has(CallExpression[callee.property.name=getAttribute][arguments.0.value=/^(style|class)$/])",
+                    message: "禁止固定 UI 的 style 或 class 属性"
+                }
+            ]
+        }
+    },
+
+    {
         files: ["src/core/download/**/*.ts"],
         rules: {
             "no-restricted-imports": [
