@@ -1,7 +1,15 @@
 // @vitest-environment jsdom
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { createBookLock, createCacheMeta, createCachedData, createChapter, createDeferred } from "../support";
+import {
+    createBookLock,
+    createCacheMeta,
+    createCachedData,
+    createChapter,
+    createDeferred,
+    createDownloadTask
+} from "../support";
+import { createDownloadHarness } from "../support/download-harness";
 
 const mocks = vi.hoisted(() => ({
     readManifest: vi.fn(),
@@ -135,6 +143,21 @@ describe("runtime cache ownership", () => {
         });
         expect(items.find((item) => item.bookId === "200")).toMatchObject({ hasExportData: false });
     });
+
+    it("keeps new task inventory and image settings separate from its previous export", async () => {
+        runtime.state.cachedData = createCachedData({
+            chapters: [createChapter(0), createChapter(1), createChapter(2)]
+        });
+        runtime.startRuntimeCacheSession(createCacheMeta({ imageEnabled: true }), "new-task", 1);
+        const items = await manager.listManagedCaches();
+        expect(items[0]).toMatchObject({
+            runtimeChapterCount: 1,
+            progressCount: 1,
+            imageEnabled: true,
+            hasExportData: true
+        });
+    });
+
     it("requests task cancellation on ownership loss without clearing its chapter table", async () => {
         const cancellation = runtime.createDownloadCancellation();
         runtime.activateDownload("100", "new-task", cancellation);
@@ -143,6 +166,41 @@ describe("runtime cache ownership", () => {
         expect(cancellation.isCancellationRequested()).toBe(true);
         expect(chapters.size).toBe(1);
         expect(runtime.state.cachedData).not.toBeNull();
+    });
+
+    it("lets the running core finalize ownership loss while retaining the previous export", async () => {
+        const tasks = Array.from({ length: 3 }, (_, index) => createDownloadTask(index));
+        const harness = createDownloadHarness(tasks, chapters);
+        const started = createDeferred<void>();
+        const response = createDeferred<string>();
+        const cancellation = runtime.createDownloadCancellation();
+        runtime.activateDownload("100", "new-task", cancellation);
+        harness.dependencies.cancellation = cancellation;
+        harness.dependencies.lock.owns = async () => false;
+        harness.dependencies.chapterFetcher.fetch = async () => {
+            started.resolve();
+            return response.promise;
+        };
+        const previous = runtime.state.cachedData;
+        const download = harness.run({
+            bookId: "100",
+            taskId: "new-task",
+            bookName: "Book",
+            introTxt: "",
+            description: "",
+            tags: [],
+            imageEnabled: false,
+            tasks
+        });
+        await started.promise;
+        mocks.readManifest.mockResolvedValue({ writerTaskId: "remote-task", cleared: false });
+        await send({ type: "cache-claimed", bookId: "100", taskId: "remote-task" });
+        response.resolve("<p>late chapter</p>");
+        expect(await download).toEqual({ status: "cancelled", outcome: "ownership-lost" });
+        expect(harness.dependencies.chapters).toBe(chapters);
+        expect(chapters.size).toBe(1);
+        expect(harness.cacheClears).toEqual([]);
+        expect(runtime.state.cachedData).toBe(previous);
     });
 
     it("ignores stale task progress and export publication", () => {

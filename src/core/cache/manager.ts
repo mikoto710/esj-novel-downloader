@@ -127,20 +127,24 @@ export async function listManagedCaches(): Promise<CacheListItem[]> {
     if (data && context) {
         const existing = result.get(context.bookId);
         const count = data.chapters.length;
+        const hasTaskInventory =
+            existing && (existing.sources.includes("runtime") || activeLockByBookId.has(context.bookId));
         result.set(context.bookId, {
             bookId: context.bookId,
-            bookName: context.rawBookName || data.metadata.title,
+            bookName: existing?.bookName || context.rawBookName || data.metadata.title,
             ...(context.rawBookName ? { rawBookName: context.rawBookName } : {}),
-            author: data.metadata.author,
-            pageUrl: context.pageUrl,
-            totalChapters: context.selection?.sourceTotalChapters || existing?.totalChapters || count,
-            progressCount: Math.max(existing?.progressCount || 0, count),
+            author: existing?.author || data.metadata.author,
+            pageUrl: existing?.pageUrl || context.pageUrl,
+            totalChapters: existing?.totalChapters || context.selection?.sourceTotalChapters || count,
+            progressCount: hasTaskInventory ? existing.progressCount : Math.max(existing?.progressCount || 0, count),
             persistentChapterCount: existing?.persistentChapterCount || 0,
-            runtimeChapterCount: Math.max(existing?.runtimeChapterCount || 0, count),
+            runtimeChapterCount: hasTaskInventory
+                ? existing.runtimeChapterCount
+                : Math.max(existing?.runtimeChapterCount || 0, count),
             runtimeCompletedCount: existing?.runtimeCompletedCount || 0,
             updatedAt: existing?.updatedAt || Date.now(),
             sourcePageType: context.sourcePageType,
-            imageEnabled: context.imageEnabled,
+            imageEnabled: existing?.imageEnabled ?? context.imageEnabled,
             sources: Array.from(new Set([...(existing?.sources || []), "runtime"])),
             status: existing ? mergeStatus(existing.status, "export-ready") : "export-ready",
             hasExportData: true,
