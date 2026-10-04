@@ -105,7 +105,7 @@ describe("shared locale UI", () => {
         });
 
         const popup = document.querySelector("#esj-range-selection") as HTMLElement;
-        expect(popup.querySelector(".esj-common-header")?.textContent).toContain("選擇下載範圍");
+        expect(popup.querySelector(".esj-common-header")?.textContent).toContain("確認下載");
         expect(popup.textContent).toContain("預計重用 1 章快取");
         expect(popup.querySelector("#esj-range-cancel")?.textContent).toBe("取消");
         expect(popup.querySelector("#esj-range-download")?.textContent).toBe("開始下載");

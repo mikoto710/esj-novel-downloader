@@ -30,9 +30,7 @@ function selectionOptions(overrides: Partial<DownloadSelectionPopupOptions> = {}
 }
 
 function selectRange(startChapter: string, endChapter: string): void {
-    const mode = document.querySelector<HTMLSelectElement>("#esj-download-mode")!;
-    mode.value = "range";
-    mode.dispatchEvent(new Event("change"));
+    document.querySelector<HTMLInputElement>("#esj-download-range")!.click();
     document.querySelector<HTMLInputElement>("#esj-range-start")!.value = startChapter;
     const end = document.querySelector<HTMLInputElement>("#esj-range-end")!;
     end.value = endChapter;
@@ -72,10 +70,15 @@ describe("unified download selection UI", () => {
     it("defaults to the whole book and shows the fixed image setting", async () => {
         const decision = createDownloadSelectionPopup(selectionOptions({ imageEnabled: true }));
 
-        expect(document.querySelector<HTMLSelectElement>("#esj-download-mode")?.value).toBe("all");
+        expect(document.querySelector<HTMLInputElement>("#esj-download-all")?.checked).toBe(true);
+        expect(document.querySelector("#esj-download-mode select")).toBeNull();
+        expect(document.querySelector<HTMLElement>("#esj-range-fields")?.style.display).toBe("none");
+        expect(document.querySelector<HTMLElement>("#esj-range-validation")?.style.display).toBe("none");
+        expect(document.querySelector<HTMLElement>("#esj-range-all-warning")?.style.display).toBe("none");
+        expect(document.querySelector("#esj-range-stop-warning")).toBeNull();
         expect(document.querySelector<HTMLInputElement>("#esj-range-start")?.disabled).toBe(true);
         expect(document.querySelector<HTMLInputElement>("#esj-range-end")?.disabled).toBe(true);
-        expect(document.querySelector("#esj-download-images")?.textContent).toBe("本次下载正文插图");
+        expect(document.querySelector("#esj-download-images")?.textContent).toBe("🖼️ 正文插图：开启");
         expect(document.querySelector("#esj-range-summary")?.textContent).toContain("5 章");
         expect(document.querySelector("#esj-range-summary")?.textContent).toContain("2 章缓存");
 
@@ -83,6 +86,25 @@ describe("unified download selection UI", () => {
         await expect(decision).resolves.toEqual({
             action: "download",
             selection: { mode: "all", sourceTotalChapters: 5, startIndex: 0, endIndex: 4 }
+        });
+    });
+
+    it("reveals range fields on demand and retains input when switching back", async () => {
+        const decision = createDownloadSelectionPopup(selectionOptions());
+        selectRange("2", "4");
+        expect(document.querySelector<HTMLElement>("#esj-range-fields")?.style.display).toBe("flex");
+        expect(document.querySelector<HTMLInputElement>("#esj-range-start")?.disabled).toBe(false);
+
+        document.querySelector<HTMLInputElement>("#esj-download-all")?.click();
+        expect(document.querySelector<HTMLElement>("#esj-range-fields")?.style.display).toBe("none");
+        expect(document.querySelector("#esj-range-summary")?.textContent).toContain("5 章");
+        document.querySelector<HTMLInputElement>("#esj-download-range")?.click();
+        expect(document.querySelector<HTMLInputElement>("#esj-range-start")?.value).toBe("2");
+        expect(document.querySelector<HTMLInputElement>("#esj-range-end")?.value).toBe("4");
+        document.querySelector<HTMLButtonElement>("#esj-range-download")?.click();
+        await expect(decision).resolves.toEqual({
+            action: "download",
+            selection: { mode: "range", sourceTotalChapters: 5, startIndex: 1, endIndex: 3 }
         });
     });
 
@@ -136,9 +158,9 @@ describe("unified download selection UI", () => {
         publishInterfaceLocaleChange();
         expect(start.value).toBe("2");
         expect(end.value).toBe("4");
-        expect(document.querySelector<HTMLSelectElement>("#esj-download-mode")?.value).toBe("range");
+        expect(document.querySelector<HTMLInputElement>("#esj-download-range")?.checked).toBe(true);
         expect(document.querySelector("#esj-range-summary")?.textContent).toContain("快取");
-        expect(document.querySelector("#esj-download-images")?.textContent).toBe("本次不下載正文插圖");
+        expect(document.querySelector("#esj-download-images")?.textContent).toBe("🖼️ 正文插圖：關閉");
 
         document.querySelector<HTMLButtonElement>("#esj-range-download")?.click();
         await expect(decision).resolves.toEqual({
@@ -157,9 +179,11 @@ describe("unified download selection UI", () => {
         expect(document.querySelector("#esj-range-summary")?.textContent).toContain("复用 0 章缓存");
         expect(document.querySelector("#esj-range-cache-warning")?.textContent).toContain("300 章缓存");
         expect(document.querySelector("#esj-range-cache-warning")?.textContent).toContain("所选范围之外");
+        expect(document.querySelector<HTMLButtonElement>("#esj-range-download")?.textContent).toBe("清除缓存并下载");
         setInterfaceLocalePreference("zh-TW");
         publishInterfaceLocaleChange();
         expect(document.querySelector("#esj-range-cache-warning")?.textContent).toContain("300 章快取");
+        expect(document.querySelector<HTMLButtonElement>("#esj-range-download")?.textContent).toBe("清除快取並下載");
         document.querySelector<HTMLButtonElement>("#esj-range-cancel")?.click();
         await expect(decision).resolves.toEqual({ action: "cancel" });
     });
@@ -170,7 +194,7 @@ describe("unified download selection UI", () => {
             selectionOptions({ initialSelection: selection, cacheWillBeInvalidated: true })
         );
 
-        expect(document.querySelector<HTMLSelectElement>("#esj-download-mode")?.value).toBe("range");
+        expect(document.querySelector<HTMLInputElement>("#esj-download-range")?.checked).toBe(true);
         expect(document.querySelector<HTMLInputElement>("#esj-range-start")?.value).toBe("2");
         expect(document.querySelector<HTMLInputElement>("#esj-range-end")?.value).toBe("4");
         document.querySelector<HTMLButtonElement>("#esj-range-download")?.click();

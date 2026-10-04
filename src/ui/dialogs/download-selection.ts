@@ -56,17 +56,48 @@ export function createDownloadSelectionPopup(
         finishActiveRangeSelection = finish;
         const header = createCommonHeader(t("range.title"), () => finish({ action: "cancel" }));
 
-        // 下载方式和章序共同决定选择，全本模式保留输入但禁止编辑
+        // 切换方式只收起范围输入，保留已填写的章序
+        const allMode = el("input", {
+            id: "esj-download-all",
+            type: "radio",
+            name: "esj-download-mode",
+            value: "all",
+            checked: options.initialSelection?.mode !== "range"
+        });
+        const rangeMode = el("input", {
+            id: "esj-download-range",
+            type: "radio",
+            name: "esj-download-mode",
+            value: "range",
+            checked: options.initialSelection?.mode === "range"
+        });
+        const allModeText = el("span");
+        const rangeModeText = el("span");
         const mode = el(
-            "select",
-            { id: "esj-download-mode", style: "padding:8px;border:1px solid #bbb;border-radius:5px;" },
+            "div",
+            {
+                id: "esj-download-mode",
+                role: "radiogroup",
+                style: "display:flex;gap:20px;flex-wrap:wrap;"
+            },
             [
-                el("option", { value: "all" }, [t("range.modeAll")]),
-                el("option", { value: "range" }, [t("range.modeRange")])
+                el("label", { style: "display:flex;align-items:center;gap:6px;cursor:pointer;" }, [
+                    allMode,
+                    allModeText
+                ]),
+                el("label", { style: "display:flex;align-items:center;gap:6px;cursor:pointer;" }, [
+                    rangeMode,
+                    rangeModeText
+                ])
             ]
         );
-        mode.value = options.initialSelection?.mode || "all";
-        const imageSetting = el("div", { id: "esj-download-images", style: "font-size:12px;color:#666;" });
+        const imageLabel = el("span");
+        const imageStatus = el("span", { style: `color:${options.imageEnabled ? "#237eaf" : "#666"};` });
+        const imageSetting = el("div", { id: "esj-download-images", style: "font-size:13px;color:#666;" }, [
+            el("span", { "aria-hidden": "true" }, ["🖼️ "]),
+            imageLabel,
+            imageStatus
+        ]);
         const startLabel = el(
             "label",
             { for: "esj-range-start", style: "display:flex;flex-direction:column;gap:5px;" },
@@ -82,7 +113,7 @@ export function createDownloadSelectionPopup(
             max: total,
             step: 1,
             value: (options.initialSelection?.startIndex ?? 0) + 1,
-            style: "padding:8px;border:1px solid #bbb;border-radius:5px;"
+            style: "width:100%;min-width:0;height:32px;padding:4px 8px;background:#fff;color:#333;border:1px solid #bbb;border-radius:4px;"
         });
         const endInput = el("input", {
             id: "esj-range-end",
@@ -91,24 +122,60 @@ export function createDownloadSelectionPopup(
             max: total,
             step: 1,
             value: (options.initialSelection?.endIndex ?? total - 1) + 1,
-            style: "padding:8px;border:1px solid #bbb;border-radius:5px;"
+            style: "width:100%;min-width:0;height:32px;padding:4px 8px;background:#fff;color:#333;border:1px solid #bbb;border-radius:4px;"
         });
         startLabel.appendChild(startInput);
         endLabel.appendChild(endInput);
 
         // 章名、数量和校验结果随输入刷新，不在输入时重新读取缓存
-        const startTitle = el("div", { id: "esj-range-start-title", style: "font-size:12px;color:#666;" });
-        const endTitle = el("div", { id: "esj-range-end-title", style: "font-size:12px;color:#666;" });
-        const summary = el("div", { id: "esj-range-summary", style: "font-size:13px;color:#333;" });
+        const startTitle = el("div", {
+            id: "esj-range-start-title",
+            style: "font-size:12px;color:#666;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
+        });
+        const endTitle = el("div", {
+            id: "esj-range-end-title",
+            style: "font-size:12px;color:#666;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
+        });
+        const rangeFields = el(
+            "div",
+            { id: "esj-range-fields", style: "display:none;flex-direction:column;gap:6px;" },
+            [
+                el("div", { style: "display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px;" }, [
+                    startLabel,
+                    endLabel
+                ]),
+                el("div", { style: "display:flex;flex-direction:column;gap:2px;" }, [startTitle, endTitle])
+            ]
+        );
+        // 章数、插图和缓存各占一行，只强调状态与可复用数量
+        const chapterCount = el("div");
+        const cacheLabel = el("span");
+        const cacheReuseText = el("span");
+        const cacheReuseCount = el("strong", { style: "font-weight:600;color:#444;" });
+        const cacheReuseUnit = el("span");
+        const cacheReuse = el("div", { id: "esj-range-cache-reuse", style: "font-size:13px;color:#666;" }, [
+            el("span", { "aria-hidden": "true" }, ["♻️ "]),
+            cacheLabel,
+            cacheReuseText,
+            " ",
+            cacheReuseCount,
+            " ",
+            cacheReuseUnit
+        ]);
+        const summary = el("div", { id: "esj-range-summary", style: "display:flex;flex-direction:column;gap:5px;" }, [
+            chapterCount,
+            imageSetting,
+            cacheReuse
+        ]);
         const validation = el("div", {
             id: "esj-range-validation",
-            style: "font-size:12px;color:#b42318;min-height:18px;"
+            style: "display:none;font-size:12px;color:#b42318;"
         });
 
-        // 分别提示全选等价全本、缓存失效，以及停止清除的整书影响
+        // 全范围只作轻提示，整书缓存失效才突出警告
         const allWarning = el("div", {
             id: "esj-range-all-warning",
-            style: "display:none;padding:8px;border:1px solid #e6a23c;background:#fff7e6;color:#8a5a00;border-radius:5px;font-size:12px;"
+            style: "display:none;color:#666;font-size:12px;"
         });
         const cacheWarning = options.cacheWillBeInvalidated
             ? el(
@@ -120,15 +187,6 @@ export function createDownloadSelectionPopup(
                   [t("range.cacheDiscardWarning", { count: options.cacheCount })]
               )
             : "";
-        const stopWarning = el(
-            "div",
-            {
-                id: "esj-range-stop-warning",
-                style: "padding:8px;background:#f5f5f5;color:#555;border-radius:5px;font-size:12px;"
-            },
-            [t("range.stopClearWarning")]
-        );
-
         const cancelButton = el(
             "button",
             {
@@ -145,7 +203,7 @@ export function createDownloadSelectionPopup(
                   "button",
                   {
                       id: "esj-range-open-previous",
-                      style: "padding:8px 12px;background:#fff;border:1px solid #2b9bd7;color:#2b6f9f;border-radius:6px;cursor:pointer;",
+                      style: "align-self:flex-start;padding:0;background:transparent;border:none;color:#2b6f9f;cursor:pointer;font-size:12px;text-align:left;",
                       onclick: () => finish({ action: "open-existing" })
                   },
                   [t("range.openPrevious")]
@@ -164,7 +222,7 @@ export function createDownloadSelectionPopup(
             if (options.preparationErrorKey || total === 0) {
                 return null;
             }
-            if (mode.value === "all") {
+            if (allMode.checked) {
                 return createRangeSelection(1, total, total);
             }
             const startText = startInput.value.trim();
@@ -182,10 +240,16 @@ export function createDownloadSelectionPopup(
         // 只刷新文案和预览，切换语言时保留用户输入
         const refresh = () => {
             const selection = getSelection();
-            startInput.disabled = endInput.disabled = mode.value === "all";
-            mode.options[0].textContent = t("range.modeAll");
-            mode.options[1].textContent = t("range.modeRange");
-            imageSetting.textContent = t(options.imageEnabled ? "range.imagesEnabled" : "range.imagesDisabled");
+            startInput.disabled = endInput.disabled = allMode.checked;
+            rangeFields.style.display = rangeMode.checked ? "flex" : "none";
+            allModeText.textContent = t("range.modeAll");
+            rangeModeText.textContent = t("range.modeRange");
+            mode.setAttribute("aria-label", t("range.title"));
+            imageLabel.textContent = t("range.imagesLabel");
+            imageStatus.textContent = t(options.imageEnabled ? "range.imagesEnabled" : "range.imagesDisabled");
+            cacheLabel.textContent = t("range.cacheLabel");
+            cacheReuseText.textContent = t("range.summary");
+            cacheReuseUnit.textContent = t("range.cacheUnit");
             const headerLabel = header.querySelector("span");
             if (headerLabel) {
                 headerLabel.textContent = t("range.title");
@@ -193,7 +257,9 @@ export function createDownloadSelectionPopup(
             startLabel.firstChild!.textContent = t("range.start");
             endLabel.firstChild!.textContent = t("range.end");
             cancelButton.textContent = t("common.cancel");
-            downloadButton.textContent = t("range.download");
+            downloadButton.textContent = t(
+                options.cacheWillBeInvalidated ? "range.clearAndDownload" : "range.download"
+            );
             if (openPreviousButton) {
                 const previous = options.existingSelection;
                 const label =
@@ -206,7 +272,6 @@ export function createDownloadSelectionPopup(
                         : t("range.modeAll");
                 openPreviousButton.textContent = `${t("range.openPrevious")}（${label}）`;
             }
-            stopWarning.textContent = t("range.stopClearWarning");
             if (cacheWarning instanceof HTMLElement) {
                 cacheWarning.textContent = t("range.cacheDiscardWarning", { count: options.cacheCount });
             }
@@ -216,7 +281,8 @@ export function createDownloadSelectionPopup(
                     : t("range.invalid", { total });
                 startTitle.textContent = "";
                 endTitle.textContent = "";
-                summary.textContent = "";
+                summary.style.display = "none";
+                validation.style.display = "block";
                 allWarning.style.display = "none";
                 downloadButton.disabled = true;
                 return;
@@ -230,11 +296,17 @@ export function createDownloadSelectionPopup(
                 0
             );
             validation.textContent = "";
+            validation.style.display = "none";
+            summary.style.display = "flex";
             startTitle.textContent = t("range.startTitle", { title: selectedTasks[0]?.title || "" });
             endTitle.textContent = t("range.endTitle", { title: selectedTasks.at(-1)?.title || "" });
-            summary.textContent = t("range.summary", { count: selectedTasks.length, cached });
+            startTitle.title = startTitle.textContent;
+            endTitle.title = endTitle.textContent;
+            chapterCount.textContent = t("range.chapterCount", { count: selectedTasks.length });
+            cacheReuseCount.textContent = String(cached);
+            cacheReuse.style.display = options.cacheWillBeInvalidated ? "none" : "block";
             allWarning.textContent = t("range.allEquivalent");
-            allWarning.style.display = selection.mode === "all" ? "block" : "none";
+            allWarning.style.display = rangeMode.checked && selection.mode === "all" ? "block" : "none";
             downloadButton.disabled = false;
         };
         downloadButton.addEventListener("click", () => {
@@ -243,7 +315,8 @@ export function createDownloadSelectionPopup(
                 finish({ action: "download", selection });
             }
         });
-        mode.addEventListener("change", refresh);
+        allMode.addEventListener("change", refresh);
+        rangeMode.addEventListener("change", refresh);
         startInput.addEventListener("input", refresh);
         endInput.addEventListener("input", refresh);
 
@@ -254,30 +327,41 @@ export function createDownloadSelectionPopup(
                 id: "esj-range-selection",
                 role: "dialog",
                 "aria-modal": "true",
-                style: "position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:470px;max-width:calc(100vw - 32px);background:#fff;border:1px solid #aaa;border-radius:8px;box-shadow:0 0 18px rgba(0,0,0,.28);z-index:999999;display:flex;flex-direction:column;"
+                style: "position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:400px;max-width:calc(100vw - 32px);max-height:calc(100dvh - 32px);font:14px/1.5 sans-serif;color:#333;text-align:left;box-sizing:border-box;background:#fff;border:1px solid #aaa;border-radius:8px;box-shadow:0 0 18px rgba(0,0,0,.28);z-index:999999;display:flex;flex-direction:column;"
             },
             [
-                header,
-                el("div", { style: "padding:16px;display:flex;flex-direction:column;gap:10px;" }, [
-                    mode,
-                    imageSetting,
-                    el("div", { style: "display:grid;grid-template-columns:1fr 1fr;gap:12px;" }, [
-                        startLabel,
-                        endLabel
-                    ]),
-                    startTitle,
-                    endTitle,
-                    summary,
-                    validation,
-                    allWarning,
-                    cacheWarning,
-                    stopWarning
+                // 控件字号和间距限定在本弹窗内，避免继承站点的大号表单样式
+                el("style", {}, [
+                    `
+                    #esj-range-selection button, #esj-range-selection input {
+                        font: inherit; line-height: 1.5; box-sizing: border-box; margin: 0; min-height: 0;
+                    }
+                    #esj-range-selection button { width: auto; text-transform: none; }
+                    #esj-range-selection button:disabled { opacity: .55; cursor: not-allowed; }
+                    #esj-range-selection label { margin: 0; font: inherit; color: inherit; }
+                    #esj-download-mode input { appearance: auto; width: 14px; height: 14px; padding: 0; flex: 0 0 auto; }
+                    #esj-range-selection .esj-common-header { font-size: 16px; flex-shrink: 0; }
+                `
                 ]),
-                el("div", { style: "padding:12px;display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap;" }, [
-                    cancelButton,
-                    ...(openPreviousButton ? [openPreviousButton] : []),
-                    downloadButton
-                ])
+                header,
+                el(
+                    "div",
+                    { style: "padding:16px;display:flex;flex-direction:column;gap:12px;overflow:auto;min-height:0;" },
+                    [
+                        mode,
+                        rangeFields,
+                        summary,
+                        validation,
+                        allWarning,
+                        cacheWarning,
+                        ...(openPreviousButton ? [openPreviousButton] : [])
+                    ]
+                ),
+                el(
+                    "div",
+                    { style: "padding:0 12px 12px;display:flex;justify-content:flex-end;gap:8px;flex-shrink:0;" },
+                    [cancelButton, downloadButton]
+                )
             ]
         );
         document.body.appendChild(popup);
@@ -286,6 +370,11 @@ export function createDownloadSelectionPopup(
         enableDrag(popup, ".esj-common-header");
         unsubscribeLocale = subscribeInterfaceLocaleChange(refresh);
         refresh();
-        (options.preparationErrorKey && openPreviousButton ? openPreviousButton : mode).focus();
+        (options.preparationErrorKey && openPreviousButton
+            ? openPreviousButton
+            : rangeMode.checked
+              ? rangeMode
+              : allMode
+        ).focus();
     });
 }
