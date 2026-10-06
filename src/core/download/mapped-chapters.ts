@@ -1,6 +1,6 @@
 import type { Chapter } from "../../content/model";
 import type { DownloadDependencies, DownloadTask, MappingFontFailure } from "./contracts";
-import type { DownloadScope } from "./download-scope";
+import type { DownloadPlan } from "../../download/plan";
 import type { DownloadProgress } from "./download-progress";
 import type { TaskCacheWriter } from "./task-cache-writer";
 import { MappingFontError } from "../../content/mapping-font";
@@ -18,7 +18,8 @@ const CACHE_RESTORE_YIELD_INTERVAL = 25;
  */
 export function createMappedChapters(
     ports: MappingPorts,
-    scope: DownloadScope,
+    plan: DownloadPlan,
+    pageUrl: string,
     progress: DownloadProgress,
     cache: TaskCacheWriter,
     decisions: UserDecisionGate
@@ -97,9 +98,9 @@ export function createMappedChapters(
      * 校验范围内缓存，失效章节留给抓取流程补齐
      */
     async function normalizeRestoredChapters(): Promise<boolean> {
-        const taskByIndex = new Map(scope.options.tasks.map((task) => [task.index, task]));
+        const taskByIndex = new Map(plan.tasks.map((task) => [task.index, task]));
         const entries = Array.from(chapters.entries())
-            .filter(([index]) => scope.indexes.has(index))
+            .filter(([index]) => plan.indexes.has(index))
             .sort(([left], [right]) => left - right);
         const changedEntries = new Map<number, Chapter>();
         let firstMappedTask: DownloadTask | null = null;
@@ -119,7 +120,7 @@ export function createMappedChapters(
                 if (normalized.kind === "mapped") {
                     const task = taskByIndex.get(index) || {
                         index,
-                        url: scope.meta.pageUrl,
+                        url: pageUrl,
                         title: chapter.title
                     };
                     if (recordMappedChapter(task, normalized.chapter) && !firstMappedTask) {
@@ -153,7 +154,7 @@ export function createMappedChapters(
             }
         }
 
-        const restoredTasks = scope.options.tasks.filter((task) => chapters.has(task.index));
+        const restoredTasks = plan.tasks.filter((task) => chapters.has(task.index));
         if (entries.length > 0) {
             ports.log({
                 code: invalidatedCount > 0 ? "cache-restored-with-invalidated" : "cache-restored",

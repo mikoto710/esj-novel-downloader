@@ -1,4 +1,4 @@
-import type { DownloadSelection } from "../core/download/contracts";
+import type { DownloadSelection } from "../download/plan";
 import type { SourcePageType } from "../types";
 import type { LocaleKey } from "../core/locale";
 import { BookPreflightError, type PreparedBook } from "../site/book";
@@ -20,7 +20,7 @@ import { claimBookCache, previewBookCache, type BookCachePreviewResult } from ".
 import { publishCacheSyncEvent } from "../core/cache/sync";
 import { getImageDownloadSetting } from "../core/config";
 import { batchDownload } from "../adapters/browser-download-dependencies";
-import { selectDownloadTasks } from "../core/download/selection";
+import { createDownloadPlan, selectDownloadTasks } from "../download/plan";
 import { finalizeBookDownloadTask } from "../adapters/book-download-lifecycle";
 import { normalizeStorageError, StorageError, toStorageFailure } from "../core/cache/storage-error";
 import { fullCleanup } from "../utils/dom";
@@ -142,12 +142,17 @@ export async function runBookDownload(options: RunBookDownloadOptions): Promise<
 async function executeBookDownload(
     options: RunBookDownloadOptions,
     plan: PreparedBook,
-    selection: DownloadSelection,
+    inputSelection: DownloadSelection,
     imageEnabled: boolean,
     allowInvalidation: boolean
 ): Promise<BookCachePreviewResult | undefined> {
     const { bookId, sourcePageType } = options;
-    const selectedTasks = selectDownloadTasks(plan.tasks, selection);
+    const downloadPlan = createDownloadPlan({
+        tasks: selectDownloadTasks(plan.tasks, inputSelection),
+        selection: inputSelection
+    });
+    const selection = downloadPlan.selection;
+    const selectedTasks = [...downloadPlan.tasks];
     const cancellation = createDownloadCancellation();
     const lockResult = await acquireBookDownloadLock(bookId, sourcePageType);
     if (!lockResult.acquired) {
@@ -180,13 +185,8 @@ async function executeBookDownload(
                 bookTitle: plan.meta.rawBookName || plan.meta.bookName,
                 pageUrl: plan.pageUrl,
                 sourcePageType,
-                totalChapters: selectedTasks.length,
-                selection: {
-                    mode: selection.mode,
-                    sourceTotalChapters: selection.sourceTotalChapters,
-                    startChapter: selection.startIndex + 1,
-                    endChapter: selection.endIndex + 1
-                },
+                totalChapters: downloadPlan.tasks.length,
+                selection: downloadPlan.summary,
                 imageEnabled
             },
             { observePageClose: true }
@@ -327,7 +327,7 @@ async function executeBookDownload(
                 showCacheDiscardFailure(finalization.cacheClearFailure);
             }
         }
-        if (exportReady && selection.mode === "range" && !finalization.cacheDiscarded) {
+        if (exportReady && downloadPlan.retainCacheOnSuccess && !finalization.cacheDiscarded) {
             publishCacheSyncEvent({ type: "cache-saved", bookId, taskId: lock.taskId });
         }
     }

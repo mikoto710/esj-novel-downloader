@@ -8,6 +8,7 @@
 | -------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 页面目录与书籍信息               | [`site/book.ts`](../src/site/book.ts) 的 `loadDetailBook` / `loadForumBook`；页面入口仍在 `scrapers/detail.ts` / `scrapers/forum.ts`                                                      |
 | 选择范围、缓存确认、取得与释放锁 | [`scrapers/book-download.ts`](../src/scrapers/book-download.ts) 的 `runBookDownload`、`executeBookDownload` 与 [`book-download-lifecycle.ts`](../src/adapters/book-download-lifecycle.ts) |
+| 选择规范化、绝对索引与范围摘要   | [`download/plan.ts`](../src/download/plan.ts) 的 `createDownloadPlan`、`createRangeSelection` 和 `selectDownloadTasks`                                                                    |
 | 下载阶段顺序                     | [`coordinator.ts`](../src/core/download/coordinator.ts) 的 `runDownload`                                                                                                                  |
 | 正文抓取、补抓、缺章选择         | [`chapter-pipeline.ts`](../src/core/download/chapter-pipeline.ts)                                                                                                                         |
 | 密码与字体决策                   | [`protected-chapters.ts`](../src/core/download/protected-chapters.ts)、[`mapped-chapters.ts`](../src/core/download/mapped-chapters.ts)                                                    |
@@ -30,7 +31,7 @@ core/download 与 adapters 共享 contracts 类型
 core/download 通过传入的能力调用浏览器实现
 ```
 
-`core/download/` 的业务模块由 ESLint 限制直接引入 UI、页面状态、持久化实现或浏览器全局能力。书籍锁收尾位于 `adapters/book-download-lifecycle.ts`，核心目录不再排除收尾文件；`core/cache/` 实现 IndexedDB，不属于环境无关内核。字体缓存解析通过 `chapterProcessor.normalizeCached` 注入；新抓取正文处理仍通过 `chapterProcessor.process` 注入。
+`download/plan.ts` 与 `core/download/` 的业务模块由 ESLint 限制直接引入 UI、页面状态、持久化实现或浏览器全局能力。书籍锁收尾位于 `adapters/book-download-lifecycle.ts`，核心目录不再排除收尾文件；`core/cache/` 实现 IndexedDB，不属于环境无关内核。字体缓存解析通过 `chapterProcessor.normalizeCached` 注入；新抓取正文处理仍通过 `chapterProcessor.process` 注入。
 
 共享章节、图片、映射字体、封面和书籍元数据定义位于 [`content/model.ts`](../src/content/model.ts)。[`content/mapping-font.ts`](../src/content/mapping-font.ts) 保留唯一的字体规范化、恢复校验与安全导出绑定实现，恢复、格式生成和单章页面共同使用；[`content/image-format.ts`](../src/content/image-format.ts) 统一图片签名识别与 MIME 校验。图片 URL 解析、采集、压缩和封面获取由 [`site/images.ts`](../src/site/images.ts) 提供，正文插图仍按当前页面 `location.href` 解析。
 
@@ -61,9 +62,9 @@ core/download 通过传入的能力调用浏览器实现
 
 ### 范围成功
 
-调用链与全本相同，只在 `selection` 和 writer 收尾处区分。`selectDownloadTasks` 保留原书绝对索引；本次进度、完整性检查和导出只使用选中任务。缓存仍是一书一份，范围外章节继续保留。
+调用链与全本相同。`download/plan.ts` 统一规范化全本／连续范围、校验源目录和选中任务顺序，提供原书绝对索引、范围内位置、结构化摘要和成功缓存保留规则。`selectDownloadTasks` 保留原书绝对索引，`createDownloadPlan` 固定输出章节集合；恢复和补抓仅由 pipeline 根据当前库存选择请求对象，不改写输出范围。缓存仍是一书一份，范围外章节继续保留。
 
-`cache.finish` 先 seal，再调用 `finishForTask` 关闭 writer，保留整书累计缓存。手动选择第 1 章到最后一章会规范化为全本，成功后清缓存。
+`cache.finish` 先 seal，再依据计划的 `retainCacheOnSuccess` 调用 `finishForTask` 关闭 writer，保留整书累计缓存。第 1 章到最后一章的选择在计划中规范化为全本，成功后清缓存。入口诊断、导出快照及后续文件名和历史共用计划生成的选择摘要，不分别转换章序。运行 `CacheMeta` 在 coordinator 中构造并传给 writer，plan 不接收书籍锁、取消、UI、writer 或运行元信息。
 
 代表测试：[`download-selection.test.ts`](../tests/download/download-selection.test.ts)、[`range-download-lifecycle.contract.test.ts`](../tests/download/range-download-lifecycle.contract.test.ts)、[`book-lock-cache.contract.test.ts`](../tests/cache/book-lock-cache.contract.test.ts)。
 
@@ -82,7 +83,8 @@ core/download 通过传入的能力调用浏览器实现
 
 | 数据                     | 所有者与含义                                                                                                                                                    |
 | ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 任务目录、范围、插图设置 | 页面固定 `DownloadOptions`；`download-scope` 校验范围并提供索引视图                                                                                             |
+| 任务目录、范围、插图设置 | 页面固定插图设置；`download/plan.ts` 校验并固定选择、输出目录和索引视图                                                                                         |
+| 运行缓存元信息           | `coordinator.ts` 在 writer 创建前构造 `CacheMeta`，沿用原启动时间、页面 URL 和整书章数                                                                          |
 | 章节 Map                 | `executeBookDownload` 持有认领后的整书数据，显式传入 adapter；pipeline 写新章节，mapped-chapters 校验恢复内容                                                   |
 | 下载阶段与进度           | `DownloadProgress` 同时维护阶段和进度，校验转换后发布快照；UI、诊断单向读取                                                                                     |
 | 就绪与持久化数量         | `readyChapterCount` 是本次范围内存正文数；`persistedCount` 是 writer 已确认保存数；完成一次处理不等于正文或持久化成功                                           |
@@ -107,6 +109,7 @@ core/download 通过传入的能力调用浏览器实现
 
 ## 改一条规则时
 
+- 选择、章序、范围摘要和成功缓存策略：改 [`download/plan.ts`](../src/download/plan.ts)，检查范围选择、进度、生命周期和文件名边界。运行元信息留在 coordinator，补抓对象留在 pipeline。
 - 缓存是否兼容：改 `image-cache-compatibility.ts`，检查 [`cache-preview.contract.test.ts`](../tests/cache/cache-preview.contract.test.ts)。预览不授权清理；正式 claim 在同一写事务检查兼容性和确认，未确认不写入、不迁移清理、不发 claimed 事件。
 - 密码错误如何处理：看 `protected-chapters.ts`；站点授权协议看 [`site/protected-chapter.ts`](../src/site/protected-chapter.ts)，普通章节与授权请求共用本任务的 [`site/request-gate.ts`](../src/site/request-gate.ts)，授权独占队列保持原请求顺序。拒绝的密码不能变成普通失败章节或缓存记录。
 - 会话／导出清理与跨页失效：看 `state.ts`、`cache/manager.ts` 和 [`runtime-cache-ownership.contract.test.ts`](../tests/cache/runtime-cache-ownership.contract.test.ts)。已有结果与新任务独立，活动章节表不由同步事件清空。

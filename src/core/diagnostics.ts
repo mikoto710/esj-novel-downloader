@@ -6,7 +6,7 @@ import type {
     DownloadTask
 } from "./download/contracts";
 import type { DomainMessageParams } from "./messages";
-import type { DownloadSelectionSummary } from "../types";
+import { createDownloadSelectionSummary, type DownloadSelectionSummary } from "../download/plan";
 
 // 诊断数据独立于章节缓存；容量和保留期同时限制，避免长期占用 userscript 存储
 export const DIAGNOSTIC_SCHEMA_VERSION = 1;
@@ -511,12 +511,7 @@ export class DiagnosticManager {
                 session.task.totalChapters = options.tasks.length;
             }
             if (options.selection) {
-                session.selection = {
-                    mode: options.selection.mode,
-                    sourceTotalChapters: options.selection.sourceTotalChapters,
-                    startChapter: options.selection.startIndex + 1,
-                    endChapter: options.selection.endIndex + 1
-                };
+                session.selection = createDownloadSelectionSummary(options.selection);
             }
         });
     }

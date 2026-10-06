@@ -7,7 +7,7 @@ import type {
 } from "./contracts";
 import type { DomainMessageParams } from "../messages";
 import type { DownloadProgress } from "./download-progress";
-import type { DownloadScope } from "./download-scope";
+import type { DownloadPlan } from "../../download/plan";
 import { ProtectedChapterQueue, type ProtectedChapterWorkItem } from "./protected-chapter-queue";
 import { runUserDecision, UserDecisionGate } from "./user-decision-gate";
 import { isCancellationError } from "./errors";
@@ -23,7 +23,7 @@ type ProtectedPorts = Pick<DownloadDependencies, "cancellation" | "protectedChap
  */
 export function createProtectedChapters(
     ports: ProtectedPorts,
-    scope: DownloadScope,
+    plan: DownloadPlan,
     progress: DownloadProgress,
     decisions: UserDecisionGate
 ) {
@@ -76,12 +76,12 @@ export function createProtectedChapters(
     ): Promise<ProtectedChapterDecision> {
         const prompt: ProtectedChapterPrompt = {
             task: item.task,
-            totalChapters: scope.options.tasks.length,
-            ...(scope.selection.mode === "range"
+            totalChapters: plan.tasks.length,
+            ...(plan.selection.mode === "range"
                 ? {
-                      taskOrder: scope.position(item.task).index,
-                      sourceTotalChapters: scope.selection.sourceTotalChapters,
-                      selectionMode: scope.selection.mode
+                      taskOrder: plan.position(item.task).index,
+                      sourceTotalChapters: plan.selection.sourceTotalChapters,
+                      selectionMode: plan.selection.mode
                   }
                 : {}),
             pendingCount: progress.snapshot.protectedPendingCount,
@@ -143,7 +143,7 @@ export function createProtectedChapters(
                     protectedSkippedIndexes.add(skipped.task.index);
                     ports.log({
                         code: "protected-chapter-skipped",
-                        params: { ...scope.position(skipped.task), title: skipped.task.title }
+                        params: { ...plan.position(skipped.task), title: skipped.task.title }
                     });
                 }
                 progress.update({
@@ -177,7 +177,7 @@ export function createProtectedChapters(
                     if (attempt === 0) {
                         ports.log({
                             code: "protected-chapter-connection-retry",
-                            params: { ...scope.position(item.task), title: item.task.title }
+                            params: { ...plan.position(item.task), title: item.task.title }
                         });
                         continue;
                     }
@@ -190,12 +190,12 @@ export function createProtectedChapters(
                     task: item.task,
                     stage: "protected-auth",
                     code: "network-error",
-                    params: scope.position(item.task),
+                    params: plan.position(item.task),
                     retry: false
                 });
                 ports.log({
                     code: "protected-chapter-connection-failed",
-                    params: { ...scope.position(item.task), title: item.task.title }
+                    params: { ...plan.position(item.task), title: item.task.title }
                 });
                 message = undefined;
                 messageCode = "connection-failed";
@@ -214,7 +214,7 @@ export function createProtectedChapters(
                 ports.events.emit({ type: "protected-chapter-password-rejected", task: item.task });
                 ports.log({
                     code: "protected-chapter-password-rejected",
-                    params: { ...scope.position(item.task), title: item.task.title }
+                    params: { ...plan.position(item.task), title: item.task.title }
                 });
                 continue;
             }
@@ -225,7 +225,7 @@ export function createProtectedChapters(
                     stage: "protected-auth",
                     code: result.code,
                     params: {
-                        ...scope.position(item.task),
+                        ...plan.position(item.task),
                         ...(result.params || {})
                     },
                     retry: false
@@ -233,7 +233,7 @@ export function createProtectedChapters(
                 ports.log({
                     code: "protected-chapter-protocol-failed",
                     params: {
-                        ...scope.position(item.task),
+                        ...plan.position(item.task),
                         title: item.task.title,
                         errorCode: result.code,
                         ...(result.params || {})
@@ -257,7 +257,7 @@ export function createProtectedChapters(
             if (processed === "completed") {
                 ports.log({
                     code: "protected-chapter-unlocked",
-                    params: { ...scope.position(item.task), title: item.task.title }
+                    params: { ...plan.position(item.task), title: item.task.title }
                 });
             }
             return processed;
@@ -294,14 +294,14 @@ export function createProtectedChapters(
                     }
                     ports.log({
                         code: "protected-chapter-retry-skipped",
-                        params: { ...scope.position(task), title: task.title }
+                        params: { ...plan.position(task), title: task.title }
                     });
                     return "failed";
                 }
                 reopenProtectedChapterForRetry(task);
                 ports.log({
                     code: "protected-chapter-redetected",
-                    params: { ...scope.position(task), title: task.title }
+                    params: { ...plan.position(task), title: task.title }
                 });
                 return resolveProtectedChapter({ task, pageHtml: html }, processChapter, true);
             }
@@ -312,12 +312,12 @@ export function createProtectedChapters(
             if (queued.kind === "queued") {
                 ports.log({
                     code: "protected-chapter-queued",
-                    params: { ...scope.position(task), title: task.title }
+                    params: { ...plan.position(task), title: task.title }
                 });
             } else if (queued.kind === "skipped") {
                 ports.log({
                     code: "protected-chapter-skipped",
-                    params: { ...scope.position(task), title: task.title }
+                    params: { ...plan.position(task), title: task.title }
                 });
             }
             return "deferred";

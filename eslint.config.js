@@ -75,7 +75,7 @@ export default [
     },
 
     {
-        files: ["src/core/download/**/*.ts"],
+        files: ["src/core/download/**/*.ts", "src/download/**/*.ts"],
         rules: {
             "no-restricted-imports": [
                 "error",

@@ -1,7 +1,7 @@
 import type { CachedData } from "../../types";
 import type { BookCover, Chapter } from "../../content/model";
-import type { DownloadDependencies, DownloadOptions } from "./contracts";
-import type { DownloadScope } from "./download-scope";
+import type { DownloadDependencies, DownloadOptions, DownloadTask } from "./contracts";
+import type { DownloadPlan } from "../../download/plan";
 import { createMissingChapterPlaceholder } from "./incomplete-chapters";
 import { getErrorDetails } from "./errors";
 
@@ -9,14 +9,14 @@ type CoverPorts = Pick<DownloadDependencies, "coverCache" | "coverFetcher" | "ca
 /**
  * 优先复用封面缓存，封面缺失不阻断正文导出
  */
-export async function prepareCover(scope: DownloadScope, ports: CoverPorts): Promise<BookCover | null> {
-    const coverUrl = scope.options.coverUrl;
+export async function prepareCover(options: DownloadOptions, ports: CoverPorts): Promise<BookCover | null> {
+    const coverUrl = options.coverUrl;
     if (!coverUrl) {
         return null;
     }
 
     try {
-        const cached = await ports.coverCache.load(scope.options.bookId, coverUrl);
+        const cached = await ports.coverCache.load(options.bookId, coverUrl);
         if (cached) {
             ports.log({ code: "cover-cache-hit" });
             return cached;
@@ -35,8 +35,8 @@ export async function prepareCover(scope: DownloadScope, ports: CoverPorts): Pro
 
     try {
         const saved = await ports.coverCache.put(
-            scope.options.bookId,
-            scope.options.taskId,
+            options.bookId,
+            options.taskId,
             coverUrl,
             cover,
             ports.cancellation.signal
@@ -51,12 +51,13 @@ export async function prepareCover(scope: DownloadScope, ports: CoverPorts): Pro
 }
 
 function assembleExportChapters(
-    options: DownloadOptions,
+    options: Pick<DownloadOptions, "introTxt">,
+    tasks: readonly DownloadTask[],
     source: ReadonlyMap<number, Chapter>
 ): { text: string; chapters: Chapter[] } {
     const textSegments = [options.introTxt];
     const chapters: Chapter[] = [];
-    for (const task of options.tasks) {
+    for (const task of tasks) {
         const chapter = source.get(task.index);
         if (chapter) {
             textSegments.push(chapter.txtSegment);
@@ -74,13 +75,14 @@ function assembleExportChapters(
  * 缺章占位只进入导出快照，不回写章节缓存
  */
 export function createExportData(
-    scope: DownloadScope,
+    options: DownloadOptions,
+    plan: DownloadPlan,
+    pageUrl: string,
     chapters: ReadonlyMap<number, Chapter>,
     cover: BookCover | null,
     missingCount: number
 ): CachedData {
-    const { options, selection } = scope;
-    const assembled = assembleExportChapters(options, chapters);
+    const assembled = assembleExportChapters(options, plan.tasks, chapters);
     return {
         txt: assembled.text,
         chapters: assembled.chapters,
@@ -97,18 +99,13 @@ export function createExportData(
             bookId: options.bookId,
             taskId: options.taskId,
             rawBookName: options.rawBookName || options.bookName,
-            pageUrl: options.pageUrl || scope.meta.pageUrl,
+            pageUrl,
             sourcePageType: options.sourcePageType === "forum" ? "forum" : "detail",
             chapterSummary: {
                 totalCount: assembled.chapters.length,
                 missingCount: missingCount
             },
-            selection: {
-                mode: selection.mode,
-                sourceTotalChapters: selection.sourceTotalChapters,
-                startChapter: selection.startIndex + 1,
-                endChapter: selection.endIndex + 1
-            },
+            selection: plan.summary,
             imageEnabled: options.imageEnabled
         }
     };

@@ -1,50 +1,30 @@
 import { describe, expect, it, vi } from "vitest";
 import { DownloadProgress, canTransitionDownloadPhase } from "../../src/core/download/download-progress";
-import { createDownloadScope } from "../../src/core/download/download-scope";
+import { createDownloadPlan } from "../../src/download/plan";
 import type { DownloadEventSink } from "../../src/core/download/contracts";
 import { createChapter, createDownloadTask } from "../support";
 
 function createProgress(count: number, restored: number, events: DownloadEventSink): DownloadProgress {
     const tasks = Array.from({ length: count }, (_, index) => createDownloadTask(index));
-    const scope = createDownloadScope(
-        {
-            bookId: "100",
-            taskId: "task-100",
-            bookName: "Book",
-            introTxt: "",
-            description: "",
-            tags: [],
-            imageEnabled: false,
-            tasks
-        },
-        { fallbackPageUrl: "https://example.test", startedAt: 0 }
-    );
+    const plan = createDownloadPlan({
+        tasks
+    });
     const chapters = new Map(tasks.slice(0, restored).map((task) => [task.index, createChapter(task.index)]));
-    return new DownloadProgress(scope, chapters, events, { update: () => undefined });
+    return new DownloadProgress(plan, chapters, events, { update: () => undefined });
 }
 
 describe("DownloadProgress", () => {
     it("derives readiness from selected chapters after additions and invalidation", () => {
-        const scope = createDownloadScope(
-            {
-                bookId: "100",
-                taskId: "range-task",
-                bookName: "Range book",
-                introTxt: "",
-                description: "",
-                tags: [],
-                imageEnabled: false,
-                tasks: [createDownloadTask(10), createDownloadTask(11)],
-                selection: { mode: "range", sourceTotalChapters: 20, startIndex: 10, endIndex: 11 }
-            },
-            { fallbackPageUrl: "https://example.test/book", startedAt: 0 }
-        );
+        const plan = createDownloadPlan({
+            tasks: [createDownloadTask(10), createDownloadTask(11)],
+            selection: { mode: "range", sourceTotalChapters: 20, startIndex: 10, endIndex: 11 }
+        });
         const chapters = new Map([
             [0, createChapter(0)],
             [10, createChapter(10)]
         ]);
         const ui = { update: vi.fn() };
-        const progress = new DownloadProgress(scope, chapters, { emit: vi.fn() }, ui);
+        const progress = new DownloadProgress(plan, chapters, { emit: vi.fn() }, ui);
         expect(progress.snapshot).toMatchObject({ readyChapterCount: 1 });
 
         chapters.set(11, createChapter(11));

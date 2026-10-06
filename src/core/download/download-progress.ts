@@ -1,5 +1,5 @@
 import type { Chapter } from "../../content/model";
-import type { DownloadScope } from "./download-scope";
+import type { DownloadPlan } from "../../download/plan";
 import type { DownloadEventSink, DownloadPhase, DownloadSnapshot, DownloadUiPort } from "./contracts";
 
 // 取消和失败可以从多个运行阶段进入，因此与单向主流程分开描述
@@ -84,12 +84,12 @@ export function createInitialDownloadSnapshot(scheduledCount: number, restoredCo
 export class DownloadProgress {
     private current: DownloadSnapshot;
     constructor(
-        private readonly scope: DownloadScope,
+        private readonly plan: DownloadPlan,
         private readonly chapters: Map<number, Chapter>,
         private readonly events: DownloadEventSink,
         private readonly ui: Pick<DownloadUiPort, "update">
     ) {
-        this.current = createInitialDownloadSnapshot(scope.options.tasks.length, scope.readyCount(chapters));
+        this.current = createInitialDownloadSnapshot(plan.tasks.length, plan.readyCount(chapters));
     }
 
     /**
@@ -118,7 +118,7 @@ export class DownloadProgress {
      * 更新业务计数并重新计算本次范围内的正文数
      */
     update(values: Partial<Omit<DownloadSnapshot, "phase" | "readyChapterCount">>): void {
-        this.current = { ...this.current, ...values, readyChapterCount: this.scope.readyCount(this.chapters) };
+        this.current = { ...this.current, ...values, readyChapterCount: this.plan.readyCount(this.chapters) };
         this.events.emit({ type: "snapshot-updated", snapshot: this.snapshot });
         this.ui.update(this.snapshot);
     }

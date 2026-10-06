@@ -1,4 +1,5 @@
-import type { DownloadFormat, DownloadSelectionSummary } from "../../types";
+import type { DownloadFormat } from "../../types";
+import type { DownloadSelectionSummary } from "../../download/plan";
 
 /**
  * 生成书籍导出文件名；只有真正的范围任务追加结构化章节后缀

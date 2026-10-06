@@ -1,7 +1,12 @@
-import type { DownloadSelectionSummary } from "../../types";
+import type { DownloadSelection, DownloadSelectionSummary } from "../../download/plan";
 import type { LocaleKey } from "../../core/locale";
-import type { DownloadSelection, DownloadTask } from "../../core/download/contracts";
-import { createRangeSelection } from "../../core/download/selection";
+import type { DownloadTask } from "../../core/download/contracts";
+import {
+    createDownloadPlan,
+    createDownloadSelectionSummary,
+    createRangeSelection,
+    selectDownloadTasks
+} from "../../download/plan";
 import { enableDrag, el, registerElementCleanup, removeElement } from "../../utils/dom";
 import { createCommonHeader } from "./common";
 import { subscribeInterfaceLocaleChange, t } from "../locale";
@@ -37,6 +42,9 @@ export function createDownloadSelectionPopup(
 
     return new Promise((resolve) => {
         const total = options.tasks.length;
+        const initialSummary = options.initialSelection
+            ? createDownloadSelectionSummary(options.initialSelection)
+            : undefined;
         let settled = false;
         let unsubscribeLocale: () => void = () => undefined;
 
@@ -112,7 +120,7 @@ export function createDownloadSelectionPopup(
             min: 1,
             max: total,
             step: 1,
-            value: (options.initialSelection?.startIndex ?? 0) + 1,
+            value: initialSummary?.startChapter ?? 1,
             style: "width:100%;min-width:0;height:32px;padding:4px 8px;background:#fff;color:#333;border:1px solid #bbb;border-radius:4px;"
         });
         const endInput = el("input", {
@@ -121,7 +129,7 @@ export function createDownloadSelectionPopup(
             min: 1,
             max: total,
             step: 1,
-            value: (options.initialSelection?.endIndex ?? total - 1) + 1,
+            value: initialSummary?.endChapter ?? total,
             style: "width:100%;min-width:0;height:32px;padding:4px 8px;background:#fff;color:#333;border:1px solid #bbb;border-radius:4px;"
         });
         startLabel.appendChild(startInput);
@@ -289,14 +297,11 @@ export function createDownloadSelectionPopup(
                 downloadButton.disabled = true;
                 return;
             }
-            const selectedTasks = options.tasks.slice(selection.startIndex, selection.endIndex + 1);
+            const plan = createDownloadPlan({ tasks: selectDownloadTasks(options.tasks, selection), selection });
+            const selectedTasks = plan.tasks;
 
             // 不兼容的库存会整书失效，不能计入本次可复用数量
-            const cached = selectedTasks.reduce(
-                (count, task) =>
-                    count + (!options.cacheWillBeInvalidated && options.cachedIndexes.has(task.index) ? 1 : 0),
-                0
-            );
+            const cached = options.cacheWillBeInvalidated ? 0 : plan.readyCount(options.cachedIndexes);
             validation.textContent = "";
             validation.style.display = "none";
             summary.style.display = "flex";

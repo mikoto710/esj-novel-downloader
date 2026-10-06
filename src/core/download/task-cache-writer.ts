@@ -1,9 +1,10 @@
+import type { CacheMeta } from "../../types";
 import type { Chapter } from "../../content/model";
-import type { DownloadCancellationOutcome, DownloadDependencies } from "./contracts";
+import type { DownloadCancellationOutcome, DownloadDependencies, DownloadOptions } from "./contracts";
 import { ChapterCacheWriteBuffer } from "./cache-write-buffer";
 import { createStorageError, normalizeStorageError, StorageError, toStorageFailure } from "../cache/storage-error";
 import type { DownloadProgress } from "./download-progress";
-import type { DownloadScope } from "./download-scope";
+import type { DownloadPlan } from "../../download/plan";
 
 type CachePorts = Pick<DownloadDependencies, "cache" | "cancellation" | "lock" | "events" | "log"> & {
     scheduler: Pick<DownloadDependencies["scheduler"], "schedule">;
@@ -14,13 +15,13 @@ type CachePorts = Pick<DownloadDependencies, "cache" | "cancellation" | "lock" |
  */
 export function createTaskCacheWriter(
     ports: CachePorts,
-    scope: DownloadScope,
+    options: Pick<DownloadOptions, "bookId" | "taskId">,
+    plan: DownloadPlan,
+    meta: CacheMeta,
     chapters: Map<number, Chapter>,
     progress: DownloadProgress
 ) {
-    const persistedIndexes = new Set(
-        scope.options.tasks.filter((task) => chapters.has(task.index)).map((task) => task.index)
-    );
+    const persistedIndexes = new Set(plan.tasks.filter((task) => chapters.has(task.index)).map((task) => task.index));
     const buffer = new ChapterCacheWriteBuffer({
         write: persistTaskCacheBatch,
         schedule: ports.scheduler.schedule,
@@ -33,13 +34,7 @@ export function createTaskCacheWriter(
         ports.events.emit({ type: "cache-write-started", chapterCount: entries.size });
         for (let attempt = 1; attempt <= 2; attempt++) {
             try {
-                const saved = await ports.cache.putBatch(
-                    scope.options.bookId,
-                    scope.options.taskId,
-                    entries,
-                    scope.meta,
-                    signal
-                );
+                const saved = await ports.cache.putBatch(options.bookId, options.taskId, entries, meta, signal);
                 if (!saved) {
                     throw createStorageError("ownership-lost", "write");
                 }
@@ -50,7 +45,7 @@ export function createTaskCacheWriter(
                     failure: null
                 });
                 for (const index of entries.keys()) {
-                    if (scope.indexes.has(index)) {
+                    if (plan.indexes.has(index)) {
                         persistedIndexes.add(index);
                     }
                 }
@@ -89,12 +84,7 @@ export function createTaskCacheWriter(
     async function finishRangeCacheWriter(): Promise<boolean> {
         for (let attempt = 1; attempt <= 2; attempt++) {
             try {
-                return await ports.cache.finishForTask(
-                    scope.options.bookId,
-                    scope.options.taskId,
-                    scope.meta,
-                    ports.cancellation.signal
-                );
+                return await ports.cache.finishForTask(options.bookId, options.taskId, meta, ports.cancellation.signal);
             } catch (error) {
                 const normalized = normalizeStorageError(error, "write");
                 if (attempt === 1 && normalized.reason !== "ownership-lost" && !ports.cancellation.signal?.aborted) {
@@ -132,16 +122,11 @@ export function createTaskCacheWriter(
                 throw createStorageError("ownership-lost", "write");
             }
             // 全本成功清理整书缓存；范围成功只关闭 writer，保留已积累的章节
-            const operation = scope.selection.mode === "range" ? "write" : "clear";
+            const operation = plan.retainCacheOnSuccess ? "write" : "clear";
             try {
-                const finished =
-                    scope.selection.mode === "range"
-                        ? await finishRangeCacheWriter()
-                        : await ports.cache.clearForTask(
-                              scope.options.bookId,
-                              scope.options.taskId,
-                              ports.cancellation.signal
-                          );
+                const finished = plan.retainCacheOnSuccess
+                    ? await finishRangeCacheWriter()
+                    : await ports.cache.clearForTask(options.bookId, options.taskId, ports.cancellation.signal);
                 if (!finished && !ports.cancellation.isCancellationRequested()) {
                     throw createStorageError("ownership-lost", operation);
                 }

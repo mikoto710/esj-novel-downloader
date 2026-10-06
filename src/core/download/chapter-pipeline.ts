@@ -1,6 +1,6 @@
 import type { Chapter } from "../../content/model";
 import type { DownloadDependencies, DownloadTask } from "./contracts";
-import type { DownloadScope } from "./download-scope";
+import type { DownloadPlan } from "../../download/plan";
 import type { DownloadProgress } from "./download-progress";
 import type { TaskCacheWriter } from "./task-cache-writer";
 import { createMappedChapters } from "./mapped-chapters";
@@ -40,15 +40,17 @@ type ChapterPorts = Pick<
  */
 export function createChapterPipeline(
     ports: ChapterPorts,
-    scope: DownloadScope,
+    plan: DownloadPlan,
+    imageEnabled: boolean,
+    pageUrl: string,
     progress: DownloadProgress,
     cache: TaskCacheWriter
 ) {
     const { chapters, concurrency } = ports;
     // 字体和密码分支共用本流程的决策队列，调用方只关心下载阶段
     const decisions = new UserDecisionGate();
-    const mapping = createMappedChapters(ports, scope, progress, cache, decisions);
-    const protectedChapters = createProtectedChapters(ports, scope, progress, decisions);
+    const mapping = createMappedChapters(ports, plan, pageUrl, progress, cache, decisions);
+    const protectedChapters = createProtectedChapters(ports, plan, progress, decisions);
     const shouldStop = () => ports.cancellation.isCancellationRequested() || Boolean(cache.failure);
     /**
      * 按既有重试策略获取正文，普通失败交给后续完整性检查
@@ -69,7 +71,7 @@ export function createChapterPipeline(
             ports.log({
                 code: "chapter-fetch-failed",
                 params: {
-                    ...scope.position(task),
+                    ...plan.position(task),
                     title: task.title,
                     errorName: details.name,
                     detail: details.message,
@@ -82,7 +84,7 @@ export function createChapterPipeline(
                 stage: "fetch",
                 code: "chapter-fetch-failed",
                 params: {
-                    ...scope.position(task),
+                    ...plan.position(task),
                     title: task.title,
                     errorName: details.name,
                     detail: details.message
@@ -103,12 +105,7 @@ export function createChapterPipeline(
     ): Promise<ChapterTaskResult> {
         let chapter: Chapter;
         try {
-            chapter = await ports.chapterProcessor.process(
-                html,
-                task,
-                scope.options.imageEnabled,
-                ports.cancellation.signal
-            );
+            chapter = await ports.chapterProcessor.process(html, task, imageEnabled, ports.cancellation.signal);
             mapping.clearFailure(task.index);
         } catch (error) {
             if (!(error instanceof MappingFontError)) {
@@ -118,7 +115,7 @@ export function createChapterPipeline(
             ports.log({
                 code: "chapter-mapping-font-failed",
                 params: {
-                    ...scope.position(task),
+                    ...plan.position(task),
                     title: task.title,
                     errorCode: error.code,
                     reason: error.reason,
@@ -131,7 +128,7 @@ export function createChapterPipeline(
                 stage: "mapping-font",
                 code: error.code,
                 params: {
-                    ...scope.position(task),
+                    ...plan.position(task),
                     title: task.title,
                     reason: error.reason,
                     ...error.params
@@ -179,7 +176,7 @@ export function createChapterPipeline(
             params: {
                 retry: isRetry,
                 completed: progress.snapshot.completedCount,
-                ...scope.position(task),
+                ...plan.position(task),
                 title: task.title,
                 url: task.url,
                 ...(imageCount > 0 || imageErrors > 0 ? { imageCount } : {}),
@@ -231,7 +228,7 @@ export function createChapterPipeline(
                 code: "chapter-skipped-non-site",
                 params: {
                     completed: progress.snapshot.completedCount,
-                    ...scope.position(task),
+                    ...plan.position(task),
                     title: task.title
                 }
             });
@@ -265,7 +262,7 @@ export function createChapterPipeline(
         let workerFailure: unknown;
         try {
             await runWorkerPool({
-                items: scope.options.tasks.filter((task) => !chapters.has(task.index)),
+                items: plan.tasks.filter((task) => !chapters.has(task.index)),
                 concurrency,
                 isCancellationRequested: shouldStop,
                 beforeClaim: mapping.beforeClaim,
@@ -297,7 +294,7 @@ export function createChapterPipeline(
                 ports.log({
                     code: missingOnly ? "missing-chapter-retry" : "chapter-integrity-retry",
                     params: {
-                        ...scope.position(task),
+                        ...plan.position(task),
                         title: task.title,
                         reason,
                         ...(reason === "image-errors"
@@ -328,7 +325,7 @@ export function createChapterPipeline(
      */
     async function checkIntegrity(): Promise<void> {
         ports.log({ code: "integrity-check-started" });
-        const issues = scanChapterIntegrity(scope.options.tasks, chapters, scope.options.imageEnabled);
+        const issues = scanChapterIntegrity(plan.tasks, chapters, imageEnabled);
         progress.update({ retryPendingCount: issues.length, failedCount: issues.length });
         ports.log(
             issues.length
@@ -342,7 +339,7 @@ export function createChapterPipeline(
         if (!ports.cancellation.isCancellationRequested()) {
             progress.update({
                 retryPendingCount: 0,
-                failedCount: scanChapterIntegrity(scope.options.tasks, chapters, scope.options.imageEnabled).length
+                failedCount: scanChapterIntegrity(plan.tasks, chapters, imageEnabled).length
             });
         }
     }
@@ -351,7 +348,7 @@ export function createChapterPipeline(
      */
     async function resolveIncomplete(): Promise<void> {
         while (!ports.cancellation.isCancellationRequested()) {
-            const missingTasks = scanMissingChapterTasks(scope.options.tasks, chapters);
+            const missingTasks = scanMissingChapterTasks(plan.tasks, chapters);
             progress.update({ retryPendingCount: 0, failedCount: missingTasks.length });
             if (!missingTasks.length) {
                 return;
@@ -367,12 +364,12 @@ export function createChapterPipeline(
                     ports.ui.confirmIncompleteChapters(
                         {
                             missingTasks,
-                            totalChapters: scope.options.tasks.length,
-                            ...(scope.selection.mode === "range"
+                            totalChapters: plan.tasks.length,
+                            ...(plan.selection.mode === "range"
                                 ? {
-                                      sourceTotalChapters: scope.selection.sourceTotalChapters,
-                                      selectionMode: scope.selection.mode,
-                                      taskOrderByIndex: scope.taskOrderByIndex
+                                      sourceTotalChapters: plan.selection.sourceTotalChapters,
+                                      selectionMode: plan.selection.mode,
+                                      taskOrderByIndex: plan.taskOrderByIndex
                                   }
                                 : {})
                         },

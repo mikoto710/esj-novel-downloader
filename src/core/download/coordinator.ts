@@ -1,7 +1,8 @@
 import type { DownloadDependencies, DownloadOptions, DownloadResult } from "./contracts";
 import { StorageError, toStorageFailure, createStorageError } from "../cache/storage-error";
 import { MappingFontError } from "../../content/mapping-font";
-import { createDownloadScope } from "./download-scope";
+import { createDownloadPlan } from "../../download/plan";
+import type { CacheMeta } from "../../types";
 import { DownloadProgress } from "./download-progress";
 import { createTaskCacheWriter, type TaskCacheWriter } from "./task-cache-writer";
 import { createChapterPipeline, type ChapterPipeline } from "./chapter-pipeline";
@@ -18,11 +19,22 @@ export async function runDownload(
     dependencies: DownloadDependencies
 ): Promise<DownloadResult> {
     const { chapters, cancellation, ui, events, log } = dependencies;
-    const scope = createDownloadScope(options, dependencies);
+    const plan = createDownloadPlan(options);
+    const meta: CacheMeta = {
+        bookId: options.bookId,
+        bookName: options.bookName,
+        rawBookName: options.rawBookName || options.bookName,
+        author: options.author || "未知作者",
+        pageUrl: options.pageUrl || dependencies.fallbackPageUrl,
+        totalChapters: plan.selection.sourceTotalChapters,
+        sourcePageType: options.sourcePageType || "unknown",
+        imageEnabled: options.imageEnabled,
+        updatedAt: dependencies.startedAt
+    };
     const ports = { ...dependencies, concurrency: Math.max(1, Math.floor(dependencies.concurrency) || 1) };
-    const progress = new DownloadProgress(scope, chapters, events, ui);
-    const cache = createTaskCacheWriter(ports, scope, chapters, progress);
-    const pipeline = createChapterPipeline(ports, scope, progress, cache);
+    const progress = new DownloadProgress(plan, chapters, events, ui);
+    const cache = createTaskCacheWriter(ports, options, plan, meta, chapters, progress);
+    const pipeline = createChapterPipeline(ports, plan, options.imageEnabled, meta.pageUrl, progress, cache);
 
     function checkActive(): void {
         if (cancellation.isCancellationRequested()) {
@@ -42,14 +54,14 @@ export async function runDownload(
 
     try {
         progress.transition("preparing");
-        ui.prepare(scope.selection);
+        ui.prepare(plan.selection);
         events.emit({
             type: "task-started",
-            meta: scope.meta,
+            meta: meta,
             taskId: options.taskId,
             bookChapterCount: chapters.size
         });
-        const restoredCount = scope.readyCount(chapters);
+        const restoredCount = plan.readyCount(chapters);
         if (restoredCount) {
             log({ code: "cache-restore-started", params: { count: restoredCount } });
         }
@@ -60,7 +72,7 @@ export async function runDownload(
         if (!restored) {
             throw createStorageError("ownership-lost", "write");
         }
-        const cover = prepareCover(scope, dependencies);
+        const cover = prepareCover(options, dependencies);
 
         progress.transition("downloading");
         await pipeline.download();
@@ -80,11 +92,11 @@ export async function runDownload(
         const bookCover = await cover;
         checkActive();
         // 先封闭缓存 writer，再发布导出结果，避免成功后仍有后台写入
-        const data = createExportData(scope, chapters, bookCover, progress.snapshot.failedCount);
+        const data = createExportData(options, plan, meta.pageUrl, chapters, bookCover, progress.snapshot.failedCount);
         await cache.finish();
         checkActive();
         progress.update({
-            completedCount: options.tasks.length,
+            completedCount: plan.tasks.length,
             hasExportData: true
         });
         progress.transition("export-ready");

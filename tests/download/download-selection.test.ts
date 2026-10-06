@@ -1,11 +1,12 @@
 import { describe, expect, it } from "vitest";
 import type { DownloadTask } from "../../src/core/download/contracts";
 import {
+    createDownloadPlan,
     createRangeSelection,
     DownloadSelectionError,
     resolveDownloadSelection,
     selectDownloadTasks
-} from "../../src/core/download/selection";
+} from "../../src/download/plan";
 
 function createTasks(count: number): DownloadTask[] {
     return Array.from({ length: count }, (_, index) => ({
@@ -58,6 +59,24 @@ describe("download selection", () => {
             sourceTotalChapters: 3,
             startIndex: 0,
             endIndex: 2
+        });
+    });
+
+    it("normalizes an explicit full-source range before downstream consumers use it", () => {
+        expect(
+            resolveDownloadSelection({
+                tasks: createTasks(3),
+                selection: { mode: "range", sourceTotalChapters: 3, startIndex: 0, endIndex: 2 }
+            })
+        ).toEqual({ mode: "all", sourceTotalChapters: 3, startIndex: 0, endIndex: 2 });
+        expect(
+            createDownloadPlan({
+                tasks: createTasks(3),
+                selection: { mode: "range", sourceTotalChapters: 3, startIndex: 0, endIndex: 2 }
+            })
+        ).toMatchObject({
+            summary: { mode: "all", sourceTotalChapters: 3, startChapter: 1, endChapter: 3 },
+            retainCacheOnSuccess: false
         });
     });
 

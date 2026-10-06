@@ -1,3 +1,4 @@
+import type { DownloadSelection } from "../../download/plan";
 import type { CacheMeta, CachedData, DownloadCancellationMode, SourcePageType } from "../../types";
 import type { BookCover, Chapter } from "../../content/model";
 import type { DomainMessage, DomainMessageParams } from "../messages";
@@ -15,17 +16,6 @@ export interface DownloadTask {
     index: number;
     url: string;
     title: string;
-}
-
-/**
- * detail／forum 书籍下载所覆盖的原书章节范围
- * 索引固定为 0-based，用户界面和持久化摘要在各自边界转换为 1-based
- */
-export interface DownloadSelection {
-    mode: "all" | "range";
-    sourceTotalChapters: number;
-    startIndex: number;
-    endIndex: number;
 }
 
 export type DownloadLogCode =

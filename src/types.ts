@@ -1,3 +1,4 @@
+import type { DownloadSelectionSummary } from "./download/plan";
 import type { Chapter, BookMetadata } from "./content/model";
 
 // 缓存条目的数据来源
@@ -16,13 +17,6 @@ export type DownloadFormat = "txt" | "epub" | "html";
 export interface ChapterSummary {
     totalCount: number;
     missingCount: number;
-}
-
-export interface DownloadSelectionSummary {
-    mode: "all" | "range";
-    sourceTotalChapters: number;
-    startChapter: number;
-    endChapter: number;
 }
 
 export interface DownloadHistoryItem {
