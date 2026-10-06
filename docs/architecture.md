@@ -1,6 +1,6 @@
 # 下载流程阅读路线
 
-先读入口和主流程，遇到具体分支再进入对应模块。单章导出仍从 `scrapers/single.ts` 进入，不经过书籍下载协调器。
+先读入口和主流程，遇到具体分支再进入对应模块。单章导出从 `app/single-download.ts` 进入，不经过书籍下载协调器。
 
 ## 从哪里开始
 
@@ -96,7 +96,7 @@ download 通过传入的能力调用浏览器实现
 | 锁与心跳                 | `executeBookDownload` 取得，同文件局部 finalizer 释放；回调捕获本任务取消能力，锁状态不代表业务成功                                                             |
 | 最近可导出结果           | 当前任务仅在 `ready` 后通过 `publishCachedExport` 替换结果；格式弹窗绑定该结果，设置通过 `invalidateCachedEpub` 使 EPUB 失效，Blob 复用还校验生成时的标签页设置 |
 
-`app/book-download.ts` 只公开 `runBookDownload`，取消能力、执行、接线和 finalizer 均为同文件局部实现。`ui/download-view.ts` 负责 DOM、标题、托盘与语言订阅，并在创建时绑定原任务身份和停止动作；核心未进入 try 或初始化失败时，应用层仍结束视图与已经创建的资源。[`app/page-session.ts`](../src/app/page-session.ts) 单一维护页面会话及最近导出；`AppState`、`RuntimeCacheSession` 与显示状态类型随该规则归位。EPUB 派生产物失效的实际实现仍仅位于 `core/state.ts`，后续随应用导出流程迁移。
+`app/book-download.ts` 只公开 `runBookDownload`，取消能力、执行、接线和 finalizer 均为同文件局部实现。`ui/download-view.ts` 负责 DOM、标题、托盘与语言订阅，并在创建时绑定原任务身份和停止动作；核心未进入 try 或初始化失败时，应用层仍结束视图与已经创建的资源。[`app/page-session.ts`](../src/app/page-session.ts) 单一维护页面会话及最近导出；`AppState`、`RuntimeCacheSession` 与显示状态类型随该规则归位。EPUB 派生产物由 `app/export.ts` 维护；设置弹窗显式传入原结果使其失效。
 
 页面 `state` 仅保留当前任务停止入口、缓存显示摘要、最近导出和页面标题。取消能力、章节 Map、锁都通过本次输入传入；不会根据新的全局变量切换到另一个任务。
 
@@ -105,7 +105,7 @@ download 通过传入的能力调用浏览器实现
 - 旧 task 的事件、日志、UI 清理、锁收尾和结果发布都绑定原 taskId，不操作新的页面任务。网络取消和缓存写入信号仍分开。
 - 并发数、备用页面 URL 和启动时间在浏览器装配时作为值传入；插图设置仍在缓存预览前固定，EPUB 标签页设置仍在生成 EPUB 时读取。
 
-`export-ready` 表示数据已准备好，实际文件下载和历史记录由格式弹窗负责。“再次导出”使用本页快照，不依赖续传缓存是否可读，也不重新认领缓存或获取书籍锁。
+`export-ready` 表示数据已准备好，实际文件下载、历史和导出诊断由 `app/export.ts` 负责，格式弹窗提供交互。“再次导出”使用本页快照，不依赖续传缓存是否可读，也不重新认领缓存或获取书籍锁。
 
 导出快照保留来源 `taskId`，再次导出的诊断写回原任务；旧弹窗的异步生成结束时，不覆盖后来任务的页面标题。EPUB 生成固定本次标签页设置，设置未改变才缓存 Blob，重试前还会复核设置键。
 
@@ -115,11 +115,15 @@ download 通过传入的能力调用浏览器实现
 
 ## 输出快照与格式生成
 
-`export/snapshot.ts` 单一维护 `CachedData`、原任务归属、元数据、固定范围的章节及缺章占位；页面继续持有同一份结果，EPUB 派生 Blob 暂留该对象。占位只加入输出，不写回章节 Map 或缓存。`download/run.ts` 局部准备封面：恢复后启动缓存复用或经注入端口抓取，就绪前等待；固定 TXT 文本及快照后仍先 `cache.finish`，全本清整书缓存、范围关闭 writer 保留库存，然后才返回 ready。
+`export/snapshot.ts` 单一维护 `ExportSnapshot`、原任务归属、元数据、固定范围的章节及缺章占位；`app/export.ts` 的 `CachedData` 只为同一对象增加可失效的 EPUB 派生字段，不复制正文或创建第二份结果。占位只加入输出，不写回章节 Map 或缓存。`download/run.ts` 局部准备封面：恢复后启动缓存复用或经注入端口抓取，就绪前等待；固定 TXT 文本及快照后仍先 `cache.finish`，全本清整书缓存、范围关闭 writer 保留库存，然后才返回 ready。
 
 `export/txt.ts` 负责简介与章节文本拼接、单章作者及当前 URL、TXT Blob。书籍 TXT 文本在结果准备时固定，Blob 在格式弹窗触发时创建。`export/html.ts` 的 `buildBookHtml` 与 `buildCurrentChapterHtml` 是明确的两个入口：整书与一章范围均保留封面／目录布局，当前单章保留单章元信息。共用嵌图与字体资源实现，但整书先准备字体再替换图片，当前单章先嵌图再准备字体；单章 TXT 也继续完成已启用的图片资源准备。
 
-`export/epub.ts` 维护 EPUB 文档、导航、资源校验与局部 XHTML 转换；字体安全绑定继续调用 `content/mapping-font.ts`。`export/filename.ts` 维护原范围摘要后缀及当前单章文件名，`export/text.ts` 仅公开实际共用的字符转义。生成器不读取页面会话、采集正文、认领缓存或变更任务状态；格式选择、Blob 复用、下载触发、历史和诊断仍由现有工作流负责。
+`export/epub.ts` 维护 EPUB 文档、导航、资源校验与局部 XHTML 转换；字体安全绑定继续调用 `content/mapping-font.ts`。`export/filename.ts` 维护原范围摘要后缀及当前单章文件名，`export/text.ts` 仅公开实际共用的字符转义。生成器不读取页面会话、采集正文、认领缓存或变更任务状态；`app/export.ts` 集中格式能力、原结果 Blob 复用、生成、触发、失败重试及历史和诊断条件。`ui/dialogs/format-choice.ts` 只保留按钮防重、确认显示、语言刷新、最小化和原任务／旧视图标题保护。
+
+`app/single-download.ts` 保留当前文档采集、详情元数据失败回退、原生密码检查、正文及字体预检，并调用明确的当前章格式入口；不进入书籍锁、续传认领或全本结果发布。插图设置在诊断启动及实际资源准备时分别读取。元数据未取得和取得空简介的 TXT／命名行为保持不同。
+
+`browser/files.ts` 提供文件触发与回收：书籍点击后 `remove()`，60 秒后撤销 URL；单章点击后立即标记 `downloadTriggered`，再 `body.removeChild()` 并直接撤销 URL。书籍历史 `void` 写入，不阻塞格式按钮复位；单章等待历史完成，写入拒绝仍展示失败，但已触发文件的导出诊断保持成功。这些记录只代表触发，不证明文件实际保存。
 
 ## 改一条规则时
 
@@ -127,6 +131,6 @@ download 通过传入的能力调用浏览器实现
 - 缓存是否兼容：改 [`storage/cache/compatibility.ts`](../src/storage/cache/compatibility.ts)，检查 [`cache-preview.contract.test.ts`](../tests/cache/cache-preview.contract.test.ts)。预览不授权清理；正式 claim 在同一写事务检查兼容性和确认，未确认不写入、不迁移清理、不发 claimed 事件。
 - 密码错误如何处理：看 `protected-chapters.ts`；站点授权协议看 [`site/protected-chapter.ts`](../src/site/protected-chapter.ts)，普通章节与授权请求共用本任务的 [`site/request-gate.ts`](../src/site/request-gate.ts)，授权独占队列保持原请求顺序。拒绝的密码不能变成普通失败章节或缓存记录。
 - 会话／导出清理与跨页失效：看 [`app/page-session.ts`](../src/app/page-session.ts)、[`app/cache-management.ts`](../src/app/cache-management.ts) 和 [`runtime-cache-ownership.contract.test.ts`](../tests/cache/runtime-cache-ownership.contract.test.ts)。已有结果与新任务独立，活动章节表不由同步事件清空。
-- 导出生成与重试：看 `format-choice.ts` 和 [`export-recovery.contract.test.ts`](../tests/export/export-recovery.contract.test.ts)。缺章占位只加入导出快照。
+- 导出生成与重试：看 [`app/export.ts`](../src/app/export.ts) 和 [`export-recovery.contract.test.ts`](../tests/export/export-recovery.contract.test.ts)。缺章占位只加入导出快照。
 
 注释保持就近、简短：方法说明一句职责，阶段边界说明不直观的顺序。修改流程时同时检查这里的入口与代表测试；验证命令和隔离约定见 [`docs/testing.md`](testing.md)。

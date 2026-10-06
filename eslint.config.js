@@ -82,12 +82,24 @@ export default [
                 {
                     patterns: [
                         {
-                            group: ["**/app/**", "**/ui/**", "**/core/state"],
+                            group: ["**/app/**", "**/ui/**"],
                             message: "存储只提供事实与受保护操作，页面会话和缓存管理由 app 协调"
                         }
                     ]
                 }
             ]
+        }
+    },
+
+    {
+        files: ["src/ui/dialogs/format-choice.ts"],
+        rules: {
+            "no-restricted-imports": ["error", {
+                patterns: [{
+                    group: ["**/export/**", "**/storage/**", "**/browser/files", "**/adapters/browser-diagnostics"],
+                    message: "格式视图只通过 app/export 操作原结果，生成、历史和诊断规则由应用层维护"
+                }]
+            }]
         }
     },
 
@@ -98,7 +110,7 @@ export default [
                 "error",
                 {
                     patterns: [{
-                        group: ["**/app/**", "**/ui/**", "**/site/**", "**/scrapers/**", "**/storage/**", "**/core/state"],
+                        group: ["**/app/**", "**/ui/**", "**/site/**", "**/storage/**"],
                         message: "导出只处理传入快照与资源，不读取页面会话、采集正文或认领缓存"
                     }]
                 }
@@ -133,7 +145,6 @@ export default [
                                 "**/ui/**",
                                 "**/adapters/**",
                                 "**/app/**",
-                                "**/scrapers/**",
                                 "**/site/**",
                                 "**/state",
                                 "**/config",

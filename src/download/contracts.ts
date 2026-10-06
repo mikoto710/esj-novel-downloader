@@ -1,6 +1,6 @@
 import type { DownloadSelection } from "./plan";
 import type { DownloadCancellationMode, SourcePageType } from "../types";
-import type { CachedData } from "../export/snapshot";
+import type { ExportSnapshot } from "../export/snapshot";
 import type { CacheMeta } from "../storage/cache/model";
 import type { BookCover, Chapter } from "../content/model";
 import type { DomainMessage, DomainMessageParams } from "../core/messages";
@@ -286,7 +286,7 @@ export interface DownloadCancellationPort {
  * 成功携带可直接导出的快照；取消不替换调用方已有结果
  */
 export type DownloadResult =
-    | { status: "ready"; data: CachedData }
+    | { status: "ready"; data: ExportSnapshot }
     | { status: "cancelled"; outcome: DownloadCancellationOutcome };
 
 /**

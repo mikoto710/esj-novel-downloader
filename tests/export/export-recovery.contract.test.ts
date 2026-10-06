@@ -106,7 +106,7 @@ describe("full-book export recovery contracts", () => {
 
     it("does not restore an EPUB cache invalidated while generation is pending", async () => {
         const { setEpubTagPageSetting } = await import("../../src/storage/settings");
-        const { invalidateCachedEpub } = await import("../../src/core/state");
+        const { invalidateCachedEpub } = await import("../../src/app/export");
         setEpubTagPageSetting(false);
         const pending = createDeferred<Blob>();
         mocks.buildEpub.mockReturnValueOnce(pending.promise);
@@ -114,7 +114,7 @@ describe("full-book export recovery contracts", () => {
         click("#esj-epub");
         await vi.waitFor(() => expect(mocks.buildEpub).toHaveBeenCalledOnce());
         setEpubTagPageSetting(true);
-        invalidateCachedEpub();
+        invalidateCachedEpub(state.cachedData);
         pending.resolve(new Blob(["old settings"]));
         await vi.waitFor(() => expect(mocks.triggerDownload).toHaveBeenCalledOnce());
         expect(state.cachedData?.epubBlob).toBeNull();

@@ -1,14 +1,25 @@
 /**
- * 触发浏览器下载逻辑
+ * 触发文件下载；单章即时回收，书籍保留下载消费 URL 的时间
  */
-export function triggerDownload(blob: Blob, filename: string): void {
+export function triggerDownload(
+    blob: Blob,
+    filename: string,
+    options: { revokeDelayMs?: number; onTriggered?: () => void } = {}
+): void {
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
     a.download = filename;
+    const revokeDelayMs = options.revokeDelayMs ?? 60_000;
     document.body.appendChild(a);
     a.click();
-    a.remove();
-    setTimeout(() => URL.revokeObjectURL(a.href), 60000);
+    options.onTriggered?.();
+    if (revokeDelayMs === 0) {
+        document.body.removeChild(a);
+        URL.revokeObjectURL(a.href);
+    } else {
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(a.href), revokeDelayMs);
+    }
 }
 
 /**

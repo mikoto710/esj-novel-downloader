@@ -1,5 +1,5 @@
 import type { DownloadCancellationMode } from "../types";
-import type { CachedData } from "../export/snapshot";
+import type { CachedData } from "./export";
 import type { CacheMeta } from "../storage/cache/model";
 import type { DownloadCancellationPort } from "../download/contracts";
 import { subscribeCacheSync } from "../storage/cache/sync";
@@ -76,6 +76,7 @@ export function abortActiveDownload(mode: DownloadCancellationMode = "flush"): v
  */
 export function publishCachedExport(data: CachedData, taskId: string): void {
     if (isCurrentDownload(taskId)) {
+        data.epubBlob ??= null;
         state.cachedData = data;
     }
 }

@@ -43,7 +43,7 @@ describe("full-book and single-chapter export isolation", () => {
         const processImages = vi.fn(() => images.promise);
         vi.doMock("../../src/site/images", () => ({ processHtmlImages: processImages }));
         const { state } = await import("../../src/app/page-session");
-        const { downloadCurrentPage } = await import("../../src/scrapers/single");
+        const { downloadCurrentPage } = await import("../../src/app/single-download");
         const fullBookData = createCachedData();
         state.cachedData = fullBookData;
 
@@ -95,7 +95,7 @@ describe("full-book and single-chapter export isolation", () => {
             })
         }));
 
-        const { downloadCurrentPage } = await import("../../src/scrapers/single");
+        const { downloadCurrentPage } = await import("../../src/app/single-download");
         await downloadCurrentPage("html");
 
         const { listBrowserDiagnosticSessions } = await import("../../src/adapters/browser-diagnostics");
@@ -117,7 +117,7 @@ describe("full-book and single-chapter export isolation", () => {
             throw new Error("object URL failed");
         });
 
-        const { downloadCurrentPage } = await import("../../src/scrapers/single");
+        const { downloadCurrentPage } = await import("../../src/app/single-download");
         await downloadCurrentPage("txt");
         const { listBrowserDiagnosticSessions } = await import("../../src/adapters/browser-diagnostics");
         const diagnostic = listBrowserDiagnosticSessions().history[0];
@@ -152,7 +152,7 @@ describe("full-book and single-chapter export isolation", () => {
         document.title = "Protected chapter - ESJZone";
 
         const [{ downloadCurrentPage }, { setInterfaceLocalePreference }] = await Promise.all([
-            import("../../src/scrapers/single"),
+            import("../../src/app/single-download"),
             import("../../src/storage/settings")
         ]);
         setInterfaceLocalePreference("zh-CN");

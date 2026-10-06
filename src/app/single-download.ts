@@ -1,3 +1,5 @@
+import { getExportCapabilities } from "./export";
+import { triggerDownload } from "../browser/files";
 import { buildCurrentChapterHtml, embedChapterImages } from "../export/html";
 import { buildCurrentChapterTxt } from "../export/txt";
 import { createCurrentChapterFilename } from "../export/filename";
@@ -119,7 +121,8 @@ export async function downloadCurrentPage(format: "txt" | "html" = "txt"): Promi
             }
             throw error;
         }
-        if (format === "txt" && normalized.kind === "mapped") {
+        const { mappingSummary, txtEnabled } = getExportCapabilities([normalized.chapter]);
+        if (format === "txt" && !txtEnabled) {
             diagnosticResult = "cancelled";
             showMessagePopup({
                 tone: "warning",
@@ -130,11 +133,8 @@ export async function downloadCurrentPage(format: "txt" | "html" = "txt"): Promi
         }
         if (
             format === "html" &&
-            normalized.kind === "mapped" &&
-            !(await confirmMappingFontExport("HTML", {
-                chapterCount: 1,
-                fontBytes: normalized.chapter.mappingFont?.blob.size || 0
-            }))
+            mappingSummary.chapterCount > 0 &&
+            !(await confirmMappingFontExport("HTML", mappingSummary))
         ) {
             diagnosticResult = "cancelled";
             return;
@@ -223,15 +223,12 @@ export async function downloadCurrentPage(format: "txt" | "html" = "txt"): Promi
             }
             generated = true;
 
-            const a = document.createElement("a");
-            a.href = URL.createObjectURL(blob);
-            a.download = downloadFilename;
-
-            document.body.appendChild(a);
-            a.click();
-            downloadTriggered = true;
-            document.body.removeChild(a);
-            URL.revokeObjectURL(a.href);
+            triggerDownload(blob, downloadFilename, {
+                revokeDelayMs: 0,
+                onTriggered: () => {
+                    downloadTriggered = true;
+                }
+            });
 
             await addDownloadHistory({
                 ...(bookId === "unknown" ? {} : { bookId }),

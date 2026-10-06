@@ -1,4 +1,5 @@
-import { invalidateCachedEpub } from "../../core/state";
+import { state } from "../../app/page-session";
+import { invalidateCachedEpub } from "../../app/export";
 import {
     getConcurrency,
     setConcurrency,
@@ -320,7 +321,7 @@ export function createSettingsPanel(): void {
             isEpubTagPageEnabled = checked;
 
             // 标签页改变后需重新生成 EPUB，已有正文结果继续复用
-            invalidateCachedEpub();
+            invalidateCachedEpub(state.cachedData);
 
             log(
                 t("settings.log.epubTag", {

@@ -1,6 +1,6 @@
 import { el } from "../../utils/dom";
 import { showMessagePopup } from "../dialogs/message";
-import { downloadCurrentPage } from "../../scrapers/single";
+import { downloadCurrentPage } from "../../app/single-download";
 import { parseChapterHtml, normalizeParsedChapter } from "../../site/chapter";
 import { MappingFontError } from "../../content/mapping-font";
 import { isProtectedChapterHtml } from "../../site/protected-chapter";

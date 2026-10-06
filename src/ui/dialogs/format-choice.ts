@@ -1,20 +1,17 @@
-import type { CachedData } from "../../export/snapshot";
-import type { MappingFontSummary } from "../../download/contracts";
+import {
+    exportBookTxt,
+    exportBookRich,
+    getExportCapabilities,
+    getExportImageSetting,
+    type CachedData,
+    type ExportFormat,
+    type ExportFailureStage
+} from "../../app/export";
 import { state } from "../../app/page-session";
-import { buildEpub } from "../../export/epub";
-import { buildTxt } from "../../export/txt";
-import { buildBookHtml } from "../../export/html";
-import { getEpubTagPageSetting, getImageDownloadSetting } from "../../storage/settings";
-import { addDownloadHistory } from "../../storage/history";
-import { MappingFontError } from "../../content/mapping-font";
-import { createBookExportFilename } from "../../export/filename";
-import { recordBrowserDiagnosticExport, recordBrowserDiagnosticFailure } from "../../adapters/browser-diagnostics";
 import { fullCleanup, enableDrag, el, registerElementCleanup, removeElement } from "../../utils/dom";
-import { triggerDownload } from "../../browser/files";
 import { log } from "../../utils/log";
 import { acquirePageActionGroupLockForPopup } from "../page-action-lock";
 import { subscribeInterfaceLocaleChange, t } from "../locale";
-import { formatMappingFontError } from "../messages/mapping-font";
 import { createCommonHeader } from "./common";
 import { showMessagePopup } from "./message";
 import { confirmMappingFontExport } from "./mapping-font";
@@ -26,56 +23,14 @@ function formatMappingFontBytes(bytes: number): string {
     return `${(bytes / (1024 * 1024)).toFixed(1)} MiB`;
 }
 
-const MAX_EXPORT_ERROR_DETAIL_LENGTH = 2_000;
-const diagnosticExportFormat = { TXT: "txt", EPUB: "epub", HTML: "html" } as const;
-type ExportFailureStage = "generate" | "download";
 let disposeActiveFormatLocaleRefresh: (() => void) | null = null;
 
-function getExportErrorDetails(error: unknown): string {
-    const details =
-        error instanceof MappingFontError
-            ? formatMappingFontError(error.code)
-            : error instanceof Error
-              ? error.message
-              : String(error);
-    if (details.length <= MAX_EXPORT_ERROR_DETAIL_LENGTH) {
-        return details;
-    }
-    return `${details.slice(0, MAX_EXPORT_ERROR_DETAIL_LENGTH)}\n${t("export.failure.truncated")}`;
-}
-
-function showExportFailure(
-    format: "TXT" | "EPUB" | "HTML",
-    stage: ExportFailureStage,
-    error: unknown,
-    taskId?: string
-): void {
-    const details = getExportErrorDetails(error);
+function showExportFailure(format: ExportFormat, stage: ExportFailureStage, details: string): void {
     const stageText = t(stage === "generate" ? "export.stage.generate" : "export.stage.download");
-    recordBrowserDiagnosticExport(
-        {
-            scope: "full",
-            format: diagnosticExportFormat[format],
-            outcome: "failed",
-            generated: stage === "download",
-            downloadTriggered: false,
-            failureStage: stage
-        },
-        taskId
-    );
-    recordBrowserDiagnosticFailure(
-        {
-            scope: "export",
-            stage: `${format.toLowerCase()}-${stage}`,
-            code: error instanceof Error ? error.name || "export-failed" : "export-failed",
-            message: details
-        },
-        taskId
-    );
     showMessagePopup({
         tone: "error",
-        title: t("export.failure.title", { format, stage: stageText }),
-        message: t("export.failure.message", { format, stage: stageText }),
+        title: t("export.failure.title", { format: format.toUpperCase(), stage: stageText }),
+        message: t("export.failure.message", { format: format.toUpperCase(), stage: stageText }),
         details
     });
 }
@@ -87,12 +42,8 @@ export function showFormatChoice(data: CachedData): void {
     fullCleanup();
     disposeActiveFormatLocaleRefresh?.();
 
-    const mappedChapters = data.chapters.filter((chapter) => Boolean(chapter.mappingFont));
-    const mappingSummary: MappingFontSummary = {
-        chapterCount: mappedChapters.length,
-        fontBytes: mappedChapters.reduce((total, chapter) => total + (chapter.mappingFont?.blob.size || 0), 0)
-    };
-    const hasMappedChapters = mappingSummary.chapterCount > 0;
+    const { mappingSummary, txtEnabled } = getExportCapabilities(data.chapters);
+    const hasMappedChapters = !txtEnabled;
 
     const closeAction = () => {
         removeElement(popup);
@@ -112,7 +63,7 @@ export function showFormatChoice(data: CachedData): void {
     const imageSuccessCount = data.chapters.reduce((count, chapter) => count + (chapter.images?.length || 0), 0);
     const imageFailureCount = data.chapters.reduce((count, chapter) => count + (chapter.imageErrors || 0), 0);
     const imageTotalCount = imageSuccessCount + imageFailureCount;
-    const isImageDownloadEnabled = data.exportContext?.imageEnabled ?? getImageDownloadSetting();
+    const isImageDownloadEnabled = getExportImageSetting(data);
     const imageStatus = isImageDownloadEnabled
         ? el("div", {
               id: "esj-format-image-status",
@@ -168,30 +119,7 @@ export function showFormatChoice(data: CachedData): void {
             "aria-disabled": hasMappedChapters ? "true" : "false",
             title: hasMappedChapters ? t("export.txtBlocked") : t("export.downloadTxt"),
             style: `flex:1;padding:10px 0;border:1px solid #ccc;background:#f0f0f0;border-radius:6px;cursor:${hasMappedChapters ? "not-allowed" : "pointer"};font-weight:bold;color:${hasMappedChapters ? "#999" : "#333"};`,
-            onclick: hasMappedChapters
-                ? undefined
-                : () => {
-                      const filename = createBookExportFilename(
-                          data.metadata.title,
-                          "txt",
-                          data.exportContext?.selection
-                      );
-                      let blob: Blob;
-                      try {
-                          blob = buildTxt(data.txt);
-                      } catch (error) {
-                          showExportFailure("TXT", "generate", error, data.exportContext?.taskId);
-                          return;
-                      }
-                      try {
-                          triggerDownload(blob, filename);
-                          recordSuccessfulExport("txt");
-                          void recordBookExport("txt");
-                      } catch (error) {
-                          console.error(error);
-                          showExportFailure("TXT", "download", error, data.exportContext?.taskId);
-                      }
-                  }
+            onclick: hasMappedChapters ? undefined : () => exportBookTxt(data, { failed: showExportFailure })
         },
         [hasMappedChapters ? t("export.txtDisabled") : t("export.downloadTxt")]
     );
@@ -319,49 +247,24 @@ export function showFormatChoice(data: CachedData): void {
             return;
         }
         exporting.add(format);
-        const label = format === "epub" ? "EPUB" : "HTML";
         const originalBg = button.style.background;
         const oldTitle = document.title;
-        let stage: ExportFailureStage = "generate";
         try {
             button.disabled = true;
-            if (hasMappedChapters && !(await confirmMappingFontExport(label, mappingSummary))) {
-                recordCancelledExport(format);
-                return;
-            }
-            const epubTagPageEnabled = format === "epub" && getEpubTagPageSetting();
-            if (format === "epub" && data.epubTagPageEnabled !== epubTagPageEnabled) {
-                data.epubBlob = null;
-            }
-            let blob = format === "epub" ? data.epubBlob : null;
-            if (!blob) {
-                button.textContent = t("export.generating");
-                if (format === "epub") {
-                    button.style.background = "#7ab8d6";
-                    if (popup.isConnected) {
-                        document.title = t("export.documentTitle", { title: oldTitle });
+            await exportBookRich(data, format, {
+                confirm: (format, summary) => confirmMappingFontExport(format === "epub" ? "EPUB" : "HTML", summary),
+                generating: (format) => {
+                    button.textContent = t("export.generating");
+                    if (format === "epub") {
+                        button.style.background = "#7ab8d6";
+                        if (popup.isConnected) {
+                            document.title = t("export.documentTitle", { title: oldTitle });
+                        }
                     }
-                }
-                log(t(format === "epub" ? "export.log.buildEpub" : "export.log.buildHtml"));
-                blob =
-                    format === "epub"
-                        ? await buildEpub(data.chapters, data.metadata, epubTagPageEnabled)
-                        : await buildBookHtml(data.chapters, data.metadata);
-                if (format === "epub" && getEpubTagPageSetting() === epubTagPageEnabled) {
-                    // 设置未改变才缓存，避免异步生成把已失效的产物写回
-                    data.epubBlob = blob;
-                    data.epubTagPageEnabled = epubTagPageEnabled;
-                }
-            }
-
-            // 弹窗始终使用创建时的结果，后续任务不会替换本次导出内容
-            stage = "download";
-            triggerDownload(blob, createBookExportFilename(data.metadata.title, format, data.exportContext?.selection));
-            recordSuccessfulExport(format);
-            void recordBookExport(format);
-        } catch (error) {
-            console.error(error);
-            showExportFailure(label, stage, error, data.exportContext?.taskId);
+                    log(t(format === "epub" ? "export.log.buildEpub" : "export.log.buildHtml"));
+                },
+                failed: showExportFailure
+            });
         } finally {
             exporting.delete(format);
             button.disabled = false;
@@ -376,60 +279,5 @@ export function showFormatChoice(data: CachedData): void {
             }
             refreshFormatChoiceText();
         }
-    }
-
-    function recordSuccessfulExport(format: "txt" | "epub" | "html"): void {
-        recordBrowserDiagnosticExport(
-            {
-                scope: "full",
-                format,
-                outcome: "success",
-                generated: true,
-                downloadTriggered: true,
-                failureStage: null
-            },
-            data.exportContext?.taskId
-        );
-    }
-
-    function recordCancelledExport(format: "epub" | "html"): void {
-        recordBrowserDiagnosticExport(
-            {
-                scope: "full",
-                format,
-                outcome: "cancelled",
-                generated: false,
-                downloadTriggered: false,
-                failureStage: null
-            },
-            data.exportContext?.taskId
-        );
-    }
-
-    function recordBookExport(format: "txt" | "epub" | "html"): Promise<void> {
-        const context = data.exportContext;
-        const imageInfo =
-            format === "txt"
-                ? undefined
-                : {
-                      enabled: context?.imageEnabled || false,
-                      successCount: imageSuccessCount,
-                      failureCount: imageFailureCount
-                  };
-        return addDownloadHistory({
-            ...(context?.bookId === undefined ? {} : { bookId: context.bookId }),
-            bookName: context?.rawBookName || data.metadata.title || "未命名小说",
-            author: data.metadata.author || "",
-            format,
-            sourcePageType: context?.sourcePageType || "detail",
-            chapterSummary: context?.chapterSummary || {
-                totalCount: data.chapters.length,
-                missingCount: data.chapters.filter((chapter) => chapter.content.includes('class="esj-missing-chapter"'))
-                    .length
-            },
-            ...(context?.selection === undefined ? {} : { selection: context.selection }),
-            ...(imageInfo === undefined ? {} : { imageInfo }),
-            pageUrl: context?.pageUrl || location.href
-        });
     }
 }

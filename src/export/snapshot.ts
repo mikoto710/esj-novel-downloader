@@ -6,13 +6,10 @@ import { escapeXml } from "./text";
 import { assembleBookTxt } from "./txt";
 
 // 导出数据结构
-export interface CachedData {
+export interface ExportSnapshot {
     txt: string;
     chapters: Chapter[];
     metadata: BookMetadata;
-    epubBlob: Blob | null;
-    // 派生产物的设置键，正文和导出归属不随此设置改变
-    epubTagPageEnabled?: boolean;
     exportContext?: {
         bookId: string;
         taskId?: string;
@@ -76,7 +73,7 @@ export function createExportData(
     chapters: ReadonlyMap<number, Chapter>,
     cover: BookCover | null,
     missingCount: number
-): CachedData {
+): ExportSnapshot {
     const assembled = assembleExportChapters(plan.tasks, chapters);
     return {
         txt: assembleBookTxt(options.introTxt, assembled),
@@ -89,7 +86,6 @@ export function createExportData(
             coverBlob: cover?.blob || null,
             coverExt: cover?.ext || "jpg"
         },
-        epubBlob: null,
         exportContext: {
             bookId: options.bookId,
             taskId: options.taskId,

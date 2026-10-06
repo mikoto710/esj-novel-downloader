@@ -1,5 +1,5 @@
 import type { DownloadTask } from "../../src/download/contracts";
-import type { CachedData } from "../../src/export/snapshot";
+import type { CachedData } from "../../src/app/export";
 import type { BookDownloadLock } from "../../src/storage/book-lock";
 import type { CacheMeta } from "../../src/storage/cache/model";
 import type { BookMetadata, Chapter, ChapterImage } from "../../src/content/model";
