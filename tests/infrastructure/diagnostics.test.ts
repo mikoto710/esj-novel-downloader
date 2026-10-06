@@ -13,7 +13,7 @@ import {
     type DiagnosticRepository,
     type DiagnosticStore,
     type StartDiagnosticSessionInput
-} from "../../src/core/diagnostics";
+} from "../../src/diagnostics/manager";
 import { createInitialDownloadSnapshot } from "../../src/download/progress";
 
 class MemoryDiagnosticRepository implements DiagnosticRepository {

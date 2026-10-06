@@ -20,7 +20,7 @@ import {
     recordBrowserDiagnosticFailure,
     startBrowserDiagnosticSession,
     updateBrowserDiagnosticSessionMetadata
-} from "../adapters/browser-diagnostics";
+} from "../diagnostics/runtime";
 
 /**
  * 抓取并下载当前单章节页面

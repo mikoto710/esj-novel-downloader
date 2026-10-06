@@ -15,6 +15,7 @@ Report actual validation evidence in the current task or Pull Request. Do not ad
 | Scheduling, retries, byte budgets, task locks, backpressure, or cancellation      | Existing core/lifecycle boundaries and relevant representative pressure cases                                                                  | Focused tests; `npm run check`; `npm run test:stress`                                          |
 | Test cleanup                                                                      | Remaining affected suites and unused imports/helpers; keep data and asynchronous boundaries                                                    | `npm run build`; run remaining stress suite when its tests or lifecycle/cache tests change     |
 | Broad change or release candidate                                                 | Applicable boundaries plus actual browser/userscript-manager evidence                                                                          | `npm run build`; `npm run test:stress` for lifecycle/cache changes and every release candidate |
+| Diagnostics, GM failures, original-result attribution, page close or log budgets | Existing diagnostics manager/runtime, export recovery and log-rendering contracts; real-page JSON download and summary copy | `npm run build`; stress for changed lifecycle; record actual page validation separately |
 
 ## Keep coverage focused
 

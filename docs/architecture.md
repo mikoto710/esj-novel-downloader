@@ -134,3 +134,17 @@ download 通过传入的能力调用浏览器实现
 - 导出生成与重试：看 [`app/export.ts`](../src/app/export.ts) 和 [`export-recovery.contract.test.ts`](../tests/export/export-recovery.contract.test.ts)。缺章占位只加入导出快照。
 
 注释保持就近、简短：方法说明一句职责，阶段边界说明不直观的顺序。修改流程时同时检查这里的入口与代表测试；验证命令和隔离约定见 [`docs/testing.md`](testing.md)。
+
+## 诊断记录、任务接入与呈现
+
+`diagnostics/manager.ts` 持有诊断数据类型、会话、事件归并、终态优先级、脱敏、容量与保留规则。它通过 `DiagnosticRepository` 读写，由 `storage/diagnostics.ts` 实现 GM 存储兼容检查及读写失败隔离。诊断独立于章节缓存，沿用原键及 schema；逐章恢复只进入内存汇总，不增加逐章持久记录。
+
+`app/book-download.ts` 在原启动位置调用 `diagnostics/runtime.ts`：当时读取环境、并发与 EPUB 设置，插图设置由任务传入。运行时持有默认日志身份及每任务 `pagehide` 清理；实际下载能力捕获原 `taskId`，旧任务日志与事件仍写原会话，只有当前任务显示日志。`pagehide.persisted` 不标记关闭；终态事件、外层任务收尾及全量清空结束各自监听。关闭只记录事实，不推断成功；已有业务终态优先于补充收尾。
+
+`app/export.ts` 从原快照显式传入来源身份，缺失 `taskId` 的旧结果跳过记录，避免落入运行时的默认会话。`app/single-download.ts` 仍自行创建单章身份并区分业务结果与已触发文件的导出结果。预检失败在锁创建前使用独立短会话；各入口没有共享书籍锁状态与业务成功推断。
+
+`ui/dialogs/diagnostics.ts` 直接使用运行时的查看、删除与清空操作，调用 `diagnostics/export.ts` 生成 JSON 和文件名，再由 `browser/files.ts` 保存文件或复制摘要。`ui/messages/diagnostics.ts` 与 `ui/messages/download-log.ts` 负责调用时的界面语言；JSON 接收书名回退和日志格式器，持久记录仍保存中性代码，旧字符串、书名与协议文本不随界面语言改写。`ui/log-view.ts` 保留 50 ms 批量显示、1000 条界面事件和截断标记，控制台逐条输出及无 DOM 使用路径继续可用。
+
+诊断仍限制最近 30 条历史、7 天保留、单会话 256 KiB 与总量 4 MiB；500 条日志、500 条事件和 50 条导出记录的裁剪顺序保持不变。密码、token、授权头及完整响应不作为记录输入；受控 URL 去除查询与片段，诊断存储失败不得改变调用方任务结果。
+
+代表证据：`tests/infrastructure/diagnostics.test.ts`、`browser-diagnostics.contract.test.ts`、`tests/ui/diagnostics.test.ts`、`log-rendering.test.ts`，以及 `tests/export/export-recovery.contract.test.ts` 的旧结果归属和缺失身份场景。界面查看、筛选、删除、JSON 下载与摘要复制按实际页面清单验收。

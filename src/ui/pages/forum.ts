@@ -1,6 +1,6 @@
 import { getForumBookId, loadForumBook } from "../../site/book";
 import { t } from "../locale";
-import { browserDiagnosticLog as log } from "../../adapters/browser-diagnostics";
+import { browserDiagnosticLog as log } from "../../diagnostics/runtime";
 import { runBookDownload } from "../../app/book-download";
 import { el } from "../../utils/dom";
 import { createDownloadButton, createSettingButton } from "../components";

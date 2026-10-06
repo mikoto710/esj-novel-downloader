@@ -6,7 +6,7 @@ import {
     recordBrowserPreflightDiagnosticFailure,
     startBrowserDiagnosticSession,
     updateBrowserDiagnosticSession
-} from "../adapters/browser-diagnostics";
+} from "../diagnostics/runtime";
 import { fetchWithTimeout } from "../browser/request";
 import { sleep, sleepWithAbort } from "../browser/timing";
 import { normalizeChapterMappingFont } from "../content/mapping-font";
@@ -81,7 +81,7 @@ import { showCacheDiscardFailure, showDownloadTerminalFailure } from "../ui/mess
 import { formatStorageFailure } from "../ui/messages/storage-failure";
 import { showBookDownloadInProgressPopup, showFormatChoice } from "../ui/popups";
 import { fullCleanup } from "../utils/dom";
-import { log } from "../utils/log";
+import { log } from "../ui/log-view";
 
 type BookSourcePageType = Extract<SourcePageType, "detail" | "forum">;
 interface RunBookDownloadOptions {

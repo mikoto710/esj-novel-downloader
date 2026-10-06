@@ -1,6 +1,6 @@
 import { el, enableDrag } from "../../utils/dom";
 import { createCommonHeader } from "./common";
-import { listBrowserDiagnosticSessions } from "../../adapters/browser-diagnostics";
+import { listBrowserDiagnosticSessions } from "../../diagnostics/runtime";
 import { createDiagnosticPopup } from "./diagnostics";
 import { t } from "../locale";
 

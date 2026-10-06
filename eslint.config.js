@@ -82,7 +82,7 @@ export default [
                 {
                     patterns: [
                         {
-                            group: ["**/app/**", "**/ui/**"],
+                            group: ["**/app/**", "**/ui/**", "**/diagnostics/runtime", "**/diagnostics/export"],
                             message: "存储只提供事实与受保护操作，页面会话和缓存管理由 app 协调"
                         }
                     ]
@@ -92,11 +92,27 @@ export default [
     },
 
     {
+        files: ["src/diagnostics/manager.ts", "src/diagnostics/export.ts"],
+        rules: {
+            "no-restricted-imports": ["error", {
+                patterns: [{
+                    group: ["**/app/**", "**/ui/**", "**/site/**", "**/storage/**", "**/browser/**", "**/adapters/**", "./runtime", "**/diagnostics/runtime"],
+                    message: "诊断规则和 JSON 只处理传入数据，存储和任务环境由 runtime 装配，展示文本由 UI 提供"
+                }]
+            }],
+            "no-restricted-globals": ["error", {
+                globals: ["document", "location", "window", "navigator", "fetch", "indexedDB", "localStorage", "sessionStorage", ...Object.keys(globals.greasemonkey)],
+                checkGlobalObject: true
+            }]
+        }
+    },
+
+    {
         files: ["src/ui/dialogs/format-choice.ts"],
         rules: {
             "no-restricted-imports": ["error", {
                 patterns: [{
-                    group: ["**/export/**", "**/storage/**", "**/browser/files", "**/adapters/browser-diagnostics"],
+                    group: ["**/export/**", "**/storage/**", "**/browser/files", "**/diagnostics/**"],
                     message: "格式视图只通过 app/export 操作原结果，生成、历史和诊断规则由应用层维护"
                 }]
             }]
@@ -155,7 +171,7 @@ export default [
                                 "**/cache/sync",
                                 "**/utils/dom",
                                 "**/browser/**",
-                                "**/utils/log"
+                                "**/diagnostics/**"
                             ],
                             message: "下载内核通过 contracts 接收能力，app 任务装配 browser 实现"
                         }

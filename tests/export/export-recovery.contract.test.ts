@@ -14,7 +14,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("../../src/export/epub", () => ({ buildEpub: mocks.buildEpub }));
 vi.mock("../../src/export/html", () => ({ buildBookHtml: mocks.buildBookHtml }));
-vi.mock("../../src/utils/log", () => ({ log: mocks.log }));
+vi.mock("../../src/ui/log-view", () => ({ log: mocks.log }));
 vi.mock("../../src/browser/files", () => ({ triggerDownload: mocks.triggerDownload }));
 vi.mock("../../src/storage/history", () => ({ addDownloadHistory: mocks.addDownloadHistory }));
 
@@ -66,7 +66,7 @@ describe("full-book export recovery contracts", () => {
         const source = createCachedData();
         source.exportContext!.taskId = "export-retry";
         const { state } = await prepareExportPopup(source);
-        const diagnostics = await import("../../src/adapters/browser-diagnostics");
+        const diagnostics = await import("../../src/diagnostics/runtime");
         diagnostics.startBrowserDiagnosticSession({
             taskId: "export-retry",
             bookId: "100",
@@ -146,7 +146,7 @@ describe("full-book export recovery contracts", () => {
     });
 
     it("does not attribute a legacy result without task identity to a later task", async () => {
-        const diagnostics = await import("../../src/adapters/browser-diagnostics");
+        const diagnostics = await import("../../src/diagnostics/runtime");
         await prepareExportPopup();
         diagnostics.startBrowserDiagnosticSession({
             taskId: "unrelated-task",
@@ -176,7 +176,7 @@ describe("full-book export recovery contracts", () => {
     });
 
     it("records a retained export against its source task after another task fails", async () => {
-        const diagnostics = await import("../../src/adapters/browser-diagnostics");
+        const diagnostics = await import("../../src/diagnostics/runtime");
         const input = {
             bookId: "100",
             bookTitle: "Book",
@@ -353,7 +353,7 @@ describe("full-book export recovery contracts", () => {
         const source = createCachedData({ chapters: [mappedChapter] });
         source.exportContext!.taskId = "mapped-cancel";
         await prepareExportPopup(source);
-        const diagnostics = await import("../../src/adapters/browser-diagnostics");
+        const diagnostics = await import("../../src/diagnostics/runtime");
         diagnostics.startBrowserDiagnosticSession({
             taskId: "mapped-cancel",
             bookId: "101",

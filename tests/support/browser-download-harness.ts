@@ -57,7 +57,7 @@ vi.mock("../../src/storage/cache/sync", () => ({
     subscribeCacheSync: vi.fn(() => vi.fn()),
     publishCacheSyncEvent: vi.fn()
 }));
-vi.mock("../../src/utils/log", () => ({ log: hoistedBrowserDownloadMocks.log }));
+vi.mock("../../src/ui/log-view", () => ({ log: hoistedBrowserDownloadMocks.log }));
 vi.mock("../../src/browser/timing", () => ({
     sleepWithAbort: hoistedBrowserDownloadMocks.sleepWithAbort,
     sleep: hoistedBrowserDownloadMocks.sleep

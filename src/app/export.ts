@@ -6,7 +6,7 @@ import { buildBookHtml } from "../export/html";
 import { createBookExportFilename } from "../export/filename";
 import { getEpubTagPageSetting, getImageDownloadSetting } from "../storage/settings";
 import { addDownloadHistory } from "../storage/history";
-import { recordBrowserDiagnosticExport, recordBrowserDiagnosticFailure } from "../adapters/browser-diagnostics";
+import { recordBrowserDiagnosticExport, recordBrowserDiagnosticFailure } from "../diagnostics/runtime";
 import { triggerDownload } from "../browser/files";
 import { getExportErrorDetails } from "../ui/messages/export";
 

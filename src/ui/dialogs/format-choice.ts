@@ -9,7 +9,7 @@ import {
 } from "../../app/export";
 import { state } from "../../app/page-session";
 import { fullCleanup, enableDrag, el, registerElementCleanup, removeElement } from "../../utils/dom";
-import { log } from "../../utils/log";
+import { log } from "../../ui/log-view";
 import { acquirePageActionGroupLockForPopup } from "../page-action-lock";
 import { subscribeInterfaceLocaleChange, t } from "../locale";
 import { createCommonHeader } from "./common";

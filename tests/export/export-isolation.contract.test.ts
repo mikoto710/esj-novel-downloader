@@ -56,7 +56,7 @@ describe("full-book and single-chapter export isolation", () => {
         images.resolve({ processedHtml: "<p>正文</p>", images: [], failCount: 0, failures: [] });
         await exporting;
 
-        const { listBrowserDiagnosticSessions } = await import("../../src/adapters/browser-diagnostics");
+        const { listBrowserDiagnosticSessions } = await import("../../src/diagnostics/runtime");
         const diagnostic = listBrowserDiagnosticSessions().history[0];
 
         expect(state.cachedData).toBe(fullBookData);
@@ -100,7 +100,7 @@ describe("full-book and single-chapter export isolation", () => {
         const { downloadCurrentPage } = await import("../../src/app/single-download");
         await downloadCurrentPage("html");
 
-        const { listBrowserDiagnosticSessions } = await import("../../src/adapters/browser-diagnostics");
+        const { listBrowserDiagnosticSessions } = await import("../../src/diagnostics/runtime");
         const diagnostic = listBrowserDiagnosticSessions().history[0];
 
         expect(clickMock).toHaveBeenCalledOnce();
@@ -121,7 +121,7 @@ describe("full-book and single-chapter export isolation", () => {
 
         const { downloadCurrentPage } = await import("../../src/app/single-download");
         await downloadCurrentPage("txt");
-        const { listBrowserDiagnosticSessions } = await import("../../src/adapters/browser-diagnostics");
+        const { listBrowserDiagnosticSessions } = await import("../../src/diagnostics/runtime");
         const diagnostic = listBrowserDiagnosticSessions().history[0];
 
         expect(diagnostic).toMatchObject({
@@ -160,7 +160,7 @@ describe("full-book and single-chapter export isolation", () => {
         expect(document.querySelector("a[download]")).toBeNull();
         history.reject(new Error("history unavailable"));
         await running;
-        const { listBrowserDiagnosticSessions } = await import("../../src/adapters/browser-diagnostics");
+        const { listBrowserDiagnosticSessions } = await import("../../src/diagnostics/runtime");
         expect(listBrowserDiagnosticSessions().history[0]).toMatchObject({
             result: "failed",
             exports: [{ outcome: "success", generated: true, downloadTriggered: true, failureStage: null }]
@@ -200,7 +200,7 @@ describe("full-book and single-chapter export isolation", () => {
         const { downloadCurrentPage } = await import("../../src/app/single-download");
         await downloadCurrentPage("txt");
         expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:single-chapter");
-        const { listBrowserDiagnosticSessions } = await import("../../src/adapters/browser-diagnostics");
+        const { listBrowserDiagnosticSessions } = await import("../../src/diagnostics/runtime");
         expect(listBrowserDiagnosticSessions().history[0]).toMatchObject({
             result: "failed",
             exports: [{ outcome: "success", generated: true, downloadTriggered: true }]

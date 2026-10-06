@@ -1,11 +1,11 @@
+import { createDiagnosticExport } from "../../diagnostics/export";
+import { formatDiagnosticSummary, formatDiagnosticBookTitle, formatDiagnosticLog } from "../messages/diagnostics";
+import { triggerDownload, copyText } from "../../browser/files";
 import {
     clearBrowserDiagnosticSessions,
-    createBrowserDiagnosticExport,
-    downloadBrowserDiagnosticSession,
-    formatBrowserDiagnosticSummary,
     listBrowserDiagnosticSessionView,
     removeBrowserDiagnosticSession
-} from "../../adapters/browser-diagnostics";
+} from "../../diagnostics/runtime";
 import {
     DIAGNOSTIC_HISTORY_LIMIT,
     DIAGNOSTIC_RETENTION_MS,
@@ -13,7 +13,7 @@ import {
     DIAGNOSTIC_TOTAL_BYTES_LIMIT,
     type DiagnosticSessionPresentation,
     type DiagnosticSessionView
-} from "../../core/diagnostics";
+} from "../../diagnostics/manager";
 import { el, enableDrag, registerElementCleanup, removeElement } from "../../utils/dom";
 import { createCommonHeader } from "./common";
 import { subscribeInterfaceLocaleChange, t } from "../locale";
@@ -21,10 +21,6 @@ import { acquirePageActionGroupLockForPopup } from "../page-action-lock";
 
 const DIAGNOSTIC_AUTO_REFRESH_INTERVAL_MS = 3000;
 let disposeActiveDiagnosticPopup: (() => void) | null = null;
-
-function formatDiagnosticBookTitle(session: DiagnosticSessionView["session"]): string {
-    return session.book.title || t("diagnostics.summary.unknownBook");
-}
 
 const resultPresentation: Record<
     DiagnosticSessionPresentation,
@@ -69,21 +65,6 @@ function sessionPresentationHint(view: DiagnosticSessionView): string | null {
         return t("diagnostics.reason.interrupted");
     }
     return null;
-}
-
-async function copyText(text: string): Promise<void> {
-    if (navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(text);
-        return;
-    }
-    const textarea = document.createElement("textarea");
-    textarea.value = text;
-    textarea.style.position = "fixed";
-    textarea.style.opacity = "0";
-    document.body.appendChild(textarea);
-    textarea.select();
-    document.execCommand("copy");
-    textarea.remove();
 }
 
 /**
@@ -161,7 +142,14 @@ export function createDiagnosticPopup(): void {
             onclick: () => {
                 const selected = findSelectedView();
                 if (selected) {
-                    downloadBrowserDiagnosticSession(selected.session);
+                    const exported = createDiagnosticExport(selected.session, {
+                        bookTitle: formatDiagnosticBookTitle(selected.session),
+                        formatLog: formatDiagnosticLog
+                    });
+                    triggerDownload(
+                        new Blob([exported.json], { type: "application/json;charset=utf-8" }),
+                        exported.filename
+                    );
                 }
             }
         },
@@ -178,7 +166,7 @@ export function createDiagnosticPopup(): void {
                     return;
                 }
                 try {
-                    await copyText(formatBrowserDiagnosticSummary(selected.session, selected.presentation));
+                    await copyText(formatDiagnosticSummary(selected.session, selected.presentation));
                 } catch (error) {
                     console.error("复制诊断摘要失败", error);
                 }
@@ -243,7 +231,10 @@ export function createDiagnosticPopup(): void {
         const bookTitle = formatDiagnosticBookTitle(session);
         const presentation = sessionResult(view);
         const presentationHint = sessionPresentationHint(view);
-        const exported = createBrowserDiagnosticExport(session);
+        const exported = createDiagnosticExport(session, {
+            bookTitle: formatDiagnosticBookTitle(session),
+            formatLog: formatDiagnosticLog
+        });
 
         // 详情先显示结果及解释，再展示脱敏摘要和导出文件名
         detail.append(
@@ -278,7 +269,7 @@ export function createDiagnosticPopup(): void {
                 {
                     style: "margin:0;padding:12px;white-space:pre-wrap;overflow-wrap:anywhere;background:#f7f7f7;border:1px solid #ddd;border-radius:6px;font:13px/1.65 monospace;"
                 },
-                [formatBrowserDiagnosticSummary(session, view.presentation)]
+                [formatDiagnosticSummary(session, view.presentation)]
             ),
             el("div", { style: "margin-top:10px;color:#777;font-size:12px;overflow-wrap:anywhere;" }, [
                 t("diagnostics.file", { filename: exported.filename })

@@ -5,7 +5,7 @@ import {
     clearBrowserDiagnosticSessions,
     listBrowserDiagnosticSessions,
     startBrowserDiagnosticSession
-} from "../../src/adapters/browser-diagnostics";
+} from "../../src/diagnostics/runtime";
 import {
     type BrowserDownloadRuntime,
     createBrowserDownloadOptions,

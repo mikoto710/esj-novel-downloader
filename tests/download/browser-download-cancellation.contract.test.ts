@@ -20,7 +20,7 @@ describe("browser download cancellation contracts", () => {
     });
 
     it("does not request a claimed integrity retry when cancellation arrives before its fetch", async () => {
-        const diagnostics = await import("../../src/adapters/browser-diagnostics");
+        const diagnostics = await import("../../src/diagnostics/runtime");
         const browserDiagnosticLog = diagnostics.browserDiagnosticLog;
         let reachedIntegrityRetry = false;
         mocks.fetchWithTimeout.mockRejectedValue(new Error("network"));

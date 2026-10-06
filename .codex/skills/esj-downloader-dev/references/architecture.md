@@ -10,6 +10,8 @@ For download entry, cache, cancellation, protected chapters, or export changes, 
 
 - `export/` owns the source `ExportSnapshot` type, placeholders, TXT/HTML/EPUB generation, filenames and shared escaping. `html.ts` has explicit book/range and current-page entries sharing image/font implementations; retain their different resource order. `download/run.ts` owns cover-cache preparation and before-ready writer completion. Generators never read page state, collect novel content or claim cache. Application-owned `CachedData` extends that same object with optional derived EPUB fields; book file URLs revoke after 60 seconds and history is detached, while single URLs revoke immediately after click/remove and history is awaited.
 
+- `diagnostics/manager.ts` owns neutral records, redaction, retention and terminal dominance; `storage/diagnostics.ts` isolates GM failures. `diagnostics/runtime.ts` binds task identity, startup settings/environment and page-close observers. Diagnostic JSON and filenames use `diagnostics/export.ts`; callers supply call-time presentation from `ui/messages/diagnostics.ts`. Log text lives in `ui/messages/download-log.ts`, batched visual output in `ui/log-view.ts`. The dialog uses these operations and `browser/files.ts` directly.
+
 ## Review invariants
 
 - Full and range tasks share one book lock and absolute-index cache. Full success clears cache; range success seals and closes its writer while retaining accumulated chapters.
@@ -17,6 +19,7 @@ For download entry, cache, cancellation, protected chapters, or export changes, 
 - Page state holds only the active operation handle, display summary, and latest export. Cleanup of one task must not clear its live Map or the previous export; stale callbacks remain bound to their taskId. Legacy sync events require read-only writer/lock checks.
 - Preview is read-only. Cache claim checks compatibility and invalidation consent in the same write transaction.
 - Normal cancellation has a bounded flush; discard can upgrade cancellation. Network abort must not prevent the permitted final cache write.
+- Diagnostic callbacks keep their original task identity; retained exports pass source IDs and skip recording when identity is missing. Keep page-close listeners under task finalization, persist neutral codes, and preserve GM failure isolation and record budgets.
 - Protected-chapter passwords stay in task memory. Export placeholders stay out of chapter/cache data.
 - Core emits stable message codes. UI and adapters localize interface text; novel content, metadata, URLs, and ESJZone `status === 206` protocol text remain unchanged.
 

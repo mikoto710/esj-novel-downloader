@@ -13,7 +13,7 @@ import {
 import { isInterfaceLocalePreference } from "../../core/locale";
 import { listActiveBookDownloadLocks } from "../../storage/book-lock";
 import { fullCleanup, enableDrag, el, removeElement } from "../../utils/dom";
-import { log } from "../../utils/log";
+import { log } from "../../ui/log-view";
 import { bindInterfaceAttribute, bindInterfaceText, publishInterfaceLocaleChange, t } from "../locale";
 import { acquirePageActionGroupLockForPopup } from "../page-action-lock";
 import { createCommonHeader } from "./common";

@@ -7,12 +7,12 @@ import {
     listBrowserDiagnosticSessions,
     recordBrowserDiagnosticFailure,
     startBrowserDiagnosticSession
-} from "../../src/adapters/browser-diagnostics";
+} from "../../src/diagnostics/runtime";
 import { createDiagnosticPopup } from "../../src/ui/dialogs/diagnostics";
 import { createSettingsPanel } from "../../src/ui/popups";
 import { setInterfaceLocalePreference } from "../../src/storage/settings";
 import * as locale from "../../src/ui/locale";
-import * as logger from "../../src/utils/log";
+import * as logger from "../../src/ui/log-view";
 
 function seedDiagnostic(result: "success" | "failed" = "failed"): void {
     startBrowserDiagnosticSession({

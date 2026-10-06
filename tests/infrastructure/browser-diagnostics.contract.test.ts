@@ -5,7 +5,6 @@ import {
     browserDiagnosticLog,
     clearBrowserDiagnosticSessions,
     browserDiagnosticEvents,
-    createBrowserDiagnosticExport,
     finishBrowserDiagnosticSession,
     listBrowserDiagnosticSessions,
     recordBrowserPreflightDiagnosticFailure,
@@ -13,7 +12,9 @@ import {
     recordBrowserDiagnosticFailure,
     startBrowserDiagnosticSession,
     updateBrowserDiagnosticSession
-} from "../../src/adapters/browser-diagnostics";
+} from "../../src/diagnostics/runtime";
+import { createDiagnosticExport } from "../../src/diagnostics/export";
+import { formatDiagnosticBookTitle, formatDiagnosticLog } from "../../src/ui/messages/diagnostics";
 import { createInitialDownloadSnapshot } from "../../src/download/progress";
 import { setInterfaceLocalePreference } from "../../src/storage/settings";
 import { getUserscriptApiMocks } from "../support/gm";
@@ -114,7 +115,10 @@ describe("browser diagnostic persistence", () => {
         });
 
         const session = listBrowserDiagnosticSessions().history[0];
-        const exported = createBrowserDiagnosticExport(session).json;
+        const exported = createDiagnosticExport(session, {
+            bookTitle: formatDiagnosticBookTitle(session),
+            formatLog: formatDiagnosticLog
+        }).json;
         expect(session.book).toEqual({
             bookId: "1737469479",
             title: "Book title",
@@ -217,7 +221,10 @@ describe("browser diagnostic persistence", () => {
         finishBrowserDiagnosticSession("task-inline-image", "success");
 
         const session = listBrowserDiagnosticSessions().history[0];
-        const exported = createBrowserDiagnosticExport(session).json;
+        const exported = createDiagnosticExport(session, {
+            bookTitle: formatDiagnosticBookTitle(session),
+            formatLog: formatDiagnosticLog
+        }).json;
 
         expect(session.result).toBe("success");
         expect(session.failures).toEqual([

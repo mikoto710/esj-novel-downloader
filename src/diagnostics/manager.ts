@@ -1,11 +1,12 @@
 import type {
     DownloadEvent,
+    DownloadLogCode,
     DownloadOptions,
     DownloadPhase,
     DownloadSnapshot,
     DownloadTask
 } from "../download/contracts";
-import type { DomainMessageParams } from "./messages";
+import type { DomainMessageParams } from "../core/messages";
 import { createDownloadSelectionSummary, type DownloadSelectionSummary } from "../download/plan";
 
 // 诊断数据独立于章节缓存；容量和保留期同时限制，避免长期占用 userscript 存储
@@ -744,4 +745,41 @@ export class DiagnosticManager {
         }
         this.repository.save(normalizeStore(store, now));
     }
+}
+
+const ERROR_LOG_CODES = new Set<DownloadLogCode>([
+    "cover-cache-write-ownership-lost",
+    "chapter-mapping-font-failed",
+    "protected-chapter-connection-failed",
+    "protected-chapter-protocol-failed",
+    "download-storage-failed",
+    "cache-discard-failed"
+]);
+
+const WARNING_LOG_CODES = new Set<DownloadLogCode>([
+    "cover-cache-read-failed",
+    "cover-cache-write-failed",
+    "restored-mapping-font-invalid",
+    "cache-write-retry",
+    "chapter-fetch-failed",
+    "chapter-skipped-non-site",
+    "protected-chapter-retry-skipped",
+    "protected-chapter-redetected",
+    "protected-chapter-queued",
+    "protected-chapter-skipped",
+    "protected-chapter-connection-retry",
+    "protected-chapter-password-rejected",
+    "integrity-check-failed",
+    "chapter-integrity-retry",
+    "missing-chapter-retry",
+    "missing-chapter-export-with-placeholders",
+    "missing-chapter-retry-started",
+    "cancellation-cache-write-skipped-lock-lost"
+]);
+
+export function classifyDownloadLogLevel(code: DownloadLogCode): DiagnosticLogRecord["level"] {
+    if (ERROR_LOG_CODES.has(code)) {
+        return "error";
+    }
+    return WARNING_LOG_CODES.has(code) ? "warning" : "info";
 }
