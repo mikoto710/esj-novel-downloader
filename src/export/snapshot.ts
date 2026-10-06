@@ -1,9 +1,14 @@
-import type { ChapterSummary, SourcePageType } from "../types";
-import type { BookCover, Chapter, BookMetadata } from "../content/model";
+import type { BookCover, Chapter, BookMetadata, SourcePageType } from "../content/model";
 import type { DownloadOptions, DownloadTask } from "../download/contracts";
 import type { DownloadPlan, DownloadSelectionSummary } from "../download/plan";
 import { escapeXml } from "./text";
 import { assembleBookTxt } from "./txt";
+
+// 导出快照与历史共用的章节完整性摘要
+export interface ChapterSummary {
+    totalCount: number;
+    missingCount: number;
+}
 
 // 导出数据结构
 export interface ExportSnapshot {

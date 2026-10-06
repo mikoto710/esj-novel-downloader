@@ -14,7 +14,7 @@ import {
     type DiagnosticSessionPresentation,
     type DiagnosticSessionView
 } from "../../diagnostics/manager";
-import { el, enableDrag, registerElementCleanup, removeElement } from "../../utils/dom";
+import { el, enableDrag, registerElementCleanup, removeElement } from "../dom";
 import { createCommonHeader } from "./common";
 import { subscribeInterfaceLocaleChange, t } from "../locale";
 import { acquirePageActionGroupLockForPopup } from "../page-action-lock";

@@ -3,7 +3,7 @@ import type { MappingFontSummary } from "../download/contracts";
 import { buildEpub } from "../export/epub";
 import { buildTxt } from "../export/txt";
 import { buildBookHtml } from "../export/html";
-import { createBookExportFilename } from "../export/filename";
+import { createBookExportFilename, type DownloadFormat } from "../export/filename";
 import { getEpubTagPageSetting, getImageDownloadSetting } from "../storage/settings";
 import { addDownloadHistory } from "../storage/history";
 import { recordBrowserDiagnosticExport, recordBrowserDiagnosticFailure } from "../diagnostics/runtime";
@@ -17,7 +17,7 @@ export interface CachedData extends ExportSnapshot {
     epubRevision?: number;
 }
 
-export type ExportFormat = "txt" | "epub" | "html";
+export type ExportFormat = DownloadFormat;
 export type ExportFailureStage = "generate" | "download";
 interface ExportView {
     failed(format: ExportFormat, stage: ExportFailureStage, details: string): void;

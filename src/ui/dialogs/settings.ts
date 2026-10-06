@@ -12,7 +12,7 @@ import {
 } from "../../storage/settings";
 import { isInterfaceLocalePreference } from "../../locale/catalog";
 import { listActiveBookDownloadLocks } from "../../storage/book-lock";
-import { fullCleanup, enableDrag, el, removeElement } from "../../utils/dom";
+import { fullCleanup, enableDrag, el, removeElement } from "../dom";
 import { log } from "../../ui/log-view";
 import { bindInterfaceAttribute, bindInterfaceText, publishInterfaceLocaleChange, t } from "../locale";
 import { acquirePageActionGroupLockForPopup } from "../page-action-lock";

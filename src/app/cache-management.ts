@@ -1,4 +1,4 @@
-import type { SourcePageType } from "../types";
+import type { SourcePageType } from "../content/model";
 import type { PersistentCacheEntry } from "../storage/cache/model";
 import { clearCachedExport, clearRuntimeCacheSession, state, type CacheStatus } from "./page-session";
 import { clearAllPersistentCaches, clearBookCache, listBookCaches } from "../storage/cache/book-cache";

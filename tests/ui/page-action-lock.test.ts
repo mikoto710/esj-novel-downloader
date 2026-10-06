@@ -5,7 +5,7 @@ import { state } from "../../src/app/page-session";
 import { createDownloadButton, createSettingButton } from "../../src/ui/components";
 import { createDownloadPopup, createSettingsPanel } from "../../src/ui/popups";
 import { acquirePageActionGroupLock } from "../../src/ui/page-action-lock";
-import { fullCleanup } from "../../src/utils/dom";
+import { fullCleanup } from "../../src/ui/dom";
 import { createDownloadSelectionPopup } from "../../src/ui/dialogs/download-selection";
 import { createDownloadTask } from "../support";
 import { getUserscriptApiMocks } from "../support/gm";

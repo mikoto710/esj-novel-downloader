@@ -1,4 +1,4 @@
-import type { DownloadCancellationMode } from "../types";
+import type { DownloadCancellationMode } from "./contracts";
 import type { Chapter } from "../content/model";
 import {
     createStorageError,

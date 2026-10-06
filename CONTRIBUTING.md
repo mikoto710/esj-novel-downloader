@@ -46,17 +46,19 @@ npm run test:stress
 
 - 共享章节、资源和书籍数据归 `content/model.ts`，字体与图片契约归 `content/`；`browser/` 提供具体请求、等待、文件与脚本加载能力，由 `app/book-download.ts` 装配。下载内核通过明确输入、能力和返回结果协作，ESLint 检查直接依赖边界。
 - `storage/` 提供持久化事实和受保护操作，`app/cache-management.ts` 合并缓存列表并协调用户清理；`app/book-download.ts` 负责浏览器任务收尾。
-- 核心层输出稳定消息代码，由 adapter / UI 本地化；小说正文、书籍元数据、原始链接及站点协议文本保持原样。
+- 业务层通过 `messages.ts` 输出稳定消息代码，由 `ui/messages/` 本地化；小说正文、书籍元数据、原始链接及站点协议文本保持原样。
 - 全本与范围共享书籍锁和缓存；成功、失败、取消都经过统一收尾。缓存格式或取消语义变化先说明兼容方案。
 - 每次下载显式传入章节表、锁与取消能力；`app/page-session.ts` 的页面 state 只持有操作入口、显示摘要和最近导出。旧任务回调必须校验 taskId。
 - 本次范围就绪数 `readyChapterCount` 与整书库存 `bookChapterCount` 分开；清理摘要、续传缓存和导出结果分别操作。
 
+类型就近定义在维护规则的模块；共享内容在 `content/model.ts`，取消协议在 `download/contracts.ts`，快照摘要与格式分别在 `export/snapshot.ts`、`export/filename.ts`，缓存公开模型与内部 schema 分开。视图节点、拖动与清理改 `ui/dom.ts`，日志呈现改 `ui/log-view.ts`，记录规则改 `diagnostics/manager.ts`，中性消息数据约定改 `messages.ts`。
+
 ## 提交流程
 
 1. 从最新的 `dev` 创建功能分支。
-2. 保持改动聚焦，不混入无关重构、格式化或版本升级。
+2. 按架构入口追踪调用者、规则所有者与退出路径，连同真实 source / test import 更新；依赖检查区分运行时与仅类型引用。保持改动聚焦，不混入无关重构、格式化或版本升级。
 3. 复用已有边界测试；只有合成环境能可靠重现且现有测试未覆盖的业务边界才增加用例。普通页面改动在任务或 Pull Request 中记录真实页面复现与验收，仓库指南不保存验收记录。
-4. 更新受影响的用户文档或开发文档；用户可见行为变化应同步核对 `README.md` 和 `README.zh-TW.md`。
+4. 更新受影响的用户文档或开发文档及 `.codex/skills` 维护入口；用户可见行为变化应同步核对 `README.md` 和 `README.zh-TW.md`。
 5. 执行适用的自动化测试和浏览器验证。
 6. 向 `dev` 创建 Pull Request，并填写背景、测试结果和剩余风险。
 
@@ -99,7 +101,7 @@ npm run test:stress
 - 实现注释使用 `//`，需要连续说明时每行均使用 `//`；`/** ... */` 仅用于 JSDoc，不与普通块注释混用。
 - `zh-TW` 文案使用台湾常用软件用语人工本地化，不采用机械式简转繁。
 - 测试文件和 `describe` / `it` 描述统一使用英文。
-- 核心逻辑应保持环境无关，并通过 contracts 和 adapter 注入浏览器能力。
+- 下载规则保持环境无关，由 `app/book-download.ts` 通过 `download/contracts.ts` 注入 `site/`、`browser/`、`storage/` 与视图能力。
 
 ## 测试数据与诊断信息
 
@@ -117,7 +119,7 @@ npm run test:stress
 
 ## Commit 与 PR 标题
 
-采用 Conventional Commits 风格，例如：
+沿用项目历史的 Conventional Commits `type: subject` 格式，不加 scope，例如：
 
 ```text
 feat: add resumable chapter download

@@ -1,4 +1,4 @@
 interface:
     display_name: "ESJ Regression Selector"
-    short_description: "Choose ESJ boundary checks and real userscript page validation."
+    short_description: "Select ESJ contract, import-boundary, and real-page evidence."
     default_prompt: "Use $esj-regression-selector to select automated boundaries and real userscript page validation for this change."

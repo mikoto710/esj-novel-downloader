@@ -1,5 +1,6 @@
 import { createStore, entries, get, update } from "idb-keyval";
-import { DownloadCancellationMode, SourcePageType } from "../types";
+import type { DownloadCancellationMode } from "../download/contracts";
+import type { SourcePageType } from "../content/model";
 
 // 全本下载任务锁状态
 export type BookDownloadLockStatus = "preparing" | "running" | "released";

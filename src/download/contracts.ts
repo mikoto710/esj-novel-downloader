@@ -1,11 +1,13 @@
 import type { DownloadSelection } from "./plan";
-import type { DownloadCancellationMode, SourcePageType } from "../types";
 import type { ExportSnapshot } from "../export/snapshot";
 import type { CacheMeta } from "../storage/cache/model";
-import type { BookCover, Chapter } from "../content/model";
-import type { DomainMessage, DomainMessageParams } from "../core/messages";
+import type { BookCover, Chapter, SourcePageType } from "../content/model";
+import type { DomainMessage, DomainMessageParams } from "../messages";
 import type { StorageFailure } from "../storage/cache/storage-error";
 import type { MappingFontErrorCode, MappingFontErrorReason, NormalizedChapterMapping } from "../content/mapping-font";
+
+// 取消请求决定尚未落盘缓存的处理方式
+export type DownloadCancellationMode = "flush" | "discard";
 
 /**
  * 下载核心接收的单章任务
@@ -83,7 +85,7 @@ export type ProtectedChapterUnlockResult =
     | { kind: "protocol-error"; code: ProtectedChapterProtocolErrorCode; params?: DomainMessageParams };
 
 /**
- * 站点密码授权由浏览器 adapter 实现；核心只编排结构化结果，不接触密码协议和 DOM
+ * 站点密码授权由 site/protected-chapter 实现；核心只编排结构化结果，不接触密码协议和 DOM
  */
 export interface ProtectedChapterAuthPort {
     unlock(

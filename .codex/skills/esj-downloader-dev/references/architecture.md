@@ -12,6 +12,9 @@ For download entry, cache, cancellation, protected chapters, or export changes, 
 
 - `diagnostics/manager.ts` owns neutral records, redaction, retention and terminal dominance; `storage/diagnostics.ts` isolates GM failures. `diagnostics/runtime.ts` binds task identity, startup settings/environment and page-close observers. Diagnostic JSON and filenames use `diagnostics/export.ts`; callers supply call-time presentation from `ui/messages/diagnostics.ts`. Log text lives in `ui/messages/download-log.ts`, batched visual output in `ui/log-view.ts`. The dialog uses these operations and `browser/files.ts` directly.
 
+- View nodes, dragging and cleanup belong to `ui/dom.ts`; `ui/popups.ts` remains a pure view barrel. Neutral code/params live in `messages.ts`; concrete message sets remain with their rule owners.
+- Types follow actual rules, not per-package type shells. Read the type ownership section in `docs/architecture.md`; keep public cache data separate from private schema. Inspect file-level imports and dynamic imports after type erasure before claiming a runtime cycle. Download/snapshot ports retain the named font-normalizer guard and concrete storage/browser isolation.
+
 ## Review invariants
 
 - Full and range tasks share one book lock and absolute-index cache. Full success clears cache; range success seals and closes its writer while retaining accumulated chapters.

@@ -1,5 +1,7 @@
 import { del, get, set } from "idb-keyval";
-import type { ChapterSummary, DownloadFormat, SourcePageType } from "../types";
+import type { ChapterSummary } from "../export/snapshot";
+import type { DownloadFormat } from "../export/filename";
+import type { SourcePageType } from "../content/model";
 import type { DownloadSelectionSummary } from "../download/plan";
 
 // 已完成导出的下载记录

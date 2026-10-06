@@ -9,7 +9,7 @@ import type {
     DownloadSnapshot,
     DownloadTask
 } from "../../src/download/contracts";
-import type { DownloadCancellationMode } from "../../src/types";
+import type { DownloadCancellationMode } from "../../src/download/contracts";
 import type { Chapter } from "../../src/content/model";
 import { createChapter, RecordingDownloadEvents } from "../support";
 

@@ -15,7 +15,7 @@ export type StorageFailureReason =
  */
 export type StorageOperation = "read" | "claim" | "migrate" | "write" | "clear" | "flush";
 
-import type { DomainMessageParams } from "../../core/messages";
+import type { DomainMessageParams } from "../../messages";
 
 /**
  * 可安全传递给 Coordinator、事件和 UI 的存储失败摘要

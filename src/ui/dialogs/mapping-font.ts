@@ -1,5 +1,5 @@
 import type { MappingFontDetection, MappingFontFailure, MappingFontSummary } from "../../download/contracts";
-import { enableDrag, el } from "../../utils/dom";
+import { enableDrag, el } from "../dom";
 import { showMessagePopup } from "./message";
 import { createCommonHeader } from "./common";
 import { t } from "../locale";

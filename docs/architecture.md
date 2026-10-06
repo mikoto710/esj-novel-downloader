@@ -21,7 +21,7 @@
 
 ## 模块依赖与运行调用
 
-模块依赖方向如下。`contracts.ts` 描述输入、结果和能力；它是类型约定，不是运行时中转站。
+运行调用顺序如下（能力回调不等同于源码 import）。`contracts.ts` 描述输入、结果和能力；它是类型约定，不是运行时中转站。
 
 ```text
 ui/pages → app/book-download.runBookDownload
@@ -34,7 +34,7 @@ download 与 app 共享 contracts 类型
 download 通过传入的能力调用浏览器实现
 ```
 
-`download/` 与 `export/snapshot.ts`由 ESLint 限制直接引入 UI、页面状态、持久化实现或浏览器全局能力。书籍锁收尾位于 `app/book-download.ts`，核心目录不再排除收尾文件；`storage/cache/` 实现 IndexedDB，不属于环境无关内核。字体缓存解析通过 `chapterProcessor.normalizeCached` 注入；新抓取正文处理仍通过 `chapterProcessor.process` 注入。
+`download/` 与 `export/snapshot.ts` 由 ESLint 限制直接引入 UI、页面状态、持久化实现或浏览器全局能力。书籍锁收尾位于 `app/book-download.ts`，核心目录不再排除收尾文件；`storage/cache/` 实现 IndexedDB，不属于环境无关内核。字体缓存解析通过 `chapterProcessor.normalizeCached` 注入；新抓取正文处理仍通过 `chapterProcessor.process` 注入。
 
 共享章节、图片、映射字体、封面和书籍元数据定义位于 [`content/model.ts`](../src/content/model.ts)。[`content/mapping-font.ts`](../src/content/mapping-font.ts) 保留唯一的字体规范化、恢复校验与安全导出绑定实现，恢复、格式生成和单章页面共同使用；[`content/image-format.ts`](../src/content/image-format.ts) 统一图片签名识别与 MIME 校验。图片 URL 解析、采集、压缩和封面获取由 [`site/images.ts`](../src/site/images.ts) 提供，正文插图仍按当前页面 `location.href` 解析。
 
@@ -159,3 +159,11 @@ download 通过传入的能力调用浏览器实现
 当前语言、订阅、DOM 文本及属性绑定和站点变化观察器归 `ui/locale.ts`。入口 `index.ts` 安装语言同步，并让日志截断格式器在调用时读取当前语言。已开放视图通过原订阅原地刷新，密码、范围输入、待决策状态、busy 状态及原任务／视图身份保护由各视图维护。语言切换不重建正文、书籍元数据、URL、导出小说内容或 206 原始提示；诊断仍保存中性代码，由 `ui/messages/` 在调用时呈现。
 
 主要自动化证据为语言目录键与插值、设置存储失败、密码输入保留、范围选择保留及单章晚到字体结果的现有用例。自动语言跟随、保存后开放弹窗切换和普通页面控件按 `docs/testing.md` 的真实页面清单验证。
+
+## 类型、中性消息与视图基础
+
+类型与维护规则同处：内容及来源 `SourcePageType` 在 `content/model.ts`，下载取消模式与端口在 `download/contracts.ts`，`ChapterSummary` 在 `export/snapshot.ts`，格式扩展名 `DownloadFormat` 在 `export/filename.ts`。应用层的 `ExportFormat` 引用同一格式约定；历史只按类型消费来源、格式和快照摘要。缓存公开模型在 `storage/cache/model.ts`，内部 schema 留在 repository / legacy 实现，应用显示类型留在相应 app 模块。新增字段先定位其规则所有者，不建立全局或每包的混合 Context / types 容器。
+
+`messages.ts` 只约定中性 code / params；具体消息集合随下载、存储错误或诊断规则定义，展示由 `ui/messages/` 本地化。`ui/dom.ts` 维护节点创建、拖动、元素清理回调与弹窗清理；`ui/log-view.ts` 维护批量日志呈现。`ui/popups.ts` 是纯视图导出入口，实际交互留在对应 dialog。文本转义只有 `export/text.ts` 的实际共用实现，去图留在 `site/chapter.ts`，EPUB 文档转换留在生成器。
+
+审查依赖时按文件检查 import、re-export 和字面量动态 import，并区分 TypeScript 擦除前后的图。`contracts.ts`、`plan.ts`、`snapshot.ts` 的互相引用描述任务、范围及结果；`locale/catalog.ts` 与语言目录的互相引用校验目录类型。它们的类型边不代表运行时循环，也不授权引入环境 I/O。下载与快照仅消费中性缓存模型和错误契约；字体 DOM 规范化仍通过端口注入，ESLint 同时限制 `normalizeChapterMappingFont` 的命名导入。诊断 manager / JSON 和语言目录保持环境隔离，存储不反向读取应用状态。

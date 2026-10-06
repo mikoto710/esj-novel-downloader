@@ -63,7 +63,7 @@ vi.mock("../../src/browser/timing", () => ({
     sleep: hoistedBrowserDownloadMocks.sleep
 }));
 vi.mock("../../src/browser/request", () => ({ fetchWithTimeout: hoistedBrowserDownloadMocks.fetchWithTimeout }));
-vi.mock("../../src/utils/dom", () => ({ fullCleanup: hoistedBrowserDownloadMocks.fullCleanup }));
+vi.mock("../../src/ui/dom", () => ({ fullCleanup: hoistedBrowserDownloadMocks.fullCleanup }));
 vi.mock("../../src/ui/popups", () => ({
     createDownloadPopup: hoistedBrowserDownloadMocks.createDownloadPopup,
     showFormatChoice: hoistedBrowserDownloadMocks.showFormatChoice,
@@ -119,7 +119,7 @@ export interface BrowserDownloadRuntime {
         lock: import("../../src/storage/book-lock").BookDownloadLock;
         chapters: Map<number, import("../../src/content/model").Chapter>;
         readonly cancellation: import("../../src/download/contracts").DownloadCancellationPort & {
-            readonly mode: import("../../src/types").DownloadCancellationMode;
+            readonly mode: import("../../src/download/contracts").DownloadCancellationMode;
         };
     };
     start(options: import("../../src/download/contracts").DownloadOptions): Promise<void>;

@@ -1,4 +1,4 @@
-import type { SourcePageType } from "../../types";
+import type { SourcePageType } from "../../content/model";
 
 // 缓存展示和持久化共用的元信息
 export interface CacheMeta {

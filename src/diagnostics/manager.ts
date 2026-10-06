@@ -6,7 +6,7 @@ import type {
     DownloadSnapshot,
     DownloadTask
 } from "../download/contracts";
-import type { DomainMessageParams } from "../core/messages";
+import type { DomainMessageParams } from "../messages";
 import { createDownloadSelectionSummary, type DownloadSelectionSummary } from "../download/plan";
 
 // 诊断数据独立于章节缓存；容量和保留期同时限制，避免长期占用 userscript 存储

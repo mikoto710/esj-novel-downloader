@@ -1,6 +1,6 @@
 ---
 name: esj-regression-selector
-description: Select automated boundary checks and real userscript page validation for ESJ Novel Downloader changes. Use after modifying or reviewing download, cache, browser adapter, export, mapping-font, locale, or UI behavior in this repository.
+description: Select automated boundary checks and real userscript page validation for ESJ Novel Downloader changes. Use after modifying or reviewing download, cache, site/browser capability, export, mapping-font, locale, or UI behavior in this repository.
 ---
 
 # ESJ Regression Selector
@@ -12,6 +12,8 @@ description: Select automated boundary checks and real userscript page validatio
 3. Reuse existing evidence. Add a test only when a concrete uncovered business boundary can be reliably reproduced with synthetic inputs. Keep one main automated proof per input/action/result; do not expand ordinary success paths, adapter forwarding, formatting, or fixture self-tests.
 4. For protected chapter changes, retain applicable protocol, rejection, request-ordering, cancellation, and finalization boundaries; verify ordinary password actions and single-page native unlock on real pages. Run `npm run test:stress` for queue, lock, cancellation, or lifecycle changes and for cleanup of these tests; report real browser/userscript-manager validation separately.
 5. Report commands run, unrun checks, and remaining manual-browser risk in the current task or Pull Request. Repository guides contain reusable rules and checklists, never acceptance logs, pass states, or pending acceptance records.
+
+For ownership or import cleanup, trace source and test consumers to their final rule modules, audit runtime and type graphs separately, and keep isolation guards on final paths. Reuse lifecycle/cache contracts and stress evidence when those types or imports change. Validate modified project skills and their `agents/openai.yaml` routing; keep run evidence in the task report.
 
 ## Preserve test isolation
 

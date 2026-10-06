@@ -61,7 +61,7 @@ vi.mock("../../src/ui/messages/download-terminal", () => ({
     showCacheDiscardFailure: vi.fn(),
     showDownloadTerminalFailure: vi.fn()
 }));
-vi.mock("../../src/utils/dom", () => ({ fullCleanup: mocks.fullCleanup }));
+vi.mock("../../src/ui/dom", () => ({ fullCleanup: mocks.fullCleanup }));
 vi.mock("../../src/diagnostics/runtime", () => ({
     browserDiagnosticLog: mocks.log,
     finishBrowserDiagnosticSession: mocks.finishDiagnostic,

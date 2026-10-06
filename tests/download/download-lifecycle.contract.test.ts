@@ -58,7 +58,7 @@ vi.mock("../../src/ui/popups", async (importOriginal) => ({
 }));
 vi.mock("../../src/ui/dialogs/download-selection", () => ({ createDownloadSelectionPopup: mocks.selectionPopup }));
 vi.mock("../../src/ui/dialogs/message", () => ({ showMessagePopup: vi.fn() }));
-vi.mock("../../src/utils/dom", () => ({ fullCleanup: mocks.fullCleanup }));
+vi.mock("../../src/ui/dom", () => ({ fullCleanup: mocks.fullCleanup }));
 vi.mock("../../src/ui/log-view", () => ({ log: mocks.log }));
 vi.mock("../../src/ui/messages/download-terminal", () => ({
     showCacheDiscardFailure: vi.fn(),

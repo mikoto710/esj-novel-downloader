@@ -1,4 +1,4 @@
-import { el } from "../utils/dom";
+import { el } from "./dom";
 import { createSettingsPanel } from "./popups";
 import { bindInterfaceAttribute, bindInterfaceText, refreshBoundInterfaceText, t } from "./locale";
 import { acquirePageActionGroupLock } from "./page-action-lock";

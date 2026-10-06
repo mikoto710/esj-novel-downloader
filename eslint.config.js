@@ -79,7 +79,7 @@ export default [
         rules: {
             "no-restricted-imports": ["error", {
                 patterns: [{
-                    group: ["**/app/**", "**/ui/**", "**/site/**", "**/storage/**", "**/browser/**", "**/adapters/**", "**/diagnostics/**"],
+                    group: ["**/app/**", "**/ui/**", "**/site/**", "**/storage/**", "**/browser/**", "**/diagnostics/**"],
                     message: "语言目录只维护文案、插值和纯选择规则，站点状态由 site 读取，界面运行由 UI 维护"
                 }]
             }],
@@ -128,7 +128,7 @@ export default [
         rules: {
             "no-restricted-imports": ["error", {
                 patterns: [{
-                    group: ["**/app/**", "**/ui/**", "**/site/**", "**/storage/**", "**/browser/**", "**/adapters/**", "**/locale/**", "./runtime", "**/diagnostics/runtime"],
+                    group: ["**/app/**", "**/ui/**", "**/site/**", "**/storage/**", "**/browser/**", "**/locale/**", "./runtime", "**/diagnostics/runtime"],
                     message: "诊断规则和 JSON 只处理传入数据，存储和任务环境由 runtime 装配，展示文本由 UI 提供"
                 }]
             }],
@@ -192,17 +192,8 @@ export default [
                             group: [
                                 "**/ui/**",
                                 "**/locale/**",
-                                "**/adapters/**",
                                 "**/app/**",
                                 "**/site/**",
-                                "**/state",
-                                "**/config",
-                                "**/book-lock",
-                                "**/cache/book-cache",
-                                "**/cache/indexeddb-repository",
-                                "**/cache/legacy-cache",
-                                "**/cache/sync",
-                                "**/utils/dom",
                                 "**/browser/**",
                                 "**/diagnostics/**"
                             ],

@@ -6,7 +6,7 @@ import {
 } from "../../app/cache-management";
 import type { CacheListItem } from "../../app/cache-management";
 import { subscribeCacheSync } from "../../storage/cache/sync";
-import { el, enableDrag, registerElementCleanup, removeElement } from "../../utils/dom";
+import { el, enableDrag, registerElementCleanup, removeElement } from "../dom";
 import { log } from "../../ui/log-view";
 import { showMessagePopup } from "./message";
 import { bindInterfaceAttribute, subscribeInterfaceLocaleChange, t } from "../locale";

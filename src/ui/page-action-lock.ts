@@ -1,4 +1,4 @@
-import { registerElementCleanup } from "../utils/dom";
+import { registerElementCleanup } from "./dom";
 
 interface PageActionLockState {
     initialDisabled: boolean;

@@ -4,9 +4,10 @@ import {
     listDownloadHistory,
     removeDownloadHistory
 } from "../../storage/history";
-import { DownloadFormat, SourcePageType } from "../../types";
+import type { DownloadFormat } from "../../export/filename";
+import type { SourcePageType } from "../../content/model";
 import type { DownloadHistoryItem } from "../../storage/history";
-import { el, enableDrag, registerElementCleanup, removeElement } from "../../utils/dom";
+import { el, enableDrag, registerElementCleanup, removeElement } from "../dom";
 import { subscribeInterfaceLocaleChange, t } from "../locale";
 import { acquirePageActionGroupLockForPopup } from "../page-action-lock";
 

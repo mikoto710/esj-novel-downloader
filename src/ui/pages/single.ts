@@ -1,4 +1,4 @@
-import { el } from "../../utils/dom";
+import { el } from "../dom";
 import { showMessagePopup } from "../dialogs/message";
 import { downloadCurrentPage } from "../../app/single-download";
 import { parseChapterHtml, normalizeParsedChapter } from "../../site/chapter";

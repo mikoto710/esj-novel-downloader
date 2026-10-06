@@ -1,5 +1,7 @@
-import type { DownloadFormat } from "../types";
 import type { DownloadSelectionSummary } from "../download/plan";
+
+// 导出格式与文件扩展名共用的约定
+export type DownloadFormat = "txt" | "epub" | "html";
 
 /**
  * 生成书籍导出文件名；只有真正的范围任务追加结构化章节后缀

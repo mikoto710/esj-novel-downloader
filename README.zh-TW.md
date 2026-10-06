@@ -23,9 +23,9 @@
 
 | 頁面類型       | 支援功能                          | 對應模組             | 連結格式範例             |
 | :------------- | :-------------------------------- | :------------------- | :----------------------- |
-| **詳細資料頁** | 🟢 全本／範圍下載 (TXT/EPUB/HTML) | `scrapers/detail.ts` | `.../detail/123.html`    |
-| **論壇列表頁** | 🟢 全本／範圍下載 (TXT/EPUB/HTML) | `scrapers/forum.ts`  | `.../forum/123/456/`     |
-| **單章閱讀頁** | 🔵 單章匯出 (TXT/HTML)            | `scrapers/single.ts` | `.../forum/123/456.html` |
+| **詳細資料頁** | 🟢 全本／範圍下載 (TXT/EPUB/HTML) | `ui/pages/detail.ts` | `.../detail/123.html`    |
+| **論壇列表頁** | 🟢 全本／範圍下載 (TXT/EPUB/HTML) | `ui/pages/forum.ts`  | `.../forum/123/456/`     |
+| **單章閱讀頁** | 🔵 單章匯出 (TXT/HTML)            | `ui/pages/single.ts` | `.../forum/123/456.html` |
 
 ## 安裝方式
 

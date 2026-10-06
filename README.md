@@ -23,9 +23,9 @@
 
 | 页面类型       | 支持功能                          | 对应模块             | 链接格式示例             |
 | :------------- | :-------------------------------- | :------------------- | :----------------------- |
-| **小说详情页** | 🟢 全本／范围下载 (TXT/EPUB/HTML) | `scrapers/detail.ts` | `.../detail/123.html`    |
-| **论坛列表页** | 🟢 全本／范围下载 (TXT/EPUB/HTML) | `scrapers/forum.ts`  | `.../forum/123/456/`     |
-| **单章阅读页** | 🔵 单章导出 (TXT/HTML)            | `scrapers/single.ts` | `.../forum/123/456.html` |
+| **小说详情页** | 🟢 全本／范围下载 (TXT/EPUB/HTML) | `ui/pages/detail.ts` | `.../detail/123.html`    |
+| **论坛列表页** | 🟢 全本／范围下载 (TXT/EPUB/HTML) | `ui/pages/forum.ts`  | `.../forum/123/456/`     |
+| **单章阅读页** | 🔵 单章导出 (TXT/HTML)            | `ui/pages/single.ts` | `.../forum/123/456.html` |
 
 ## 安装方式
 

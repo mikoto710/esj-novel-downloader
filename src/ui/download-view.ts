@@ -1,5 +1,5 @@
 import type { DownloadCancellationPort, DownloadSnapshot, DownloadUiPort } from "../download/contracts";
-import type { DownloadCancellationMode } from "../types";
+import type { DownloadCancellationMode } from "../download/contracts";
 import { isCurrentDownload } from "../app/page-session";
 import {
     closeProtectedChapterPrompt,
@@ -11,7 +11,7 @@ import {
     updateMappingFontWarning
 } from "./popups";
 import { updateTrayText } from "./tray";
-import { fullCleanup } from "../utils/dom";
+import { fullCleanup } from "./dom";
 import { showDownloadTerminalFailure } from "./messages/download-terminal";
 import { subscribeInterfaceLocaleChange, t } from "./locale";
 

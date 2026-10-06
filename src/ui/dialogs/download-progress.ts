@@ -1,6 +1,6 @@
 import { abortActiveDownload, state } from "../../app/page-session";
 import type { BookDownloadLock } from "../../storage/book-lock";
-import { fullCleanup, enableDrag, el, removeElement } from "../../utils/dom";
+import { fullCleanup, enableDrag, el, removeElement } from "../dom";
 import { log } from "../../ui/log-view";
 import { createMinimizedTray } from "../tray";
 import { acquirePageActionGroupLockForPopup } from "../page-action-lock";

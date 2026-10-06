@@ -72,7 +72,8 @@ import {
 } from "../storage/cache/storage-error";
 import { publishCacheSyncEvent } from "../storage/cache/sync";
 import { getConcurrency, getImageDownloadSetting } from "../storage/settings";
-import type { DownloadCancellationMode, SourcePageType } from "../types";
+import type { DownloadCancellationMode } from "../download/contracts";
+import type { SourcePageType } from "../content/model";
 import { createDownloadSelectionPopup } from "../ui/dialogs/download-selection";
 import { showMessagePopup } from "../ui/dialogs/message";
 import { createDownloadView } from "../ui/download-view";
@@ -80,7 +81,7 @@ import { t } from "../ui/locale";
 import { showCacheDiscardFailure, showDownloadTerminalFailure } from "../ui/messages/download-terminal";
 import { formatStorageFailure } from "../ui/messages/storage-failure";
 import { showBookDownloadInProgressPopup, showFormatChoice } from "../ui/popups";
-import { fullCleanup } from "../utils/dom";
+import { fullCleanup } from "../ui/dom";
 import { log } from "../ui/log-view";
 
 type BookSourcePageType = Extract<SourcePageType, "detail" | "forum">;

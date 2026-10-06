@@ -7,7 +7,7 @@ import {
     createRangeSelection,
     selectDownloadTasks
 } from "../../download/plan";
-import { enableDrag, el, registerElementCleanup, removeElement } from "../../utils/dom";
+import { enableDrag, el, registerElementCleanup, removeElement } from "../dom";
 import { createCommonHeader } from "./common";
 import { subscribeInterfaceLocaleChange, t } from "../locale";
 import { acquirePageActionGroupLockForPopup } from "../page-action-lock";

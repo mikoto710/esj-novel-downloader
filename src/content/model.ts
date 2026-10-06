@@ -1,5 +1,8 @@
 import type { SupportedImageMediaType } from "./image-format";
 
+// 内容采集的页面来源，随快照和缓存元信息保留
+export type SourcePageType = "detail" | "forum" | "single" | "unknown";
+
 // 章节结构
 export interface Chapter {
     title: string;

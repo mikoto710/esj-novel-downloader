@@ -1,4 +1,4 @@
-import { el } from "../utils/dom";
+import { el } from "./dom";
 import { bindInterfaceAttribute, t } from "./locale";
 
 /**

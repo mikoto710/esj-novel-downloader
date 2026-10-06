@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { ChapterCacheWriteBuffer, type CacheWritePolicy } from "../../src/download/cache-write-buffer";
 import type { Chapter } from "../../src/content/model";
-import type { DownloadCancellationMode } from "../../src/types";
+import type { DownloadCancellationMode } from "../../src/download/contracts";
 import { createChapter, createDeferred, useFakeClock } from "../support";
 
 describe("ChapterCacheWriteBuffer", () => {

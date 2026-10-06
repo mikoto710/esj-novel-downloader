@@ -3,7 +3,7 @@ import type {
     ProtectedChapterPrompt,
     ProtectedChapterPromptMessageCode
 } from "../../download/contracts";
-import { enableDrag, el } from "../../utils/dom";
+import { enableDrag, el } from "../dom";
 import { createCommonHeader } from "./common";
 import { subscribeInterfaceLocaleChange, t } from "../locale";
 

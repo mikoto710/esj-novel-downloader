@@ -1,5 +1,5 @@
 import type { IncompleteChapterDecision, IncompleteChapterDetection } from "../../download/contracts";
-import { enableDrag, el } from "../../utils/dom";
+import { enableDrag, el } from "../dom";
 import { createCommonHeader } from "./common";
 import { t } from "../locale";
 

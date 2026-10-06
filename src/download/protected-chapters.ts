@@ -5,7 +5,7 @@ import type {
     ProtectedChapterPrompt,
     ProtectedChapterPromptMessageCode
 } from "./contracts";
-import type { DomainMessageParams } from "../core/messages";
+import type { DomainMessageParams } from "../messages";
 import type { DownloadProgress } from "./progress";
 import type { DownloadPlan } from "./plan";
 import { ProtectedChapterQueue, type ProtectedChapterWorkItem } from "./protected-chapter-queue";
