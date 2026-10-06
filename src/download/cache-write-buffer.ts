@@ -5,7 +5,7 @@ import {
     normalizeStorageError,
     toStorageFailure,
     type StorageFailure
-} from "../core/cache/storage-error";
+} from "../storage/cache/storage-error";
 
 /**
  * 普通取消等待缓存落盘的最长时间

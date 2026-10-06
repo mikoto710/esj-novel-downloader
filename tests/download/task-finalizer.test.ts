@@ -10,11 +10,11 @@ const mocks = vi.hoisted(() => ({
     clearRuntimeSession: vi.fn()
 }));
 
-vi.mock("../../src/core/book-lock", () => ({
+vi.mock("../../src/storage/book-lock", () => ({
     releaseBookDownloadLock: mocks.release,
     shouldDiscardBookDownloadCache: mocks.shouldDiscard
 }));
-vi.mock("../../src/core/cache/book-cache", () => ({ clearBookCacheForTask: mocks.clearCache }));
+vi.mock("../../src/storage/cache/book-cache", () => ({ clearBookCacheForTask: mocks.clearCache }));
 vi.mock("../../src/core/state", async (importOriginal) => {
     const original = await importOriginal<typeof import("../../src/core/state")>();
     return { ...original, clearRuntimeCacheSession: mocks.clearRuntimeSession };

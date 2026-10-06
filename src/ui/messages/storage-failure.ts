@@ -1,4 +1,4 @@
-import type { StorageFailure, StorageFailureReason } from "../../core/cache/storage-error";
+import type { StorageFailure, StorageFailureReason } from "../../storage/cache/storage-error";
 import type { LocaleKey } from "../../core/locale";
 import { t } from "../locale";
 

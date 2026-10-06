@@ -1,8 +1,9 @@
 import type { DownloadSelection } from "./plan";
-import type { CacheMeta, CachedData, DownloadCancellationMode, SourcePageType } from "../types";
+import type { CachedData, DownloadCancellationMode, SourcePageType } from "../types";
+import type { CacheMeta } from "../storage/cache/model";
 import type { BookCover, Chapter } from "../content/model";
 import type { DomainMessage, DomainMessageParams } from "../core/messages";
-import type { StorageFailure } from "../core/cache/storage-error";
+import type { StorageFailure } from "../storage/cache/storage-error";
 import type { MappingFontErrorCode, MappingFontErrorReason, NormalizedChapterMapping } from "../content/mapping-font";
 
 /**

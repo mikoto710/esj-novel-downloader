@@ -17,7 +17,7 @@ const mocks = vi.hoisted(() => ({
     publish: vi.fn()
 }));
 
-vi.mock("../../src/core/cache/indexeddb-repository", () => ({
+vi.mock("../../src/storage/cache/indexeddb-repository", () => ({
     readCacheManifestV3: mocks.readManifest,
     readCacheChaptersV3: mocks.readChapters,
     claimCacheV3: mocks.claim,
@@ -28,17 +28,17 @@ vi.mock("../../src/core/cache/indexeddb-repository", () => ({
     readCacheCoverV3: mocks.readCover,
     putCacheCoverV3ForTask: mocks.putCover
 }));
-vi.mock("../../src/core/cache/legacy-cache", () => ({
+vi.mock("../../src/storage/cache/legacy-cache", () => ({
     readLegacyCache: mocks.readLegacy,
     deleteLegacyCache: mocks.deleteLegacy,
     listLegacyCacheRecords: mocks.listLegacy,
     getLegacyCacheBookId: (key: string) => key.replace(/^esj_down_(?:book_)?/, "")
 }));
-vi.mock("../../src/core/cache/sync", () => ({
+vi.mock("../../src/storage/cache/sync", () => ({
     publishCacheSyncEvent: mocks.publish,
     subscribeCacheSync: vi.fn(() => vi.fn())
 }));
-vi.mock("../../src/core/book-lock", () => ({
+vi.mock("../../src/storage/book-lock", () => ({
     hasBookDownloadTaskPresence: vi.fn(() => false),
     listActiveBookDownloadLocks: vi.fn(async () => [])
 }));
@@ -75,7 +75,7 @@ describe("v2 cache migration recovery", () => {
         mocks.claim
             .mockRejectedValueOnce(new DOMException("transaction aborted", "AbortError"))
             .mockResolvedValueOnce({ status: "claimed", compatibility: "compatible", invalidatedCount: 0 });
-        const storage = await import("../../src/core/cache/book-cache");
+        const storage = await import("../../src/storage/cache/book-cache");
 
         await expect(storage.claimBookCache("200", "task-200", false)).resolves.toMatchObject({ size: 1 });
 
@@ -86,7 +86,7 @@ describe("v2 cache migration recovery", () => {
 
     it("keeps v2 readable after migration retry fails and succeeds on a later attempt", async () => {
         mocks.claim.mockRejectedValue(new DOMException("storage full", "QuotaExceededError"));
-        const storage = await import("../../src/core/cache/book-cache");
+        const storage = await import("../../src/storage/cache/book-cache");
 
         await expect(storage.claimBookCache("200", "task-200", false)).rejects.toMatchObject({
             reason: "migration-failed",
@@ -106,7 +106,7 @@ describe("v2 cache migration recovery", () => {
 
     it("does not silently treat an unavailable database as an empty cache", async () => {
         mocks.readManifest.mockRejectedValue(new DOMException("database disabled", "InvalidStateError"));
-        const storage = await import("../../src/core/cache/book-cache");
+        const storage = await import("../../src/storage/cache/book-cache");
 
         await expect(storage.loadBookCache("200")).rejects.toMatchObject({
             reason: "database-unavailable",

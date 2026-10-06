@@ -15,14 +15,14 @@ import {
     markBookDownloadRunning,
     startBookDownloadLockHeartbeat,
     updateBookDownloadLockTitle
-} from "../core/book-lock";
-import { claimBookCache, previewBookCache, type BookCachePreviewResult } from "../core/cache/book-cache";
-import { publishCacheSyncEvent } from "../core/cache/sync";
-import { getImageDownloadSetting } from "../core/config";
+} from "../storage/book-lock";
+import { claimBookCache, previewBookCache, type BookCachePreviewResult } from "../storage/cache/book-cache";
+import { publishCacheSyncEvent } from "../storage/cache/sync";
+import { getImageDownloadSetting } from "../storage/settings";
 import { batchDownload } from "../adapters/browser-download-dependencies";
 import { createDownloadPlan, selectDownloadTasks } from "../download/plan";
 import { finalizeBookDownloadTask } from "../adapters/book-download-lifecycle";
-import { normalizeStorageError, StorageError, toStorageFailure } from "../core/cache/storage-error";
+import { normalizeStorageError, StorageError, toStorageFailure } from "../storage/cache/storage-error";
 import { fullCleanup } from "../utils/dom";
 import { createDownloadPopup, showBookDownloadInProgressPopup, showFormatChoice } from "../ui/popups";
 import { createDownloadSelectionPopup } from "../ui/dialogs/download-selection";

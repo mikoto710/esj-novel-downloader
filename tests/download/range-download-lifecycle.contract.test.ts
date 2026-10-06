@@ -29,18 +29,18 @@ const mocks = vi.hoisted(() => ({
     fullCleanup: vi.fn()
 }));
 
-vi.mock("../../src/core/book-lock", () => ({
+vi.mock("../../src/storage/book-lock", () => ({
     getConflictingBookDownloadLock: mocks.getConflict,
     acquireBookDownloadLock: mocks.acquire,
     markBookDownloadRunning: mocks.markRunning,
     startBookDownloadLockHeartbeat: mocks.startHeartbeat,
     updateBookDownloadLockTitle: mocks.updateTitle
 }));
-vi.mock("../../src/core/cache/book-cache", () => ({
+vi.mock("../../src/storage/cache/book-cache", () => ({
     previewBookCache: mocks.previewCache,
     claimBookCache: mocks.claimCache
 }));
-vi.mock("../../src/core/cache/sync", () => ({
+vi.mock("../../src/storage/cache/sync", () => ({
     subscribeCacheSync: vi.fn(() => vi.fn()),
     publishCacheSyncEvent: mocks.publishCacheSyncEvent
 }));

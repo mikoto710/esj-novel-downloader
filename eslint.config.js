@@ -89,6 +89,10 @@ export default [
                     ],
                     patterns: [
                         {
+                            regex: "(?:^|/)storage/(?!(?:cache/(?:model|storage-error))(?:$|\\.(?:ts|js)$))",
+                            message: "下载内核只引用中性的存储模型与错误契约，具体 I/O 由 adapters 注入"
+                        },
+                        {
                             group: [
                                 "**/ui/**",
                                 "**/adapters/**",
@@ -101,6 +105,7 @@ export default [
                                 "**/cache/indexeddb-repository",
                                 "**/cache/legacy-cache",
                                 "**/cache/sync",
+                                "**/cache/manager",
                                 "**/utils/dom",
                                 "**/browser/**",
                                 "**/utils/log"

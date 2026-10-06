@@ -34,7 +34,7 @@ export function getBrowserDownloadMocks() {
     return hoistedBrowserDownloadMocks;
 }
 
-vi.mock("../../src/core/cache/sync", () => ({
+vi.mock("../../src/storage/cache/sync", () => ({
     subscribeCacheSync: vi.fn(() => vi.fn()),
     publishCacheSyncEvent: vi.fn()
 }));
@@ -58,14 +58,14 @@ vi.mock("../../src/ui/messages/download-terminal", () => ({
     showDownloadTerminalFailure: hoistedBrowserDownloadMocks.showTerminalFailure
 }));
 vi.mock("../../src/ui/tray", () => ({ updateTrayText: hoistedBrowserDownloadMocks.updateTrayText }));
-vi.mock("../../src/core/cache/book-cache", () => ({
+vi.mock("../../src/storage/cache/book-cache", () => ({
     putBookCacheBatchForTask: hoistedBrowserDownloadMocks.saveCache,
     finishBookCacheForTask: hoistedBrowserDownloadMocks.finishCache,
     clearBookCacheForTask: hoistedBrowserDownloadMocks.clearCache,
     loadBookCover: hoistedBrowserDownloadMocks.loadCoverCache,
     putBookCoverForTask: hoistedBrowserDownloadMocks.saveCoverCache
 }));
-vi.mock("../../src/core/config", () => ({
+vi.mock("../../src/storage/settings", () => ({
     getConcurrency: hoistedBrowserDownloadMocks.getConcurrency,
     getInterfaceLocalePreference: hoistedBrowserDownloadMocks.getInterfaceLocalePreference
 }));
@@ -77,7 +77,7 @@ vi.mock("../../src/site/chapter", async (importOriginal) => ({
     ...(await importOriginal<typeof import("../../src/site/chapter")>()),
     parseChapterHtml: hoistedBrowserDownloadMocks.parseChapterHtml
 }));
-vi.mock("../../src/core/book-lock", () => ({
+vi.mock("../../src/storage/book-lock", () => ({
     ownsActiveBookDownloadLock: hoistedBrowserDownloadMocks.ownsLock,
     shouldDiscardBookDownloadCache: hoistedBrowserDownloadMocks.shouldDiscard
 }));

@@ -2,7 +2,7 @@
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { injectSinglePageButton } from "../../src/ui/pages/single";
-import { setInterfaceLocalePreference } from "../../src/core/config";
+import { setInterfaceLocalePreference } from "../../src/storage/settings";
 
 function createWoff2Bytes(): Uint8Array {
     const bytes = new Uint8Array(64);

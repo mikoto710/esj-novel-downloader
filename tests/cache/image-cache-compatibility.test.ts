@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { evaluateImageCacheCompatibility } from "../../src/core/cache/image-cache-compatibility";
+import { evaluateImageCacheCompatibility } from "../../src/storage/cache/compatibility";
 
 describe("image cache compatibility", () => {
     it.each([

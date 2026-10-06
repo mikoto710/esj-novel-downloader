@@ -1,8 +1,8 @@
 import type { DownloadDependencies, DownloadOptions, DownloadResult } from "./contracts";
-import { StorageError, toStorageFailure, createStorageError } from "../core/cache/storage-error";
+import { StorageError, toStorageFailure, createStorageError } from "../storage/cache/storage-error";
 import { MappingFontError } from "../content/mapping-font";
 import { createDownloadPlan } from "./plan";
-import type { CacheMeta } from "../types";
+import type { CacheMeta } from "../storage/cache/model";
 import { DownloadProgress } from "./progress";
 import { createTaskCacheWriter, type TaskCacheWriter } from "./cache-writer";
 import { createChapterPipeline, type ChapterPipeline } from "./chapter-pipeline";

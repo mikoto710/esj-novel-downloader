@@ -3,7 +3,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { closeProtectedChapterPrompt, promptProtectedChapterPassword } from "../../src/ui/popups";
 import { createDownloadTask } from "../support";
-import { setInterfaceLocalePreference } from "../../src/core/config";
+import { setInterfaceLocalePreference } from "../../src/storage/settings";
 import { publishInterfaceLocaleChange } from "../../src/ui/locale";
 
 function prompt(signal?: AbortSignal) {

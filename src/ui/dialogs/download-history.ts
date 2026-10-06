@@ -3,8 +3,9 @@ import {
     DOWNLOAD_HISTORY_LIMIT,
     listDownloadHistory,
     removeDownloadHistory
-} from "../../core/download-history";
-import { DownloadFormat, DownloadHistoryItem, SourcePageType } from "../../types";
+} from "../../storage/history";
+import { DownloadFormat, SourcePageType } from "../../types";
+import type { DownloadHistoryItem } from "../../storage/history";
 import { el, enableDrag, registerElementCleanup, removeElement } from "../../utils/dom";
 import { subscribeInterfaceLocaleChange, t } from "../locale";
 import { acquirePageActionGroupLockForPopup } from "../page-action-lock";

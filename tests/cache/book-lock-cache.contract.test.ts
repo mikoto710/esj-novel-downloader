@@ -12,7 +12,7 @@ describe("book lock contracts", () => {
     });
 
     it("acquires, conflicts, heartbeats, and releases a book lock", async () => {
-        const locks = await import("../../src/core/book-lock");
+        const locks = await import("../../src/storage/book-lock");
         const first = await locks.acquireBookDownloadLock("100", "detail");
         expect(first.acquired).toBe(true);
         if (!first.acquired) {
@@ -33,7 +33,7 @@ describe("book lock contracts", () => {
     });
 
     it("forwards remote discard intent through the heartbeat", async () => {
-        const locks = await import("../../src/core/book-lock");
+        const locks = await import("../../src/storage/book-lock");
         const acquired = await locks.acquireBookDownloadLock("104", "detail");
         if (!acquired.acquired) {
             throw new Error("expected lock");
@@ -57,8 +57,8 @@ describe("book lock contracts", () => {
 
     it("does not let a stale task save or clear a replacement task cache", async () => {
         vi.stubGlobal("BroadcastChannel", undefined);
-        const locks = await import("../../src/core/book-lock");
-        const storage = await import("../../src/core/cache/book-cache");
+        const locks = await import("../../src/storage/book-lock");
+        const storage = await import("../../src/storage/cache/book-cache");
 
         const first = await locks.acquireBookDownloadLock("100", "detail");
         if (!first.acquired) {
@@ -96,8 +96,8 @@ describe("book lock contracts", () => {
 
     it("closes a range writer idempotently and rejects delayed writes until the next claim", async () => {
         vi.stubGlobal("BroadcastChannel", undefined);
-        const storage = await import("../../src/core/cache/book-cache");
-        const repository = await import("../../src/core/cache/indexeddb-repository");
+        const storage = await import("../../src/storage/cache/book-cache");
+        const repository = await import("../../src/storage/cache/indexeddb-repository");
         const meta = createCacheMeta({ bookId: "105", totalChapters: 20, updatedAt: Date.now() });
 
         await storage.claimBookCache("105", "task-range", false);
@@ -125,7 +125,7 @@ describe("book lock contracts", () => {
 
     it("allows stop-and-clear to remove a writer that was already closed by the same task", async () => {
         vi.stubGlobal("BroadcastChannel", undefined);
-        const storage = await import("../../src/core/cache/book-cache");
+        const storage = await import("../../src/storage/cache/book-cache");
         const meta = createCacheMeta({ bookId: "106", totalChapters: 5, updatedAt: Date.now() });
 
         await storage.claimBookCache("106", "task-range", false);
@@ -138,7 +138,7 @@ describe("book lock contracts", () => {
     it("lazily migrates v2 chapters after the v3 writer is claimed", async () => {
         vi.stubGlobal("BroadcastChannel", undefined);
         const { get, set } = await import("idb-keyval");
-        const storage = await import("../../src/core/cache/book-cache");
+        const storage = await import("../../src/storage/cache/book-cache");
         const legacyChapter = createChapter(0, { content: "legacy chapter" });
         await set("esj_down_book_200", {
             version: 2,
@@ -163,7 +163,7 @@ describe("book lock contracts", () => {
     it("keeps cleared v3 cache from falling back to residual v2 data", async () => {
         vi.stubGlobal("BroadcastChannel", undefined);
         const { set } = await import("idb-keyval");
-        const storage = await import("../../src/core/cache/book-cache");
+        const storage = await import("../../src/storage/cache/book-cache");
         await storage.claimBookCache("300", "task-300", false);
         await storage.putBookCacheBatchForTask("300", "task-300", new Map([[0, createChapter(0)]]));
         expect(await storage.clearBookCacheForTask("300", "task-300")).toBe(true);
@@ -180,8 +180,8 @@ describe("book lock contracts", () => {
 
     it("rejects an aborted v3 batch without changing persisted chapters", async () => {
         vi.stubGlobal("BroadcastChannel", undefined);
-        const locks = await import("../../src/core/book-lock");
-        const storage = await import("../../src/core/cache/book-cache");
+        const locks = await import("../../src/storage/book-lock");
+        const storage = await import("../../src/storage/cache/book-cache");
         const acquired = await locks.acquireBookDownloadLock("103", "detail");
         if (!acquired.acquired) {
             throw new Error("expected lock");
@@ -214,8 +214,8 @@ describe("book lock contracts", () => {
 
     it("rolls back chapters and manifest when a transaction aborts after their requests succeed", async () => {
         vi.stubGlobal("BroadcastChannel", undefined);
-        const storage = await import("../../src/core/cache/book-cache");
-        const repository = await import("../../src/core/cache/indexeddb-repository");
+        const storage = await import("../../src/storage/cache/book-cache");
+        const repository = await import("../../src/storage/cache/indexeddb-repository");
         const original = createChapter(0, { content: "persisted" });
         const meta = createCacheMeta({ bookId: "107", totalChapters: 1, updatedAt: Date.now() });
         await storage.claimBookCache("107", "task-107", false);

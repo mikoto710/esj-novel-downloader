@@ -1,4 +1,4 @@
-import type { CacheMeta, PersistentCacheEntry } from "../../types";
+import type { CacheMeta, PersistentCacheEntry } from "./model";
 import type { BookCover, Chapter } from "../../content/model";
 import { hasBookDownloadTaskPresence } from "../book-lock";
 import {
@@ -25,7 +25,7 @@ import {
 } from "./legacy-cache";
 import { publishCacheSyncEvent } from "./sync";
 import { isExpectedStorageCancellation, normalizeStorageError } from "./storage-error";
-import { evaluateImageCacheCompatibility, type ImageCacheCompatibility } from "./image-cache-compatibility";
+import { evaluateImageCacheCompatibility, type ImageCacheCompatibility } from "./compatibility";
 
 const CACHE_EXPIRE_TIME = 24 * 60 * 60 * 1000;
 

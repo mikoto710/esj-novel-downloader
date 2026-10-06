@@ -1,7 +1,7 @@
 import { createStore, get, promisifyRequest } from "idb-keyval";
-import type { CacheMeta } from "../../types";
+import type { CacheMeta } from "./model";
 import type { BookCover, Chapter } from "../../content/model";
-import { evaluateImageCacheCompatibility, type ImageCacheCompatibility } from "./image-cache-compatibility";
+import { evaluateImageCacheCompatibility, type ImageCacheCompatibility } from "./compatibility";
 
 /**
  * v3 书籍缓存清单

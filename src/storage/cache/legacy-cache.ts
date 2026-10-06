@@ -1,5 +1,5 @@
 import { del, get, keys } from "idb-keyval";
-import type { CacheMeta } from "../../types";
+import type { CacheMeta } from "./model";
 import type { Chapter } from "../../content/model";
 
 /**

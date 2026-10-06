@@ -1,5 +1,24 @@
 import { createStore, entries, get, update } from "idb-keyval";
-import { BookDownloadLock, DownloadCancellationMode, SourcePageType } from "../types";
+import { DownloadCancellationMode, SourcePageType } from "../types";
+
+// 全本下载任务锁状态
+export type BookDownloadLockStatus = "preparing" | "running" | "released";
+
+// 跨页面的全本下载任务锁，单章导出不使用
+export interface BookDownloadLock {
+    bookId: string;
+    bookName?: string;
+    taskId: string;
+    presenceKey?: string;
+    sourcePageType: Extract<SourcePageType, "detail" | "forum">;
+    status: BookDownloadLockStatus;
+    startedAt: number;
+    heartbeatAt: number;
+    releasedAt?: number;
+    cancelRequestedAt?: number;
+    discardCacheOnCancel?: boolean;
+    discardCacheCompletedAt?: number;
+}
 
 const LOCK_TTL_MS = 60 * 1000;
 const HEARTBEAT_INTERVAL_MS = 3 * 1000;

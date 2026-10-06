@@ -8,7 +8,7 @@ import {
     isProtectedChapterHtml
 } from "../../src/site/protected-chapter";
 import { createChapterFixture, createProtectedChapterFixture } from "../support/fixtures";
-import { setInterfaceLocalePreference } from "../../src/core/config";
+import { setInterfaceLocalePreference } from "../../src/storage/settings";
 
 beforeEach(() => setInterfaceLocalePreference("zh-CN"));
 

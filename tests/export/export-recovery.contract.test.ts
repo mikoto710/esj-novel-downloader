@@ -15,7 +15,7 @@ vi.mock("../../src/core/export/epub", () => ({ buildEpub: mocks.buildEpub }));
 vi.mock("../../src/core/export/html", () => ({ buildHtml: mocks.buildHtml }));
 vi.mock("../../src/utils/log", () => ({ log: mocks.log }));
 vi.mock("../../src/browser/files", () => ({ triggerDownload: mocks.triggerDownload }));
-vi.mock("../../src/core/download-history", () => ({ addDownloadHistory: mocks.addDownloadHistory }));
+vi.mock("../../src/storage/history", () => ({ addDownloadHistory: mocks.addDownloadHistory }));
 
 describe("full-book export recovery contracts", () => {
     beforeEach(async () => {
@@ -23,7 +23,7 @@ describe("full-book export recovery contracts", () => {
         vi.clearAllMocks();
         document.body.innerHTML = "";
         document.title = "ESJZone Test";
-        const { setInterfaceLocalePreference } = await import("../../src/core/config");
+        const { setInterfaceLocalePreference } = await import("../../src/storage/settings");
         setInterfaceLocalePreference("zh-CN");
         mocks.buildEpub.mockResolvedValue(new Blob(["epub"], { type: "application/epub+zip" }));
         mocks.buildHtml.mockResolvedValue(new Blob(["html"], { type: "text/html" }));
@@ -104,7 +104,7 @@ describe("full-book export recovery contracts", () => {
     });
 
     it("does not restore an EPUB cache invalidated while generation is pending", async () => {
-        const { setEpubTagPageSetting } = await import("../../src/core/config");
+        const { setEpubTagPageSetting } = await import("../../src/storage/settings");
         const { invalidateCachedEpub } = await import("../../src/core/state");
         setEpubTagPageSetting(false);
         const pending = createDeferred<Blob>();
@@ -123,7 +123,7 @@ describe("full-book export recovery contracts", () => {
     });
 
     it("rebuilds EPUB when another page changes the tag setting", async () => {
-        const { setEpubTagPageSetting } = await import("../../src/core/config");
+        const { setEpubTagPageSetting } = await import("../../src/storage/settings");
         setEpubTagPageSetting(false);
         const { state } = await prepareExportPopup();
         click("#esj-epub");

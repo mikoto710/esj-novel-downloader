@@ -14,7 +14,7 @@ describe("cache tombstone cleanup contracts", () => {
 
     it("still removes residual v2 data when a v3 tombstone exists", async () => {
         const { get, set } = await import("idb-keyval");
-        const storage = await import("../../src/core/cache/book-cache");
+        const storage = await import("../../src/storage/cache/book-cache");
         await storage.claimBookCache("601", "task-601", false);
         await storage.clearAllPersistentCaches();
         await set("esj_down_book_601", {

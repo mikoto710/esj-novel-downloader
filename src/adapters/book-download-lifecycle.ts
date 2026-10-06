@@ -1,13 +1,13 @@
-import { BookDownloadLock } from "../types";
-import { releaseBookDownloadLock, shouldDiscardBookDownloadCache } from "../core/book-lock";
-import { clearBookCacheForTask } from "../core/cache/book-cache";
+import type { BookDownloadLock } from "../storage/book-lock";
+import { releaseBookDownloadLock, shouldDiscardBookDownloadCache } from "../storage/book-lock";
+import { clearBookCacheForTask } from "../storage/cache/book-cache";
 import { clearRuntimeCacheSession, releaseActiveDownload } from "../core/state";
 import {
     createStorageError,
     normalizeStorageError,
     toStorageFailure,
     type StorageFailure
-} from "../core/cache/storage-error";
+} from "../storage/cache/storage-error";
 import type { DownloadLog } from "../download/contracts";
 
 /**

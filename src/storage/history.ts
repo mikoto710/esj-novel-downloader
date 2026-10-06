@@ -1,5 +1,29 @@
 import { del, get, set } from "idb-keyval";
-import { DownloadHistoryItem } from "../types";
+import type { ChapterSummary, DownloadFormat, SourcePageType } from "../types";
+import type { DownloadSelectionSummary } from "../download/plan";
+
+// 已完成导出的下载记录
+export interface DownloadHistoryItem {
+    id: string;
+    bookId?: string;
+    bookName: string;
+    author: string;
+    format: DownloadFormat;
+    sourcePageType: Extract<SourcePageType, "detail" | "forum" | "single">;
+    chapterSummary?: ChapterSummary;
+    selection?: DownloadSelectionSummary;
+    // 兼容旧版下载记录，新记录改用 chapterSummary
+    chapterInfo?: string;
+    imageInfo?: {
+        enabled: boolean;
+        successCount: number;
+        failureCount: number;
+    };
+    // 兼容旧版下载记录，新记录改用 imageInfo
+    imageEnabled?: boolean;
+    pageUrl: string;
+    exportedAt: number;
+}
 
 const HISTORY_KEY = "esj_down_history";
 const HISTORY_LIMIT = 100;

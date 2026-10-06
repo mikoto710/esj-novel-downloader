@@ -1,8 +1,13 @@
-import type { CacheMeta } from "../types";
+import type { CacheMeta } from "../storage/cache/model";
 import type { Chapter } from "../content/model";
 import type { DownloadCancellationOutcome, DownloadDependencies, DownloadOptions } from "./contracts";
 import { ChapterCacheWriteBuffer } from "./cache-write-buffer";
-import { createStorageError, normalizeStorageError, StorageError, toStorageFailure } from "../core/cache/storage-error";
+import {
+    createStorageError,
+    normalizeStorageError,
+    StorageError,
+    toStorageFailure
+} from "../storage/cache/storage-error";
 import type { DownloadProgress } from "./progress";
 import type { DownloadPlan } from "./plan";
 

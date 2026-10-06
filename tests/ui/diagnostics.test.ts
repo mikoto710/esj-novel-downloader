@@ -10,7 +10,7 @@ import {
 } from "../../src/adapters/browser-diagnostics";
 import { createDiagnosticPopup } from "../../src/ui/dialogs/diagnostics";
 import { createSettingsPanel } from "../../src/ui/popups";
-import { setInterfaceLocalePreference } from "../../src/core/config";
+import { setInterfaceLocalePreference } from "../../src/storage/settings";
 import * as locale from "../../src/ui/locale";
 import * as logger from "../../src/utils/log";
 

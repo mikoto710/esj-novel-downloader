@@ -21,14 +21,14 @@ const mocks = vi.hoisted(() => ({
     shouldDiscard: vi.fn(),
     release: vi.fn()
 }));
-vi.mock("../../src/core/cache/indexeddb-repository", () => ({ readCacheManifestV3: mocks.readManifest }));
-vi.mock("../../src/core/cache/book-cache", () => ({
+vi.mock("../../src/storage/cache/indexeddb-repository", () => ({ readCacheManifestV3: mocks.readManifest }));
+vi.mock("../../src/storage/cache/book-cache", () => ({
     clearBookCache: mocks.clearCache,
     clearBookCacheForTask: mocks.clearCache,
     clearAllPersistentCaches: mocks.clearAll,
     listBookCaches: mocks.listCaches
 }));
-vi.mock("../../src/core/book-lock", () => ({
+vi.mock("../../src/storage/book-lock", () => ({
     getActiveBookDownloadLock: mocks.activeLock,
     listActiveBookDownloadLocks: mocks.activeLocks,
     shouldDiscardBookDownloadCache: mocks.shouldDiscard,

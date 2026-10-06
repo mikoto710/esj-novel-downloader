@@ -13,8 +13,8 @@ describe("cross-page lock recovery contracts", () => {
 
     it("keeps cache persistence available when BroadcastChannel is missing", async () => {
         vi.stubGlobal("BroadcastChannel", undefined);
-        const sync = await import("../../src/core/cache/sync");
-        const storage = await import("../../src/core/cache/book-cache");
+        const sync = await import("../../src/storage/cache/sync");
+        const storage = await import("../../src/storage/cache/book-cache");
         const unsubscribe = sync.subscribeCacheSync(vi.fn());
 
         expect(() => sync.publishCacheSyncEvent({ type: "cache-cleared", bookId: "700" })).not.toThrow();
@@ -41,7 +41,7 @@ describe("cross-page lock recovery contracts", () => {
             }
         }
         vi.stubGlobal("BroadcastChannel", ThrowingBroadcastChannel);
-        const sync = await import("../../src/core/cache/sync");
+        const sync = await import("../../src/storage/cache/sync");
 
         expect(() => sync.publishCacheSyncEvent({ type: "cache-cleared", bookId: "701" })).not.toThrow();
         expect(() => sync.publishCacheSyncEvent({ type: "cache-cleared", bookId: "702" })).not.toThrow();
@@ -50,8 +50,8 @@ describe("cross-page lock recovery contracts", () => {
 
     it("allows different books to download in parallel without sharing lock or cache ownership", async () => {
         vi.stubGlobal("BroadcastChannel", undefined);
-        const locks = await import("../../src/core/book-lock");
-        const storage = await import("../../src/core/cache/book-cache");
+        const locks = await import("../../src/storage/book-lock");
+        const storage = await import("../../src/storage/cache/book-cache");
         const [first, second] = await Promise.all([
             locks.acquireBookDownloadLock("710", "detail"),
             locks.acquireBookDownloadLock("711", "forum")
@@ -95,7 +95,7 @@ describe("cross-page lock recovery contracts", () => {
 
     it("requests cancellation and releases the lock best-effort on pagehide", async () => {
         const { createStore, get } = await import("idb-keyval");
-        const locks = await import("../../src/core/book-lock");
+        const locks = await import("../../src/storage/book-lock");
         const acquired = await locks.acquireBookDownloadLock("720", "detail");
         if (!acquired.acquired) {
             throw new Error("expected lock");
@@ -118,8 +118,8 @@ describe("cross-page lock recovery contracts", () => {
 
     it("lets a new task take over an expired lock without granting the stale writer cache access", async () => {
         vi.stubGlobal("BroadcastChannel", undefined);
-        const locks = await import("../../src/core/book-lock");
-        const storage = await import("../../src/core/cache/book-cache");
+        const locks = await import("../../src/storage/book-lock");
+        const storage = await import("../../src/storage/cache/book-cache");
         const first = await locks.acquireBookDownloadLock("730", "detail");
         if (!first.acquired) {
             throw new Error("expected first lock");

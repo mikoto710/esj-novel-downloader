@@ -18,7 +18,7 @@ describe("image cache reconciliation contracts", () => {
         [false, true],
         [true, false]
     ])("invalidates all chapters when settings differ (%s -> %s)", async (cached, requested) => {
-        const storage = await import("../../src/core/cache/book-cache");
+        const storage = await import("../../src/storage/cache/book-cache");
         await storage.claimBookCache("501", "task-old", cached);
         await storage.putBookCacheBatchForTask(
             "501",
@@ -44,7 +44,7 @@ describe("image cache reconciliation contracts", () => {
     });
 
     it("keeps the independent cover when mismatched chapter cache is invalidated", async () => {
-        const storage = await import("../../src/core/cache/book-cache");
+        const storage = await import("../../src/storage/cache/book-cache");
         const bytes = new Uint8Array(1_200);
         bytes.set([0xff, 0xd8, 0xff, 0xe0]);
         const cover = {
@@ -68,7 +68,7 @@ describe("image cache reconciliation contracts", () => {
     });
 
     it("preserves the old cache when mismatch invalidation is aborted", async () => {
-        const storage = await import("../../src/core/cache/book-cache");
+        const storage = await import("../../src/storage/cache/book-cache");
         await storage.claimBookCache("504", "task-old", false);
         await storage.putBookCacheBatchForTask(
             "504",

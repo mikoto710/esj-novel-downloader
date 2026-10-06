@@ -11,7 +11,7 @@ describe("large cache preview", () => {
         vi.stubGlobal("indexedDB", new IDBFactory());
         vi.stubGlobal("BroadcastChannel", undefined);
         vi.stubGlobal("Blob", NodeBlob);
-        const storage = await import("../../src/core/cache/book-cache");
+        const storage = await import("../../src/storage/cache/book-cache");
         const image = createChapterImage(0, { blob: new Blob([new Uint8Array(32 * 1024)], { type: "image/jpeg" }) });
         const chapters = new Map(
             Array.from({ length: 3_000 }, (_, index) => [index, createChapter(index, { images: [image] })])

@@ -1,5 +1,5 @@
 import { abortActiveDownload, state } from "../../core/state";
-import type { BookDownloadLock } from "../../types";
+import type { BookDownloadLock } from "../../storage/book-lock";
 import { fullCleanup, enableDrag, el, removeElement } from "../../utils/dom";
 import { log } from "../../utils/log";
 import { createMinimizedTray } from "../tray";

@@ -1,8 +1,9 @@
-import type { AppState, CacheMeta, CachedData, DownloadCancellationMode, RuntimeCacheSession } from "../types";
+import type { AppState, CachedData, DownloadCancellationMode, RuntimeCacheSession } from "../types";
+import type { CacheMeta } from "../storage/cache/model";
 import type { DownloadCancellationPort } from "../download/contracts";
-import { subscribeCacheSync } from "./cache/sync";
-import { readCacheManifestV3 } from "./cache/indexeddb-repository";
-import { getActiveBookDownloadLock } from "./book-lock";
+import { subscribeCacheSync } from "../storage/cache/sync";
+import { readCacheManifestV3 } from "../storage/cache/indexeddb-repository";
+import { getActiveBookDownloadLock } from "../storage/book-lock";
 
 /**
  * 页面只保存任务操作入口、显示摘要和最近导出

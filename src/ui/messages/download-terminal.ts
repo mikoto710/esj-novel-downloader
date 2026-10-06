@@ -1,5 +1,5 @@
 import type { DownloadTerminalFailure } from "../../download/contracts";
-import type { StorageFailure } from "../../core/cache/storage-error";
+import type { StorageFailure } from "../../storage/cache/storage-error";
 import { showMessagePopup } from "../dialogs/message";
 import { t } from "../locale";
 import { formatStorageFailure } from "./storage-failure";

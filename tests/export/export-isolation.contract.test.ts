@@ -143,7 +143,7 @@ describe("full-book and single-chapter export isolation", () => {
 
         const [{ downloadCurrentPage }, { setInterfaceLocalePreference }] = await Promise.all([
             import("../../src/scrapers/single"),
-            import("../../src/core/config")
+            import("../../src/storage/settings")
         ]);
         setInterfaceLocalePreference("zh-CN");
         await downloadCurrentPage("txt");

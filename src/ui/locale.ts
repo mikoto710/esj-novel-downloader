@@ -1,5 +1,5 @@
 import { resolveBrowserInterfaceLocale } from "../adapters/browser-locale";
-import { getInterfaceLocalePreference } from "../core/config";
+import { getInterfaceLocalePreference } from "../storage/settings";
 import { translate, type InterfaceLocale, type LocaleKey, type LocaleMessageParams } from "../core/locale";
 
 type InterfaceLocaleListener = (locale: InterfaceLocale) => void;

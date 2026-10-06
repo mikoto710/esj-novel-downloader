@@ -5,7 +5,7 @@ import {
     stopAndClearManagedCache
 } from "../../core/cache/manager";
 import { CacheListItem } from "../../types";
-import { subscribeCacheSync } from "../../core/cache/sync";
+import { subscribeCacheSync } from "../../storage/cache/sync";
 import { el, enableDrag, registerElementCleanup, removeElement } from "../../utils/dom";
 import { log } from "../../utils/log";
 import { showMessagePopup } from "./message";

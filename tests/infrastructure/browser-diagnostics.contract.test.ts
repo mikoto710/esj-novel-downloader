@@ -15,7 +15,7 @@ import {
     updateBrowserDiagnosticSession
 } from "../../src/adapters/browser-diagnostics";
 import { createInitialDownloadSnapshot } from "../../src/download/progress";
-import { setInterfaceLocalePreference } from "../../src/core/config";
+import { setInterfaceLocalePreference } from "../../src/storage/settings";
 import { getUserscriptApiMocks } from "../support/gm";
 
 describe("browser diagnostic persistence", () => {

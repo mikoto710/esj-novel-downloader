@@ -8,7 +8,7 @@ import {
     type DownloadSelectionPopupOptions
 } from "../../src/ui/dialogs/download-selection";
 import { publishInterfaceLocaleChange } from "../../src/ui/locale";
-import { setInterfaceLocalePreference } from "../../src/core/config";
+import { setInterfaceLocalePreference } from "../../src/storage/settings";
 import { state } from "../../src/core/state";
 import { showFormatChoice } from "../../src/ui/popups";
 

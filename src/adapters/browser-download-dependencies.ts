@@ -12,8 +12,8 @@ import type {
     DownloadSnapshot,
     DownloadUiPort
 } from "../download/contracts";
-import { ownsActiveBookDownloadLock, shouldDiscardBookDownloadCache } from "../core/book-lock";
-import { getConcurrency } from "../core/config";
+import { ownsActiveBookDownloadLock, shouldDiscardBookDownloadCache } from "../storage/book-lock";
+import { getConcurrency } from "../storage/settings";
 import { parseChapterHtml, processParsedChapter, createChapterFetcher } from "../site/chapter";
 import { isCurrentDownload, startRuntimeCacheSession, updateRuntimeCacheSession } from "../core/state";
 import {
@@ -22,8 +22,9 @@ import {
     loadBookCover,
     putBookCacheBatchForTask,
     putBookCoverForTask
-} from "../core/cache/book-cache";
-import type { BookDownloadLock, DownloadCancellationMode } from "../types";
+} from "../storage/cache/book-cache";
+import type { DownloadCancellationMode } from "../types";
+import type { BookDownloadLock } from "../storage/book-lock";
 import type { Chapter } from "../content/model";
 import {
     closeProtectedChapterPrompt,

@@ -1,9 +1,9 @@
 import { blobToBase64 } from "../browser/files";
 import { parseChapterHtml, normalizeParsedChapter } from "../site/chapter";
 import { parseBookMetadata } from "../site/book";
-import { getImageDownloadSetting } from "../core/config";
+import { getImageDownloadSetting } from "../storage/settings";
 import { processHtmlImages } from "../site/images";
-import { addDownloadHistory } from "../core/download-history";
+import { addDownloadHistory } from "../storage/history";
 import { MappingFontError, prepareChapterMappingExport } from "../content/mapping-font";
 import { confirmMappingFontExport } from "../ui/popups";
 import { showMessagePopup } from "../ui/dialogs/message";

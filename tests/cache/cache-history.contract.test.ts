@@ -13,9 +13,9 @@ describe("cache and history isolation contract", () => {
     });
 
     it("keeps download history when persistent chapter caches are cleared", async () => {
-        const locks = await import("../../src/core/book-lock");
-        const storage = await import("../../src/core/cache/book-cache");
-        const history = await import("../../src/core/download-history");
+        const locks = await import("../../src/storage/book-lock");
+        const storage = await import("../../src/storage/cache/book-cache");
+        const history = await import("../../src/storage/history");
         const acquired = await locks.acquireBookDownloadLock("100", "detail");
         if (!acquired.acquired) {
             throw new Error("expected lock");

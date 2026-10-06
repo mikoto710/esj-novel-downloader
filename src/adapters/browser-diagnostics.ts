@@ -21,7 +21,7 @@ import type {
     DownloadLogCode,
     DownloadOptions
 } from "../download/contracts";
-import { getConcurrency, getEpubTagPageSetting } from "../core/config";
+import { getConcurrency, getEpubTagPageSetting } from "../storage/settings";
 import { triggerDownload } from "../browser/files";
 import { log } from "../utils/log";
 import { formatDownloadLog } from "./browser-download-messages";

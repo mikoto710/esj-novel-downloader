@@ -8,7 +8,7 @@ const { listActiveBookDownloadLocks } = vi.hoisted(() => ({
     listActiveBookDownloadLocks: vi.fn()
 }));
 
-vi.mock("../../src/core/book-lock", () => ({
+vi.mock("../../src/storage/book-lock", () => ({
     hasBookDownloadTaskPresence: vi.fn(() => false),
     listActiveBookDownloadLocks
 }));
@@ -20,12 +20,12 @@ describe("image setting cache contracts", () => {
         vi.stubGlobal("BroadcastChannel", undefined);
         localStorage.clear();
         listActiveBookDownloadLocks.mockResolvedValue([]);
-        const { setInterfaceLocalePreference } = await import("../../src/core/config");
+        const { setInterfaceLocalePreference } = await import("../../src/storage/settings");
         setInterfaceLocalePreference("zh-CN");
     });
 
     it("changes the future task setting without clearing existing caches", async () => {
-        const storage = await import("../../src/core/cache/book-cache");
+        const storage = await import("../../src/storage/cache/book-cache");
         await storage.claimBookCache("700", "task-700", false);
         await storage.putBookCacheBatchForTask(
             "700",

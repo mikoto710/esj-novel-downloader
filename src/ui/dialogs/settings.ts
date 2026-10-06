@@ -8,9 +8,9 @@ import {
     setEpubTagPageSetting,
     getInterfaceLocalePreference,
     setInterfaceLocalePreference
-} from "../../core/config";
+} from "../../storage/settings";
 import { isInterfaceLocalePreference } from "../../core/locale";
-import { listActiveBookDownloadLocks } from "../../core/book-lock";
+import { listActiveBookDownloadLocks } from "../../storage/book-lock";
 import { fullCleanup, enableDrag, el, removeElement } from "../../utils/dom";
 import { log } from "../../utils/log";
 import { bindInterfaceAttribute, bindInterfaceText, publishInterfaceLocaleChange, t } from "../locale";

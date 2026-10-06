@@ -15,7 +15,7 @@ describe("cache preview and confirmed claims", () => {
     });
 
     async function seedBook(imageEnabled = false) {
-        const storage = await import("../../src/core/cache/book-cache");
+        const storage = await import("../../src/storage/cache/book-cache");
         await storage.claimBookCache("700", "previous-task", imageEnabled);
         await storage.putBookCacheBatchForTask(
             "700",
@@ -87,8 +87,8 @@ describe("cache preview and confirmed claims", () => {
 
     it("previews legacy data without migrating or removing it", async () => {
         const { get, set } = await import("idb-keyval");
-        const storage = await import("../../src/core/cache/book-cache");
-        const repository = await import("../../src/core/cache/indexeddb-repository");
+        const storage = await import("../../src/storage/cache/book-cache");
+        const repository = await import("../../src/storage/cache/indexeddb-repository");
         const legacy = { ts: Date.now(), chapters: [[3, createChapter(3)]] };
         await set("esj_down_book_700", legacy);
 
@@ -104,8 +104,8 @@ describe("cache preview and confirmed claims", () => {
 
     it("requires confirmation without writes or a claimed event by default", async () => {
         const storage = await seedBook();
-        const repository = await import("../../src/core/cache/indexeddb-repository");
-        const sync = await import("../../src/core/cache/sync");
+        const repository = await import("../../src/storage/cache/indexeddb-repository");
+        const sync = await import("../../src/storage/cache/sync");
         const { get, set } = await import("idb-keyval");
         await expect(storage.previewBookCache("700", false)).resolves.toMatchObject({
             compatibility: "compatible"
@@ -166,7 +166,7 @@ describe("cache preview and confirmed claims", () => {
     });
 
     it("does not ask to discard an empty cache with unknown settings", async () => {
-        const storage = await import("../../src/core/cache/book-cache");
+        const storage = await import("../../src/storage/cache/book-cache");
         await storage.claimBookCache("700", "previous-task", false);
 
         await expect(storage.claimBookCache("700", "new-task", false, undefined, {})).resolves.toMatchObject({
@@ -178,9 +178,9 @@ describe("cache preview and confirmed claims", () => {
 
     it("keeps incompatible legacy records intact until invalidation is confirmed", async () => {
         const { get, set } = await import("idb-keyval");
-        const storage = await import("../../src/core/cache/book-cache");
-        const repository = await import("../../src/core/cache/indexeddb-repository");
-        const sync = await import("../../src/core/cache/sync");
+        const storage = await import("../../src/storage/cache/book-cache");
+        const repository = await import("../../src/storage/cache/indexeddb-repository");
+        const sync = await import("../../src/storage/cache/sync");
         const publish = vi.spyOn(sync, "publishCacheSyncEvent");
         const legacy = { ts: Date.now(), chapters: [[3, createChapter(3)]] };
         await set("esj_down_book_700", legacy);

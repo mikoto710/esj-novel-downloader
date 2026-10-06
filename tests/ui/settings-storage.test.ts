@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import * as locks from "../../src/core/book-lock";
+import * as locks from "../../src/storage/book-lock";
 import { state } from "../../src/core/state";
 import { createSettingsPanel } from "../../src/ui/dialogs/settings";
 import { fullCleanup } from "../../src/utils/dom";

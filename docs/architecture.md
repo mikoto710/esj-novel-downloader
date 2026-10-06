@@ -31,7 +31,7 @@ download 与 adapters 共享 contracts 类型
 download 通过传入的能力调用浏览器实现
 ```
 
-`download/` 与暂留 `core/download/` 的快照模块由 ESLint 限制直接引入 UI、页面状态、持久化实现或浏览器全局能力。书籍锁收尾位于 `adapters/book-download-lifecycle.ts`，核心目录不再排除收尾文件；`core/cache/` 实现 IndexedDB，不属于环境无关内核。字体缓存解析通过 `chapterProcessor.normalizeCached` 注入；新抓取正文处理仍通过 `chapterProcessor.process` 注入。
+`download/` 与暂留 `core/download/` 的快照模块由 ESLint 限制直接引入 UI、页面状态、持久化实现或浏览器全局能力。书籍锁收尾位于 `adapters/book-download-lifecycle.ts`，核心目录不再排除收尾文件；`storage/cache/` 实现 IndexedDB，不属于环境无关内核。字体缓存解析通过 `chapterProcessor.normalizeCached` 注入；新抓取正文处理仍通过 `chapterProcessor.process` 注入。
 
 共享章节、图片、映射字体、封面和书籍元数据定义位于 [`content/model.ts`](../src/content/model.ts)。[`content/mapping-font.ts`](../src/content/mapping-font.ts) 保留唯一的字体规范化、恢复校验与安全导出绑定实现，恢复、格式生成和单章页面共同使用；[`content/image-format.ts`](../src/content/image-format.ts) 统一图片签名识别与 MIME 校验。图片 URL 解析、采集、压缩和封面获取由 [`site/images.ts`](../src/site/images.ts) 提供，正文插图仍按当前页面 `location.href` 解析。
 
@@ -107,10 +107,12 @@ download 通过传入的能力调用浏览器实现
 
 `run` 集中恢复、下载、落盘、完整性扫描、自动补抓、缺章决策和结果准备的顺序，并创建唯一的用户决策队列传给 `chapter-pipeline`。pipeline 组装字体与密码分支，只负责恢复、正常抓取和指定章节重试；正常下载等待密码队列收尾，自动补抓与手动补章共用同一条重试路径。字体、密码、writer、范围和错误模块具有真实业务职责；不因文件短而合并。`contracts.ts` 保留实际使用的输入、结果和能力类型，不建立共享巨型 Context。
 
+持久化实现位于 `storage/`：[`book-lock.ts`](../src/storage/book-lock.ts) 保持书籍锁、presence、心跳和远程停止的共同协议；[`cache/book-cache.ts`](../src/storage/cache/book-cache.ts) 处理预览、认领、旧缓存恢复、封面及通知，实际写事务位于 [`cache/indexeddb-repository.ts`](../src/storage/cache/indexeddb-repository.ts)。公开缓存记录位于 [`cache/model.ts`](../src/storage/cache/model.ts)，V3 与旧版结构分别留在对应 repository / legacy 模块；错误分类位于环境无关的 [`cache/storage-error.ts`](../src/storage/cache/storage-error.ts)。下载内核只引用缓存模型与错误契约，具体能力由 adapter 装配。设置由 [`settings.ts`](../src/storage/settings.ts) 直接读写 GM 偏好，历史及其记录类型由 [`history.ts`](../src/storage/history.ts) 维护；页面会话摘要与 [`core/cache/manager.ts`](../src/core/cache/manager.ts) 的缓存管理协调暂留原归属。
+
 ## 改一条规则时
 
 - 选择、章序、范围摘要和成功缓存策略：改 [`download/plan.ts`](../src/download/plan.ts)，检查范围选择、进度、生命周期和文件名边界。运行元信息和补抓对象的选择留在 `download/run.ts`，正文执行留在 `download/chapter-pipeline.ts`。
-- 缓存是否兼容：改 `image-cache-compatibility.ts`，检查 [`cache-preview.contract.test.ts`](../tests/cache/cache-preview.contract.test.ts)。预览不授权清理；正式 claim 在同一写事务检查兼容性和确认，未确认不写入、不迁移清理、不发 claimed 事件。
+- 缓存是否兼容：改 [`storage/cache/compatibility.ts`](../src/storage/cache/compatibility.ts)，检查 [`cache-preview.contract.test.ts`](../tests/cache/cache-preview.contract.test.ts)。预览不授权清理；正式 claim 在同一写事务检查兼容性和确认，未确认不写入、不迁移清理、不发 claimed 事件。
 - 密码错误如何处理：看 `protected-chapters.ts`；站点授权协议看 [`site/protected-chapter.ts`](../src/site/protected-chapter.ts)，普通章节与授权请求共用本任务的 [`site/request-gate.ts`](../src/site/request-gate.ts)，授权独占队列保持原请求顺序。拒绝的密码不能变成普通失败章节或缓存记录。
 - 会话／导出清理与跨页失效：看 `state.ts`、`cache/manager.ts` 和 [`runtime-cache-ownership.contract.test.ts`](../tests/cache/runtime-cache-ownership.contract.test.ts)。已有结果与新任务独立，活动章节表不由同步事件清空。
 - 导出生成与重试：看 `format-choice.ts` 和 [`export-recovery.contract.test.ts`](../tests/export/export-recovery.contract.test.ts)。缺章占位只加入导出快照。

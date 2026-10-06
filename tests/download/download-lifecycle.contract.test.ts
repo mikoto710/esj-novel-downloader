@@ -8,7 +8,7 @@ import {
     createDetailPageFixture,
     installDocumentFixture
 } from "../support";
-import { setInterfaceLocalePreference } from "../../src/core/config";
+import { setInterfaceLocalePreference } from "../../src/storage/settings";
 
 const mocks = vi.hoisted(() => ({
     batchDownload: vi.fn(),
@@ -29,21 +29,21 @@ const mocks = vi.hoisted(() => ({
     log: vi.fn()
 }));
 
-vi.mock("../../src/core/cache/sync", () => ({
+vi.mock("../../src/storage/cache/sync", () => ({
     subscribeCacheSync: vi.fn(() => vi.fn()),
     publishCacheSyncEvent: vi.fn()
 }));
 
 vi.mock("../../src/adapters/browser-download-dependencies", () => ({ batchDownload: mocks.batchDownload }));
 vi.mock("../../src/adapters/book-download-lifecycle", () => ({ finalizeBookDownloadTask: mocks.finalize }));
-vi.mock("../../src/core/book-lock", () => ({
+vi.mock("../../src/storage/book-lock", () => ({
     getConflictingBookDownloadLock: mocks.getConflict,
     acquireBookDownloadLock: mocks.acquire,
     markBookDownloadRunning: mocks.markRunning,
     startBookDownloadLockHeartbeat: mocks.startHeartbeat,
     updateBookDownloadLockTitle: mocks.updateTitle
 }));
-vi.mock("../../src/core/cache/book-cache", () => ({
+vi.mock("../../src/storage/cache/book-cache", () => ({
     previewBookCache: mocks.previewCache,
     claimBookCache: mocks.claimCache
 }));

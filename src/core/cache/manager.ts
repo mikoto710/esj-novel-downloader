@@ -1,12 +1,13 @@
-import { CacheListItem, CacheStatus, PersistentCacheEntry } from "../../types";
+import { CacheListItem, CacheStatus } from "../../types";
+import type { PersistentCacheEntry } from "../../storage/cache/model";
 import { clearCachedExport, clearRuntimeCacheSession, state } from "../state";
-import { clearAllPersistentCaches, clearBookCache, listBookCaches } from "./book-cache";
+import { clearAllPersistentCaches, clearBookCache, listBookCaches } from "../../storage/cache/book-cache";
 import {
     getActiveBookDownloadLock,
     listActiveBookDownloadLocks,
     requestBookDownloadCancellation,
     waitForBookDownloadCancellation
-} from "../book-lock";
+} from "../../storage/book-lock";
 
 /**
  * 缓存管理器支持的清理范围

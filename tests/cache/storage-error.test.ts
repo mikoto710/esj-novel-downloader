@@ -4,7 +4,7 @@ import {
     normalizeStorageError,
     StorageError,
     toStorageFailure
-} from "../../src/core/cache/storage-error";
+} from "../../src/storage/cache/storage-error";
 
 describe("storage error classification", () => {
     it("classifies quota failures", () => {
