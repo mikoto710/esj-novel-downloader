@@ -1,5 +1,5 @@
 import type { DownloadLog, DownloadLogCode } from "../../download/contracts";
-import type { LocaleKey } from "../../core/locale";
+import type { LocaleKey } from "../../locale/catalog";
 import { t } from "../locale";
 import { formatStorageFailureText } from "./storage-failure";
 

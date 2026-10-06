@@ -9,7 +9,7 @@ import {
     findMissingLocaleKeys,
     interpolateLocaleMessage,
     translate
-} from "../../src/core/locale";
+} from "../../src/locale/catalog";
 
 describe("locale infrastructure", () => {
     it("keeps the base catalogs complete for both supported locales", () => {

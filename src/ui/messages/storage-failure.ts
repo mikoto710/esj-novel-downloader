@@ -1,5 +1,5 @@
 import type { StorageFailure, StorageFailureReason } from "../../storage/cache/storage-error";
-import type { LocaleKey } from "../../core/locale";
+import type { LocaleKey } from "../../locale/catalog";
 import { t } from "../locale";
 
 const STORAGE_FAILURE_KEYS = {

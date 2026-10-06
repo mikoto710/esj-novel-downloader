@@ -1,4 +1,4 @@
-import { isInterfaceLocalePreference, type InterfaceLocalePreference } from "../core/locale";
+import { isInterfaceLocalePreference, type InterfaceLocalePreference } from "../locale/catalog";
 
 // 默认配置
 const DEFAULT_CONFIG = {

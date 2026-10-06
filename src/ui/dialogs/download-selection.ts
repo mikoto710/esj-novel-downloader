@@ -1,5 +1,5 @@
 import type { DownloadSelection, DownloadSelectionSummary } from "../../download/plan";
-import type { LocaleKey } from "../../core/locale";
+import type { LocaleKey } from "../../locale/catalog";
 import type { DownloadTask } from "../../download/contracts";
 import {
     createDownloadPlan,

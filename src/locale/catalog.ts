@@ -29,6 +29,17 @@ export function resolveInterfaceLocale(
     return preference === "auto" ? (websiteLocale ?? browserLocale) : preference;
 }
 
+/**
+ * 映射浏览器语言
+ */
+export function detectBrowserInterfaceLocale(language: string | undefined): InterfaceLocale {
+    const normalized = language?.trim().toLowerCase().replace("_", "-");
+    if (normalized === "zh-cn" || normalized === "zh-sg") {
+        return "zh-CN";
+    }
+    return "zh-TW";
+}
+
 export type LocaleMessageValue = string | number | boolean;
 export type LocaleMessageParams = Readonly<Record<string, LocaleMessageValue>>;
 export type LocaleCatalog = Readonly<Record<string, string>>;

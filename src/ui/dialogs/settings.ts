@@ -10,7 +10,7 @@ import {
     getInterfaceLocalePreference,
     setInterfaceLocalePreference
 } from "../../storage/settings";
-import { isInterfaceLocalePreference } from "../../core/locale";
+import { isInterfaceLocalePreference } from "../../locale/catalog";
 import { listActiveBookDownloadLocks } from "../../storage/book-lock";
 import { fullCleanup, enableDrag, el, removeElement } from "../../utils/dom";
 import { log } from "../../ui/log-view";

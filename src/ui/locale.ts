@@ -1,6 +1,13 @@
-import { resolveBrowserInterfaceLocale } from "../adapters/browser-locale";
+import { detectWebsiteInterfaceLocale } from "../site/locale";
 import { getInterfaceLocalePreference } from "../storage/settings";
-import { translate, type InterfaceLocale, type LocaleKey, type LocaleMessageParams } from "../core/locale";
+import {
+    detectBrowserInterfaceLocale,
+    resolveInterfaceLocale,
+    translate,
+    type InterfaceLocale,
+    type LocaleKey,
+    type LocaleMessageParams
+} from "../locale/catalog";
 
 type InterfaceLocaleListener = (locale: InterfaceLocale) => void;
 
@@ -15,7 +22,11 @@ export function getCurrentInterfaceLocale(
     root: ParentNode = document,
     browserLanguage: string | undefined = navigator.language
 ): InterfaceLocale {
-    return resolveBrowserInterfaceLocale(getInterfaceLocalePreference(), root, browserLanguage);
+    return resolveInterfaceLocale(
+        getInterfaceLocalePreference(),
+        detectWebsiteInterfaceLocale(root),
+        detectBrowserInterfaceLocale(browserLanguage)
+    );
 }
 
 /**

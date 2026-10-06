@@ -21,6 +21,6 @@ For download entry, cache, cancellation, protected chapters, or export changes, 
 - Normal cancellation has a bounded flush; discard can upgrade cancellation. Network abort must not prevent the permitted final cache write.
 - Diagnostic callbacks keep their original task identity; retained exports pass source IDs and skip recording when identity is missing. Keep page-close listeners under task finalization, persist neutral codes, and preserve GM failure isolation and record budgets.
 - Protected-chapter passwords stay in task memory. Export placeholders stay out of chapter/cache data.
-- Core emits stable message codes. UI and adapters localize interface text; novel content, metadata, URLs, and ESJZone `status === 206` protocol text remain unchanged.
+- `locale/catalog.ts` and `locale/locales/` own pure locale selection, types, keys, catalogs and interpolation; `site/locale.ts` reads conversion hints. `ui/locale.ts` reads the stored preference at call time, owns subscriptions and DOM refresh, and composes preference → site → browser fallback. Storage remains independent of UI state. Novel content, metadata, URLs, and ESJZone `status === 206` protocol text remain unchanged.
 
 Select automated boundaries and real userscript page validation with `esj-regression-selector` and [docs/testing.md](../../../../docs/testing.md). Synthetic fixtures and isolated storage prove only the boundary they exercise. Keep method JSDoc to a short Chinese sentence on three lines, with brief `//` comments for non-obvious ordering.

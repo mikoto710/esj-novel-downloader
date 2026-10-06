@@ -16,6 +16,7 @@
 | 导出快照与格式生成               | [`snapshot.ts`](../src/export/snapshot.ts)、[`export/`](../src/export/)、[`format-choice.ts`](../src/ui/dialogs/format-choice.ts)        |
 | 页面会话与跨页通知               | [`page-session.ts`](../src/app/page-session.ts) 的当前操作、摘要、最近结果和只读所有权复核                                               |
 | 缓存列表与用户清理               | [`cache-management.ts`](../src/app/cache-management.ts) 的来源合并、手动清理和停止清除                                                   |
+| 语言目录、站点状态与界面刷新     | [`locale/catalog.ts`](../src/locale/catalog.ts)、[`site/locale.ts`](../src/site/locale.ts)、[`ui/locale.ts`](../src/ui/locale.ts)        |
 | 浏览器能力装配                   | [`app/book-download.ts`](../src/app/book-download.ts)；显示与语言订阅位于 [`ui/download-view.ts`](../src/ui/download-view.ts)            |
 
 ## 模块依赖与运行调用
@@ -148,3 +149,13 @@ download 通过传入的能力调用浏览器实现
 诊断仍限制最近 30 条历史、7 天保留、单会话 256 KiB 与总量 4 MiB；500 条日志、500 条事件和 50 条导出记录的裁剪顺序保持不变。密码、token、授权头及完整响应不作为记录输入；受控 URL 去除查询与片段，诊断存储失败不得改变调用方任务结果。
 
 代表证据：`tests/infrastructure/diagnostics.test.ts`、`browser-diagnostics.contract.test.ts`、`tests/ui/diagnostics.test.ts`、`log-rendering.test.ts`，以及 `tests/export/export-recovery.contract.test.ts` 的旧结果归属和缺失身份场景。界面查看、筛选、删除、JSON 下载与摘要复制按实际页面清单验收。
+
+## 界面语言规则与运行
+
+`locale/catalog.ts` 持有界面语言及偏好类型、稳定键、目录完整性、插值校验和纯选择规则；两份原文目录位于 `locale/locales/`。浏览器语言映射接受字符串参数，不读取浏览器全局。`site/locale.ts` 只读取传入文档中的 ESJZone 正文转换状态：编码 1 为简体，0 或 2 为繁体，缺失或未知编码返回空值。
+
+`ui/locale.ts` 在每次调用时通过 `storage/settings.ts` 读取偏好，再按手动偏好 → 站点状态 → 浏览器语言决定界面语言。偏好缺失、无效或暂时不可读时使用 auto；站点状态不可用时，浏览器 zh-CN / zh-SG 使用简体，其他语言回退繁体。语言设置只有保存成功才通知刷新；插图预览、并发启动和 EPUB 生成的设置读取时机分别留在原应用流程。
+
+当前语言、订阅、DOM 文本及属性绑定和站点变化观察器归 `ui/locale.ts`。入口 `index.ts` 安装语言同步，并让日志截断格式器在调用时读取当前语言。已开放视图通过原订阅原地刷新，密码、范围输入、待决策状态、busy 状态及原任务／视图身份保护由各视图维护。语言切换不重建正文、书籍元数据、URL、导出小说内容或 206 原始提示；诊断仍保存中性代码，由 `ui/messages/` 在调用时呈现。
+
+主要自动化证据为语言目录键与插值、设置存储失败、密码输入保留、范围选择保留及单章晚到字体结果的现有用例。自动语言跟随、保存后开放弹窗切换和普通页面控件按 `docs/testing.md` 的真实页面清单验证。

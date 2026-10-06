@@ -11,7 +11,7 @@ import { fetchWithTimeout } from "../browser/request";
 import { sleep, sleepWithAbort } from "../browser/timing";
 import { normalizeChapterMappingFont } from "../content/mapping-font";
 import type { Chapter } from "../content/model";
-import type { LocaleKey } from "../core/locale";
+import type { LocaleKey } from "../locale/catalog";
 import {
     activateDownload,
     clearRuntimeCacheSession,

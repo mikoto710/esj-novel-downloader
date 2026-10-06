@@ -75,6 +75,38 @@ export default [
     },
 
     {
+        files: ["src/locale/**/*.ts"],
+        rules: {
+            "no-restricted-imports": ["error", {
+                patterns: [{
+                    group: ["**/app/**", "**/ui/**", "**/site/**", "**/storage/**", "**/browser/**", "**/adapters/**", "**/diagnostics/**"],
+                    message: "语言目录只维护文案、插值和纯选择规则，站点状态由 site 读取，界面运行由 UI 维护"
+                }]
+            }],
+            "no-restricted-globals": ["error", {
+                globals: ["document", "location", "window", "navigator", "fetch", "indexedDB", "localStorage", "sessionStorage", ...Object.keys(globals.greasemonkey)],
+                checkGlobalObject: true
+            }]
+        }
+    },
+
+    {
+        files: ["src/site/locale.ts"],
+        rules: {
+            "no-restricted-imports": ["error", {
+                patterns: [{
+                    group: ["**/app/**", "**/ui/**", "**/storage/**", "**/browser/**", "**/diagnostics/**"],
+                    message: "站点语言模块只读取传入文档的转换提示，偏好和界面运行由调用者维护"
+                }]
+            }],
+            "no-restricted-globals": ["error", {
+                globals: ["document", "location", "window", "navigator", ...Object.keys(globals.greasemonkey)],
+                checkGlobalObject: true
+            }]
+        }
+    },
+
+    {
         files: ["src/storage/**/*.ts"],
         rules: {
             "no-restricted-imports": [
@@ -96,7 +128,7 @@ export default [
         rules: {
             "no-restricted-imports": ["error", {
                 patterns: [{
-                    group: ["**/app/**", "**/ui/**", "**/site/**", "**/storage/**", "**/browser/**", "**/adapters/**", "./runtime", "**/diagnostics/runtime"],
+                    group: ["**/app/**", "**/ui/**", "**/site/**", "**/storage/**", "**/browser/**", "**/adapters/**", "**/locale/**", "./runtime", "**/diagnostics/runtime"],
                     message: "诊断规则和 JSON 只处理传入数据，存储和任务环境由 runtime 装配，展示文本由 UI 提供"
                 }]
             }],
@@ -126,7 +158,7 @@ export default [
                 "error",
                 {
                     patterns: [{
-                        group: ["**/app/**", "**/ui/**", "**/site/**", "**/storage/**"],
+                        group: ["**/app/**", "**/ui/**", "**/site/**", "**/storage/**", "**/locale/**"],
                         message: "导出只处理传入快照与资源，不读取页面会话、采集正文或认领缓存"
                     }]
                 }
@@ -159,6 +191,7 @@ export default [
                         {
                             group: [
                                 "**/ui/**",
+                                "**/locale/**",
                                 "**/adapters/**",
                                 "**/app/**",
                                 "**/site/**",

@@ -1,4 +1,4 @@
-import type { LocaleKey } from "../locale";
+import type { LocaleKey } from "../catalog";
 
 export const ZH_CN_MESSAGES = Object.freeze({
     "common.confirm": "确认",
