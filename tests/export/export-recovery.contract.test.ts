@@ -213,6 +213,40 @@ describe("full-book export recovery contracts", () => {
         expect(document.title).toBe("[1/3] new task");
     });
 
+    it("preserves the later export title after both format windows close and restores the base title", async () => {
+        const first = createDeferred<Blob>();
+        const second = createDeferred<Blob>();
+        mocks.buildEpub.mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
+        const baseTitle = document.title;
+        const data = createCachedData();
+        const { showFormatChoice } = await prepareExportPopup(data);
+        const firstButton = document.querySelector("#esj-epub") as HTMLButtonElement;
+        firstButton.click();
+        await vi.waitFor(() => expect(mocks.buildEpub).toHaveBeenCalledTimes(1));
+        click("#esj-format .esj-common-header button");
+
+        showFormatChoice(data);
+        const secondButton = document.querySelector("#esj-epub") as HTMLButtonElement;
+        secondButton.click();
+        await vi.waitFor(() => expect(mocks.buildEpub).toHaveBeenCalledTimes(2));
+        const laterTitle = document.title;
+        click("#esj-format .esj-common-header button");
+
+        const firstBlob = new Blob(["first epub"]);
+        first.resolve(firstBlob);
+        await vi.waitFor(() => expect(firstButton.disabled).toBe(false));
+        const titleAfterOlderCompletion = document.title;
+        const secondBlob = new Blob(["second epub"]);
+        second.resolve(secondBlob);
+        await vi.waitFor(() => expect(secondButton.disabled).toBe(false));
+
+        expect.soft(titleAfterOlderCompletion).toBe(laterTitle);
+        expect.soft(document.title).toBe(baseTitle);
+        expect(mocks.triggerDownload).toHaveBeenNthCalledWith(1, firstBlob, expect.any(String));
+        expect(mocks.triggerDownload).toHaveBeenNthCalledWith(2, secondBlob, expect.any(String));
+        expect(mocks.addDownloadHistory).toHaveBeenCalledTimes(2);
+    });
+
     it("keeps HTML retryable after consecutive generation failures", async () => {
         mocks.buildBookHtml.mockRejectedValue(new Error("缺少已校验的映射字体"));
         await prepareExportPopup();

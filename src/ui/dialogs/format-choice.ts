@@ -24,6 +24,8 @@ function formatMappingFontBytes(bytes: number): string {
 }
 
 let disposeActiveFormatLocaleRefresh: (() => void) | null = null;
+let activeFormatView: symbol | null = null;
+let activeExportTitle: { base: string; generated: string } | null = null;
 
 function showExportFailure(format: ExportFormat, stage: ExportFailureStage, details: string): void {
     const stageText = t(stage === "generate" ? "export.stage.generate" : "export.stage.download");
@@ -41,6 +43,10 @@ function showExportFailure(format: ExportFormat, stage: ExportFailureStage, deta
 export function showFormatChoice(data: CachedData): void {
     fullCleanup();
     disposeActiveFormatLocaleRefresh?.();
+
+    // 关闭只释放订阅；后来的视图永久取代旧视图的标题身份
+    const formatView = Symbol();
+    activeFormatView = formatView;
 
     const { mappingSummary, txtEnabled } = getExportCapabilities(data.chapters);
     const hasMappedChapters = !txtEnabled;
@@ -240,6 +246,16 @@ export function showFormatChoice(data: CachedData): void {
     registerElementCleanup(popup, disposeLocaleRefresh);
 
     /**
+     * 校验原任务及最新格式视图的标题写入权
+     */
+    function ownsTitle(): boolean {
+        return (
+            activeFormatView === formatView &&
+            (!state.activeDownload || state.activeDownload.taskId === data.exportContext?.taskId)
+        );
+    }
+
+    /**
      * 生成并导出所选格式，各格式独立防重并允许失败后重试
      */
     async function handleRichDownload(format: "epub" | "html", button: HTMLButtonElement): Promise<void> {
@@ -248,7 +264,7 @@ export function showFormatChoice(data: CachedData): void {
         }
         exporting.add(format);
         const originalBg = button.style.background;
-        const oldTitle = document.title;
+        const oldTitle = activeExportTitle?.generated === document.title ? activeExportTitle.base : document.title;
         try {
             button.disabled = true;
             await exportBookRich(data, format, {
@@ -257,8 +273,10 @@ export function showFormatChoice(data: CachedData): void {
                     button.textContent = t("export.generating");
                     if (format === "epub") {
                         button.style.background = "#7ab8d6";
-                        if (popup.isConnected) {
-                            document.title = t("export.documentTitle", { title: oldTitle });
+                        if (popup.isConnected && ownsTitle()) {
+                            const generated = t("export.documentTitle", { title: oldTitle });
+                            activeExportTitle = { base: oldTitle, generated };
+                            document.title = generated;
                         }
                     }
                     log(t(format === "epub" ? "export.log.buildEpub" : "export.log.buildHtml"));
@@ -269,13 +287,10 @@ export function showFormatChoice(data: CachedData): void {
             exporting.delete(format);
             button.disabled = false;
             button.style.background = originalBg;
-            if (
-                format === "epub" &&
-                (!state.activeDownload || state.activeDownload.taskId === data.exportContext?.taskId) &&
-                (!disposeActiveFormatLocaleRefresh || disposeActiveFormatLocaleRefresh === disposeLocaleRefresh)
-            ) {
+            if (format === "epub" && ownsTitle()) {
                 // 旧弹窗后台生成结束时，不覆盖后来任务或格式窗口的标题
                 document.title = oldTitle;
+                activeExportTitle = null;
             }
             refreshFormatChoiceText();
         }
