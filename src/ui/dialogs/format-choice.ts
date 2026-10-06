@@ -1,6 +1,6 @@
 import type { CachedData } from "../../types";
 import type { MappingFontSummary } from "../../download/contracts";
-import { state } from "../../core/state";
+import { state } from "../../app/page-session";
 import { buildEpub } from "../../core/export/epub";
 import { buildHtml } from "../../core/export/html";
 import { getEpubTagPageSetting, getImageDownloadSetting } from "../../storage/settings";

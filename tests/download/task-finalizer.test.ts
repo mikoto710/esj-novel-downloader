@@ -59,7 +59,7 @@ describe("book download task finalization through the app entry", () => {
     });
 
     it("does not remove a newer handle when the old lock release fails", async () => {
-        const { startRuntimeCacheSession } = await import("../../src/core/state");
+        const { startRuntimeCacheSession } = await import("../../src/app/page-session");
         startRuntimeCacheSession(createCacheMeta(), runtime.task.lock.taskId, 1);
         const newer = { bookId: "200", taskId: "task-200", requestCancellation: vi.fn() };
         mocks.release.mockImplementationOnce(async () => {
@@ -73,7 +73,7 @@ describe("book download task finalization through the app entry", () => {
     });
 
     it("preserves the previous export when stopping and discarding a new task", async () => {
-        const { startRuntimeCacheSession } = await import("../../src/core/state");
+        const { startRuntimeCacheSession } = await import("../../src/app/page-session");
         const previous = createCachedData();
         runtime.state.cachedData = previous;
         startRuntimeCacheSession(createCacheMeta(), runtime.task.lock.taskId, 1);

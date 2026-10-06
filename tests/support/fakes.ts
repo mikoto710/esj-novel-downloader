@@ -1,5 +1,5 @@
 import type { DownloadTask } from "../../src/download/contracts";
-import type { CacheStatus } from "../../src/types";
+import type { CacheStatus } from "../../src/app/page-session";
 import type { Chapter } from "../../src/content/model";
 import { createAbortError, createDeferred, type Deferred } from "./async";
 

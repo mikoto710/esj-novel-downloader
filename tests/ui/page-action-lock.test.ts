@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { state } from "../../src/core/state";
+import { state } from "../../src/app/page-session";
 import { createDownloadButton, createSettingButton } from "../../src/ui/components";
 import { createDownloadPopup, createSettingsPanel } from "../../src/ui/popups";
 import { acquirePageActionGroupLock } from "../../src/ui/page-action-lock";

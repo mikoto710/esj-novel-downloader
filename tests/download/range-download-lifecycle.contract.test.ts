@@ -74,7 +74,7 @@ vi.mock("../../src/adapters/browser-diagnostics", () => ({
 
 import { runBookDownload } from "../../src/app/book-download";
 import { BookPreflightError } from "../../src/site/book";
-import { state } from "../../src/core/state";
+import { state } from "../../src/app/page-session";
 
 describe("range download lifecycle", () => {
     const lock = createBookLock({ sourcePageType: "detail" });

@@ -36,9 +36,9 @@ vi.mock("../../src/storage/book-lock", () => ({
 }));
 
 let receive: (event: MessageEvent) => void;
-let runtime: typeof import("../../src/core/state");
+let runtime: typeof import("../../src/app/page-session");
 let chapters: Map<number, import("../../src/content/model").Chapter>;
-let manager: typeof import("../../src/core/cache/manager");
+let manager: typeof import("../../src/app/cache-management");
 
 async function send(event: object): Promise<void> {
     receive({ data: event } as MessageEvent);
@@ -66,8 +66,8 @@ describe("runtime cache ownership", () => {
         mocks.clearAll.mockResolvedValue([]);
         mocks.shouldDiscard.mockResolvedValue(true);
         mocks.release.mockResolvedValue(undefined);
-        runtime = await import("../../src/core/state");
-        manager = await import("../../src/core/cache/manager");
+        runtime = await import("../../src/app/page-session");
+        manager = await import("../../src/app/cache-management");
         runtime.state.cachedData = createCachedData();
         chapters = new Map([[0, createChapter()]]);
         runtime.startRuntimeCacheSession(createCacheMeta(), "new-task", 1);
@@ -87,6 +87,24 @@ describe("runtime cache ownership", () => {
         await send({ type: "cache-cleared", bookId: "100" });
         expect(runtime.state.runtimeCacheSession?.taskId).toBe("new-task");
         expect(mocks.readManifest).toHaveBeenCalledWith("100");
+    });
+
+    it("preserves the active task summary and previous export when ownership reread fails", async () => {
+        const cancellation = createDownloadHarness([]).dependencies.cancellation;
+        runtime.activateDownload("100", "new-task", cancellation);
+        const summary = runtime.state.runtimeCacheSession;
+        const previous = runtime.state.cachedData;
+        mocks.readManifest.mockRejectedValue(new Error("manifest read failed"));
+        mocks.activeLock.mockResolvedValue(createBookLock({ taskId: "remote-task" }));
+
+        await send({ type: "cache-cleared", bookId: "100" });
+
+        expect(mocks.readManifest).toHaveBeenCalledWith("100");
+        expect(mocks.activeLock).toHaveBeenCalledWith("100");
+        expect(cancellation.isCancellationRequested()).toBe(false);
+        expect(runtime.state.activeDownload?.taskId).toBe("new-task");
+        expect(runtime.state.runtimeCacheSession).toBe(summary);
+        expect(runtime.state.cachedData).toBe(previous);
     });
 
     it("does not apply a delayed ownership check to a newer task", async () => {

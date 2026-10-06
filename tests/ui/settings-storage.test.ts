@@ -2,7 +2,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as locks from "../../src/storage/book-lock";
-import { state } from "../../src/core/state";
+import { state } from "../../src/app/page-session";
 import { createSettingsPanel } from "../../src/ui/dialogs/settings";
 import { fullCleanup } from "../../src/utils/dom";
 import { createCachedData } from "../support";

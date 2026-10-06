@@ -5,6 +5,7 @@ For download entry, cache, cancellation, protected chapters, or export changes, 
 - `app/book-download.ts` owns selection, atomic cache confirmation, book-lock acquisition, and finalization.
 - `app/book-download.ts` locally binds task chapters, cancellation, and lock; `ui/download-view.ts` binds the original identity, stop action, title, DOM, tray, and locale subscription; `download/run.ts` returns explicit ready/cancelled results.
 - `download/` business modules (plus the existing snapshot implementation in `core/download/`) receive focused inputs and capabilities. ESLint enforces direct environment boundaries; `app/book-download.ts` owns browser finalization, and `storage/cache/` implements persistence. Lock, presence, heartbeat and remote cancellation belong to `storage/book-lock.ts`; concrete preferences and history belong to `storage/settings.ts` and `storage/history.ts`.
+- `app/page-session.ts` owns the current operation handle, display summaries, retained export and read-only notification ownership rechecks. `app/cache-management.ts` combines cache sources and coordinates user clearing; storage supplies facts and protected operations. The actual EPUB invalidation implementation remains in `core/state.ts` until export ownership moves.
 - `ui/dialogs/format-choice.ts` receives the export snapshot explicitly. Failed or cancelled new work preserves the previous result.
 
 ## Review invariants

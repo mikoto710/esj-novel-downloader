@@ -124,14 +124,14 @@ export interface BrowserDownloadRuntime {
     };
     start(options: import("../../src/download/contracts").DownloadOptions): Promise<void>;
     readonly dependencies: import("../../src/download/contracts").DownloadDependencies;
-    abortActiveDownload: typeof import("../../src/core/state").abortActiveDownload;
-    state: typeof import("../../src/core/state").state;
+    abortActiveDownload: typeof import("../../src/app/page-session").abortActiveDownload;
+    state: typeof import("../../src/app/page-session").state;
 }
 
 export async function resetBrowserDownloadHarness(): Promise<BrowserDownloadRuntime> {
     const [{ runBookDownload }, stateRuntime] = await Promise.all([
         import("../../src/app/book-download"),
-        import("../../src/core/state")
+        import("../../src/app/page-session")
     ]);
     const { abortActiveDownload, state } = stateRuntime;
     vi.clearAllMocks();

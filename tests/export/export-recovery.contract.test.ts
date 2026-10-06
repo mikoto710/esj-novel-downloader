@@ -166,7 +166,7 @@ describe("full-book export recovery contracts", () => {
         click("#esj-epub");
         await vi.waitFor(() => expect(mocks.buildEpub).toHaveBeenCalledOnce());
         click("#esj-format .esj-common-header button");
-        const { activateDownload } = await import("../../src/core/state");
+        const { activateDownload } = await import("../../src/app/page-session");
         activateDownload("200", "new-task", createDownloadHarness([]).dependencies.cancellation);
         document.title = "[1/3] new task";
         pending.resolve(new Blob(["epub"]));
@@ -338,7 +338,7 @@ describe("full-book export recovery contracts", () => {
 
 async function prepareExportPopup(data = createCachedData()) {
     const [{ state }, { showFormatChoice }] = await Promise.all([
-        import("../../src/core/state"),
+        import("../../src/app/page-session"),
         import("../../src/ui/popups")
     ]);
     state.cachedData = data;

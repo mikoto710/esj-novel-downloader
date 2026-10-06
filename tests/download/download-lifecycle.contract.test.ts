@@ -81,7 +81,7 @@ const scrapeForum = () =>
         pageTitle: document.title,
         loadPlan: () => loadForumBook("100", location.origin)
     });
-import { state } from "../../src/core/state";
+import { state } from "../../src/app/page-session";
 
 describe("download lifecycle contracts", () => {
     const lock = createBookLock();

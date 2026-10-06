@@ -68,7 +68,7 @@ describe("browser download flow contracts", () => {
     });
 
     it("binds old callbacks to their task without updating the new page task", async () => {
-        const { startRuntimeCacheSession } = await import("../../src/core/state");
+        const { startRuntimeCacheSession } = await import("../../src/app/page-session");
         const { createCacheMeta } = await import("../support");
         const { createInitialDownloadSnapshot } = await import("../../src/download/progress");
         const entered = createDeferred<void>();

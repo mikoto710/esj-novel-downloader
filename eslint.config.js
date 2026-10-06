@@ -75,6 +75,23 @@ export default [
     },
 
     {
+        files: ["src/storage/**/*.ts"],
+        rules: {
+            "no-restricted-imports": [
+                "error",
+                {
+                    patterns: [
+                        {
+                            group: ["**/app/**", "**/ui/**", "**/core/state"],
+                            message: "存储只提供事实与受保护操作，页面会话和缓存管理由 app 协调"
+                        }
+                    ]
+                }
+            ]
+        }
+    },
+
+    {
         files: ["src/core/download/**/*.ts", "src/download/**/*.ts"],
         rules: {
             "no-restricted-imports": [
@@ -106,7 +123,6 @@ export default [
                                 "**/cache/indexeddb-repository",
                                 "**/cache/legacy-cache",
                                 "**/cache/sync",
-                                "**/cache/manager",
                                 "**/utils/dom",
                                 "**/browser/**",
                                 "**/utils/log"

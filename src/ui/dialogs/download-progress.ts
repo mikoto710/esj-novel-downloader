@@ -1,4 +1,4 @@
-import { abortActiveDownload, state } from "../../core/state";
+import { abortActiveDownload, state } from "../../app/page-session";
 import type { BookDownloadLock } from "../../storage/book-lock";
 import { fullCleanup, enableDrag, el, removeElement } from "../../utils/dom";
 import { log } from "../../utils/log";

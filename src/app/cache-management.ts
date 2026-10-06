@@ -1,13 +1,38 @@
-import { CacheListItem, CacheStatus } from "../../types";
-import type { PersistentCacheEntry } from "../../storage/cache/model";
-import { clearCachedExport, clearRuntimeCacheSession, state } from "../state";
-import { clearAllPersistentCaches, clearBookCache, listBookCaches } from "../../storage/cache/book-cache";
+import type { SourcePageType } from "../types";
+import type { PersistentCacheEntry } from "../storage/cache/model";
+import { clearCachedExport, clearRuntimeCacheSession, state, type CacheStatus } from "./page-session";
+import { clearAllPersistentCaches, clearBookCache, listBookCaches } from "../storage/cache/book-cache";
 import {
     getActiveBookDownloadLock,
     listActiveBookDownloadLocks,
     requestBookDownloadCancellation,
     waitForBookDownloadCancellation
-} from "../../storage/book-lock";
+} from "../storage/book-lock";
+
+// 缓存条目的数据来源
+export type CacheSource = "indexeddb" | "runtime";
+
+// 缓存管理弹窗中的统一条目视图
+export interface CacheListItem {
+    bookId: string;
+    bookName: string;
+    rawBookName?: string;
+    author: string;
+    pageUrl: string;
+    totalChapters: number | null;
+    progressCount: number;
+    persistentChapterCount: number;
+    runtimeChapterCount: number;
+    runtimeCompletedCount: number;
+    updatedAt: number;
+    sourcePageType: SourcePageType;
+    imageEnabled: boolean | null;
+    sources: CacheSource[];
+    status: CacheStatus;
+    hasExportData: boolean;
+    isLegacy: boolean;
+    activeTask: boolean;
+}
 
 /**
  * 缓存管理器支持的清理范围

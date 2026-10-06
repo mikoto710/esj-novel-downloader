@@ -21,7 +21,7 @@ import {
     startRuntimeCacheSession,
     state,
     updateRuntimeCacheSession
-} from "../core/state";
+} from "./page-session";
 import type {
     BookLockService,
     ChapterCacheRepository,

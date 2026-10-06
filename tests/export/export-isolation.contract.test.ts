@@ -37,7 +37,7 @@ describe("full-book and single-chapter export isolation", () => {
     });
 
     it("does not replace full-book export data when exporting a single chapter", async () => {
-        const { state } = await import("../../src/core/state");
+        const { state } = await import("../../src/app/page-session");
         const { downloadCurrentPage } = await import("../../src/scrapers/single");
         const fullBookData = createCachedData();
         state.cachedData = fullBookData;

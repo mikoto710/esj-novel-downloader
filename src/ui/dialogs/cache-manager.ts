@@ -3,8 +3,8 @@ import {
     clearManagedCache,
     listManagedCaches,
     stopAndClearManagedCache
-} from "../../core/cache/manager";
-import { CacheListItem } from "../../types";
+} from "../../app/cache-management";
+import type { CacheListItem } from "../../app/cache-management";
 import { subscribeCacheSync } from "../../storage/cache/sync";
 import { el, enableDrag, registerElementCleanup, removeElement } from "../../utils/dom";
 import { log } from "../../utils/log";

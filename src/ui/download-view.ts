@@ -1,6 +1,6 @@
 import type { DownloadCancellationPort, DownloadSnapshot, DownloadUiPort } from "../download/contracts";
 import type { DownloadCancellationMode } from "../types";
-import { isCurrentDownload } from "../core/state";
+import { isCurrentDownload } from "../app/page-session";
 import {
     closeProtectedChapterPrompt,
     confirmMappingFontDownload,

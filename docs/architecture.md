@@ -14,6 +14,8 @@
 | 密码与字体决策                   | [`protected-chapters.ts`](../src/download/protected-chapters.ts)、[`mapped-chapters.ts`](../src/download/mapped-chapters.ts)             |
 | 落盘、背压、取消保存             | [`cache-writer.ts`](../src/download/cache-writer.ts)、[`cache-write-buffer.ts`](../src/download/cache-write-buffer.ts)                   |
 | 导出快照与格式生成               | [`export-data.ts`](../src/core/download/export-data.ts)、[`format-choice.ts`](../src/ui/dialogs/format-choice.ts)                        |
+| 页面会话与跨页通知               | [`page-session.ts`](../src/app/page-session.ts) 的当前操作、摘要、最近结果和只读所有权复核                                               |
+| 缓存列表与用户清理               | [`cache-management.ts`](../src/app/cache-management.ts) 的来源合并、手动清理和停止清除                                                   |
 | 浏览器能力装配                   | [`app/book-download.ts`](../src/app/book-download.ts)；显示与语言订阅位于 [`ui/download-view.ts`](../src/ui/download-view.ts)            |
 
 ## 模块依赖与运行调用
@@ -94,12 +96,12 @@ download 通过传入的能力调用浏览器实现
 | 锁与心跳                 | `executeBookDownload` 取得，同文件局部 finalizer 释放；回调捕获本任务取消能力，锁状态不代表业务成功                                                             |
 | 最近可导出结果           | 当前任务仅在 `ready` 后通过 `publishCachedExport` 替换结果；格式弹窗绑定该结果，设置通过 `invalidateCachedEpub` 使 EPUB 失效，Blob 复用还校验生成时的标签页设置 |
 
-`app/book-download.ts` 只公开 `runBookDownload`，取消能力、执行、接线和 finalizer 均为同文件局部实现。`ui/download-view.ts` 负责 DOM、标题、托盘与语言订阅，并在创建时绑定原任务身份和停止动作；核心未进入 try 或初始化失败时，应用层仍结束视图与已经创建的资源。页面会话及当前导出暂由 `core/state.ts` 单一维护，后续迁移不在视图中建立副本所有者。
+`app/book-download.ts` 只公开 `runBookDownload`，取消能力、执行、接线和 finalizer 均为同文件局部实现。`ui/download-view.ts` 负责 DOM、标题、托盘与语言订阅，并在创建时绑定原任务身份和停止动作；核心未进入 try 或初始化失败时，应用层仍结束视图与已经创建的资源。[`app/page-session.ts`](../src/app/page-session.ts) 单一维护页面会话及最近导出；`AppState`、`RuntimeCacheSession` 与显示状态类型随该规则归位。EPUB 派生产物失效的实际实现仍仅位于 `core/state.ts`，后续与导出规则一并迁移。
 
 页面 `state` 仅保留当前任务停止入口、缓存显示摘要、最近导出和页面标题。取消能力、章节 Map、锁都通过本次输入传入；不会根据新的全局变量切换到另一个任务。
 
 - `clearRuntimeCacheSession(bookId, taskId)` 只移除摘要，不清章节或导出；显式会话清理还调用 `clearCachedExport(bookId)`，按结果自身的 bookId 定位。
-- 跨页缓存通知只触发只读复核 manifest / 活动锁；失去所有权时请求当前任务停止，已结束摘要可以移除。旧页面不带 taskId 的清除事件采用同样的复核方式。
+- 跨页缓存通知只触发只读复核 manifest / 活动锁；失去所有权时请求当前任务停止，已结束摘要可以移除。复核完成后再次校验原 taskId；任一读取失败都不证明所有权失效。旧页面不带 taskId 的清除事件采用同样的复核方式。
 - 旧 task 的事件、日志、UI 清理、锁收尾和结果发布都绑定原 taskId，不操作新的页面任务。网络取消和缓存写入信号仍分开。
 - 并发数、备用页面 URL 和启动时间在浏览器装配时作为值传入；插图设置仍在缓存预览前固定，EPUB 标签页设置仍在生成 EPUB 时读取。
 
@@ -109,14 +111,14 @@ download 通过传入的能力调用浏览器实现
 
 `run` 集中恢复、下载、落盘、完整性扫描、自动补抓、缺章决策和结果准备的顺序，并创建唯一的用户决策队列传给 `chapter-pipeline`。pipeline 组装字体与密码分支，只负责恢复、正常抓取和指定章节重试；正常下载等待密码队列收尾，自动补抓与手动补章共用同一条重试路径。字体、密码、writer、范围和错误模块具有真实业务职责；不因文件短而合并。`contracts.ts` 保留实际使用的输入、结果和能力类型，不建立共享巨型 Context。
 
-持久化实现位于 `storage/`：[`book-lock.ts`](../src/storage/book-lock.ts) 保持书籍锁、presence、心跳和远程停止的共同协议；[`cache/book-cache.ts`](../src/storage/cache/book-cache.ts) 处理预览、认领、旧缓存恢复、封面及通知，实际写事务位于 [`cache/indexeddb-repository.ts`](../src/storage/cache/indexeddb-repository.ts)。公开缓存记录位于 [`cache/model.ts`](../src/storage/cache/model.ts)，V3 与旧版结构分别留在对应 repository / legacy 模块；错误分类位于环境无关的 [`cache/storage-error.ts`](../src/storage/cache/storage-error.ts)。下载内核只引用缓存模型与错误契约，具体能力由 app 的书籍任务装配。设置由 [`settings.ts`](../src/storage/settings.ts) 直接读写 GM 偏好，历史及其记录类型由 [`history.ts`](../src/storage/history.ts) 维护；页面会话摘要与 [`core/cache/manager.ts`](../src/core/cache/manager.ts) 的缓存管理协调暂留原归属。
+持久化实现位于 `storage/`：[`book-lock.ts`](../src/storage/book-lock.ts) 保持书籍锁、presence、心跳和远程停止的共同协议；[`cache/book-cache.ts`](../src/storage/cache/book-cache.ts) 处理预览、认领、旧缓存恢复、封面及通知，实际写事务位于 [`cache/indexeddb-repository.ts`](../src/storage/cache/indexeddb-repository.ts)。公开缓存记录位于 [`cache/model.ts`](../src/storage/cache/model.ts)，V3 与旧版结构分别留在对应 repository / legacy 模块；错误分类位于环境无关的 [`cache/storage-error.ts`](../src/storage/cache/storage-error.ts)。下载内核只引用缓存模型与错误契约，具体能力由 app 的书籍任务装配。设置由 [`settings.ts`](../src/storage/settings.ts) 直接读写 GM 偏好，历史及其记录类型由 [`history.ts`](../src/storage/history.ts) 维护；[`app/cache-management.ts`](../src/app/cache-management.ts) 合并持久库存、当前会话、原导出结果与活动锁，并协调手动清理和停止清除；统一条目、来源与清理结果类型就近定义，存储没有页面状态的反向依赖。
 
 ## 改一条规则时
 
 - 选择、章序、范围摘要和成功缓存策略：改 [`download/plan.ts`](../src/download/plan.ts)，检查范围选择、进度、生命周期和文件名边界。运行元信息和补抓对象的选择留在 `download/run.ts`，正文执行留在 `download/chapter-pipeline.ts`。
 - 缓存是否兼容：改 [`storage/cache/compatibility.ts`](../src/storage/cache/compatibility.ts)，检查 [`cache-preview.contract.test.ts`](../tests/cache/cache-preview.contract.test.ts)。预览不授权清理；正式 claim 在同一写事务检查兼容性和确认，未确认不写入、不迁移清理、不发 claimed 事件。
 - 密码错误如何处理：看 `protected-chapters.ts`；站点授权协议看 [`site/protected-chapter.ts`](../src/site/protected-chapter.ts)，普通章节与授权请求共用本任务的 [`site/request-gate.ts`](../src/site/request-gate.ts)，授权独占队列保持原请求顺序。拒绝的密码不能变成普通失败章节或缓存记录。
-- 会话／导出清理与跨页失效：看 `state.ts`、`cache/manager.ts` 和 [`runtime-cache-ownership.contract.test.ts`](../tests/cache/runtime-cache-ownership.contract.test.ts)。已有结果与新任务独立，活动章节表不由同步事件清空。
+- 会话／导出清理与跨页失效：看 [`app/page-session.ts`](../src/app/page-session.ts)、[`app/cache-management.ts`](../src/app/cache-management.ts) 和 [`runtime-cache-ownership.contract.test.ts`](../tests/cache/runtime-cache-ownership.contract.test.ts)。已有结果与新任务独立，活动章节表不由同步事件清空。
 - 导出生成与重试：看 `format-choice.ts` 和 [`export-recovery.contract.test.ts`](../tests/export/export-recovery.contract.test.ts)。缺章占位只加入导出快照。
 
 注释保持就近、简短：方法说明一句职责，阶段边界说明不直观的顺序。修改流程时同时检查这里的入口与代表测试；验证命令和隔离约定见 [`docs/testing.md`](testing.md)。

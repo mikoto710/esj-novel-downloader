@@ -9,7 +9,7 @@ import {
 } from "../../src/ui/dialogs/download-selection";
 import { publishInterfaceLocaleChange } from "../../src/ui/locale";
 import { setInterfaceLocalePreference } from "../../src/storage/settings";
-import { state } from "../../src/core/state";
+import { state } from "../../src/app/page-session";
 import { showFormatChoice } from "../../src/ui/popups";
 
 function selectionOptions(overrides: Partial<DownloadSelectionPopupOptions> = {}): DownloadSelectionPopupOptions {
