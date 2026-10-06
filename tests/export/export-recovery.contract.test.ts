@@ -8,7 +8,7 @@ const mocks = vi.hoisted(() => ({
     buildEpub: vi.fn(),
     buildBookHtml: vi.fn(),
     triggerDownload: vi.fn(),
-    addDownloadHistory: vi.fn(async () => undefined),
+    addDownloadHistory: vi.fn(async (): Promise<void> => undefined),
     log: vi.fn()
 }));
 
@@ -63,7 +63,9 @@ describe("full-book export recovery contracts", () => {
         mocks.triggerDownload.mockImplementationOnce(() => {
             throw new Error("object URL unavailable");
         });
-        const { state } = await prepareExportPopup();
+        const source = createCachedData();
+        source.exportContext!.taskId = "export-retry";
+        const { state } = await prepareExportPopup(source);
         const diagnostics = await import("../../src/adapters/browser-diagnostics");
         diagnostics.startBrowserDiagnosticSession({
             taskId: "export-retry",
@@ -121,6 +123,43 @@ describe("full-book export recovery contracts", () => {
         click("#esj-epub");
         await vi.waitFor(() => expect(mocks.triggerDownload).toHaveBeenCalledTimes(2));
         expect(mocks.buildEpub).toHaveBeenLastCalledWith(state.cachedData?.chapters, state.cachedData?.metadata, true);
+    });
+
+    it("does not revive an invalidated EPUB when the setting returns to its original value", async () => {
+        const { setEpubTagPageSetting } = await import("../../src/storage/settings");
+        const { invalidateCachedEpub } = await import("../../src/app/export");
+        setEpubTagPageSetting(false);
+        const pending = createDeferred<Blob>();
+        mocks.buildEpub.mockReturnValueOnce(pending.promise);
+        const { state } = await prepareExportPopup();
+        click("#esj-epub");
+        await vi.waitFor(() => expect(mocks.buildEpub).toHaveBeenCalledOnce());
+        setEpubTagPageSetting(true);
+        invalidateCachedEpub(state.cachedData);
+        setEpubTagPageSetting(false);
+        invalidateCachedEpub(state.cachedData);
+        pending.resolve(new Blob(["invalidated generation"]));
+        await vi.waitFor(() => expect(mocks.triggerDownload).toHaveBeenCalledOnce());
+        expect(state.cachedData?.epubBlob).toBeNull();
+        click("#esj-epub");
+        await vi.waitFor(() => expect(mocks.buildEpub).toHaveBeenCalledTimes(2));
+    });
+
+    it("does not attribute a legacy result without task identity to a later task", async () => {
+        const diagnostics = await import("../../src/adapters/browser-diagnostics");
+        await prepareExportPopup();
+        diagnostics.startBrowserDiagnosticSession({
+            taskId: "unrelated-task",
+            bookId: "200",
+            bookTitle: "Later book",
+            pageUrl: "https://example.test/later",
+            sourcePageType: "detail",
+            imageEnabled: false
+        });
+        diagnostics.finishBrowserDiagnosticSession("unrelated-task", "failed");
+        click("#esj-txt");
+        expect(mocks.triggerDownload).toHaveBeenCalledOnce();
+        expect(diagnostics.listBrowserDiagnosticSessions().history[0].exports).toEqual([]);
     });
 
     it("rebuilds EPUB when another page changes the tag setting", async () => {
@@ -202,6 +241,8 @@ describe("full-book export recovery contracts", () => {
 
     it("prevents duplicate HTML builds while allowing another format to export", async () => {
         const htmlBuild = createDeferred<Blob>();
+        const history = createDeferred<void>();
+        mocks.addDownloadHistory.mockReturnValueOnce(history.promise).mockReturnValueOnce(history.promise);
         mocks.buildBookHtml.mockReturnValue(htmlBuild.promise);
         await prepareExportPopup();
 
@@ -216,6 +257,8 @@ describe("full-book export recovery contracts", () => {
         htmlBuild.resolve(new Blob(["html"], { type: "text/html" }));
         await vi.waitFor(() => expect(mocks.triggerDownload).toHaveBeenCalledTimes(2));
         expect(mocks.addDownloadHistory).toHaveBeenCalledWith(expect.objectContaining({ format: "html" }));
+        await vi.waitFor(() => expect((document.querySelector("#esj-html") as HTMLButtonElement).disabled).toBe(false));
+        history.resolve();
     });
 
     it("uses the captured range snapshot for filenames and history", async () => {
@@ -307,7 +350,9 @@ describe("full-book export recovery contracts", () => {
                 sha256: "a".repeat(64)
             }
         });
-        await prepareExportPopup(createCachedData({ chapters: [mappedChapter] }));
+        const source = createCachedData({ chapters: [mappedChapter] });
+        source.exportContext!.taskId = "mapped-cancel";
+        await prepareExportPopup(source);
         const diagnostics = await import("../../src/adapters/browser-diagnostics");
         diagnostics.startBrowserDiagnosticSession({
             taskId: "mapped-cancel",

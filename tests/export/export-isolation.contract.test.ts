@@ -4,6 +4,7 @@ import { IDBFactory } from "fake-indexeddb";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
     createCachedData,
+    useFakeClock,
     createDeferred,
     createChapterFixture,
     createProtectedChapterFixture,
@@ -22,6 +23,7 @@ describe("full-book and single-chapter export isolation", () => {
         vi.resetModules();
         vi.doUnmock("../../src/site/protected-chapter");
         vi.doUnmock("../../src/site/images");
+        vi.doUnmock("../../src/storage/history");
         vi.stubGlobal("indexedDB", new IDBFactory());
         vi.stubGlobal("BroadcastChannel", undefined);
         const fixture = new DOMParser().parseFromString(createChapterFixture({ title: "单章测试" }), "text/html");
@@ -141,6 +143,68 @@ describe("full-book and single-chapter export isolation", () => {
             })
         ]);
         expect(document.querySelector("#esj-message-diagnostic")).not.toBeNull();
+    });
+
+    it("awaits single history failure after immediate URL cleanup but retains triggered success", async () => {
+        const history = createDeferred<void>();
+        const addHistory = vi.fn(() => history.promise);
+        vi.doMock("../../src/storage/history", () => ({ addDownloadHistory: addHistory }));
+        const { downloadCurrentPage } = await import("../../src/app/single-download");
+        let settled = false;
+        const running = downloadCurrentPage("txt").then(() => {
+            settled = true;
+        });
+        await vi.waitFor(() => expect(addHistory).toHaveBeenCalledOnce());
+        expect(settled).toBe(false);
+        expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:single-chapter");
+        expect(document.querySelector("a[download]")).toBeNull();
+        history.reject(new Error("history unavailable"));
+        await running;
+        const { listBrowserDiagnosticSessions } = await import("../../src/adapters/browser-diagnostics");
+        expect(listBrowserDiagnosticSessions().history[0]).toMatchObject({
+            result: "failed",
+            exports: [{ outcome: "success", generated: true, downloadTriggered: true, failureStage: null }]
+        });
+        expect(document.querySelector("#esj-message-popup")).not.toBeNull();
+    });
+
+    it("cleans a failed book click while retaining the 60-second URL lifetime", async () => {
+        const { triggerDownload } = await import("../../src/browser/files");
+        const clock = useFakeClock();
+        const triggered = vi.fn();
+        clickMock.mockImplementationOnce(() => {
+            throw new Error("click failed");
+        });
+        try {
+            expect(() => triggerDownload(new Blob(["book"]), "book.txt", { onTriggered: triggered })).toThrow(
+                "click failed"
+            );
+            expect(triggered).not.toHaveBeenCalled();
+            expect(document.querySelector("a[download]")).toBeNull();
+            expect(URL.revokeObjectURL).not.toHaveBeenCalled();
+            await clock.advanceBy(59_999);
+            expect(URL.revokeObjectURL).not.toHaveBeenCalled();
+            await clock.advanceBy(1);
+            expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:single-chapter");
+        } finally {
+            clock.restore();
+        }
+    });
+
+    it("retains the click marker and immediately revokes when single anchor removal fails", async () => {
+        const removeChild = document.body.removeChild.bind(document.body);
+        vi.spyOn(document.body, "removeChild").mockImplementation((node) => {
+            removeChild(node);
+            throw new Error("removal failed after detach");
+        });
+        const { downloadCurrentPage } = await import("../../src/app/single-download");
+        await downloadCurrentPage("txt");
+        expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:single-chapter");
+        const { listBrowserDiagnosticSessions } = await import("../../src/adapters/browser-diagnostics");
+        expect(listBrowserDiagnosticSessions().history[0]).toMatchObject({
+            result: "failed",
+            exports: [{ outcome: "success", generated: true, downloadTriggered: true }]
+        });
     });
 
     it("prompts for native unlock without exporting a protected single chapter", async () => {

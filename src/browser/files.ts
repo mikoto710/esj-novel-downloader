@@ -10,15 +10,27 @@ export function triggerDownload(
     a.href = URL.createObjectURL(blob);
     a.download = filename;
     const revokeDelayMs = options.revokeDelayMs ?? 60_000;
-    document.body.appendChild(a);
-    a.click();
-    options.onTriggered?.();
-    if (revokeDelayMs === 0) {
-        document.body.removeChild(a);
-        URL.revokeObjectURL(a.href);
-    } else {
-        a.remove();
-        setTimeout(() => URL.revokeObjectURL(a.href), revokeDelayMs);
+    try {
+        document.body.appendChild(a);
+        a.click();
+        // 触发标记先于移除和回收，后续清理失败不能抹去已触发事实
+        options.onTriggered?.();
+    } finally {
+        try {
+            if (revokeDelayMs === 0) {
+                if (a.parentNode) {
+                    document.body.removeChild(a);
+                }
+            } else {
+                a.remove();
+            }
+        } finally {
+            if (revokeDelayMs === 0) {
+                URL.revokeObjectURL(a.href);
+            } else {
+                setTimeout(() => URL.revokeObjectURL(a.href), revokeDelayMs);
+            }
+        }
     }
 }
 

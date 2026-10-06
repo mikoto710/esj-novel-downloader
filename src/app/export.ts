@@ -14,6 +14,7 @@ import { getExportErrorDetails } from "../ui/messages/export";
 export interface CachedData extends ExportSnapshot {
     epubBlob?: Blob | null;
     epubTagPageEnabled?: boolean;
+    epubRevision?: number;
 }
 
 export type ExportFormat = "txt" | "epub" | "html";
@@ -27,12 +28,13 @@ interface RichExportView extends ExportView {
 }
 
 /**
- * 使指定原结果的派生产物失效，正文继续复用
+ * 使指定原结果的派生产物失效，进行中的生成也不得写回
  */
 export function invalidateCachedEpub(data: CachedData | null): void {
     if (data) {
         data.epubBlob = null;
         delete data.epubTagPageEnabled;
+        data.epubRevision = (data.epubRevision || 0) + 1;
     }
 }
 
@@ -68,26 +70,29 @@ function recordFailedExport(
     view: ExportView
 ): void {
     const details = getExportErrorDetails(error);
-    recordBrowserDiagnosticExport(
-        {
-            scope: "full",
-            format,
-            outcome: "failed",
-            generated: stage === "download",
-            downloadTriggered: false,
-            failureStage: stage
-        },
-        data.exportContext?.taskId
-    );
-    recordBrowserDiagnosticFailure(
-        {
-            scope: "export",
-            stage: `${format}-${stage}`,
-            code: error instanceof Error ? error.name || "export-failed" : "export-failed",
-            message: details
-        },
-        data.exportContext?.taskId
-    );
+    // 旧快照没有来源身份时，不把导出归到后来任务
+    if (data.exportContext?.taskId) {
+        recordBrowserDiagnosticExport(
+            {
+                scope: "full",
+                format,
+                outcome: "failed",
+                generated: stage === "download",
+                downloadTriggered: false,
+                failureStage: stage
+            },
+            data.exportContext?.taskId
+        );
+        recordBrowserDiagnosticFailure(
+            {
+                scope: "export",
+                stage: `${format}-${stage}`,
+                code: error instanceof Error ? error.name || "export-failed" : "export-failed",
+                message: details
+            },
+            data.exportContext?.taskId
+        );
+    }
     view.failed(format, stage, details);
 }
 
@@ -131,6 +136,7 @@ export async function exportBookRich(data: CachedData, format: "epub" | "html", 
         if (format === "epub" && data.epubTagPageEnabled !== epubTagPageEnabled) {
             data.epubBlob = null;
         }
+        const revision = data.epubRevision || 0;
         let blob = format === "epub" ? data.epubBlob : null;
         if (!blob) {
             view.generating(format);
@@ -138,8 +144,12 @@ export async function exportBookRich(data: CachedData, format: "epub" | "html", 
                 format === "epub"
                     ? await buildEpub(data.chapters, data.metadata, epubTagPageEnabled)
                     : await buildBookHtml(data.chapters, data.metadata);
-            if (format === "epub" && getEpubTagPageSetting() === epubTagPageEnabled) {
-                // 设置未改变才缓存，避免异步生成把已失效的产物写回
+            if (
+                format === "epub" &&
+                getEpubTagPageSetting() === epubTagPageEnabled &&
+                (data.epubRevision || 0) === revision
+            ) {
+                // 既复核设置又复核失效代次，设置切回原值也不能恢复旧生成
                 data.epubBlob = blob;
                 data.epubTagPageEnabled = epubTagPageEnabled;
             }
@@ -155,6 +165,9 @@ export async function exportBookRich(data: CachedData, format: "epub" | "html", 
 }
 
 function recordSuccessfulExport(data: CachedData, format: "txt" | "epub" | "html"): void {
+    if (!data.exportContext?.taskId) {
+        return;
+    }
     recordBrowserDiagnosticExport(
         {
             scope: "full",
@@ -169,6 +182,9 @@ function recordSuccessfulExport(data: CachedData, format: "txt" | "epub" | "html
 }
 
 function recordCancelledExport(data: CachedData, format: "epub" | "html"): void {
+    if (!data.exportContext?.taskId) {
+        return;
+    }
     recordBrowserDiagnosticExport(
         {
             scope: "full",
