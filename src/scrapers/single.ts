@@ -1,10 +1,12 @@
-import { blobToBase64 } from "../browser/files";
+import { buildCurrentChapterHtml, embedChapterImages } from "../export/html";
+import { buildCurrentChapterTxt } from "../export/txt";
+import { createCurrentChapterFilename } from "../export/filename";
 import { parseChapterHtml, normalizeParsedChapter } from "../site/chapter";
 import { parseBookMetadata } from "../site/book";
 import { getImageDownloadSetting } from "../storage/settings";
 import { processHtmlImages } from "../site/images";
 import { addDownloadHistory } from "../storage/history";
-import { MappingFontError, prepareChapterMappingExport } from "../content/mapping-font";
+import { MappingFontError } from "../content/mapping-font";
 import { confirmMappingFontExport } from "../ui/popups";
 import { showMessagePopup } from "../ui/dialogs/message";
 import { t } from "../ui/locale";
@@ -47,8 +49,8 @@ export async function downloadCurrentPage(format: "txt" | "html" = "txt"): Promi
     try {
         log(t("single.log.started", { format: format.toUpperCase() }));
 
-        let metaHeader = "";
-        let bookNamePrefix = "";
+        let txtIntro: string | undefined;
+        let filenameBookName: string | undefined;
         const htmlMeta = { intro: "", bookName: "", author: "" };
 
         if (viewAllBtn && viewAllBtn.href) {
@@ -66,8 +68,8 @@ export async function downloadCurrentPage(format: "txt" | "html" = "txt"): Promi
                     sourcePageType: "single"
                 });
 
-                metaHeader = meta.introTxt + "====================================\n\n";
-                bookNamePrefix = `[${meta.bookName}] `;
+                txtIntro = meta.introTxt;
+                filenameBookName = meta.bookName;
 
                 htmlMeta.intro = meta.baseIntroTxt;
                 htmlMeta.bookName = meta.bookName;
@@ -170,14 +172,7 @@ export async function downloadCurrentPage(format: "txt" | "html" = "txt"): Promi
                 try {
                     const processed = await processHtmlImages(contentHtml, 0);
 
-                    let tempHtml = processed.processedHtml;
-
-                    for (const img of processed.images) {
-                        const b64 = await blobToBase64(img.blob);
-                        tempHtml = tempHtml.split(`src="${img.id}"`).join(`src="${b64}"`);
-                    }
-
-                    contentHtml = tempHtml;
+                    contentHtml = await embedChapterImages(processed.processedHtml, processed.images);
                     imageSuccessCount = processed.images.length;
                     imageFailureCount = processed.failCount;
                     processed.failures.forEach((failure) => {
@@ -214,62 +209,17 @@ export async function downloadCurrentPage(format: "txt" | "html" = "txt"): Promi
                 }
             }
 
-            const safeTitle = title.replace(/[\\/:*?"<>|]/g, "_").trim();
             let blob: Blob;
-            let downloadFilename = "";
+            const downloadFilename = createCurrentChapterFilename(filenameBookName, title, format);
 
-            // 构建下载内容
+            // 图片准备仍先于两种格式生成，TXT 不跳过原有资源工作
             if (format === "txt") {
-                const finalTxt = `${metaHeader}${title}\n${author}\n本章URL: ${location.href}\n\n${contentText}`;
-                blob = new Blob([finalTxt], { type: "text/plain;charset=utf-8" });
-                downloadFilename = `${bookNamePrefix}${safeTitle}.txt`;
+                blob = buildCurrentChapterTxt({ intro: txtIntro, title, author, pageUrl: location.href, contentText });
             } else {
-                // 构建 HTML
-                const mappingExport = prepareChapterMappingExport({ ...normalized.chapter, content: contentHtml }, 0);
-                let mappingFontStyle = "";
-                if (mappingExport) {
-                    const fontDataUrl = await blobToBase64(mappingExport.font.blob);
-                    mappingFontStyle = `@font-face { font-family: '${mappingExport.fontFamily}'; src: url('${fontDataUrl}') format('woff2'); font-display: swap; }`;
-                    contentHtml = mappingExport.contentHtml;
-                }
-                const style = `
-                <style>
-                    ${mappingFontStyle}
-                    body { font-family: sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; line-height: 1.6; color: #333; background: #f9f9f9; }
-                    .chapter-card { background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
-                    h1 { color: #2c3e50; border-bottom: 1px solid #eee; padding-bottom: 10px; }
-                    .meta { color: #666; font-size: 0.9em; margin-bottom: 20px; white-space: pre-wrap; background: #f0f0f0; padding: 10px; border-radius: 4px; }
-                    .content { font-size: 1.1em; }
-                    img { max-width: 100%; height: auto; display: block; margin: 10px auto; }
-                </style>
-            `;
-
-                const metaBlock = htmlMeta.intro ? `<div class="meta">${htmlMeta.intro}</div>` : "";
-                const finalHtml = `
-                <!DOCTYPE html>
-                <html lang="zh-CN">
-                <head>
-                    <meta charset="UTF-8">
-                    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                    <title>${title}</title>
-                    ${style}
-                </head>
-                <body>
-                    <div class="chapter-card">
-                        <h1>${title}</h1>
-                        <p>${author}</p>
-                        <p>本章URL: <a href="${location.href}">${location.href}</a></p>
-                        ${metaBlock}
-                        <hr/>
-                        <div class="content">
-                            ${contentHtml}
-                        </div>
-                    </div>
-                </body>
-                </html>
-            `;
-                blob = new Blob([finalHtml], { type: "text/html;charset=utf-8" });
-                downloadFilename = `${bookNamePrefix}${safeTitle}.html`;
+                blob = await buildCurrentChapterHtml(
+                    { ...normalized.chapter, content: contentHtml },
+                    { title, author, intro: htmlMeta.intro, pageUrl: location.href }
+                );
             }
             generated = true;
 

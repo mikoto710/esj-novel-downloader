@@ -6,7 +6,8 @@ import type { CacheMeta } from "../storage/cache/model";
 import { DownloadProgress } from "./progress";
 import { createTaskCacheWriter, type TaskCacheWriter } from "./cache-writer";
 import { createChapterPipeline, type ChapterPipeline } from "./chapter-pipeline";
-import { createExportData, prepareCover } from "../core/download/export-data";
+import { createExportData } from "../export/snapshot";
+import type { BookCover } from "../content/model";
 import { getErrorDetails, isCancellationError } from "./errors";
 import { scanChapterIntegrity, scanMissingChapterTasks } from "./integrity";
 import { runUserDecision, UserDecisionGate } from "./user-decision-gate";
@@ -279,4 +280,49 @@ function reportFailure(
         ui.showTerminalFailure({ kind: "download", code, params, storageFailure });
     }
     throw reported;
+}
+
+type CoverPorts = Pick<DownloadDependencies, "coverCache" | "coverFetcher" | "cancellation" | "log">;
+/**
+ * 优先复用封面缓存，封面缺失不阻断正文导出
+ */
+async function prepareCover(options: DownloadOptions, ports: CoverPorts): Promise<BookCover | null> {
+    const coverUrl = options.coverUrl;
+    if (!coverUrl) {
+        return null;
+    }
+
+    try {
+        const cached = await ports.coverCache.load(options.bookId, coverUrl);
+        if (cached) {
+            ports.log({ code: "cover-cache-hit" });
+            return cached;
+        }
+    } catch (error) {
+        ports.log({ code: "cover-cache-read-failed", params: getErrorDetails(error) });
+    }
+
+    if (ports.cancellation.isCancellationRequested()) {
+        return null;
+    }
+    const cover = await ports.coverFetcher.fetch(coverUrl, ports.cancellation.signal);
+    if (!cover || ports.cancellation.isCancellationRequested()) {
+        return null;
+    }
+
+    try {
+        const saved = await ports.coverCache.put(
+            options.bookId,
+            options.taskId,
+            coverUrl,
+            cover,
+            ports.cancellation.signal
+        );
+        ports.log({
+            code: saved ? "cover-cache-saved" : "cover-cache-write-ownership-lost"
+        });
+    } catch (error) {
+        ports.log({ code: "cover-cache-write-failed", params: getErrorDetails(error) });
+    }
+    return cover;
 }

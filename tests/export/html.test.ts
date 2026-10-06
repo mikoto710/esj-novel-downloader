@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 
 import { describe, expect, it } from "vitest";
-import { buildHtml } from "../../src/core/export/html";
-import { createMissingChapterPlaceholder } from "../../src/core/download/incomplete-chapters";
+import { buildBookHtml } from "../../src/export/html";
+import { createMissingChapterPlaceholder } from "../../src/export/snapshot";
 import { createBookMetadata, createChapter } from "../support";
 
 function createMappedChapter() {
@@ -26,9 +26,9 @@ async function readBlob(blob: Blob): Promise<string> {
     });
 }
 
-describe("buildHtml mapped font resources", () => {
+describe("buildBookHtml mapped font resources", () => {
     it("embeds a controlled WOFF2 data URL and rewrites the chapter family", async () => {
-        const blob = await buildHtml([createMappedChapter()], createBookMetadata());
+        const blob = await buildBookHtml([createMappedChapter()], createBookMetadata());
         const html = await readBlob(blob);
 
         expect(html).toContain("@font-face { font-family: 'esj-mapped-1-aaaaaaaaaaaa'");
@@ -44,7 +44,7 @@ describe("buildHtml mapped font resources", () => {
             content: "<section style=\"font-family: '1', sans-serif;\"><p>Mapped body</p></section>"
         });
 
-        await expect(buildHtml([chapter], createBookMetadata())).rejects.toMatchObject({
+        await expect(buildBookHtml([chapter], createBookMetadata())).rejects.toMatchObject({
             code: "structure-invalid",
             reason: "export-font-missing"
         });
@@ -57,7 +57,7 @@ describe("buildHtml mapped font resources", () => {
             url: "https://www.esjzone.cc/forum/100/1.html"
         });
 
-        const html = await readBlob(await buildHtml([chapter], createBookMetadata()));
+        const html = await readBlob(await buildBookHtml([chapter], createBookMetadata()));
 
         expect(html).toContain("[章节缺失]");
         expect(html).toContain("https://www.esjzone.cc/forum/100/1.html");

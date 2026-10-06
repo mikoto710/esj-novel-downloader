@@ -1,11 +1,11 @@
-import type { Chapter, BookMetadata } from "../../content/model";
-import { blobToBase64 } from "../../browser/files";
-import { prepareChapterMappingExport } from "../../content/mapping-font";
+import type { Chapter, BookMetadata, ChapterImage } from "../content/model";
+import { blobToBase64 } from "../browser/files";
+import { prepareChapterMappingExport } from "../content/mapping-font";
 
 /**
- * 构建单文件 HTML
+ * 构建含封面和目录的整书或范围 HTML
  */
-export async function buildHtml(chapters: Chapter[], metadata: BookMetadata): Promise<Blob> {
+export async function buildBookHtml(chapters: Chapter[], metadata: BookMetadata): Promise<Blob> {
     const imgMap = new Map<string, string>();
     const mappingExports = chapters.map((chapter, index) => prepareChapterMappingExport(chapter, index));
     const mappingFontStyles: string[] = [];
@@ -30,10 +30,7 @@ export async function buildHtml(chapters: Chapter[], metadata: BookMetadata): Pr
         if (!mappingExport) {
             continue;
         }
-        const dataUrl = await blobToBase64(mappingExport.font.blob);
-        mappingFontStyles.push(
-            `@font-face { font-family: '${mappingExport.fontFamily}'; src: url('${dataUrl}') format('woff2'); font-display: swap; }`
-        );
+        mappingFontStyles.push(await embedMappingFont(mappingExport));
     }
 
     // 简单的阅读样式
@@ -91,15 +88,7 @@ export async function buildHtml(chapters: Chapter[], metadata: BookMetadata): Pr
         const chap = chapters[i];
         let body = mappingExports[i]?.contentHtml || chap.content;
 
-        if (chap.images && chap.images.length > 0) {
-            chap.images.forEach((img) => {
-                const base64 = imgMap.get(img.id);
-                if (base64) {
-                    // 全局替换该图片引用
-                    body = body.split(`src="${img.id}"`).join(`src="${base64}"`);
-                }
-            });
-        }
+        body = await embedChapterImages(body, chap.images || [], imgMap);
 
         contentHtml += `
             <div id="chap${i}" class="chapter">
@@ -128,4 +117,81 @@ export async function buildHtml(chapters: Chapter[], metadata: BookMetadata): Pr
     `;
 
     return new Blob([fullHtml], { type: "text/html;charset=utf-8" });
+}
+
+/**
+ * 单章在字体准备前嵌图；整书传入已收集资源，在字体准备后替换引用
+ */
+export async function embedChapterImages(
+    content: string,
+    images: readonly ChapterImage[],
+    imageUrls?: ReadonlyMap<string, string>
+): Promise<string> {
+    for (const image of images) {
+        const dataUrl = imageUrls ? imageUrls.get(image.id) : await blobToBase64(image.blob);
+        if (dataUrl) {
+            content = content.split(`src="${image.id}"`).join(`src="${dataUrl}"`);
+        }
+    }
+    return content;
+}
+
+async function embedMappingFont(
+    mappingExport: NonNullable<ReturnType<typeof prepareChapterMappingExport>>
+): Promise<string> {
+    const dataUrl = await blobToBase64(mappingExport.font.blob);
+    return `@font-face { font-family: '${mappingExport.fontFamily}'; src: url('${dataUrl}') format('woff2'); font-display: swap; }`;
+}
+
+/**
+ * 构建当前页面单章布局；调用方已按原工作流完成插图准备
+ */
+export async function buildCurrentChapterHtml(
+    chapter: Chapter,
+    { title, author, intro, pageUrl }: { title: string; author: string; intro: string; pageUrl: string }
+): Promise<Blob> {
+    let contentHtml = chapter.content;
+    const mappingExport = prepareChapterMappingExport(chapter, 0);
+    let fontStyle = "";
+    if (mappingExport) {
+        fontStyle = await embedMappingFont(mappingExport);
+        contentHtml = mappingExport.contentHtml;
+    }
+    const style = `
+                <style>
+                    ${fontStyle}
+                    body { font-family: sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; line-height: 1.6; color: #333; background: #f9f9f9; }
+                    .chapter-card { background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
+                    h1 { color: #2c3e50; border-bottom: 1px solid #eee; padding-bottom: 10px; }
+                    .meta { color: #666; font-size: 0.9em; margin-bottom: 20px; white-space: pre-wrap; background: #f0f0f0; padding: 10px; border-radius: 4px; }
+                    .content { font-size: 1.1em; }
+                    img { max-width: 100%; height: auto; display: block; margin: 10px auto; }
+                </style>
+            `;
+
+    const metaBlock = intro ? `<div class="meta">${intro}</div>` : "";
+    const finalHtml = `
+                <!DOCTYPE html>
+                <html lang="zh-CN">
+                <head>
+                    <meta charset="UTF-8">
+                    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                    <title>${title}</title>
+                    ${style}
+                </head>
+                <body>
+                    <div class="chapter-card">
+                        <h1>${title}</h1>
+                        <p>${author}</p>
+                        <p>本章URL: <a href="${pageUrl}">${pageUrl}</a></p>
+                        ${metaBlock}
+                        <hr/>
+                        <div class="content">
+                            ${contentHtml}
+                        </div>
+                    </div>
+                </body>
+                </html>
+            `;
+    return new Blob([finalHtml], { type: "text/html;charset=utf-8" });
 }

@@ -1,12 +1,13 @@
-import type { CachedData } from "../../types";
+import type { CachedData } from "../../export/snapshot";
 import type { MappingFontSummary } from "../../download/contracts";
 import { state } from "../../app/page-session";
-import { buildEpub } from "../../core/export/epub";
-import { buildHtml } from "../../core/export/html";
+import { buildEpub } from "../../export/epub";
+import { buildTxt } from "../../export/txt";
+import { buildBookHtml } from "../../export/html";
 import { getEpubTagPageSetting, getImageDownloadSetting } from "../../storage/settings";
 import { addDownloadHistory } from "../../storage/history";
 import { MappingFontError } from "../../content/mapping-font";
-import { createBookExportFilename } from "../../core/export/filename";
+import { createBookExportFilename } from "../../export/filename";
 import { recordBrowserDiagnosticExport, recordBrowserDiagnosticFailure } from "../../adapters/browser-diagnostics";
 import { fullCleanup, enableDrag, el, registerElementCleanup, removeElement } from "../../utils/dom";
 import { triggerDownload } from "../../browser/files";
@@ -177,7 +178,7 @@ export function showFormatChoice(data: CachedData): void {
                       );
                       let blob: Blob;
                       try {
-                          blob = new Blob([data.txt], { type: "text/plain;charset=utf-8" });
+                          blob = buildTxt(data.txt);
                       } catch (error) {
                           showExportFailure("TXT", "generate", error, data.exportContext?.taskId);
                           return;
@@ -345,7 +346,7 @@ export function showFormatChoice(data: CachedData): void {
                 blob =
                     format === "epub"
                         ? await buildEpub(data.chapters, data.metadata, epubTagPageEnabled)
-                        : await buildHtml(data.chapters, data.metadata);
+                        : await buildBookHtml(data.chapters, data.metadata);
                 if (format === "epub" && getEpubTagPageSetting() === epubTagPageEnabled) {
                     // 设置未改变才缓存，避免异步生成把已失效的产物写回
                     data.epubBlob = blob;

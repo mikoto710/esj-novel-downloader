@@ -1,5 +1,6 @@
 import type { DownloadSelection } from "./plan";
-import type { CachedData, DownloadCancellationMode, SourcePageType } from "../types";
+import type { DownloadCancellationMode, SourcePageType } from "../types";
+import type { CachedData } from "../export/snapshot";
 import type { CacheMeta } from "../storage/cache/model";
 import type { BookCover, Chapter } from "../content/model";
 import type { DomainMessage, DomainMessageParams } from "../core/messages";

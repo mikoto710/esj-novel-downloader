@@ -12,8 +12,8 @@ vi.mock("../../src/browser/script-loader", () => ({
     loadScript: loadScriptMock
 }));
 
-import { buildEpub } from "../../src/core/export/epub";
-import { createMissingChapterPlaceholder } from "../../src/core/download/incomplete-chapters";
+import { buildEpub } from "../../src/export/epub";
+import { createMissingChapterPlaceholder } from "../../src/export/snapshot";
 
 const metadata: BookMetadata = {
     title: "测试书籍",

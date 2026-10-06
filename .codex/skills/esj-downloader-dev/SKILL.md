@@ -8,7 +8,7 @@ description: Implement, refactor, or diagnose ESJ Novel Downloader TypeScript us
 ## Route the request
 
 1. Read `references/architecture.md` before changing a download, cache, adapter, or export path. Otherwise, inspect only the named module and its nearest tests.
-2. Identify the boundary before editing: book workflow (`app/book-download.ts`), single-page workflow (`scrapers/single.ts`), page injection (`ui/pages/`), dialogs (`ui/dialogs/`), presentation messages (`ui/messages/`), download business rules (`download/`), other core logic (`core/`), task wiring (`app/book-download.ts`) and download view (`ui/download-view.ts`), page session (`app/page-session.ts`), cache management (`app/cache-management.ts`), or persistence (`storage/`).
+2. Identify the boundary before editing: book workflow (`app/book-download.ts`), single-page workflow (`scrapers/single.ts`), page injection (`ui/pages/`), dialogs (`ui/dialogs/`), presentation messages (`ui/messages/`), download business rules (`download/`), format generation and snapshots (`export/`), other core logic (`core/`), task wiring (`app/book-download.ts`) and download view (`ui/download-view.ts`), page session (`app/page-session.ts`), cache management (`app/cache-management.ts`), or persistence (`storage/`).
 3. Keep core download code free of DOM, GM API, and browser-global access. Extend `download/contracts.ts` and assemble browser behavior in `app/book-download.ts` when a new dependency is needed.
 4. Preserve unified finalization across success, failure, and cancellation. Treat lock ownership, cache writers, listeners, timers, and channels as one lifecycle.
 5. Use `$esj-regression-selector` after selecting the change surface; follow its review or implementation path according to the requested scope.

@@ -6,14 +6,14 @@ import { createCachedData, createChapter, createDeferred } from "../support";
 
 const mocks = vi.hoisted(() => ({
     buildEpub: vi.fn(),
-    buildHtml: vi.fn(),
+    buildBookHtml: vi.fn(),
     triggerDownload: vi.fn(),
     addDownloadHistory: vi.fn(async () => undefined),
     log: vi.fn()
 }));
 
-vi.mock("../../src/core/export/epub", () => ({ buildEpub: mocks.buildEpub }));
-vi.mock("../../src/core/export/html", () => ({ buildHtml: mocks.buildHtml }));
+vi.mock("../../src/export/epub", () => ({ buildEpub: mocks.buildEpub }));
+vi.mock("../../src/export/html", () => ({ buildBookHtml: mocks.buildBookHtml }));
 vi.mock("../../src/utils/log", () => ({ log: mocks.log }));
 vi.mock("../../src/browser/files", () => ({ triggerDownload: mocks.triggerDownload }));
 vi.mock("../../src/storage/history", () => ({ addDownloadHistory: mocks.addDownloadHistory }));
@@ -27,7 +27,7 @@ describe("full-book export recovery contracts", () => {
         const { setInterfaceLocalePreference } = await import("../../src/storage/settings");
         setInterfaceLocalePreference("zh-CN");
         mocks.buildEpub.mockResolvedValue(new Blob(["epub"], { type: "application/epub+zip" }));
-        mocks.buildHtml.mockResolvedValue(new Blob(["html"], { type: "text/html" }));
+        mocks.buildBookHtml.mockResolvedValue(new Blob(["html"], { type: "text/html" }));
         vi.spyOn(console, "error").mockImplementation(() => undefined);
     });
 
@@ -175,7 +175,7 @@ describe("full-book export recovery contracts", () => {
     });
 
     it("keeps HTML retryable after consecutive generation failures", async () => {
-        mocks.buildHtml.mockRejectedValue(new Error("缺少已校验的映射字体"));
+        mocks.buildBookHtml.mockRejectedValue(new Error("缺少已校验的映射字体"));
         await prepareExportPopup();
 
         click("#esj-html");
@@ -189,12 +189,12 @@ describe("full-book export recovery contracts", () => {
         expect(mocks.addDownloadHistory).toHaveBeenCalledWith(expect.objectContaining({ format: "txt" }));
 
         click("#esj-html");
-        await vi.waitFor(() => expect(mocks.buildHtml).toHaveBeenCalledTimes(2));
+        await vi.waitFor(() => expect(mocks.buildBookHtml).toHaveBeenCalledTimes(2));
         await waitForMessage();
         expect(mocks.triggerDownload).toHaveBeenCalledOnce();
         closeMessage();
 
-        mocks.buildHtml.mockResolvedValueOnce(new Blob(["recovered html"], { type: "text/html" }));
+        mocks.buildBookHtml.mockResolvedValueOnce(new Blob(["recovered html"], { type: "text/html" }));
         click("#esj-html");
         await vi.waitFor(() => expect(mocks.triggerDownload).toHaveBeenCalledTimes(2));
         expect(mocks.addDownloadHistory).toHaveBeenCalledWith(expect.objectContaining({ format: "html" }));
@@ -202,14 +202,14 @@ describe("full-book export recovery contracts", () => {
 
     it("prevents duplicate HTML builds while allowing another format to export", async () => {
         const htmlBuild = createDeferred<Blob>();
-        mocks.buildHtml.mockReturnValue(htmlBuild.promise);
+        mocks.buildBookHtml.mockReturnValue(htmlBuild.promise);
         await prepareExportPopup();
 
         click("#esj-html");
         click("#esj-html");
         click("#esj-txt");
 
-        expect(mocks.buildHtml).toHaveBeenCalledOnce();
+        expect(mocks.buildBookHtml).toHaveBeenCalledOnce();
         expect(mocks.triggerDownload).toHaveBeenCalledOnce();
         expect(mocks.addDownloadHistory).toHaveBeenCalledWith(expect.objectContaining({ format: "txt" }));
 

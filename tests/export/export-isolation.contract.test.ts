@@ -4,6 +4,7 @@ import { IDBFactory } from "fake-indexeddb";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
     createCachedData,
+    createDeferred,
     createChapterFixture,
     createProtectedChapterFixture,
     installDocumentFixture
@@ -36,13 +37,22 @@ describe("full-book and single-chapter export isolation", () => {
         vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(clickMock);
     });
 
-    it("does not replace full-book export data when exporting a single chapter", async () => {
+    it("preserves full-book data while single TXT waits for enabled image preparation", async () => {
+        GM_setValue("enable_image_download", true);
+        const images = createDeferred<Awaited<ReturnType<typeof import("../../src/site/images").processHtmlImages>>>();
+        const processImages = vi.fn(() => images.promise);
+        vi.doMock("../../src/site/images", () => ({ processHtmlImages: processImages }));
         const { state } = await import("../../src/app/page-session");
         const { downloadCurrentPage } = await import("../../src/scrapers/single");
         const fullBookData = createCachedData();
         state.cachedData = fullBookData;
 
-        await downloadCurrentPage("txt");
+        const exporting = downloadCurrentPage("txt");
+        await vi.waitFor(() => expect(processImages).toHaveBeenCalledOnce());
+        expect(clickMock).not.toHaveBeenCalled();
+        expect(state.cachedData).toBe(fullBookData);
+        images.resolve({ processedHtml: "<p>正文</p>", images: [], failCount: 0, failures: [] });
+        await exporting;
 
         const { listBrowserDiagnosticSessions } = await import("../../src/adapters/browser-diagnostics");
         const diagnostic = listBrowserDiagnosticSessions().history[0];

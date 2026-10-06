@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createBookExportFilename } from "../../src/core/export/filename";
+import { createBookExportFilename } from "../../src/export/filename";
 
 describe("book export filename", () => {
     it("keeps full-book filenames unchanged", () => {

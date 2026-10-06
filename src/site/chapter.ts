@@ -2,7 +2,6 @@ import type { Chapter } from "../content/model";
 import type { ChapterFetcherPort, DownloadTask } from "../download/contracts";
 import { normalizeChapterMappingFont } from "../content/mapping-font";
 import { fetchWithTimeout } from "../browser/request";
-import { removeImgTags } from "../utils/text";
 import { processHtmlImages, type ImageProcessingFailure } from "./images";
 import { RequestGate } from "./request-gate";
 
@@ -125,4 +124,11 @@ export function createChapterFetcher(requestGate: RequestGate): ChapterFetcherPo
             }, signal);
         }
     };
+}
+
+/**
+ * 移除 HTML 字符串中的所有 img 标签
+ */
+function removeImgTags(html: string): string {
+    return html.replace(/<img[^>]*>/gi, "");
 }

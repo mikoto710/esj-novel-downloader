@@ -92,7 +92,26 @@ export default [
     },
 
     {
-        files: ["src/core/download/**/*.ts", "src/download/**/*.ts"],
+        files: ["src/export/**/*.ts"],
+        rules: {
+            "no-restricted-imports": [
+                "error",
+                {
+                    patterns: [{
+                        group: ["**/app/**", "**/ui/**", "**/site/**", "**/scrapers/**", "**/storage/**", "**/core/state"],
+                        message: "导出只处理传入快照与资源，不读取页面会话、采集正文或认领缓存"
+                    }]
+                }
+            ],
+            "no-restricted-globals": ["error", {
+                globals: ["document", "location", "window", "fetch", "indexedDB", "localStorage", "sessionStorage", ...Object.keys(globals.greasemonkey)],
+                checkGlobalObject: true
+            }]
+        }
+    },
+
+    {
+        files: ["src/download/**/*.ts", "src/export/snapshot.ts"],
         rules: {
             "no-restricted-imports": [
                 "error",

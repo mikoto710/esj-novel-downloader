@@ -1,4 +1,5 @@
-import type { CachedData, DownloadCancellationMode } from "../types";
+import type { DownloadCancellationMode } from "../types";
+import type { CachedData } from "../export/snapshot";
 import type { CacheMeta } from "../storage/cache/model";
 import type { DownloadCancellationPort } from "../download/contracts";
 import { subscribeCacheSync } from "../storage/cache/sync";
