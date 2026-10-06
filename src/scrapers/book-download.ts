@@ -1,7 +1,7 @@
-import type { DownloadSelection, DownloadTask } from "../core/download/contracts";
+import type { DownloadSelection } from "../core/download/contracts";
 import type { SourcePageType } from "../types";
 import type { LocaleKey } from "../core/locale";
-import type { parseBookMetadata } from "../core/parser";
+import { BookPreflightError, type PreparedBook } from "../site/book";
 import {
     activateDownload,
     createDownloadCancellation,
@@ -40,25 +40,6 @@ import {
 } from "../adapters/browser-diagnostics";
 
 type BookSourcePageType = Extract<SourcePageType, "detail" | "forum">;
-type ParsedBookMetadata = ReturnType<typeof parseBookMetadata>;
-
-export interface PreparedBook {
-    tasks: DownloadTask[];
-    meta: ParsedBookMetadata;
-    pageUrl: string;
-}
-
-export class BookPreflightError extends Error {
-    constructor(
-        readonly code: "chapter-list-missing" | "detail-fetch-failed",
-        readonly stage: "chapter-list" | "book-metadata",
-        options?: ErrorOptions
-    ) {
-        super(code, options);
-        this.name = "BookPreflightError";
-    }
-}
-
 interface RunBookDownloadOptions {
     bookId: string;
     sourcePageType: BookSourcePageType;

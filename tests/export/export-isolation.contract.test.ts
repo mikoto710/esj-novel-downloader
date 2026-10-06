@@ -19,8 +19,8 @@ describe("full-book and single-chapter export isolation", () => {
 
     beforeEach(() => {
         vi.resetModules();
-        vi.doUnmock("../../src/adapters/browser-protected-chapter");
-        vi.doUnmock("../../src/utils/image");
+        vi.doUnmock("../../src/site/protected-chapter");
+        vi.doUnmock("../../src/site/images");
         vi.stubGlobal("indexedDB", new IDBFactory());
         vi.stubGlobal("BroadcastChannel", undefined);
         const fixture = new DOMParser().parseFromString(createChapterFixture({ title: "单章测试" }), "text/html");
@@ -69,7 +69,7 @@ describe("full-book and single-chapter export isolation", () => {
 
     it("records an inline image failure without failing a single-chapter export", async () => {
         GM_setValue("enable_image_download", true);
-        vi.doMock("../../src/utils/image", () => ({
+        vi.doMock("../../src/site/images", () => ({
             processHtmlImages: vi.fn().mockResolvedValue({
                 processedHtml: '<p>正文保留</p><img src="https://example.test/image.jpg">',
                 images: [],

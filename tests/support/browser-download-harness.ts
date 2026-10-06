@@ -69,8 +69,14 @@ vi.mock("../../src/core/config", () => ({
     getConcurrency: hoistedBrowserDownloadMocks.getConcurrency,
     getInterfaceLocalePreference: hoistedBrowserDownloadMocks.getInterfaceLocalePreference
 }));
-vi.mock("../../src/utils/image", () => ({ processHtmlImages: hoistedBrowserDownloadMocks.processHtmlImages }));
-vi.mock("../../src/core/parser", () => ({ parseChapterHtml: hoistedBrowserDownloadMocks.parseChapterHtml }));
+vi.mock("../../src/site/images", async (importOriginal) => ({
+    ...(await importOriginal<typeof import("../../src/site/images")>()),
+    processHtmlImages: hoistedBrowserDownloadMocks.processHtmlImages
+}));
+vi.mock("../../src/site/chapter", async (importOriginal) => ({
+    ...(await importOriginal<typeof import("../../src/site/chapter")>()),
+    parseChapterHtml: hoistedBrowserDownloadMocks.parseChapterHtml
+}));
 vi.mock("../../src/core/book-lock", () => ({
     ownsActiveBookDownloadLock: hoistedBrowserDownloadMocks.ownsLock,
     shouldDiscardBookDownloadCache: hoistedBrowserDownloadMocks.shouldDiscard

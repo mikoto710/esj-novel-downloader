@@ -1,3 +1,5 @@
+import type { DownloadTask } from "../core/download/contracts";
+
 /**
  * 解析书籍详情页的 DOM，提取元数据
  */
@@ -115,38 +117,81 @@ export function parseBookMetadata(doc: Document, pageUrl: string) {
     };
 }
 
-/**
- * 解析单个章节页面的 HTML，提取标题、作者和正文
- */
-export function parseChapterHtml(html: string, defaultTitle: string) {
-    const doc = new DOMParser().parseFromString(html, "text/html");
+export interface PreparedBook {
+    tasks: DownloadTask[];
+    meta: ReturnType<typeof parseBookMetadata>;
+    pageUrl: string;
+}
 
-    const h2 = (doc.querySelector("h2") as HTMLElement)?.innerText || defaultTitle;
-
-    const bookName = document.title.split(" - ")[0].trim();
-
-    const author = (doc.querySelector(".single-post-meta div") as HTMLElement)?.innerText.trim() || "";
-
-    const contentEl = doc.querySelector(".forum-content") as HTMLElement;
-
-    // 获取用于 EPUB 的 HTML (包含 img 标签)
-    const contentHtml = contentEl ? contentEl.innerHTML : "";
-
-    // 获取用于 TXT 的纯文本
-    let contentText = contentEl ? contentEl.innerText : "";
-
-    // 检测并移除正文开头重复的标题
-    if (contentEl) {
-        const safeTitle = h2.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-        const titleRegex = new RegExp(`^\\s*${safeTitle}\\s*`, "i");
-        contentText = contentText.replace(titleRegex, "").trim();
+export class BookPreflightError extends Error {
+    constructor(
+        readonly code: "chapter-list-missing" | "detail-fetch-failed",
+        readonly stage: "chapter-list" | "book-metadata",
+        options?: ErrorOptions
+    ) {
+        super(code, options);
+        this.name = "BookPreflightError";
     }
+}
 
+/**
+ * 从详情页地址读取书籍身份，保留无法识别时的原有结果
+ */
+export function getDetailBookId(pageUrl: string): string {
+    const match = pageUrl.match(/\/detail\/(\d+)/);
+    return match ? match[1] : "unknown";
+}
+
+/**
+ * 从论坛路径末尾读取书籍身份
+ */
+export function getForumBookId(pathname: string): string {
+    const urlParts = pathname.split("/").filter(Boolean);
+    for (let index = urlParts.length - 1; index >= 0; index--) {
+        if (/^\d+$/.test(urlParts[index])) {
+            return urlParts[index];
+        }
+    }
+    return "";
+}
+
+function readBookPlan(doc: Document, pageUrl: string, fetched: boolean): PreparedBook {
+    const chapterLinks = Array.from(doc.querySelectorAll("#chapterList a")) as HTMLAnchorElement[];
+    if (chapterLinks.length === 0) {
+        throw new BookPreflightError("chapter-list-missing", "chapter-list");
+    }
     return {
-        title: h2,
-        author,
-        contentHtml,
-        contentText,
-        bookName
+        tasks: chapterLinks.map((node, index) => ({
+            index,
+            url: fetched ? new URL(node.getAttribute("href") || node.href, pageUrl).href : node.href,
+            title: (node.getAttribute("data-title") || node.innerText || "").trim()
+        })),
+        meta: parseBookMetadata(doc, pageUrl),
+        pageUrl
     };
+}
+
+/**
+ * 直接解释详情页当前文档，保留浏览器解析的章节地址
+ */
+export function loadDetailBook(doc: Document, pageUrl: string): PreparedBook {
+    return readBookPlan(doc, pageUrl, false);
+}
+
+/**
+ * 论坛入口获取详情文档，按详情地址解释相对章节链接
+ */
+export async function loadForumBook(bookId: string, origin: string): Promise<PreparedBook> {
+    const detailUrl = `${origin}/detail/${bookId}.html`;
+    let response: Response;
+    try {
+        response = await fetch(detailUrl);
+        if (!response.ok) {
+            throw new Error(`HTTP Error ${response.status}`);
+        }
+    } catch (error) {
+        throw new BookPreflightError("detail-fetch-failed", "book-metadata", { cause: error });
+    }
+    const doc = new DOMParser().parseFromString(await response.text(), "text/html");
+    return readBookPlan(doc, detailUrl, true);
 }

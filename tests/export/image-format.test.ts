@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { resolveImageUrl } from "../../src/utils/image-format";
+import { resolveImageUrl } from "../../src/site/images";
 import {
     detectImageFormat,
     hasInvalidImageMediaTypes,

@@ -1,9 +1,9 @@
 import { el } from "../../utils/dom";
 import { showMessagePopup } from "../dialogs/message";
 import { downloadCurrentPage } from "../../scrapers/single";
-import { parseChapterHtml } from "../../core/parser";
-import { MappingFontError, normalizeChapterMappingFont } from "../../content/mapping-font";
-import { isProtectedChapterHtml } from "../../adapters/browser-protected-chapter";
+import { parseChapterHtml, normalizeParsedChapter } from "../../site/chapter";
+import { MappingFontError } from "../../content/mapping-font";
+import { isProtectedChapterHtml } from "../../site/protected-chapter";
 import { bindInterfaceAttribute, subscribeInterfaceLocaleChange, t } from "../locale";
 import { formatMappingFontError } from "../messages/mapping-font";
 
@@ -113,11 +113,7 @@ async function updateSinglePageMappingUi(version: number): Promise<void> {
             return;
         }
         const parsed = parseChapterHtml(document.documentElement.outerHTML, document.title.split(" - ")[0]);
-        const normalized = await normalizeChapterMappingFont({
-            title: parsed.title,
-            content: parsed.contentHtml,
-            txtSegment: `${parsed.title}\n\n${parsed.author}\n\n${parsed.contentText}\n\n`
-        });
+        const normalized = await normalizeParsedChapter(parsed);
 
         // 正文或语言可能在预检期间变化，旧结果不再更新当前工具栏
         if (

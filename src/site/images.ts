@@ -1,8 +1,7 @@
 import { sleepWithAbort } from "../browser/timing";
 import { fetchWithTimeout } from "../browser/request";
-import { resolveImageUrl } from "./image-format";
 import { normalizeImageBlob } from "../content/image-format";
-import type { ChapterImage } from "../content/model";
+import type { BookCover, ChapterImage } from "../content/model";
 
 const IMAGE_FETCH_TIMEOUT = 20_000;
 
@@ -241,4 +240,62 @@ export async function processHtmlImages(
         failCount,
         failures
     };
+}
+
+/**
+ * 根据章节页面 URL 解析图片地址
+ * 协议相对地址使用图片自身域名，不回退到 ESJZone 域名
+ */
+export function resolveImageUrl(src: string, baseUrl: string): string | null {
+    try {
+        const url = new URL(src, baseUrl);
+        if (url.protocol !== "http:" && url.protocol !== "https:") {
+            return null;
+        }
+        return url.href;
+    } catch {
+        return null;
+    }
+}
+
+export type CoverAcquisitionFact =
+    | { code: "started" | "too-small" | "invalid-format" | "completed" }
+    | { code: "skipped"; error: unknown };
+
+/**
+ * 封面是可选资源，获取异常降级为无封面并向调用者报告结构化事实
+ */
+export async function fetchBookCover(
+    url: string,
+    report: (fact: CoverAcquisitionFact) => void,
+    signal?: AbortSignal
+): Promise<BookCover | null> {
+    try {
+        report({ code: "started" });
+        const response = await fetchWithTimeout(
+            url,
+            { method: "GET", referrerPolicy: "no-referrer", credentials: "omit" },
+            15000,
+            signal
+        );
+        const blob = await response.blob();
+        if (blob.size < 1000) {
+            report({ code: "too-small" });
+            return null;
+        }
+        const normalized = await normalizeImageBlob(blob);
+        if (!normalized || (normalized.extension !== "jpg" && normalized.extension !== "png")) {
+            report({ code: "invalid-format" });
+            return null;
+        }
+        report({ code: "completed" });
+        return {
+            blob: normalized.blob,
+            ext: normalized.extension,
+            mediaType: normalized.extension === "png" ? "image/png" : "image/jpeg"
+        };
+    } catch (error) {
+        report({ code: "skipped", error });
+        return null;
+    }
 }

@@ -14,7 +14,7 @@ function createAbortError(): DOMException {
 /**
  * 共享章节请求可以并行；独占授权排队后，新提交的共享请求必须等待，避免覆盖站点的章节会话上下文
  */
-export class BrowserRequestGate {
+export class RequestGate {
     private readonly queue: PendingRequest<unknown>[] = [];
     private activeShared = 0;
     private activeExclusive = false;

@@ -1,13 +1,14 @@
 import { blobToBase64 } from "../browser/files";
-import { parseChapterHtml, parseBookMetadata } from "../core/parser";
+import { parseChapterHtml, normalizeParsedChapter } from "../site/chapter";
+import { parseBookMetadata } from "../site/book";
 import { getImageDownloadSetting } from "../core/config";
-import { processHtmlImages } from "../utils/image";
+import { processHtmlImages } from "../site/images";
 import { addDownloadHistory } from "../core/download-history";
-import { MappingFontError, normalizeChapterMappingFont, prepareChapterMappingExport } from "../content/mapping-font";
+import { MappingFontError, prepareChapterMappingExport } from "../content/mapping-font";
 import { confirmMappingFontExport } from "../ui/popups";
 import { showMessagePopup } from "../ui/dialogs/message";
 import { t } from "../ui/locale";
-import { isProtectedChapterHtml } from "../adapters/browser-protected-chapter";
+import { isProtectedChapterHtml } from "../site/protected-chapter";
 import {
     browserDiagnosticLog as log,
     finishBrowserSingleChapterDiagnosticSession,
@@ -93,11 +94,7 @@ export async function downloadCurrentPage(format: "txt" | "html" = "txt"): Promi
 
         let normalized;
         try {
-            normalized = await normalizeChapterMappingFont({
-                title: parsed.title,
-                content: parsed.contentHtml,
-                txtSegment: `${parsed.title}\n\n${parsed.author}\n\n${parsed.contentText}\n\n`
-            });
+            normalized = await normalizeParsedChapter(parsed);
         } catch (error) {
             if (error instanceof MappingFontError) {
                 recordBrowserDiagnosticFailure(

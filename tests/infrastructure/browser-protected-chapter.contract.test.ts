@@ -3,10 +3,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
     classifyProtectedChapterResponse,
-    createBrowserProtectedChapterAuth,
+    createProtectedChapterAuth,
     extractProtectedChapterToken,
     isProtectedChapterHtml
-} from "../../src/adapters/browser-protected-chapter";
+} from "../../src/site/protected-chapter";
 import { createChapterFixture, createProtectedChapterFixture } from "../support/fixtures";
 import { setInterfaceLocalePreference } from "../../src/core/config";
 
@@ -84,7 +84,7 @@ describe("protected chapter browser protocol", () => {
             .mockResolvedValueOnce(textResponse(createProtectedChapterFixture()))
             .mockResolvedValueOnce(textResponse("<JinJing>fictional-token</JinJing>"))
             .mockResolvedValueOnce(textResponse(JSON.stringify({ status: 200, html: "<p>正文</p>", text: "meta" })));
-        const auth = createBrowserProtectedChapterAuth(request);
+        const auth = createProtectedChapterAuth(request);
 
         const result = await auth.unlock(task, createProtectedChapterFixture(), "R18");
 
@@ -107,7 +107,7 @@ describe("protected chapter browser protocol", () => {
     it("uses a refreshed already-authorized chapter without requesting a token", async () => {
         const refreshedHtml = createChapterFixture({ contentHtml: "<p>账号已授权正文</p>" });
         const request = vi.fn().mockResolvedValue(textResponse(refreshedHtml));
-        const auth = createBrowserProtectedChapterAuth(request);
+        const auth = createProtectedChapterAuth(request);
 
         await expect(auth.unlock(task, createProtectedChapterFixture(), "R18")).resolves.toEqual({
             kind: "unlocked",
@@ -122,7 +122,7 @@ describe("protected chapter browser protocol", () => {
             .fn()
             .mockResolvedValueOnce(textResponse(createProtectedChapterFixture()))
             .mockResolvedValueOnce(textResponse("<html>unexpected</html>"));
-        const auth = createBrowserProtectedChapterAuth(request);
+        const auth = createProtectedChapterAuth(request);
 
         await expect(auth.unlock(task, createProtectedChapterFixture(), "secret")).resolves.toMatchObject({
             kind: "protocol-error",

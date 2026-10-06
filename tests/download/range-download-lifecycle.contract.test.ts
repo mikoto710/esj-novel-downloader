@@ -68,7 +68,8 @@ vi.mock("../../src/adapters/browser-diagnostics", () => ({
     updateBrowserDiagnosticSession: mocks.updateDiagnostic
 }));
 
-import { BookPreflightError, runBookDownload } from "../../src/scrapers/book-download";
+import { runBookDownload } from "../../src/scrapers/book-download";
+import { BookPreflightError } from "../../src/site/book";
 import { state } from "../../src/core/state";
 
 describe("range download lifecycle", () => {

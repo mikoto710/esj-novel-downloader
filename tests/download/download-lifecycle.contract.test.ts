@@ -47,17 +47,6 @@ vi.mock("../../src/core/cache/book-cache", () => ({
     previewBookCache: mocks.previewCache,
     claimBookCache: mocks.claimCache
 }));
-vi.mock("../../src/core/parser", () => ({
-    parseBookMetadata: vi.fn(() => ({
-        bookName: "测试小说",
-        rawBookName: "测试小说",
-        author: "测试作者",
-        introTxt: "简介",
-        description: "描述",
-        tags: [],
-        coverUrl: undefined
-    }))
-}));
 vi.mock("../../src/ui/popups", () => ({
     showFormatChoice: vi.fn(),
     createDownloadPopup: mocks.createDownloadPopup,

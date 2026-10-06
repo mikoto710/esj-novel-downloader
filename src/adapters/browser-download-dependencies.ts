@@ -2,7 +2,6 @@ import { runDownload } from "../core/download/coordinator";
 import type {
     BookLockService,
     ChapterCacheRepository,
-    ChapterFetcherPort,
     ChapterProcessorPort,
     CoverCacheRepository,
     CoverFetcherPort,
@@ -15,7 +14,7 @@ import type {
 } from "../core/download/contracts";
 import { ownsActiveBookDownloadLock, shouldDiscardBookDownloadCache } from "../core/book-lock";
 import { getConcurrency } from "../core/config";
-import { parseChapterHtml } from "../core/parser";
+import { parseChapterHtml, processParsedChapter, createChapterFetcher } from "../site/chapter";
 import { isCurrentDownload, startRuntimeCacheSession, updateRuntimeCacheSession } from "../core/state";
 import {
     clearBookCacheForTask,
@@ -37,21 +36,19 @@ import {
 } from "../ui/popups";
 import { updateTrayText } from "../ui/tray";
 import { fullCleanup } from "../utils/dom";
-import { processHtmlImages, type ImageProcessingFailure } from "../utils/image";
+import { fetchBookCover, type ImageProcessingFailure } from "../site/images";
 import { sleep, sleepWithAbort } from "../browser/timing";
 import { log } from "../utils/log";
 import { fetchWithTimeout } from "../browser/request";
-import { removeImgTags } from "../utils/text";
 import { normalizeChapterMappingFont } from "../content/mapping-font";
-import { normalizeImageBlob } from "../content/image-format";
 import {
     recordBrowserDownloadEvent,
     browserDiagnosticLog,
     recordBrowserDiagnosticFailure
 } from "./browser-diagnostics";
 import { showDownloadTerminalFailure } from "../ui/messages/download-terminal";
-import { createBrowserProtectedChapterAuth, isProtectedChapterHtml } from "./browser-protected-chapter";
-import { BrowserRequestGate } from "./browser-request-gate";
+import { createProtectedChapterAuth, isProtectedChapterHtml } from "../site/protected-chapter";
+import { RequestGate } from "../site/request-gate";
 import { subscribeInterfaceLocaleChange, t } from "../ui/locale";
 
 // 下载核心的浏览器实现边界
@@ -255,65 +252,34 @@ function createChapterProcessor(taskId: string): ChapterProcessorPort {
     return {
         normalizeCached: normalizeChapterMappingFont,
         async process(html, task, imageEnabled, signal) {
-            const result = parseChapterHtml(html, task.title);
-            const normalized = await normalizeChapterMappingFont(
-                {
-                    title: result.title,
-                    content: result.contentHtml,
-                    txtSegment: `${result.title}\n\n${result.author}\n\n${result.contentText}\n\n`
-                },
+            const processed = await processParsedChapter(
+                parseChapterHtml(html, task.title),
+                task.index,
+                imageEnabled,
                 signal
             );
-            let finalHtml = normalized.chapter.content;
-            let images: Chapter["images"] = [];
-            let imageErrors = 0;
-
-            if (imageEnabled) {
-                try {
-                    const processed = await processHtmlImages(finalHtml, task.index, signal);
-                    finalHtml = processed.processedHtml;
-                    images = processed.images;
-                    imageErrors = processed.failCount;
-                    if (!signal?.aborted) {
-                        recordInlineImageFailures(task, processed.failures, taskId);
-                    }
-                } catch (error) {
-                    const matches = finalHtml.match(/<img\s/gi);
-                    imageErrors = matches ? matches.length : 0;
-                    if (!signal?.aborted && imageErrors > 0) {
-                        recordInlineImageFailures(
-                            task,
-                            [
-                                {
-                                    stage: "processing",
-                                    code: "image-processing-failed",
-                                    message: t("image.processingFailure"),
-                                    count: imageErrors
-                                }
-                            ],
-                            taskId
-                        );
-                    }
-                    taskLog(
-                        t("image.processingLog", {
-                            count: imageErrors,
-                            chapter: task.index + 1,
-                            title: task.title,
-                            detail: getErrorMessage(error)
-                        })
-                    );
-                }
-            } else {
-                // 必须基于字体规范化后的正文去图，不能把已移除的页面 data CSS 再写回缓存
-                finalHtml = removeImgTags(finalHtml);
+            if (!signal?.aborted) {
+                recordInlineImageFailures(
+                    task,
+                    processed.imageFailures.map((failure) =>
+                        "imageProcessingError" in processed
+                            ? { ...failure, message: t("image.processingFailure") }
+                            : failure
+                    ),
+                    taskId
+                );
             }
-
-            return {
-                ...normalized.chapter,
-                content: finalHtml,
-                images,
-                imageErrors
-            };
+            if ("imageProcessingError" in processed) {
+                taskLog(
+                    t("image.processingLog", {
+                        count: processed.chapter.imageErrors || 0,
+                        chapter: task.index + 1,
+                        title: task.title,
+                        detail: getErrorMessage(processed.imageProcessingError)
+                    })
+                );
+            }
+            return processed.chapter;
         }
     };
 }
@@ -326,35 +292,30 @@ function createCoverFetcher(taskId: string): CoverFetcherPort {
         }
     };
     return {
-        async fetch(url, signal) {
-            try {
-                taskLog(t("cover.start"));
-                const response = await fetchWithTimeout(
-                    url,
-                    { method: "GET", referrerPolicy: "no-referrer", credentials: "omit" },
-                    15000,
-                    signal
-                );
-                const blob = await response.blob();
-                if (blob.size < 1000) {
-                    taskLog(t("cover.tooSmall"));
-                    return null;
-                }
-                const normalized = await normalizeImageBlob(blob);
-                if (!normalized || (normalized.extension !== "jpg" && normalized.extension !== "png")) {
-                    taskLog(t("cover.invalidFormat"));
-                    return null;
-                }
-                taskLog(t("cover.completed"));
-                return {
-                    blob: normalized.blob,
-                    ext: normalized.extension,
-                    mediaType: normalized.extension === "png" ? "image/png" : "image/jpeg"
-                };
-            } catch (error) {
-                taskLog(t("cover.skipped", { detail: getErrorMessage(error) }));
-                return null;
-            }
+        fetch(url, signal) {
+            return fetchBookCover(
+                url,
+                (fact) => {
+                    switch (fact.code) {
+                        case "started":
+                            taskLog(t("cover.start"));
+                            break;
+                        case "too-small":
+                            taskLog(t("cover.tooSmall"));
+                            break;
+                        case "invalid-format":
+                            taskLog(t("cover.invalidFormat"));
+                            break;
+                        case "completed":
+                            taskLog(t("cover.completed"));
+                            break;
+                        case "skipped":
+                            taskLog(t("cover.skipped", { detail: getErrorMessage(fact.error) }));
+                            break;
+                    }
+                },
+                signal
+            );
         }
     };
 }
@@ -378,7 +339,7 @@ export function createBrowserDownloadDependencies(task: BrowserDownloadTask): Do
     const concurrency = getConcurrency();
     const fallbackPageUrl = location.href;
     const startedAt = Date.now();
-    const requestGate = new BrowserRequestGate();
+    const requestGate = new RequestGate();
     let taskStarted = false;
     const { lock: activeLock, chapters, cancellation } = task;
     const ui = createBrowserDownloadUi(task);
@@ -386,16 +347,8 @@ export function createBrowserDownloadDependencies(task: BrowserDownloadTask): Do
         owns: () => ownsActiveBookDownloadLock(activeLock),
         shouldDiscardCache: () => shouldDiscardBookDownloadCache(activeLock)
     };
-    // 授权开始前普通章节请求必须完成
-    const chapterFetcher: ChapterFetcherPort = {
-        fetch(task, signal) {
-            return requestGate.runShared(async () => {
-                const response = await fetchWithTimeout(task.url, { credentials: "include" }, 15000, signal);
-                return response.text();
-            }, signal);
-        }
-    };
-    const protectedChapterAuth = createBrowserProtectedChapterAuth(fetchWithTimeout, requestGate);
+    const chapterFetcher = createChapterFetcher(requestGate);
+    const protectedChapterAuth = createProtectedChapterAuth(fetchWithTimeout, requestGate);
 
     return {
         chapters,

@@ -12,7 +12,7 @@ vi.mock("../../src/browser/timing", () => ({
 }));
 vi.mock("../../src/browser/request", () => ({ fetchWithTimeout: fetchWithTimeoutMock }));
 
-import { processHtmlImages } from "../../src/utils/image";
+import { processHtmlImages } from "../../src/site/images";
 
 function blobResponse(blob: Blob): Response {
     return { blob: vi.fn().mockResolvedValue(blob) } as unknown as Response;

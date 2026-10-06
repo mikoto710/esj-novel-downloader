@@ -1,10 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
-import { BrowserRequestGate } from "../../src/adapters/browser-request-gate";
+import { RequestGate } from "../../src/site/request-gate";
 import { createDeferred } from "../support";
 
 describe("browser request gate", () => {
     it("waits for active shared requests and blocks later requests until exclusive work finishes", async () => {
-        const gate = new BrowserRequestGate();
+        const gate = new RequestGate();
         const first = createDeferred<void>();
         const second = createDeferred<void>();
         const exclusive = createDeferred<void>();
@@ -52,7 +52,7 @@ describe("browser request gate", () => {
     });
 
     it("removes a cancelled exclusive waiter without leaving shared requests blocked", async () => {
-        const gate = new BrowserRequestGate();
+        const gate = new RequestGate();
         const activeShared = createDeferred<void>();
         const controller = new AbortController();
         const firstRun = gate.runShared(() => activeShared.promise);

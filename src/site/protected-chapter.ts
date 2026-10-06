@@ -5,7 +5,7 @@ import type {
     ProtectedChapterUnlockResult
 } from "../core/download/contracts";
 import { fetchWithTimeout } from "../browser/request";
-import { BrowserRequestGate } from "./browser-request-gate";
+import { RequestGate } from "./request-gate";
 
 type ProtectedChapterRequest = (
     url: string,
@@ -119,9 +119,9 @@ function parsePasswordResponse(text: string): unknown {
  * 创建在独占请求窗口内完成页面刷新、令牌获取和密码提交的浏览器授权端口
  * 密码和令牌只参与一次 unlock 调用发起的请求，不写入下载核心、缓存或诊断
  */
-export function createBrowserProtectedChapterAuth(
+export function createProtectedChapterAuth(
     request: ProtectedChapterRequest = fetchWithTimeout,
-    requestGate: BrowserRequestGate = new BrowserRequestGate()
+    requestGate: RequestGate = new RequestGate()
 ): ProtectedChapterAuthPort {
     return {
         async unlock(task: DownloadTask, _protectedPageHtml: string, password: string, signal?: AbortSignal) {

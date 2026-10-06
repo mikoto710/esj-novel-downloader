@@ -6,7 +6,7 @@
 
 | 要看什么                         | 入口                                                                                                                                                                                      |
 | -------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 页面目录与书籍信息               | [`scrapers/detail.ts`](../src/scrapers/detail.ts)、[`scrapers/forum.ts`](../src/scrapers/forum.ts) 的 `loadPlan`                                                                          |
+| 页面目录与书籍信息               | [`site/book.ts`](../src/site/book.ts) 的 `loadDetailBook` / `loadForumBook`；页面入口仍在 `scrapers/detail.ts` / `scrapers/forum.ts`                                                      |
 | 选择范围、缓存确认、取得与释放锁 | [`scrapers/book-download.ts`](../src/scrapers/book-download.ts) 的 `runBookDownload`、`executeBookDownload` 与 [`book-download-lifecycle.ts`](../src/adapters/book-download-lifecycle.ts) |
 | 下载阶段顺序                     | [`coordinator.ts`](../src/core/download/coordinator.ts) 的 `runDownload`                                                                                                                  |
 | 正文抓取、补抓、缺章选择         | [`chapter-pipeline.ts`](../src/core/download/chapter-pipeline.ts)                                                                                                                         |
@@ -32,7 +32,9 @@ core/download 通过传入的能力调用浏览器实现
 
 `core/download/` 的业务模块由 ESLint 限制直接引入 UI、页面状态、持久化实现或浏览器全局能力。书籍锁收尾位于 `adapters/book-download-lifecycle.ts`，核心目录不再排除收尾文件；`core/cache/` 实现 IndexedDB，不属于环境无关内核。字体缓存解析通过 `chapterProcessor.normalizeCached` 注入；新抓取正文处理仍通过 `chapterProcessor.process` 注入。
 
-共享章节、图片、映射字体、封面和书籍元数据定义位于 [`content/model.ts`](../src/content/model.ts)。[`content/mapping-font.ts`](../src/content/mapping-font.ts) 保留唯一的字体规范化、恢复校验与安全导出绑定实现，恢复、格式生成和单章页面共同使用；[`content/image-format.ts`](../src/content/image-format.ts) 统一图片签名识别与 MIME 校验。图片 URL 解析仍由 [`utils/image-format.ts`](../src/utils/image-format.ts) 提供。
+共享章节、图片、映射字体、封面和书籍元数据定义位于 [`content/model.ts`](../src/content/model.ts)。[`content/mapping-font.ts`](../src/content/mapping-font.ts) 保留唯一的字体规范化、恢复校验与安全导出绑定实现，恢复、格式生成和单章页面共同使用；[`content/image-format.ts`](../src/content/image-format.ts) 统一图片签名识别与 MIME 校验。图片 URL 解析、采集、压缩和封面获取由 [`site/images.ts`](../src/site/images.ts) 提供，正文插图仍按当前页面 `location.href` 解析。
+
+站点书籍身份、目录和元数据解释位于 [`site/book.ts`](../src/site/book.ts)，详情入口读取当前文档，论坛入口获取详情文档后按详情 URL 解释章节地址。正文解析和采集顺序位于 [`site/chapter.ts`](../src/site/chapter.ts)，批量与单章共同使用解析与字体规范化规则；批量先规范化字体再处理或去除图片，单章仍保留原生解锁及格式决策路径。站点模块只返回内容、错误或结构化采集事实，任务归属、取消显示和本地化由调用者绑定。
 
 具体浏览器能力位于 `browser/`：[`request.ts`](../src/browser/request.ts) 提供请求和中断，[`timing.ts`](../src/browser/timing.ts) 提供等待，[`files.ts`](../src/browser/files.ts) 提供文件触发与 Blob 转换，[`script-loader.ts`](../src/browser/script-loader.ts) 提供脚本加载及 fallback。adapter 装配这些能力，下载内核通过端口调用，不直接依赖 `browser/` 或字体 DOM 规范化函数。
 
@@ -106,7 +108,7 @@ core/download 通过传入的能力调用浏览器实现
 ## 改一条规则时
 
 - 缓存是否兼容：改 `image-cache-compatibility.ts`，检查 [`cache-preview.contract.test.ts`](../tests/cache/cache-preview.contract.test.ts)。预览不授权清理；正式 claim 在同一写事务检查兼容性和确认，未确认不写入、不迁移清理、不发 claimed 事件。
-- 密码错误如何处理：看 `protected-chapters.ts`；站点授权协议看 `browser-protected-chapter.ts`。拒绝的密码不能变成普通失败章节或缓存记录。
+- 密码错误如何处理：看 `protected-chapters.ts`；站点授权协议看 [`site/protected-chapter.ts`](../src/site/protected-chapter.ts)，普通章节与授权请求共用本任务的 [`site/request-gate.ts`](../src/site/request-gate.ts)，授权独占队列保持原请求顺序。拒绝的密码不能变成普通失败章节或缓存记录。
 - 会话／导出清理与跨页失效：看 `state.ts`、`cache/manager.ts` 和 [`runtime-cache-ownership.contract.test.ts`](../tests/cache/runtime-cache-ownership.contract.test.ts)。已有结果与新任务独立，活动章节表不由同步事件清空。
 - 导出生成与重试：看 `format-choice.ts` 和 [`export-recovery.contract.test.ts`](../tests/export/export-recovery.contract.test.ts)。缺章占位只加入导出快照。
 
