@@ -1,9 +1,9 @@
-import type { Chapter } from "../../content/model";
+import type { Chapter } from "../content/model";
 import type { DownloadDependencies, DownloadTask, MappingFontFailure } from "./contracts";
-import type { DownloadPlan } from "../../download/plan";
-import type { DownloadProgress } from "./download-progress";
-import type { TaskCacheWriter } from "./task-cache-writer";
-import { MappingFontError } from "../../content/mapping-font";
+import type { DownloadPlan } from "./plan";
+import type { DownloadProgress } from "./progress";
+import type { TaskCacheWriter } from "./cache-writer";
+import { MappingFontError } from "../content/mapping-font";
 import { runUserDecision, UserDecisionGate } from "./user-decision-gate";
 
 type MappingPorts = Pick<DownloadDependencies, "chapters" | "concurrency" | "cancellation" | "events" | "log"> & {

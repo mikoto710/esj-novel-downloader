@@ -1,5 +1,5 @@
 import type { CachedData } from "../../types";
-import type { MappingFontSummary } from "../../core/download/contracts";
+import type { MappingFontSummary } from "../../download/contracts";
 import { state } from "../../core/state";
 import { buildEpub } from "../../core/export/epub";
 import { buildHtml } from "../../core/export/html";

@@ -1,11 +1,11 @@
-import type { DownloadCancellationMode } from "../../types";
-import type { Chapter } from "../../content/model";
+import type { DownloadCancellationMode } from "../types";
+import type { Chapter } from "../content/model";
 import {
     createStorageError,
     normalizeStorageError,
     toStorageFailure,
     type StorageFailure
-} from "../cache/storage-error";
+} from "../core/cache/storage-error";
 
 /**
  * 普通取消等待缓存落盘的最长时间

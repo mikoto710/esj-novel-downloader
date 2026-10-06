@@ -5,9 +5,9 @@ import type {
     ProtectedChapterPrompt,
     ProtectedChapterPromptMessageCode
 } from "./contracts";
-import type { DomainMessageParams } from "../messages";
-import type { DownloadProgress } from "./download-progress";
-import type { DownloadPlan } from "../../download/plan";
+import type { DomainMessageParams } from "../core/messages";
+import type { DownloadProgress } from "./progress";
+import type { DownloadPlan } from "./plan";
 import { ProtectedChapterQueue, type ProtectedChapterWorkItem } from "./protected-chapter-queue";
 import { runUserDecision, UserDecisionGate } from "./user-decision-gate";
 import { isCancellationError } from "./errors";

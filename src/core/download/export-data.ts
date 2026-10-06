@@ -1,9 +1,9 @@
 import type { CachedData } from "../../types";
 import type { BookCover, Chapter } from "../../content/model";
-import type { DownloadDependencies, DownloadOptions, DownloadTask } from "./contracts";
+import type { DownloadDependencies, DownloadOptions, DownloadTask } from "../../download/contracts";
 import type { DownloadPlan } from "../../download/plan";
 import { createMissingChapterPlaceholder } from "./incomplete-chapters";
-import { getErrorDetails } from "./errors";
+import { getErrorDetails } from "../../download/errors";
 
 type CoverPorts = Pick<DownloadDependencies, "coverCache" | "coverFetcher" | "cancellation" | "log">;
 /**

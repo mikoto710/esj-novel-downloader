@@ -1,15 +1,15 @@
-import type { Chapter } from "../../content/model";
+import type { Chapter } from "../content/model";
 import type { DownloadDependencies, DownloadTask } from "./contracts";
-import type { DownloadPlan } from "../../download/plan";
-import type { DownloadProgress } from "./download-progress";
-import type { TaskCacheWriter } from "./task-cache-writer";
+import type { DownloadPlan } from "./plan";
+import type { DownloadProgress } from "./progress";
+import type { TaskCacheWriter } from "./cache-writer";
 import { createMappedChapters } from "./mapped-chapters";
 import { createProtectedChapters, type ChapterTaskResult } from "./protected-chapters";
-import { scanChapterIntegrity, scanMissingChapterTasks, type ChapterIntegrityIssue } from "./integrity";
+import type { ChapterIntegrityIssue } from "./integrity";
 import { DEFAULT_CHAPTER_RETRY_POLICY, runWithRetry } from "./retry-policy";
 import { runWorkerPool } from "./worker-pool";
-import { runUserDecision, UserDecisionGate } from "./user-decision-gate";
-import { MappingFontError } from "../../content/mapping-font";
+import type { UserDecisionGate } from "./user-decision-gate";
+import { MappingFontError } from "../content/mapping-font";
 import { getErrorDetails } from "./errors";
 
 type ChapterPorts = Pick<
@@ -27,7 +27,6 @@ type ChapterPorts = Pick<
 > & {
     ui: Pick<
         DownloadDependencies["ui"],
-        | "confirmIncompleteChapters"
         | "confirmMappingFontDownload"
         | "updateMappingFontWarning"
         | "promptProtectedChapterPassword"
@@ -36,7 +35,7 @@ type ChapterPorts = Pick<
 };
 
 /**
- * 正文抓取、自动补抓和缺章选择复用同一条处理路径
+ * 恢复、正常抓取和指定章节重试共用正文处理路径
  */
 export function createChapterPipeline(
     ports: ChapterPorts,
@@ -44,11 +43,10 @@ export function createChapterPipeline(
     imageEnabled: boolean,
     pageUrl: string,
     progress: DownloadProgress,
-    cache: TaskCacheWriter
+    cache: TaskCacheWriter,
+    decisions: UserDecisionGate
 ) {
     const { chapters, concurrency } = ports;
-    // 字体和密码分支共用本流程的决策队列，调用方只关心下载阶段
-    const decisions = new UserDecisionGate();
     const mapping = createMappedChapters(ports, plan, pageUrl, progress, cache, decisions);
     const protectedChapters = createProtectedChapters(ports, plan, progress, decisions);
     const shouldStop = () => ports.cancellation.isCancellationRequested() || Boolean(cache.failure);
@@ -320,96 +318,10 @@ export function createChapterPipeline(
             mapping.assertHealthy();
         }
     }
-    /**
-     * 自动补抓缺失正文和图片异常章节
-     */
-    async function checkIntegrity(): Promise<void> {
-        ports.log({ code: "integrity-check-started" });
-        const issues = scanChapterIntegrity(plan.tasks, chapters, imageEnabled);
-        progress.update({ retryPendingCount: issues.length, failedCount: issues.length });
-        ports.log(
-            issues.length
-                ? { code: "integrity-check-failed", params: { count: issues.length } }
-                : { code: "integrity-check-passed" }
-        );
-        if (!issues.length) {
-            return;
-        }
-        await retry(issues);
-        if (!ports.cancellation.isCancellationRequested()) {
-            progress.update({
-                retryPendingCount: 0,
-                failedCount: scanChapterIntegrity(plan.tasks, chapters, imageEnabled).length
-            });
-        }
-    }
-    /**
-     * 仍有缺章时让用户选择补抓、占位导出或取消
-     */
-    async function resolveIncomplete(): Promise<void> {
-        while (!ports.cancellation.isCancellationRequested()) {
-            const missingTasks = scanMissingChapterTasks(plan.tasks, chapters);
-            progress.update({ retryPendingCount: 0, failedCount: missingTasks.length });
-            if (!missingTasks.length) {
-                return;
-            }
-            if (progress.snapshot.phase === "flushing-cache") {
-                progress.transition("checking-integrity");
-            }
-            // 自动补抓仍有缺章，才要求用户决定下一步
-            const decision = await runUserDecision(
-                decisions,
-                ports.cancellation,
-                () =>
-                    ports.ui.confirmIncompleteChapters(
-                        {
-                            missingTasks,
-                            totalChapters: plan.tasks.length,
-                            ...(plan.selection.mode === "range"
-                                ? {
-                                      sourceTotalChapters: plan.selection.sourceTotalChapters,
-                                      selectionMode: plan.selection.mode,
-                                      taskOrderByIndex: plan.taskOrderByIndex
-                                  }
-                                : {})
-                        },
-                        ports.cancellation.signal
-                    ),
-                "cancel"
-            );
-            ports.events.emit({ type: "incomplete-chapters-decided", missingCount: missingTasks.length, decision });
-            if (ports.cancellation.isCancellationRequested() || decision === "cancel") {
-                if (!ports.cancellation.isCancellationRequested()) {
-                    ports.cancellation.requestCancellation("flush");
-                }
-                return;
-            }
-            if (decision === "export-with-placeholders") {
-                ports.log({ code: "missing-chapter-export-with-placeholders", params: { count: missingTasks.length } });
-                return;
-            }
-            ports.log({ code: "missing-chapter-retry-started", params: { count: missingTasks.length } });
-            await retry(
-                missingTasks.map((task) => ({ task, reason: "missing" })),
-                true
-            );
-            if (ports.cancellation.isCancellationRequested()) {
-                return;
-            }
-            // 新补章节先落盘，再重新计算缺章列表
-            progress.transition("flushing-cache");
-            ports.log({ code: "missing-chapter-retry-saved" });
-            await cache.flush();
-            if (!ports.cancellation.isCancellationRequested()) {
-                cache.assertHealthy();
-            }
-        }
-    }
     return {
         restore: mapping.restore,
         download,
-        checkIntegrity,
-        resolveIncomplete,
+        retry,
         get mappingFailures() {
             return mapping.failures;
         },

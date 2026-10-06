@@ -1,4 +1,4 @@
-import type { DownloadLog, DownloadLogCode } from "../core/download/contracts";
+import type { DownloadLog, DownloadLogCode } from "../download/contracts";
 import type { LocaleKey } from "../core/locale";
 import { t } from "../ui/locale";
 import { formatStorageFailureText } from "../ui/messages/storage-failure";

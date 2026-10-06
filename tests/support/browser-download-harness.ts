@@ -1,5 +1,5 @@
 import { expect, vi } from "vitest";
-import type { DownloadResult, ProtectedChapterDecision } from "../../src/core/download/contracts";
+import type { DownloadResult, ProtectedChapterDecision } from "../../src/download/contracts";
 import { createBookLock, createDownloadTask } from "./factories";
 
 const hoistedBrowserDownloadMocks = vi.hoisted(() => ({
@@ -83,7 +83,7 @@ vi.mock("../../src/core/book-lock", () => ({
 }));
 
 export interface BrowserDownloadRuntime {
-    batchDownload(options: import("../../src/core/download/contracts").DownloadOptions): Promise<DownloadResult>;
+    batchDownload(options: import("../../src/download/contracts").DownloadOptions): Promise<DownloadResult>;
     task: import("../../src/adapters/browser-download-dependencies").BrowserDownloadTask;
     abortActiveDownload: typeof import("../../src/core/state").abortActiveDownload;
     state: typeof import("../../src/core/state").state;

@@ -1,4 +1,4 @@
-import { runDownload } from "../core/download/coordinator";
+import { runDownload } from "../download/run";
 import type {
     BookLockService,
     ChapterCacheRepository,
@@ -11,7 +11,7 @@ import type {
     DownloadCancellationPort,
     DownloadSnapshot,
     DownloadUiPort
-} from "../core/download/contracts";
+} from "../download/contracts";
 import { ownsActiveBookDownloadLock, shouldDiscardBookDownloadCache } from "../core/book-lock";
 import { getConcurrency } from "../core/config";
 import { parseChapterHtml, processParsedChapter, createChapterFetcher } from "../site/chapter";

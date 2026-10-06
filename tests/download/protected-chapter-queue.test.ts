@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ProtectedChapterQueue } from "../../src/core/download/protected-chapter-queue";
+import { ProtectedChapterQueue } from "../../src/download/protected-chapter-queue";
 import { createDeferred, createDownloadTask } from "../support";
 
 function item(index: number) {

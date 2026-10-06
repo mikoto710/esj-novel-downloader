@@ -2,7 +2,7 @@ import type {
     ProtectedChapterDecision,
     ProtectedChapterPrompt,
     ProtectedChapterPromptMessageCode
-} from "../../core/download/contracts";
+} from "../../download/contracts";
 import { enableDrag, el } from "../../utils/dom";
 import { createCommonHeader } from "./common";
 import { subscribeInterfaceLocaleChange, t } from "../locale";

@@ -1,4 +1,4 @@
-import type { DownloadTask } from "../core/download/contracts";
+import type { DownloadTask } from "./contracts";
 
 /**
  * 原书章节选择使用 0-based 闭区间，由计划统一转换界面和持久化摘要

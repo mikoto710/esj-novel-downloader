@@ -4,7 +4,7 @@ import type {
     DownloadPhase,
     DownloadSnapshot,
     DownloadTask
-} from "./download/contracts";
+} from "../download/contracts";
 import type { DomainMessageParams } from "./messages";
 import { createDownloadSelectionSummary, type DownloadSelectionSummary } from "../download/plan";
 

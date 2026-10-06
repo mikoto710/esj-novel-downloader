@@ -1,13 +1,9 @@
-import type { DownloadSelection } from "../../download/plan";
-import type { CacheMeta, CachedData, DownloadCancellationMode, SourcePageType } from "../../types";
-import type { BookCover, Chapter } from "../../content/model";
-import type { DomainMessage, DomainMessageParams } from "../messages";
-import type { StorageFailure } from "../cache/storage-error";
-import type {
-    MappingFontErrorCode,
-    MappingFontErrorReason,
-    NormalizedChapterMapping
-} from "../../content/mapping-font";
+import type { DownloadSelection } from "./plan";
+import type { CacheMeta, CachedData, DownloadCancellationMode, SourcePageType } from "../types";
+import type { BookCover, Chapter } from "../content/model";
+import type { DomainMessage, DomainMessageParams } from "../core/messages";
+import type { StorageFailure } from "../core/cache/storage-error";
+import type { MappingFontErrorCode, MappingFontErrorReason, NormalizedChapterMapping } from "../content/mapping-font";
 
 /**
  * 下载核心接收的单章任务
@@ -317,7 +313,7 @@ export interface DownloadUiPort {
 }
 
 /**
- * 章节 HTML 获取接口，重试策略由 coordinator 控制
+ * 章节 HTML 获取接口，单章网络重试策略由 chapter-pipeline 控制
  */
 export interface ChapterFetcherPort {
     fetch(task: DownloadTask, signal?: AbortSignal): Promise<string>;
@@ -406,7 +402,7 @@ export interface DownloadPorts {
 }
 
 /**
- * coordinator 的完整构造参数
+ * run 的完整构造参数
  */
 export interface DownloadDependencies extends DownloadPorts {
     scheduler: DownloadSchedulerPort;

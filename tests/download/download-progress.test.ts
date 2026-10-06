@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
-import { DownloadProgress, canTransitionDownloadPhase } from "../../src/core/download/download-progress";
+import { DownloadProgress, canTransitionDownloadPhase } from "../../src/download/progress";
 import { createDownloadPlan } from "../../src/download/plan";
-import type { DownloadEventSink } from "../../src/core/download/contracts";
+import type { DownloadEventSink } from "../../src/download/contracts";
 import { createChapter, createDownloadTask } from "../support";
 
 function createProgress(count: number, restored: number, events: DownloadEventSink): DownloadProgress {

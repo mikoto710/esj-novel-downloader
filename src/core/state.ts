@@ -1,5 +1,5 @@
 import type { AppState, CacheMeta, CachedData, DownloadCancellationMode, RuntimeCacheSession } from "../types";
-import type { DownloadCancellationPort } from "./download/contracts";
+import type { DownloadCancellationPort } from "../download/contracts";
 import { subscribeCacheSync } from "./cache/sync";
 import { readCacheManifestV3 } from "./cache/indexeddb-repository";
 import { getActiveBookDownloadLock } from "./book-lock";

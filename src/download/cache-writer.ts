@@ -1,10 +1,10 @@
-import type { CacheMeta } from "../../types";
-import type { Chapter } from "../../content/model";
+import type { CacheMeta } from "../types";
+import type { Chapter } from "../content/model";
 import type { DownloadCancellationOutcome, DownloadDependencies, DownloadOptions } from "./contracts";
 import { ChapterCacheWriteBuffer } from "./cache-write-buffer";
-import { createStorageError, normalizeStorageError, StorageError, toStorageFailure } from "../cache/storage-error";
-import type { DownloadProgress } from "./download-progress";
-import type { DownloadPlan } from "../../download/plan";
+import { createStorageError, normalizeStorageError, StorageError, toStorageFailure } from "../core/cache/storage-error";
+import type { DownloadProgress } from "./progress";
+import type { DownloadPlan } from "./plan";
 
 type CachePorts = Pick<DownloadDependencies, "cache" | "cancellation" | "lock" | "events" | "log"> & {
     scheduler: Pick<DownloadDependencies["scheduler"], "schedule">;

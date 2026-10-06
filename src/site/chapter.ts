@@ -1,5 +1,5 @@
 import type { Chapter } from "../content/model";
-import type { ChapterFetcherPort, DownloadTask } from "../core/download/contracts";
+import type { ChapterFetcherPort, DownloadTask } from "../download/contracts";
 import { normalizeChapterMappingFont } from "../content/mapping-font";
 import { fetchWithTimeout } from "../browser/request";
 import { removeImgTags } from "../utils/text";

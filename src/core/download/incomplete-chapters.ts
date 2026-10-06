@@ -1,6 +1,6 @@
 import type { Chapter } from "../../content/model";
 import { escapeXml } from "../../utils/text";
-import type { DownloadTask } from "./contracts";
+import type { DownloadTask } from "../../download/contracts";
 
 function normalizeChapterUrl(value: string): string {
     try {

@@ -3,7 +3,7 @@ import type {
     ProtectedChapterAuthPort,
     ProtectedChapterProtocolErrorCode,
     ProtectedChapterUnlockResult
-} from "../core/download/contracts";
+} from "../download/contracts";
 import { fetchWithTimeout } from "../browser/request";
 import { RequestGate } from "./request-gate";
 

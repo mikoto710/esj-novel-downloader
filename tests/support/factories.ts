@@ -1,4 +1,4 @@
-import type { DownloadTask } from "../../src/core/download/contracts";
+import type { DownloadTask } from "../../src/download/contracts";
 import type { BookDownloadLock, CacheMeta, CachedData } from "../../src/types";
 import type { BookMetadata, Chapter, ChapterImage } from "../../src/content/model";
 

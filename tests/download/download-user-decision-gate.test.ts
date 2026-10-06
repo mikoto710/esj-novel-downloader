@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { UserDecisionGate } from "../../src/core/download/user-decision-gate";
+import { UserDecisionGate } from "../../src/download/user-decision-gate";
 import { createDeferred } from "../support";
 
 describe("UserDecisionGate", () => {

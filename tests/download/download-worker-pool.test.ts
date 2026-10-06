@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { runWorkerPool } from "../../src/core/download/worker-pool";
+import { runWorkerPool } from "../../src/download/worker-pool";
 import { createDeferred } from "../support";
 
 describe("runWorkerPool", () => {

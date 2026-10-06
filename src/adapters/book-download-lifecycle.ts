@@ -8,7 +8,7 @@ import {
     toStorageFailure,
     type StorageFailure
 } from "../core/cache/storage-error";
-import type { DownloadLog } from "../core/download/contracts";
+import type { DownloadLog } from "../download/contracts";
 
 /**
  * 书籍下载收尾时的缓存清理结果

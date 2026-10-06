@@ -7,7 +7,7 @@ import type {
     ProtectedChapterUnlockResult,
     DownloadTask,
     ProtectedChapterDecision
-} from "../../src/core/download/contracts";
+} from "../../src/download/contracts";
 import type { Chapter } from "../../src/content/model";
 import { createChapter, createDeferred, createDownloadTask } from "../support";
 import { MappingFontError } from "../../src/content/mapping-font";

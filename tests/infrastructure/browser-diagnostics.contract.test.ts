@@ -14,7 +14,7 @@ import {
     startBrowserDiagnosticSession,
     updateBrowserDiagnosticSession
 } from "../../src/adapters/browser-diagnostics";
-import { createInitialDownloadSnapshot } from "../../src/core/download/download-progress";
+import { createInitialDownloadSnapshot } from "../../src/download/progress";
 import { setInterfaceLocalePreference } from "../../src/core/config";
 import { getUserscriptApiMocks } from "../support/gm";
 

@@ -1,4 +1,4 @@
-import type { DownloadTask } from "../core/download/contracts";
+import type { DownloadTask } from "../download/contracts";
 
 /**
  * 解析书籍详情页的 DOM，提取元数据

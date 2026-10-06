@@ -3,8 +3,8 @@
 For download entry, cache, cancellation, protected chapters, or export changes, read the repository's [docs/architecture.md](../../../../docs/architecture.md). It is the maintained source for call paths, state ownership, browser seams, and representative tests.
 
 - `scrapers/book-download.ts` owns selection, atomic cache confirmation, book-lock acquisition, and finalization.
-- `adapters/browser-download-dependencies.ts` receives explicit task chapters, cancellation, lock, and title to assemble browser capabilities; `core/download/coordinator.ts` returns explicit ready/cancelled results.
-- `core/download/` business modules receive focused inputs and capabilities. ESLint enforces direct environment boundaries; `adapters/book-download-lifecycle.ts` owns browser finalization, and `core/cache/` implements persistence.
+- `adapters/browser-download-dependencies.ts` receives explicit task chapters, cancellation, lock, and title to assemble browser capabilities; `download/run.ts` returns explicit ready/cancelled results.
+- `download/` business modules (plus the existing snapshot implementation in `core/download/`) receive focused inputs and capabilities. ESLint enforces direct environment boundaries; `adapters/book-download-lifecycle.ts` owns browser finalization, and `core/cache/` implements persistence.
 - `ui/dialogs/format-choice.ts` receives the export snapshot explicitly. Failed or cancelled new work preserves the previous result.
 
 ## Review invariants

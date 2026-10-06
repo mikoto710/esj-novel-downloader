@@ -14,7 +14,7 @@ import {
     type DiagnosticStore,
     type StartDiagnosticSessionInput
 } from "../../src/core/diagnostics";
-import { createInitialDownloadSnapshot } from "../../src/core/download/download-progress";
+import { createInitialDownloadSnapshot } from "../../src/download/progress";
 
 class MemoryDiagnosticRepository implements DiagnosticRepository {
     store = createEmptyDiagnosticStore();

@@ -1,13 +1,15 @@
 import type { DownloadDependencies, DownloadOptions, DownloadResult } from "./contracts";
-import { StorageError, toStorageFailure, createStorageError } from "../cache/storage-error";
-import { MappingFontError } from "../../content/mapping-font";
-import { createDownloadPlan } from "../../download/plan";
-import type { CacheMeta } from "../../types";
-import { DownloadProgress } from "./download-progress";
-import { createTaskCacheWriter, type TaskCacheWriter } from "./task-cache-writer";
+import { StorageError, toStorageFailure, createStorageError } from "../core/cache/storage-error";
+import { MappingFontError } from "../content/mapping-font";
+import { createDownloadPlan } from "./plan";
+import type { CacheMeta } from "../types";
+import { DownloadProgress } from "./progress";
+import { createTaskCacheWriter, type TaskCacheWriter } from "./cache-writer";
 import { createChapterPipeline, type ChapterPipeline } from "./chapter-pipeline";
-import { createExportData, prepareCover } from "./export-data";
+import { createExportData, prepareCover } from "../core/download/export-data";
 import { getErrorDetails, isCancellationError } from "./errors";
+import { scanChapterIntegrity, scanMissingChapterTasks } from "./integrity";
+import { runUserDecision, UserDecisionGate } from "./user-decision-gate";
 
 class DownloadCancelled extends Error {}
 
@@ -34,7 +36,9 @@ export async function runDownload(
     const ports = { ...dependencies, concurrency: Math.max(1, Math.floor(dependencies.concurrency) || 1) };
     const progress = new DownloadProgress(plan, chapters, events, ui);
     const cache = createTaskCacheWriter(ports, options, plan, meta, chapters, progress);
-    const pipeline = createChapterPipeline(ports, plan, options.imageEnabled, meta.pageUrl, progress, cache);
+    // 字体、密码和缺章选择共享任务内唯一的决策队列
+    const decisions = new UserDecisionGate();
+    const pipeline = createChapterPipeline(ports, plan, options.imageEnabled, meta.pageUrl, progress, cache, decisions);
 
     function checkActive(): void {
         if (cancellation.isCancellationRequested()) {
@@ -42,7 +46,9 @@ export async function runDownload(
         }
         cache.assertHealthy();
     }
-    async function flush(code: "download-main-flush-started" | "download-integrity-flush-started"): Promise<void> {
+    async function flush(
+        code: "download-main-flush-started" | "download-integrity-flush-started" | "missing-chapter-retry-saved"
+    ): Promise<void> {
         progress.transition("flushing-cache");
         log({ code });
         const saved = await cache.flush();
@@ -81,10 +87,77 @@ export async function runDownload(
         // 每轮补抓都先落盘，再决定是否还需补章
         await flush("download-main-flush-started");
         progress.transition("checking-integrity");
-        await pipeline.checkIntegrity();
-        checkActive();
+        log({ code: "integrity-check-started" });
+        const issues = scanChapterIntegrity(plan.tasks, chapters, options.imageEnabled);
+        progress.update({ retryPendingCount: issues.length, failedCount: issues.length });
+        log(
+            issues.length
+                ? { code: "integrity-check-failed", params: { count: issues.length } }
+                : { code: "integrity-check-passed" }
+        );
+        if (issues.length) {
+            await pipeline.retry(issues);
+            checkActive();
+        }
         await flush("download-integrity-flush-started");
-        await pipeline.resolveIncomplete();
+        if (issues.length) {
+            progress.update({
+                retryPendingCount: 0,
+                failedCount: scanChapterIntegrity(plan.tasks, chapters, options.imageEnabled).length
+            });
+        }
+
+        while (true) {
+            checkActive();
+            const missingTasks = scanMissingChapterTasks(plan.tasks, chapters);
+            progress.update({ retryPendingCount: 0, failedCount: missingTasks.length });
+            if (!missingTasks.length) {
+                break;
+            }
+            if (progress.snapshot.phase === "flushing-cache") {
+                progress.transition("checking-integrity");
+            }
+            // 自动补抓仍有缺章，才要求用户决定下一步；图片异常不进入缺正文决策
+            const decision = await runUserDecision(
+                decisions,
+                cancellation,
+                () =>
+                    ui.confirmIncompleteChapters(
+                        {
+                            missingTasks,
+                            totalChapters: plan.tasks.length,
+                            ...(plan.selection.mode === "range"
+                                ? {
+                                      sourceTotalChapters: plan.selection.sourceTotalChapters,
+                                      selectionMode: plan.selection.mode,
+                                      taskOrderByIndex: plan.taskOrderByIndex
+                                  }
+                                : {})
+                        },
+                        cancellation.signal
+                    ),
+                "cancel"
+            );
+            events.emit({ type: "incomplete-chapters-decided", missingCount: missingTasks.length, decision });
+            if (cancellation.isCancellationRequested() || decision === "cancel") {
+                if (!cancellation.isCancellationRequested()) {
+                    cancellation.requestCancellation("flush");
+                }
+                checkActive();
+            }
+            if (decision === "export-with-placeholders") {
+                log({ code: "missing-chapter-export-with-placeholders", params: { count: missingTasks.length } });
+                break;
+            }
+            log({ code: "missing-chapter-retry-started", params: { count: missingTasks.length } });
+            await pipeline.retry(
+                missingTasks.map((task) => ({ task, reason: "missing" })),
+                true
+            );
+            checkActive();
+            // 新补章节先落盘，再重新计算缺章列表，输出始终沿用原计划
+            await flush("missing-chapter-retry-saved");
+        }
         checkActive();
 
         progress.transition("preparing-export");

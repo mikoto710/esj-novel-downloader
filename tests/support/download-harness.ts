@@ -1,6 +1,6 @@
 import { normalizeChapterMappingFont } from "../../src/content/mapping-font";
 import { vi } from "vitest";
-import { runDownload } from "../../src/core/download/coordinator";
+import { runDownload } from "../../src/download/run";
 import type {
     DownloadDependencies,
     DownloadOptions,
@@ -13,7 +13,7 @@ import type {
     ProtectedChapterDecision,
     ProtectedChapterPrompt,
     ProtectedChapterUnlockResult
-} from "../../src/core/download/contracts";
+} from "../../src/download/contracts";
 import type { Chapter } from "../../src/content/model";
 import { createChapter } from "./factories";
 import { FakeChapterFetcher, RecordingDownloadEvents } from "./fakes";

@@ -1,5 +1,5 @@
-import type { Chapter } from "../../content/model";
-import type { DownloadPlan } from "../../download/plan";
+import type { Chapter } from "../content/model";
+import type { DownloadPlan } from "./plan";
 import type { DownloadEventSink, DownloadPhase, DownloadSnapshot, DownloadUiPort } from "./contracts";
 
 // 取消和失败可以从多个运行阶段进入，因此与单向主流程分开描述

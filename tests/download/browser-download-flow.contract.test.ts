@@ -72,7 +72,7 @@ describe("browser download flow contracts", () => {
         const { activateDownload, createDownloadCancellation, startRuntimeCacheSession } =
             await import("../../src/core/state");
         const { createCacheMeta, createBookLock } = await import("../support");
-        const { createInitialDownloadSnapshot } = await import("../../src/core/download/download-progress");
+        const { createInitialDownloadSnapshot } = await import("../../src/download/progress");
         const dependencies = createBrowserDownloadDependencies(runtime.task);
         dependencies.events.emit({
             type: "task-started",

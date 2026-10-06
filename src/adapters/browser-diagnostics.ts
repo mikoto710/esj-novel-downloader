@@ -20,7 +20,7 @@ import type {
     DownloadLog,
     DownloadLogCode,
     DownloadOptions
-} from "../core/download/contracts";
+} from "../download/contracts";
 import { getConcurrency, getEpubTagPageSetting } from "../core/config";
 import { triggerDownload } from "../browser/files";
 import { log } from "../utils/log";

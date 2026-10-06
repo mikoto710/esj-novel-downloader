@@ -1,5 +1,5 @@
-import { hasInvalidImageMediaTypes } from "../../content/image-format";
-import type { Chapter } from "../../content/model";
+import { hasInvalidImageMediaTypes } from "../content/image-format";
+import type { Chapter } from "../content/model";
 import type { DownloadTask } from "./contracts";
 
 /**

@@ -81,11 +81,11 @@ export default [
                 "error",
                 {
                     paths: [
-                        {
-                            name: "../../content/mapping-font",
+                        ...["../content/mapping-font", "../../content/mapping-font"].map((name) => ({
+                            name,
                             importNames: ["normalizeChapterMappingFont"],
-                            message: "字体 DOM 解析通过 chapterProcessor.normalizeCached 注入"
-                        }
+                            message: "字体 DOM 解析通过 chapterProcessor.normalizeCached / process 注入"
+                        }))
                     ],
                     patterns: [
                         {
@@ -93,6 +93,7 @@ export default [
                                 "**/ui/**",
                                 "**/adapters/**",
                                 "**/scrapers/**",
+                                "**/site/**",
                                 "**/state",
                                 "**/config",
                                 "**/book-lock",

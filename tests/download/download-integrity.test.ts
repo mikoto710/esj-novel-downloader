@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getChapterRetryReason, scanChapterIntegrity } from "../../src/core/download/integrity";
+import { getChapterRetryReason, scanChapterIntegrity } from "../../src/download/integrity";
 import { createChapter, createDownloadTask } from "../support";
 
 describe("getChapterRetryReason", () => {

@@ -1,6 +1,6 @@
 import type { DownloadSelection, DownloadSelectionSummary } from "../../download/plan";
 import type { LocaleKey } from "../../core/locale";
-import type { DownloadTask } from "../../core/download/contracts";
+import type { DownloadTask } from "../../download/contracts";
 import {
     createDownloadPlan,
     createDownloadSelectionSummary,

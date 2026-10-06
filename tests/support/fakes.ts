@@ -1,4 +1,4 @@
-import type { DownloadTask } from "../../src/core/download/contracts";
+import type { DownloadTask } from "../../src/download/contracts";
 import type { CacheStatus } from "../../src/types";
 import type { Chapter } from "../../src/content/model";
 import { createAbortError, createDeferred, type Deferred } from "./async";

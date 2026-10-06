@@ -1,5 +1,5 @@
 import { normalizeChapterMappingFont } from "../../src/content/mapping-font";
-import { runDownload } from "../../src/core/download/coordinator";
+import { runDownload } from "../../src/download/run";
 import { vi } from "vitest";
 import type {
     DownloadDependencies,
@@ -8,7 +8,7 @@ import type {
     DownloadEvent,
     DownloadSnapshot,
     DownloadTask
-} from "../../src/core/download/contracts";
+} from "../../src/download/contracts";
 import type { DownloadCancellationMode } from "../../src/types";
 import type { Chapter } from "../../src/content/model";
 import { createChapter, RecordingDownloadEvents } from "../support";

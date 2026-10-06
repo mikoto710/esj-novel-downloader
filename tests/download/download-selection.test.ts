@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { DownloadTask } from "../../src/core/download/contracts";
+import type { DownloadTask } from "../../src/download/contracts";
 import {
     createDownloadPlan,
     createRangeSelection,

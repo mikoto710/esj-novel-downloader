@@ -1,4 +1,4 @@
-import type { MappingFontDetection, MappingFontFailure, MappingFontSummary } from "../../core/download/contracts";
+import type { MappingFontDetection, MappingFontFailure, MappingFontSummary } from "../../download/contracts";
 import { enableDrag, el } from "../../utils/dom";
 import { showMessagePopup } from "./message";
 import { createCommonHeader } from "./common";
