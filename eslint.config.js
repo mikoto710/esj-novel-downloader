@@ -90,12 +90,13 @@ export default [
                     patterns: [
                         {
                             regex: "(?:^|/)storage/(?!(?:cache/(?:model|storage-error))(?:$|\\.(?:ts|js)$))",
-                            message: "下载内核只引用中性的存储模型与错误契约，具体 I/O 由 adapters 注入"
+                            message: "下载内核只引用中性的存储模型与错误契约，具体 I/O 由 app 任务装配注入"
                         },
                         {
                             group: [
                                 "**/ui/**",
                                 "**/adapters/**",
+                                "**/app/**",
                                 "**/scrapers/**",
                                 "**/site/**",
                                 "**/state",
@@ -110,7 +111,7 @@ export default [
                                 "**/browser/**",
                                 "**/utils/log"
                             ],
-                            message: "下载内核通过 contracts 接收能力，adapters 装配 browser 实现"
+                            message: "下载内核通过 contracts 接收能力，app 任务装配 browser 实现"
                         }
                     ]
                 }

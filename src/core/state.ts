@@ -16,37 +16,6 @@ export const state: AppState = {
 };
 
 /**
- * 创建任务独立的取消意图和网络信号，discard 只可升级
- */
-export function createDownloadCancellation(): DownloadCancellationPort & { readonly mode: DownloadCancellationMode } {
-    const controller = new AbortController();
-    const listeners = new Set<(mode: DownloadCancellationMode) => void>();
-    let requested = false;
-    let mode: DownloadCancellationMode = "flush";
-    return {
-        signal: controller.signal,
-        get mode() {
-            return mode;
-        },
-        isCancellationRequested: () => requested,
-        requestCancellation(next = "flush") {
-            if (requested && (mode === "discard" || next !== "discard")) {
-                return;
-            }
-            // 先固定意图再中止网络；缓存 writer 使用独立信号完成有界保存
-            mode = next;
-            requested = true;
-            controller.abort();
-            listeners.forEach((listener) => listener(mode));
-        },
-        subscribeCancellation(listener) {
-            listeners.add(listener);
-            return () => listeners.delete(listener);
-        }
-    };
-}
-
-/**
  * 登记当前任务的停止入口，替换时先停止旧任务
  */
 export function activateDownload(bookId: string, taskId: string, cancellation: DownloadCancellationPort): void {

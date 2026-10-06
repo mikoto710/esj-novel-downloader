@@ -27,13 +27,32 @@ const hoistedBrowserDownloadMocks = vi.hoisted(() => ({
     processHtmlImages: vi.fn(),
     parseChapterHtml: vi.fn(),
     ownsLock: vi.fn(),
-    shouldDiscard: vi.fn()
+    shouldDiscard: vi.fn(),
+    runDownload: vi.fn(),
+    release: vi.fn(),
+    stopHeartbeat: vi.fn(),
+    startHeartbeat: vi.fn(),
+    getConflict: vi.fn(),
+    acquire: vi.fn(),
+    markRunning: vi.fn(),
+    updateTitle: vi.fn(),
+    previewCache: vi.fn(),
+    claimCache: vi.fn(),
+    selectionPopup: vi.fn(),
+    showFormatChoice: vi.fn(),
+    showCacheDiscardFailure: vi.fn(),
+    getImageDownloadSetting: vi.fn()
 }));
 
 export function getBrowserDownloadMocks() {
     return hoistedBrowserDownloadMocks;
 }
 
+vi.mock("../../src/download/run", () => ({ runDownload: hoistedBrowserDownloadMocks.runDownload }));
+vi.mock("../../src/ui/dialogs/download-selection", () => ({
+    createDownloadSelectionPopup: hoistedBrowserDownloadMocks.selectionPopup
+}));
+vi.mock("../../src/ui/dialogs/message", () => ({ showMessagePopup: vi.fn() }));
 vi.mock("../../src/storage/cache/sync", () => ({
     subscribeCacheSync: vi.fn(() => vi.fn()),
     publishCacheSyncEvent: vi.fn()
@@ -47,6 +66,8 @@ vi.mock("../../src/browser/request", () => ({ fetchWithTimeout: hoistedBrowserDo
 vi.mock("../../src/utils/dom", () => ({ fullCleanup: hoistedBrowserDownloadMocks.fullCleanup }));
 vi.mock("../../src/ui/popups", () => ({
     createDownloadPopup: hoistedBrowserDownloadMocks.createDownloadPopup,
+    showFormatChoice: hoistedBrowserDownloadMocks.showFormatChoice,
+    showBookDownloadInProgressPopup: vi.fn(),
     confirmMappingFontDownload: hoistedBrowserDownloadMocks.confirmMappingFontDownload,
     confirmIncompleteChapters: hoistedBrowserDownloadMocks.confirmIncompleteChapters,
     promptProtectedChapterPassword: hoistedBrowserDownloadMocks.promptProtectedChapterPassword,
@@ -55,10 +76,13 @@ vi.mock("../../src/ui/popups", () => ({
     showMappingFontFailure: hoistedBrowserDownloadMocks.showMappingFontFailure
 }));
 vi.mock("../../src/ui/messages/download-terminal", () => ({
+    showCacheDiscardFailure: hoistedBrowserDownloadMocks.showCacheDiscardFailure,
     showDownloadTerminalFailure: hoistedBrowserDownloadMocks.showTerminalFailure
 }));
 vi.mock("../../src/ui/tray", () => ({ updateTrayText: hoistedBrowserDownloadMocks.updateTrayText }));
 vi.mock("../../src/storage/cache/book-cache", () => ({
+    previewBookCache: hoistedBrowserDownloadMocks.previewCache,
+    claimBookCache: hoistedBrowserDownloadMocks.claimCache,
     putBookCacheBatchForTask: hoistedBrowserDownloadMocks.saveCache,
     finishBookCacheForTask: hoistedBrowserDownloadMocks.finishCache,
     clearBookCacheForTask: hoistedBrowserDownloadMocks.clearCache,
@@ -66,6 +90,7 @@ vi.mock("../../src/storage/cache/book-cache", () => ({
     putBookCoverForTask: hoistedBrowserDownloadMocks.saveCoverCache
 }));
 vi.mock("../../src/storage/settings", () => ({
+    getImageDownloadSetting: hoistedBrowserDownloadMocks.getImageDownloadSetting,
     getConcurrency: hoistedBrowserDownloadMocks.getConcurrency,
     getInterfaceLocalePreference: hoistedBrowserDownloadMocks.getInterfaceLocalePreference
 }));
@@ -78,23 +103,37 @@ vi.mock("../../src/site/chapter", async (importOriginal) => ({
     parseChapterHtml: hoistedBrowserDownloadMocks.parseChapterHtml
 }));
 vi.mock("../../src/storage/book-lock", () => ({
+    acquireBookDownloadLock: hoistedBrowserDownloadMocks.acquire,
+    getConflictingBookDownloadLock: hoistedBrowserDownloadMocks.getConflict,
+    markBookDownloadRunning: hoistedBrowserDownloadMocks.markRunning,
+    startBookDownloadLockHeartbeat: hoistedBrowserDownloadMocks.startHeartbeat,
+    updateBookDownloadLockTitle: hoistedBrowserDownloadMocks.updateTitle,
+    releaseBookDownloadLock: hoistedBrowserDownloadMocks.release,
     ownsActiveBookDownloadLock: hoistedBrowserDownloadMocks.ownsLock,
     shouldDiscardBookDownloadCache: hoistedBrowserDownloadMocks.shouldDiscard
 }));
 
 export interface BrowserDownloadRuntime {
-    batchDownload(options: import("../../src/download/contracts").DownloadOptions): Promise<DownloadResult>;
-    task: import("../../src/adapters/browser-download-dependencies").BrowserDownloadTask;
+    runBookDownload(options: import("../../src/download/contracts").DownloadOptions): Promise<DownloadResult>;
+    task: {
+        lock: import("../../src/storage/book-lock").BookDownloadLock;
+        chapters: Map<number, import("../../src/content/model").Chapter>;
+        readonly cancellation: import("../../src/download/contracts").DownloadCancellationPort & {
+            readonly mode: import("../../src/types").DownloadCancellationMode;
+        };
+    };
+    start(options: import("../../src/download/contracts").DownloadOptions): Promise<void>;
+    readonly dependencies: import("../../src/download/contracts").DownloadDependencies;
     abortActiveDownload: typeof import("../../src/core/state").abortActiveDownload;
     state: typeof import("../../src/core/state").state;
 }
 
 export async function resetBrowserDownloadHarness(): Promise<BrowserDownloadRuntime> {
-    const [{ batchDownload }, stateRuntime] = await Promise.all([
-        import("../../src/adapters/browser-download-dependencies"),
+    const [{ runBookDownload }, stateRuntime] = await Promise.all([
+        import("../../src/app/book-download"),
         import("../../src/core/state")
     ]);
-    const { abortActiveDownload, createDownloadCancellation, activateDownload, state } = stateRuntime;
+    const { abortActiveDownload, state } = stateRuntime;
     vi.clearAllMocks();
     document.body.innerHTML = "";
     document.title = "ESJZone Test";
@@ -105,10 +144,31 @@ export async function resetBrowserDownloadHarness(): Promise<BrowserDownloadRunt
     const task = {
         lock: createBookLock({ status: "running" }),
         chapters: new Map<number, import("../../src/content/model").Chapter>(),
-        cancellation: createDownloadCancellation(),
-        originalTitle: document.title
+        get cancellation() {
+            return hoistedBrowserDownloadMocks.runDownload.mock.calls.at(-1)![1].cancellation;
+        }
     };
-    activateDownload(task.lock.bookId, task.lock.taskId, task.cancellation);
+    const actual = await vi.importActual<typeof import("../../src/download/run")>("../../src/download/run");
+    hoistedBrowserDownloadMocks.runDownload.mockImplementation(actual.runDownload);
+    hoistedBrowserDownloadMocks.getConflict.mockResolvedValue(null);
+    hoistedBrowserDownloadMocks.acquire.mockResolvedValue({ acquired: true, lock: task.lock });
+    hoistedBrowserDownloadMocks.markRunning.mockResolvedValue(true);
+    hoistedBrowserDownloadMocks.startHeartbeat.mockReturnValue(hoistedBrowserDownloadMocks.stopHeartbeat);
+    hoistedBrowserDownloadMocks.stopHeartbeat.mockReset();
+    hoistedBrowserDownloadMocks.release.mockReset().mockResolvedValue(undefined);
+    hoistedBrowserDownloadMocks.previewCache.mockResolvedValue({
+        valid: true,
+        size: 0,
+        indexes: [],
+        compatibility: "compatible"
+    });
+    hoistedBrowserDownloadMocks.claimCache.mockImplementation(async () => ({
+        status: "claimed",
+        map: task.chapters,
+        size: task.chapters.size,
+        compatibility: "compatible",
+        invalidatedCount: 0
+    }));
 
     hoistedBrowserDownloadMocks.log.mockImplementation(() => undefined);
     hoistedBrowserDownloadMocks.sleepWithAbort.mockResolvedValue(undefined);
@@ -134,7 +194,54 @@ export async function resetBrowserDownloadHarness(): Promise<BrowserDownloadRunt
     }));
     hoistedBrowserDownloadMocks.ownsLock.mockResolvedValue(true);
     hoistedBrowserDownloadMocks.shouldDiscard.mockResolvedValue(false);
-    return { batchDownload: (options) => batchDownload(options, task), task, abortActiveDownload, state };
+    const start = (options: import("../../src/download/contracts").DownloadOptions) => {
+        hoistedBrowserDownloadMocks.getImageDownloadSetting.mockReturnValue(options.imageEnabled);
+        hoistedBrowserDownloadMocks.selectionPopup.mockResolvedValue({
+            action: "download",
+            selection: options.selection || {
+                mode: "all",
+                sourceTotalChapters: options.tasks.length,
+                startIndex: 0,
+                endIndex: options.tasks.length - 1
+            }
+        });
+        return runBookDownload({
+            bookId: options.bookId,
+            sourcePageType: "detail",
+            pageTitle: document.title,
+            loadPlan: async () => ({
+                tasks: options.tasks,
+                pageUrl: options.pageUrl!,
+                meta: {
+                    bookName: options.bookName,
+                    rawBookName: options.rawBookName || options.bookName,
+                    author: options.author || "",
+                    introTxt: options.introTxt,
+                    baseIntroTxt: options.introTxt,
+                    description: options.description,
+                    tags: options.tags,
+                    coverUrl: options.coverUrl
+                }
+            })
+        });
+    };
+    return {
+        start,
+        runBookDownload: async (options) => {
+            const call = hoistedBrowserDownloadMocks.runDownload.mock.calls.length;
+            await start(options);
+            const result = hoistedBrowserDownloadMocks.runDownload.mock.results[call];
+            if (!result) throw new Error("Download core was not entered");
+            // Observe the result of the real core reached through the public app entry.
+            return await result.value;
+        },
+        task,
+        abortActiveDownload,
+        state,
+        get dependencies() {
+            return hoistedBrowserDownloadMocks.runDownload.mock.calls.at(-1)![1];
+        }
+    };
 }
 
 export function createBrowserDownloadTasks(count: number) {

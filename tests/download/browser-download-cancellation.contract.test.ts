@@ -32,7 +32,7 @@ describe("browser download cancellation contracts", () => {
             }
         });
 
-        const result = await runtime.batchDownload(createBrowserDownloadOptions(createBrowserDownloadTasks(1)));
+        const result = await runtime.runBookDownload(createBrowserDownloadOptions(createBrowserDownloadTasks(1)));
 
         expect(reachedIntegrityRetry).toBe(true);
         expect(mocks.fetchWithTimeout).toHaveBeenCalledTimes(3);
@@ -71,7 +71,7 @@ describe("browser download cancellation contracts", () => {
             }
             mocks.fetchWithTimeout.mockImplementationOnce(blockedRequest);
 
-            const download = runtime.batchDownload(createBrowserDownloadOptions(createBrowserDownloadTasks(1)));
+            const download = runtime.runBookDownload(createBrowserDownloadOptions(createBrowserDownloadTasks(1)));
             await requestStarted.promise;
             runtime.abortActiveDownload();
             runtime.abortActiveDownload();
@@ -90,7 +90,7 @@ describe("browser download cancellation contracts", () => {
             return { processedHtml: "<p>未完成正文</p>", images: [], failCount: 0, failures: [] };
         });
 
-        const result = await runtime.batchDownload({
+        const result = await runtime.runBookDownload({
             ...createBrowserDownloadOptions(createBrowserDownloadTasks(1)),
             imageEnabled: true
         });
@@ -117,7 +117,7 @@ describe("browser download cancellation contracts", () => {
             });
         });
 
-        const downloadPromise = runtime.batchDownload(createBrowserDownloadOptions(createBrowserDownloadTasks(1)));
+        const downloadPromise = runtime.runBookDownload(createBrowserDownloadOptions(createBrowserDownloadTasks(1)));
         await clearStarted.promise;
         runtime.abortActiveDownload();
 
@@ -138,7 +138,7 @@ describe("browser download cancellation contracts", () => {
                 return blockedSave.promise;
             })
             .mockResolvedValue(true);
-        const downloadPromise = runtime.batchDownload(createBrowserDownloadOptions(createBrowserDownloadTasks(5)));
+        const downloadPromise = runtime.runBookDownload(createBrowserDownloadOptions(createBrowserDownloadTasks(5)));
         await saveStarted.promise;
         runtime.abortActiveDownload();
         runtime.abortActiveDownload();
@@ -186,7 +186,7 @@ describe("browser download cancellation contracts", () => {
             );
         });
 
-        const download = runtime.batchDownload(createBrowserDownloadOptions(createBrowserDownloadTasks(1)));
+        const download = runtime.runBookDownload(createBrowserDownloadOptions(createBrowserDownloadTasks(1)));
         await saveStarted.promise;
         expect(mocks.shouldDiscard).toHaveBeenCalledOnce();
         runtime.abortActiveDownload("discard");
@@ -204,7 +204,7 @@ describe("browser download cancellation contracts", () => {
         });
         mocks.saveCache.mockRejectedValue(new DOMException("storage full", "QuotaExceededError"));
 
-        const result = await runtime.batchDownload(createBrowserDownloadOptions(createBrowserDownloadTasks(1)));
+        const result = await runtime.runBookDownload(createBrowserDownloadOptions(createBrowserDownloadTasks(1)));
 
         expect(result).toEqual({ status: "cancelled", outcome: "save-failed" });
         expect(mocks.showTerminalFailure).toHaveBeenCalledWith(
@@ -237,7 +237,7 @@ describe("browser download cancellation contracts", () => {
         });
         mocks.shouldDiscard.mockResolvedValue(true);
 
-        const downloadPromise = runtime.batchDownload(createBrowserDownloadOptions(createBrowserDownloadTasks(5)));
+        const downloadPromise = runtime.runBookDownload(createBrowserDownloadOptions(createBrowserDownloadTasks(5)));
         await saveStarted.promise;
         runtime.abortActiveDownload();
         runtime.abortActiveDownload("discard");
@@ -249,9 +249,16 @@ describe("browser download cancellation contracts", () => {
         expect(mocks.saveCache).toHaveBeenCalledOnce();
         expect(document.querySelector<HTMLButtonElement>("#esj-cancel")?.disabled).toBe(true);
     });
-    it("keeps cancellation isolated and only allows discard upgrades", async () => {
-        const { createDownloadCancellation, activateDownload, releaseActiveDownload } =
-            await import("../../src/core/state");
+    it("keeps production cancellation isolated and only allows discard upgrades", async () => {
+        const entered = createDeferred<void>();
+        const finish = createDeferred<void>();
+        mocks.runDownload.mockImplementation(async () => {
+            entered.resolve();
+            await finish.promise;
+            return { status: "cancelled", outcome: "saved" };
+        });
+        const firstRun = runtime.start(createBrowserDownloadOptions(createBrowserDownloadTasks(1)));
+        await entered.promise;
         const first = runtime.task.cancellation;
         const listener = vi.fn();
         const unsubscribe = first.subscribeCancellation(listener);
@@ -262,9 +269,16 @@ describe("browser download cancellation contracts", () => {
         expect(first.mode).toBe("discard");
         expect(listener.mock.calls).toEqual([["flush"], ["discard"]]);
         unsubscribe();
-        const second = createDownloadCancellation();
-        activateDownload("200", "task-200", second);
-        releaseActiveDownload("task-100");
+        mocks.acquire.mockResolvedValueOnce({
+            acquired: true,
+            lock: { ...runtime.task.lock, bookId: "200", taskId: "task-200" }
+        });
+        const secondRun = runtime.start({
+            ...createBrowserDownloadOptions(createBrowserDownloadTasks(1)),
+            bookId: "200"
+        });
+        await vi.waitFor(() => expect(mocks.runDownload).toHaveBeenCalledTimes(2));
+        const second = runtime.task.cancellation;
         expect(runtime.state.activeDownload?.taskId).toBe("task-200");
         expect(second.isCancellationRequested()).toBe(false);
         expect(second.signal).not.toBe(first.signal);
@@ -272,5 +286,7 @@ describe("browser download cancellation contracts", () => {
         expect(second.isCancellationRequested()).toBe(false);
         runtime.abortActiveDownload();
         expect(second.isCancellationRequested()).toBe(true);
+        finish.resolve();
+        await Promise.all([firstRun, secondRun]);
     });
 });

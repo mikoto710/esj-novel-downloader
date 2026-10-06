@@ -11,8 +11,8 @@ import {
 import { setInterfaceLocalePreference } from "../../src/storage/settings";
 
 const mocks = vi.hoisted(() => ({
-    batchDownload: vi.fn(),
-    finalize: vi.fn(),
+    runDownload: vi.fn(),
+    release: vi.fn(),
     stopHeartbeat: vi.fn(),
     getConflict: vi.fn(),
     acquire: vi.fn(),
@@ -34,20 +34,24 @@ vi.mock("../../src/storage/cache/sync", () => ({
     publishCacheSyncEvent: vi.fn()
 }));
 
-vi.mock("../../src/adapters/browser-download-dependencies", () => ({ batchDownload: mocks.batchDownload }));
-vi.mock("../../src/adapters/book-download-lifecycle", () => ({ finalizeBookDownloadTask: mocks.finalize }));
+vi.mock("../../src/download/run", () => ({ runDownload: mocks.runDownload }));
+
 vi.mock("../../src/storage/book-lock", () => ({
+    releaseBookDownloadLock: mocks.release,
+    shouldDiscardBookDownloadCache: vi.fn(async () => false),
     getConflictingBookDownloadLock: mocks.getConflict,
     acquireBookDownloadLock: mocks.acquire,
     markBookDownloadRunning: mocks.markRunning,
     startBookDownloadLockHeartbeat: mocks.startHeartbeat,
     updateBookDownloadLockTitle: mocks.updateTitle
 }));
-vi.mock("../../src/storage/cache/book-cache", () => ({
+vi.mock("../../src/storage/cache/book-cache", async (importOriginal) => ({
+    ...(await importOriginal<typeof import("../../src/storage/cache/book-cache")>()),
     previewBookCache: mocks.previewCache,
     claimBookCache: mocks.claimCache
 }));
-vi.mock("../../src/ui/popups", () => ({
+vi.mock("../../src/ui/popups", async (importOriginal) => ({
+    ...(await importOriginal<typeof import("../../src/ui/popups")>()),
     showFormatChoice: vi.fn(),
     createDownloadPopup: mocks.createDownloadPopup,
     showBookDownloadInProgressPopup: mocks.showConflict
@@ -61,8 +65,22 @@ vi.mock("../../src/ui/messages/download-terminal", () => ({
     showDownloadTerminalFailure: mocks.showTerminalFailure
 }));
 
-import { scrapeDetail } from "../../src/scrapers/detail";
-import { scrapeForum } from "../../src/scrapers/forum";
+import { runBookDownload } from "../../src/app/book-download";
+import { loadDetailBook, loadForumBook } from "../../src/site/book";
+const scrapeDetail = () =>
+    runBookDownload({
+        bookId: "100",
+        sourcePageType: "detail",
+        pageTitle: document.title,
+        loadPlan: async () => loadDetailBook(document, location.href)
+    });
+const scrapeForum = () =>
+    runBookDownload({
+        bookId: "100",
+        sourcePageType: "forum",
+        pageTitle: document.title,
+        loadPlan: () => loadForumBook("100", location.origin)
+    });
 import { state } from "../../src/core/state";
 
 describe("download lifecycle contracts", () => {
@@ -94,8 +112,8 @@ describe("download lifecycle contracts", () => {
             action: "download",
             selection: { mode: "all", sourceTotalChapters: 2, startIndex: 0, endIndex: 1 }
         });
-        mocks.batchDownload.mockResolvedValue({ status: "ready", data: createCachedData() });
-        mocks.finalize.mockResolvedValue({ cacheDiscarded: false, cacheClearFailure: null });
+        mocks.runDownload.mockResolvedValue({ status: "ready", data: createCachedData() });
+        mocks.release.mockResolvedValue(undefined);
     });
 
     it.each([
@@ -120,15 +138,15 @@ describe("download lifecycle contracts", () => {
         expect(mocks.selectionPopup).not.toHaveBeenCalled();
         expect(mocks.acquire).not.toHaveBeenCalled();
         expect(mocks.claimCache).not.toHaveBeenCalled();
-        expect(mocks.finalize).not.toHaveBeenCalled();
+        expect(mocks.release).not.toHaveBeenCalled();
         expect(state.cachedData).toBe(previous);
     });
 
-    it.each(["success", "failure", "cancel"] as const)("finalizes exactly once after %s", async (outcome) => {
+    it.each(["success", "failure", "cancel"] as const)("releases exactly once after %s", async (outcome) => {
         if (outcome === "failure") {
-            mocks.batchDownload.mockRejectedValueOnce(new Error("download failed"));
+            mocks.runDownload.mockRejectedValueOnce(new Error("download failed"));
         } else if (outcome === "cancel") {
-            mocks.batchDownload.mockImplementationOnce(async () => {
+            mocks.runDownload.mockImplementationOnce(async () => {
                 state.activeDownload?.requestCancellation();
                 return { status: "cancelled", outcome: "saved" };
             });
@@ -136,8 +154,9 @@ describe("download lifecycle contracts", () => {
 
         await scrapeDetail();
 
-        expect(mocks.finalize).toHaveBeenCalledOnce();
-        expect(mocks.finalize).toHaveBeenCalledWith(lock, mocks.stopHeartbeat, expect.any(Function));
+        expect(mocks.release).toHaveBeenCalledOnce();
+        expect(mocks.release).toHaveBeenCalledWith(lock, { cacheDiscarded: false });
+        expect(mocks.stopHeartbeat).toHaveBeenCalledOnce();
     });
 
     it.each([
@@ -151,17 +170,22 @@ describe("download lifecycle contracts", () => {
         await scrape();
 
         expect(mocks.claimCache).not.toHaveBeenCalled();
-        expect(mocks.batchDownload).not.toHaveBeenCalled();
-        expect(mocks.finalize).toHaveBeenCalledOnce();
-        expect(mocks.finalize).toHaveBeenCalledWith(lock, expect.any(Function), expect.any(Function));
+        expect(mocks.runDownload).not.toHaveBeenCalled();
+        expect(mocks.release).toHaveBeenCalledOnce();
+        expect(mocks.release).toHaveBeenCalledWith(lock, { cacheDiscarded: false });
     });
 
     it("does not remove a terminal notice owned by the download coordinator", async () => {
-        mocks.batchDownload.mockRejectedValueOnce(new Error("download failed"));
-
+        mocks.runDownload.mockImplementationOnce(async (_options, dependencies) => {
+            dependencies.ui.cleanup();
+            mocks.showTerminalFailure({ kind: "download" });
+            throw new Error("download failed");
+        });
         await scrapeDetail();
-
-        expect(mocks.fullCleanup).not.toHaveBeenCalled();
+        expect(mocks.fullCleanup).toHaveBeenCalledOnce();
+        expect(mocks.fullCleanup.mock.invocationCallOrder[0]).toBeLessThan(
+            mocks.showTerminalFailure.mock.invocationCallOrder[0]
+        );
     });
 
     it("shows a common terminal notice when the task lock is lost before downloading", async () => {
@@ -169,7 +193,7 @@ describe("download lifecycle contracts", () => {
 
         await scrapeDetail();
 
-        expect(mocks.batchDownload).not.toHaveBeenCalled();
+        expect(mocks.runDownload).not.toHaveBeenCalled();
         expect(mocks.fullCleanup).toHaveBeenCalledOnce();
         expect(mocks.showTerminalFailure).toHaveBeenCalledWith({
             kind: "cancellation",
@@ -206,8 +230,8 @@ describe("download lifecycle contracts", () => {
         await claimAborted.promise;
         await scrapePromise;
 
-        expect(mocks.batchDownload).not.toHaveBeenCalled();
-        expect(mocks.finalize).toHaveBeenCalledOnce();
+        expect(mocks.runDownload).not.toHaveBeenCalled();
+        expect(mocks.release).toHaveBeenCalledOnce();
         expect(mocks.showTerminalFailure).not.toHaveBeenCalled();
     });
 });

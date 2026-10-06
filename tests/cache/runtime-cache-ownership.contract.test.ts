@@ -99,14 +99,6 @@ describe("runtime cache ownership", () => {
         expect(runtime.state.runtimeCacheSession?.taskId).toBe("newer-task");
     });
 
-    it("preserves the export when stopping and discarding a new task", async () => {
-        const previous = runtime.state.cachedData;
-        const { finalizeBookDownloadTask } = await import("../../src/adapters/book-download-lifecycle");
-        await finalizeBookDownloadTask(createBookLock({ taskId: "new-task" }), vi.fn());
-        expect(runtime.state.cachedData).toBe(previous);
-        expect(runtime.state.runtimeCacheSession).toBeNull();
-    });
-
     it("clears an explicitly selected export by its own book rather than the newer session", async () => {
         runtime.startRuntimeCacheSession(createCacheMeta({ bookId: "200" }), "task-200", 1);
         await manager.clearManagedCache("200", "runtime");
@@ -148,7 +140,7 @@ describe("runtime cache ownership", () => {
     });
 
     it("requests task cancellation on ownership loss while preserving the previous export", async () => {
-        const cancellation = runtime.createDownloadCancellation();
+        const cancellation = createDownloadHarness([]).dependencies.cancellation;
         runtime.activateDownload("100", "new-task", cancellation);
         mocks.readManifest.mockResolvedValue({ writerTaskId: "remote-task", cleared: false });
         await send({ type: "cache-claimed", bookId: "100", taskId: "remote-task" });
@@ -161,7 +153,7 @@ describe("runtime cache ownership", () => {
         const harness = createDownloadHarness(tasks, chapters);
         const started = createDeferred<void>();
         const response = createDeferred<string>();
-        const cancellation = runtime.createDownloadCancellation();
+        const cancellation = createDownloadHarness([]).dependencies.cancellation;
         runtime.activateDownload("100", "new-task", cancellation);
         harness.dependencies.cancellation = cancellation;
         harness.dependencies.lock.owns = async () => false;
@@ -192,7 +184,7 @@ describe("runtime cache ownership", () => {
     });
 
     it("ignores stale task progress and export publication", () => {
-        runtime.activateDownload("100", "new-task", runtime.createDownloadCancellation());
+        runtime.activateDownload("100", "new-task", createDownloadHarness([]).dependencies.cancellation);
         runtime.updateRuntimeCacheSession({ completedCount: 10 }, "old-task");
         const previous = runtime.state.cachedData;
         runtime.publishCachedExport(createCachedData(), "old-task");

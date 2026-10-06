@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 
+import { createDownloadHarness } from "../support/download-harness";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createCachedData, createChapter, createDeferred } from "../support";
 
@@ -165,8 +166,8 @@ describe("full-book export recovery contracts", () => {
         click("#esj-epub");
         await vi.waitFor(() => expect(mocks.buildEpub).toHaveBeenCalledOnce());
         click("#esj-format .esj-common-header button");
-        const { activateDownload, createDownloadCancellation } = await import("../../src/core/state");
-        activateDownload("200", "new-task", createDownloadCancellation());
+        const { activateDownload } = await import("../../src/core/state");
+        activateDownload("200", "new-task", createDownloadHarness([]).dependencies.cancellation);
         document.title = "[1/3] new task";
         pending.resolve(new Blob(["epub"]));
         await vi.waitFor(() => expect(mocks.triggerDownload).toHaveBeenCalledOnce());

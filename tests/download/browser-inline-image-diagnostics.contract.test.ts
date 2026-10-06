@@ -53,7 +53,7 @@ describe("browser inline image diagnostic contracts", () => {
             })
             .mockResolvedValueOnce({ processedHtml: "<p>正文</p>", images: [], failCount: 0, failures: [] });
 
-        const result = await runtime.batchDownload({
+        const result = await runtime.runBookDownload({
             ...createBrowserDownloadOptions(createBrowserDownloadTasks(1)),
             imageEnabled: true
         });
@@ -90,7 +90,7 @@ describe("browser inline image diagnostic contracts", () => {
             };
         });
 
-        const result = await runtime.batchDownload({
+        const result = await runtime.runBookDownload({
             ...createBrowserDownloadOptions(createBrowserDownloadTasks(1)),
             imageEnabled: true
         });

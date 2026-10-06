@@ -28,7 +28,7 @@ describe("browser download persistence contracts", () => {
             })
             .mockResolvedValue(true);
 
-        const downloadPromise = runtime.batchDownload(createBrowserDownloadOptions(createBrowserDownloadTasks(26)));
+        const downloadPromise = runtime.runBookDownload(createBrowserDownloadOptions(createBrowserDownloadTasks(26)));
         await writeStarted.promise;
 
         expect(mocks.fetchWithTimeout).toHaveBeenCalledTimes(25);
@@ -41,7 +41,7 @@ describe("browser download persistence contracts", () => {
         mocks.saveCache.mockResolvedValue(false);
 
         await expect(
-            runtime.batchDownload(createBrowserDownloadOptions(createBrowserDownloadTasks(5)))
+            runtime.runBookDownload(createBrowserDownloadOptions(createBrowserDownloadTasks(5)))
         ).rejects.toMatchObject({ reason: "ownership-lost", operation: "write" });
 
         expect(mocks.showTerminalFailure).toHaveBeenCalledWith(
@@ -58,7 +58,7 @@ describe("browser download persistence contracts", () => {
         mocks.saveCache.mockRejectedValue(new DOMException("storage full", "QuotaExceededError"));
 
         await expect(
-            runtime.batchDownload(createBrowserDownloadOptions(createBrowserDownloadTasks(5)))
+            runtime.runBookDownload(createBrowserDownloadOptions(createBrowserDownloadTasks(5)))
         ).rejects.toMatchObject({ reason: "quota-exceeded", operation: "write" });
 
         expect(mocks.saveCache).toHaveBeenCalledTimes(2);
@@ -82,7 +82,7 @@ describe("browser download persistence contracts", () => {
         mocks.saveCache.mockRejectedValue(new DOMException("storage write failed", errorName));
 
         await expect(
-            runtime.batchDownload(createBrowserDownloadOptions(createBrowserDownloadTasks(5)))
+            runtime.runBookDownload(createBrowserDownloadOptions(createBrowserDownloadTasks(5)))
         ).rejects.toMatchObject({ reason, operation: "write" });
 
         expect(mocks.saveCache).toHaveBeenCalledTimes(2);
@@ -100,7 +100,7 @@ describe("browser download persistence contracts", () => {
         mocks.saveCache.mockRejectedValue(new Error("unexpected failure"));
 
         await expect(
-            runtime.batchDownload(createBrowserDownloadOptions(createBrowserDownloadTasks(5)))
+            runtime.runBookDownload(createBrowserDownloadOptions(createBrowserDownloadTasks(5)))
         ).rejects.toMatchObject({ reason: "unknown-storage-error", operation: "write" });
 
         expect(mocks.saveCache).toHaveBeenCalledTimes(2);

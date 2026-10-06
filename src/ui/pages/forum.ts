@@ -1,5 +1,8 @@
+import { getForumBookId, loadForumBook } from "../../site/book";
+import { t } from "../locale";
+import { browserDiagnosticLog as log } from "../../adapters/browser-diagnostics";
+import { runBookDownload } from "../../app/book-download";
 import { el } from "../../utils/dom";
-import { scrapeForum } from "../../scrapers/forum";
 import { createDownloadButton, createSettingButton } from "../components";
 
 /**
@@ -36,4 +39,21 @@ export function injectForumButton(): void {
 
     // 保留论坛原生操作顺序，只规范化脚本自身两个入口的尾部顺序
     container.append(downloadBtn, settingBtn);
+}
+
+/**
+ * 取得完整目录并进入书籍下载流程
+ */
+async function scrapeForum(): Promise<void> {
+    const bookId = getForumBookId(location.pathname);
+    if (!bookId) {
+        log(t("page.bookIdMissing"));
+        return;
+    }
+    await runBookDownload({
+        bookId,
+        sourcePageType: "forum",
+        pageTitle: document.title,
+        loadPlan: () => loadForumBook(bookId, location.origin)
+    });
 }

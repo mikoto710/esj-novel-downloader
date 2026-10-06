@@ -37,7 +37,7 @@ describe("browser cover cache contracts", () => {
         mocks.fetchWithTimeout.mockResolvedValue({ blob: async () => createJpegCover().blob });
         mocks.saveCoverCache.mockRejectedValue(new Error("cover cache unavailable"));
 
-        const data = expectReadyDownload(await runtime.batchDownload(options));
+        const data = expectReadyDownload(await runtime.runBookDownload(options));
 
         expect(data.metadata.coverBlob).not.toBeNull();
     });
@@ -50,7 +50,7 @@ describe("browser cover cache contracts", () => {
             blob: async () => new Blob([new Uint8Array([0xff, 0xd8, 0xff])], { type: "image/jpeg" })
         });
 
-        const data = expectReadyDownload(await runtime.batchDownload(options));
+        const data = expectReadyDownload(await runtime.runBookDownload(options));
 
         expect(mocks.saveCoverCache).not.toHaveBeenCalled();
         expect(data.metadata.coverBlob).toBeNull();

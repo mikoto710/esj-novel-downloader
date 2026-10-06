@@ -55,7 +55,7 @@ describe("browser download flow contracts", () => {
             } as unknown as Response;
         });
 
-        const download = runtime.batchDownload(createBrowserDownloadOptions(tasks));
+        const download = runtime.runBookDownload(createBrowserDownloadOptions(tasks));
         await ordinaryStarted.promise;
         await vi.waitFor(() => expect(mocks.promptProtectedChapterPassword).toHaveBeenCalledOnce());
         expect(order).not.toContain("protected-refreshed");
@@ -68,24 +68,32 @@ describe("browser download flow contracts", () => {
     });
 
     it("binds old callbacks to their task without updating the new page task", async () => {
-        const { createBrowserDownloadDependencies } = await import("../../src/adapters/browser-download-dependencies");
-        const { activateDownload, createDownloadCancellation, startRuntimeCacheSession } =
-            await import("../../src/core/state");
-        const { createCacheMeta, createBookLock } = await import("../support");
+        const { startRuntimeCacheSession } = await import("../../src/core/state");
+        const { createCacheMeta } = await import("../support");
         const { createInitialDownloadSnapshot } = await import("../../src/download/progress");
-        const dependencies = createBrowserDownloadDependencies(runtime.task);
+        const entered = createDeferred<void>();
+        const finish = createDeferred<void>();
+        mocks.runDownload.mockImplementationOnce(async () => {
+            entered.resolve();
+            await finish.promise;
+            return { status: "cancelled", outcome: "saved" };
+        });
+        const running = runtime.start(createBrowserDownloadOptions(createBrowserDownloadTasks(1)));
+        await entered.promise;
+        const dependencies = runtime.dependencies;
+        const oldCancellation = runtime.task.cancellation;
         dependencies.events.emit({
             type: "task-started",
             meta: createCacheMeta(),
             taskId: "task-100",
             bookChapterCount: 0
         });
-        const nextLock = createBookLock({ bookId: "200", taskId: "task-200" });
-        const nextCancellation = createDownloadCancellation();
-        activateDownload(nextLock.bookId, nextLock.taskId, nextCancellation);
-        startRuntimeCacheSession(createCacheMeta({ bookId: "200" }), nextLock.taskId, 9);
+        const newer = { bookId: "200", taskId: "task-200", requestCancellation: vi.fn() };
+        runtime.state.activeDownload = newer;
+        startRuntimeCacheSession(createCacheMeta({ bookId: "200" }), "task-200", 9);
         const snapshot = createInitialDownloadSnapshot(3, 1);
         document.body.innerHTML = '<div id="esj-popup"><span id="esj-title">new task</span></div>';
+        document.title = "new task title";
         dependencies.events.emit({ type: "snapshot-updated", snapshot });
         dependencies.events.emit({
             type: "task-started",
@@ -97,24 +105,48 @@ describe("browser download flow contracts", () => {
         dependencies.ui.cleanup();
         dependencies.ui.showTerminalFailure({ kind: "cancellation", outcome: "ownership-lost", storageFailure: null });
         expect(document.querySelector("#esj-title")?.textContent).toBe("new task");
+        expect(document.title).toBe("new task title");
         expect(runtime.state.runtimeCacheSession).toMatchObject({ taskId: "task-200", bookChapterCount: 9 });
         expect(mocks.fullCleanup).not.toHaveBeenCalled();
         expect(mocks.showTerminalFailure).not.toHaveBeenCalled();
         await dependencies.scheduler.sleepWithAbort(10);
-        expect(mocks.sleepWithAbort).toHaveBeenCalledWith(10, runtime.task.cancellation.signal);
+        expect(mocks.sleepWithAbort).toHaveBeenCalledWith(10, oldCancellation.signal);
         await dependencies.lock.owns();
         expect(mocks.ownsLock).toHaveBeenCalledWith(runtime.task.lock);
-        expect(nextCancellation.isCancellationRequested()).toBe(false);
+        mocks.startHeartbeat.mock.calls[0][1]("discard");
+        expect(oldCancellation.isCancellationRequested()).toBe(true);
+        expect(newer.requestCancellation).not.toHaveBeenCalled();
+        finish.resolve();
+        await running;
+        expect(runtime.state.activeDownload).toBe(newer);
     });
-    it("cleans the browser presentation when invalid selection fails before core startup", async () => {
-        const options = createBrowserDownloadOptions(createBrowserDownloadTasks(1));
+
+    it("cleans presentation when core input validation fails before its try", async () => {
+        const locale = await import("../../src/ui/locale");
+        const subscribe = locale.subscribeInterfaceLocaleChange;
+        const unsubscribe = vi.fn();
+        vi.spyOn(locale, "subscribeInterfaceLocaleChange").mockImplementation((listener) => {
+            const dispose = subscribe(listener);
+            return () => {
+                unsubscribe();
+                dispose();
+            };
+        });
+        const actual = await vi.importActual<typeof import("../../src/download/run")>("../../src/download/run");
+        mocks.runDownload.mockImplementationOnce((options, dependencies) =>
+            actual.runDownload(
+                { ...options, selection: { mode: "range", sourceTotalChapters: 3, startIndex: 1, endIndex: 2 } },
+                dependencies
+            )
+        );
         await expect(
-            runtime.batchDownload({
-                ...options,
-                selection: { mode: "range", sourceTotalChapters: 3, startIndex: 1, endIndex: 2 }
-            })
+            runtime.runBookDownload(createBrowserDownloadOptions(createBrowserDownloadTasks(1)))
         ).rejects.toThrow();
         expect(mocks.fullCleanup).toHaveBeenCalledOnce();
         expect(mocks.fetchWithTimeout).not.toHaveBeenCalled();
+        expect(mocks.stopHeartbeat).toHaveBeenCalledOnce();
+        expect(mocks.release).toHaveBeenCalledOnce();
+        expect(unsubscribe).toHaveBeenCalledOnce();
+        expect(runtime.state.activeDownload).toBeNull();
     });
 });
