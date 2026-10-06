@@ -1,7 +1,12 @@
-import type { BookCover, CacheMeta, CachedData, Chapter, DownloadCancellationMode, SourcePageType } from "../../types";
+import type { CacheMeta, CachedData, DownloadCancellationMode, SourcePageType } from "../../types";
+import type { BookCover, Chapter } from "../../content/model";
 import type { DomainMessage, DomainMessageParams } from "../messages";
 import type { StorageFailure } from "../cache/storage-error";
-import type { MappingFontErrorCode, MappingFontErrorReason, NormalizedChapterMapping } from "../mapping-font";
+import type {
+    MappingFontErrorCode,
+    MappingFontErrorReason,
+    NormalizedChapterMapping
+} from "../../content/mapping-font";
 
 /**
  * 下载核心接收的单章任务

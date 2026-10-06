@@ -22,7 +22,7 @@ import type {
     DownloadOptions
 } from "../core/download/contracts";
 import { getConcurrency, getEpubTagPageSetting } from "../core/config";
-import { triggerDownload } from "../utils/download";
+import { triggerDownload } from "../browser/files";
 import { log } from "../utils/log";
 import { formatDownloadLog } from "./browser-download-messages";
 import { t } from "../ui/locale";

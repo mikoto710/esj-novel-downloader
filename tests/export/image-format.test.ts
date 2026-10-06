@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
+import { resolveImageUrl } from "../../src/utils/image-format";
 import {
     detectImageFormat,
     hasInvalidImageMediaTypes,
     isSupportedImageMediaType,
-    normalizeImageBlob,
-    resolveImageUrl
-} from "../../src/utils/image-format";
+    normalizeImageBlob
+} from "../../src/content/image-format";
 
 describe("resolveImageUrl", () => {
     const chapterUrl = "https://www.esjzone.cc/forum/1/2.html";

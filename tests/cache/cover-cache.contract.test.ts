@@ -3,7 +3,7 @@
 import { IDBFactory } from "fake-indexeddb";
 import { Blob as NodeBlob } from "node:buffer";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { BookCover } from "../../src/types";
+import type { BookCover } from "../../src/content/model";
 
 function createCover(format: "jpg" | "png" = "jpg"): BookCover {
     const bytes = new Uint8Array(1_200);

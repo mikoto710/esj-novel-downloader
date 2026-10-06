@@ -1,4 +1,5 @@
-import type { Chapter, DownloadCancellationMode } from "../../types";
+import type { DownloadCancellationMode } from "../../types";
+import type { Chapter } from "../../content/model";
 import {
     createStorageError,
     normalizeStorageError,

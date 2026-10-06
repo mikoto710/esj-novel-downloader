@@ -1,4 +1,4 @@
-import { normalizeChapterMappingFont } from "../../src/core/mapping-font";
+import { normalizeChapterMappingFont } from "../../src/content/mapping-font";
 import { vi } from "vitest";
 import { runDownload } from "../../src/core/download/coordinator";
 import type {
@@ -14,7 +14,7 @@ import type {
     ProtectedChapterPrompt,
     ProtectedChapterUnlockResult
 } from "../../src/core/download/contracts";
-import type { Chapter } from "../../src/types";
+import type { Chapter } from "../../src/content/model";
 import { createChapter } from "./factories";
 import { FakeChapterFetcher, RecordingDownloadEvents } from "./fakes";
 

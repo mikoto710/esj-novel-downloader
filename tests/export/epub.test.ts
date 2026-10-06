@@ -2,13 +2,13 @@
 
 import JSZip from "jszip";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { BookMetadata, Chapter, ChapterImage } from "../../src/types";
+import type { BookMetadata, Chapter, ChapterImage } from "../../src/content/model";
 
 const { loadScriptMock } = vi.hoisted(() => ({
     loadScriptMock: vi.fn()
 }));
 
-vi.mock("../../src/utils/script-loader", () => ({
+vi.mock("../../src/browser/script-loader", () => ({
     loadScript: loadScriptMock
 }));
 

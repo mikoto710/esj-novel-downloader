@@ -1,5 +1,6 @@
 import type { DownloadTask } from "../../src/core/download/contracts";
-import type { BookDownloadLock, BookMetadata, CacheMeta, CachedData, Chapter, ChapterImage } from "../../src/types";
+import type { BookDownloadLock, CacheMeta, CachedData } from "../../src/types";
+import type { BookMetadata, Chapter, ChapterImage } from "../../src/content/model";
 
 const BASE_TIME = Date.parse("2026-01-01T00:00:00.000Z");
 

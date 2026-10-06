@@ -1,7 +1,8 @@
-import { sleepWithAbort } from "./async";
-import { fetchWithTimeout } from "./request";
-import { normalizeImageBlob, resolveImageUrl } from "./image-format";
-import type { ChapterImage } from "../types";
+import { sleepWithAbort } from "../browser/timing";
+import { fetchWithTimeout } from "../browser/request";
+import { resolveImageUrl } from "./image-format";
+import { normalizeImageBlob } from "../content/image-format";
+import type { ChapterImage } from "../content/model";
 
 const IMAGE_FETCH_TIMEOUT = 20_000;
 

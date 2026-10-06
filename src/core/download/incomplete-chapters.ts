@@ -1,4 +1,4 @@
-import type { Chapter } from "../../types";
+import type { Chapter } from "../../content/model";
 import { escapeXml } from "../../utils/text";
 import type { DownloadTask } from "./contracts";
 

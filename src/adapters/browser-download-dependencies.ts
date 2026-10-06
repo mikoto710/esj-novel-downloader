@@ -24,7 +24,8 @@ import {
     putBookCacheBatchForTask,
     putBookCoverForTask
 } from "../core/cache/book-cache";
-import type { BookDownloadLock, Chapter, DownloadCancellationMode } from "../types";
+import type { BookDownloadLock, DownloadCancellationMode } from "../types";
+import type { Chapter } from "../content/model";
 import {
     closeProtectedChapterPrompt,
     confirmMappingFontDownload,
@@ -37,12 +38,12 @@ import {
 import { updateTrayText } from "../ui/tray";
 import { fullCleanup } from "../utils/dom";
 import { processHtmlImages, type ImageProcessingFailure } from "../utils/image";
-import { sleep, sleepWithAbort } from "../utils/async";
+import { sleep, sleepWithAbort } from "../browser/timing";
 import { log } from "../utils/log";
-import { fetchWithTimeout } from "../utils/request";
+import { fetchWithTimeout } from "../browser/request";
 import { removeImgTags } from "../utils/text";
-import { normalizeChapterMappingFont } from "../core/mapping-font";
-import { normalizeImageBlob } from "../utils/image-format";
+import { normalizeChapterMappingFont } from "../content/mapping-font";
+import { normalizeImageBlob } from "../content/image-format";
 import {
     recordBrowserDownloadEvent,
     browserDiagnosticLog,

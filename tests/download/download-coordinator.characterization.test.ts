@@ -8,9 +8,9 @@ import type {
     DownloadTask,
     ProtectedChapterDecision
 } from "../../src/core/download/contracts";
-import type { Chapter } from "../../src/types";
+import type { Chapter } from "../../src/content/model";
 import { createChapter, createDeferred, createDownloadTask } from "../support";
-import { MappingFontError } from "../../src/core/mapping-font";
+import { MappingFontError } from "../../src/content/mapping-font";
 
 describe("runDownload characterization", () => {
     it("removes cache cancellation listeners even when prompt teardown fails", async () => {

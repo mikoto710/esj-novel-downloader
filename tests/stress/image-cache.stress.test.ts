@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { ChapterImage } from "../../src/types";
+import type { ChapterImage } from "../../src/content/model";
 import { createChapter, createChapterImage, createDownloadTask } from "../support";
 import { createStressDownloadHarness, createStressDownloadOptions } from "./download-stress-harness";
 

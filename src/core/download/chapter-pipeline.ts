@@ -1,4 +1,4 @@
-import type { Chapter } from "../../types";
+import type { Chapter } from "../../content/model";
 import type { DownloadDependencies, DownloadTask } from "./contracts";
 import type { DownloadScope } from "./download-scope";
 import type { DownloadProgress } from "./download-progress";
@@ -9,7 +9,7 @@ import { scanChapterIntegrity, scanMissingChapterTasks, type ChapterIntegrityIss
 import { DEFAULT_CHAPTER_RETRY_POLICY, runWithRetry } from "./retry-policy";
 import { runWorkerPool } from "./worker-pool";
 import { runUserDecision, UserDecisionGate } from "./user-decision-gate";
-import { MappingFontError } from "../mapping-font";
+import { MappingFontError } from "../../content/mapping-font";
 import { getErrorDetails } from "./errors";
 
 type ChapterPorts = Pick<

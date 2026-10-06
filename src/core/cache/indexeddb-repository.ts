@@ -1,5 +1,6 @@
 import { createStore, get, promisifyRequest } from "idb-keyval";
-import type { BookCover, CacheMeta, Chapter } from "../../types";
+import type { CacheMeta } from "../../types";
+import type { BookCover, Chapter } from "../../content/model";
 import { evaluateImageCacheCompatibility, type ImageCacheCompatibility } from "./image-cache-compatibility";
 
 /**

@@ -1,4 +1,4 @@
-import type { Chapter } from "../../types";
+import type { Chapter } from "../../content/model";
 import type { DownloadCancellationOutcome, DownloadDependencies } from "./contracts";
 import { ChapterCacheWriteBuffer } from "./cache-write-buffer";
 import { createStorageError, normalizeStorageError, StorageError, toStorageFailure } from "../cache/storage-error";

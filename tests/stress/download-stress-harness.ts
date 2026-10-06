@@ -1,4 +1,4 @@
-import { normalizeChapterMappingFont } from "../../src/core/mapping-font";
+import { normalizeChapterMappingFont } from "../../src/content/mapping-font";
 import { runDownload } from "../../src/core/download/coordinator";
 import { vi } from "vitest";
 import type {
@@ -9,7 +9,8 @@ import type {
     DownloadSnapshot,
     DownloadTask
 } from "../../src/core/download/contracts";
-import type { Chapter, DownloadCancellationMode } from "../../src/types";
+import type { DownloadCancellationMode } from "../../src/types";
+import type { Chapter } from "../../src/content/model";
 import { createChapter, RecordingDownloadEvents } from "../support";
 
 interface StressDownloadHarnessOptions {

@@ -4,7 +4,7 @@ import type {
     ProtectedChapterProtocolErrorCode,
     ProtectedChapterUnlockResult
 } from "../core/download/contracts";
-import { fetchWithTimeout } from "../utils/request";
+import { fetchWithTimeout } from "../browser/request";
 import { BrowserRequestGate } from "./browser-request-gate";
 
 type ProtectedChapterRequest = (

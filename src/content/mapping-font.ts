@@ -1,4 +1,4 @@
-import type { Chapter, ChapterMappingFont } from "../types";
+import type { Chapter, ChapterMappingFont } from "./model";
 
 export const MAX_CHAPTER_MAPPING_FONT_BYTES = 4 * 1024 * 1024;
 

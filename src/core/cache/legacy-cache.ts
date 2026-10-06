@@ -1,5 +1,6 @@
 import { del, get, keys } from "idb-keyval";
-import type { CacheMeta, Chapter } from "../../types";
+import type { CacheMeta } from "../../types";
+import type { Chapter } from "../../content/model";
 
 /**
  * v2 及更早版本的整本缓存记录

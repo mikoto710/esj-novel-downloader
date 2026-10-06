@@ -1,8 +1,8 @@
-import { loadScript } from "../../utils/script-loader";
-import { isSupportedImageMediaType } from "../../utils/image-format";
+import { loadScript } from "../../browser/script-loader";
+import { isSupportedImageMediaType } from "../../content/image-format";
 import { escapeXml, convertToXhtml } from "../../utils/text";
-import { Chapter, BookMetadata, ChapterImage } from "../../types";
-import { prepareChapterMappingExport } from "../mapping-font";
+import type { Chapter, BookMetadata, ChapterImage } from "../../content/model";
+import { prepareChapterMappingExport } from "../../content/mapping-font";
 
 import type JSZip from "jszip";
 

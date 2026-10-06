@@ -82,7 +82,7 @@ export default [
                 {
                     paths: [
                         {
-                            name: "../mapping-font",
+                            name: "../../content/mapping-font",
                             importNames: ["normalizeChapterMappingFont"],
                             message: "字体 DOM 解析通过 chapterProcessor.normalizeCached 注入"
                         }
@@ -101,11 +101,10 @@ export default [
                                 "**/cache/legacy-cache",
                                 "**/cache/sync",
                                 "**/utils/dom",
-                                "**/utils/request",
-                                "**/utils/download",
+                                "**/browser/**",
                                 "**/utils/log"
                             ],
-                            message: "下载内核通过 contracts 接收能力，浏览器实现放在 adapters"
+                            message: "下载内核通过 contracts 接收能力，adapters 装配 browser 实现"
                         }
                     ]
                 }

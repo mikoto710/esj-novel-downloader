@@ -1,4 +1,5 @@
-import type { CacheMeta, Chapter } from "../../types";
+import type { CacheMeta } from "../../types";
+import type { Chapter } from "../../content/model";
 import type { DownloadDependencies, DownloadOptions, DownloadTask } from "./contracts";
 import { resolveDownloadSelection } from "./selection";
 

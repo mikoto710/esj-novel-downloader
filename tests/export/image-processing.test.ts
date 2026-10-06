@@ -7,10 +7,10 @@ const { fetchWithTimeoutMock, sleepWithAbortMock } = vi.hoisted(() => ({
     sleepWithAbortMock: vi.fn().mockResolvedValue(undefined)
 }));
 
-vi.mock("../../src/utils/async", () => ({
+vi.mock("../../src/browser/timing", () => ({
     sleepWithAbort: sleepWithAbortMock
 }));
-vi.mock("../../src/utils/request", () => ({ fetchWithTimeout: fetchWithTimeoutMock }));
+vi.mock("../../src/browser/request", () => ({ fetchWithTimeout: fetchWithTimeoutMock }));
 
 import { processHtmlImages } from "../../src/utils/image";
 

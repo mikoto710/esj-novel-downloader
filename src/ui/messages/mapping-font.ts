@@ -1,4 +1,4 @@
-import type { MappingFontErrorCode } from "../../core/mapping-font";
+import type { MappingFontErrorCode } from "../../content/mapping-font";
 import { t } from "../locale";
 
 /**

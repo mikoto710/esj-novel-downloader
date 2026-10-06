@@ -1,6 +1,6 @@
-import { Chapter, BookMetadata } from "../../types";
-import { blobToBase64 } from "../../utils/download";
-import { prepareChapterMappingExport } from "../mapping-font";
+import type { Chapter, BookMetadata } from "../../content/model";
+import { blobToBase64 } from "../../browser/files";
+import { prepareChapterMappingExport } from "../../content/mapping-font";
 
 /**
  * 构建单文件 HTML

@@ -21,8 +21,8 @@ ESJ Novel Downloader 是油猴脚本。自动化测试集中保护可重复验�
 
 - `tests/download/`：范围、重试、完整性、调度、决策队列、取消与收尾边界。
 - `tests/cache/`：真实持久化契约、兼容与迁移、写入所有权、锁、跨页状态和存储失败。
-- `tests/mapping-font/`：严格解析、损坏输入、字体缓存规范化与恢复。
-- `tests/export/`：导出数据、图片和字体资源、旧结果隔离与生成失败恢复。
+- `tests/mapping-font/`：`content/mapping-font.ts` 的严格解析、损坏输入、字体缓存规范化与恢复。
+- `tests/export/`：导出数据、`content/image-format.ts` 的图片契约、字体资源、旧结果隔离与生成失败恢复。
 - `tests/ui/`：少量异步决策、状态保留、资源上限及操作锁边界。
 - `tests/infrastructure/`：密码协议、请求互斥、诊断数据和语言目录结构。
 - `tests/stress/`：代表性的规模和资源边界。

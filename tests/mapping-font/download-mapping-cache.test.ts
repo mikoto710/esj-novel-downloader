@@ -2,7 +2,7 @@
 
 import { describe, expect, it, vi } from "vitest";
 import { createDownloadHarness } from "../support/download-harness";
-import type { Chapter } from "../../src/types";
+import type { Chapter } from "../../src/content/model";
 import { createChapter, createDownloadTask } from "../support";
 
 function createWoff2Bytes(): Uint8Array {

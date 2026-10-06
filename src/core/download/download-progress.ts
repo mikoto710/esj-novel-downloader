@@ -1,4 +1,4 @@
-import type { Chapter } from "../../types";
+import type { Chapter } from "../../content/model";
 import type { DownloadScope } from "./download-scope";
 import type { DownloadEventSink, DownloadPhase, DownloadSnapshot, DownloadUiPort } from "./contracts";
 

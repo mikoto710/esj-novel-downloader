@@ -1,4 +1,5 @@
-import type { BookCover, CacheMeta, Chapter, PersistentCacheEntry } from "../../types";
+import type { CacheMeta, PersistentCacheEntry } from "../../types";
+import type { BookCover, Chapter } from "../../content/model";
 import { hasBookDownloadTaskPresence } from "../book-lock";
 import {
     claimCacheV3,

@@ -37,7 +37,7 @@ vi.mock("../../src/core/book-lock", () => ({
 
 let receive: (event: MessageEvent) => void;
 let runtime: typeof import("../../src/core/state");
-let chapters: Map<number, import("../../src/types").Chapter>;
+let chapters: Map<number, import("../../src/content/model").Chapter>;
 let manager: typeof import("../../src/core/cache/manager");
 
 async function send(event: object): Promise<void> {

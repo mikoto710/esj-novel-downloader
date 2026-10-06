@@ -39,11 +39,11 @@ vi.mock("../../src/core/cache/sync", () => ({
     publishCacheSyncEvent: vi.fn()
 }));
 vi.mock("../../src/utils/log", () => ({ log: hoistedBrowserDownloadMocks.log }));
-vi.mock("../../src/utils/async", () => ({
+vi.mock("../../src/browser/timing", () => ({
     sleepWithAbort: hoistedBrowserDownloadMocks.sleepWithAbort,
     sleep: hoistedBrowserDownloadMocks.sleep
 }));
-vi.mock("../../src/utils/request", () => ({ fetchWithTimeout: hoistedBrowserDownloadMocks.fetchWithTimeout }));
+vi.mock("../../src/browser/request", () => ({ fetchWithTimeout: hoistedBrowserDownloadMocks.fetchWithTimeout }));
 vi.mock("../../src/utils/dom", () => ({ fullCleanup: hoistedBrowserDownloadMocks.fullCleanup }));
 vi.mock("../../src/ui/popups", () => ({
     createDownloadPopup: hoistedBrowserDownloadMocks.createDownloadPopup,
@@ -98,7 +98,7 @@ export async function resetBrowserDownloadHarness(): Promise<BrowserDownloadRunt
     state.activeDownload = null;
     const task = {
         lock: createBookLock({ status: "running" }),
-        chapters: new Map<number, import("../../src/types").Chapter>(),
+        chapters: new Map<number, import("../../src/content/model").Chapter>(),
         cancellation: createDownloadCancellation(),
         originalTitle: document.title
     };

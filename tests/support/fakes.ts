@@ -1,5 +1,6 @@
 import type { DownloadTask } from "../../src/core/download/contracts";
-import type { CacheStatus, Chapter } from "../../src/types";
+import type { CacheStatus } from "../../src/types";
+import type { Chapter } from "../../src/content/model";
 import { createAbortError, createDeferred, type Deferred } from "./async";
 
 type FetchPlan =

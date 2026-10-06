@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { beforeEach, describe, expect, it } from "vitest";
-import type { BookCover } from "../../src/types";
+import type { BookCover } from "../../src/content/model";
 import { createChapter } from "../support";
 import {
     type BrowserDownloadRuntime,

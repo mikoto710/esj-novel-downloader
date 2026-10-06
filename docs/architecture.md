@@ -13,7 +13,7 @@
 | 密码与字体决策                   | [`protected-chapters.ts`](../src/core/download/protected-chapters.ts)、[`mapped-chapters.ts`](../src/core/download/mapped-chapters.ts)                                                    |
 | 落盘、背压、取消保存             | [`task-cache-writer.ts`](../src/core/download/task-cache-writer.ts)、[`cache-write-buffer.ts`](../src/core/download/cache-write-buffer.ts)                                                |
 | 导出快照与格式生成               | [`export-data.ts`](../src/core/download/export-data.ts)、[`format-choice.ts`](../src/ui/dialogs/format-choice.ts)                                                                         |
-| 浏览器实现                       | [`browser-download-dependencies.ts`](../src/adapters/browser-download-dependencies.ts)                                                                                                    |
+| 浏览器能力装配                   | [`browser-download-dependencies.ts`](../src/adapters/browser-download-dependencies.ts)                                                                                                    |
 
 ## 模块依赖与运行调用
 
@@ -30,7 +30,11 @@ core/download 与 adapters 共享 contracts 类型
 core/download 通过传入的能力调用浏览器实现
 ```
 
-`core/download/` 的业务模块由 ESLint 限制直接引入 UI、页面状态、持久化实现或浏览器全局能力。书籍锁收尾位于 `adapters/book-download-lifecycle.ts`，核心目录不再排除收尾文件；`core/cache/` 实现 IndexedDB，不属于环境无关内核。字体缓存解析通过 `chapterProcessor.normalizeCached` 注入。
+`core/download/` 的业务模块由 ESLint 限制直接引入 UI、页面状态、持久化实现或浏览器全局能力。书籍锁收尾位于 `adapters/book-download-lifecycle.ts`，核心目录不再排除收尾文件；`core/cache/` 实现 IndexedDB，不属于环境无关内核。字体缓存解析通过 `chapterProcessor.normalizeCached` 注入；新抓取正文处理仍通过 `chapterProcessor.process` 注入。
+
+共享章节、图片、映射字体、封面和书籍元数据定义位于 [`content/model.ts`](../src/content/model.ts)。[`content/mapping-font.ts`](../src/content/mapping-font.ts) 保留唯一的字体规范化、恢复校验与安全导出绑定实现，恢复、格式生成和单章页面共同使用；[`content/image-format.ts`](../src/content/image-format.ts) 统一图片签名识别与 MIME 校验。图片 URL 解析仍由 [`utils/image-format.ts`](../src/utils/image-format.ts) 提供。
+
+具体浏览器能力位于 `browser/`：[`request.ts`](../src/browser/request.ts) 提供请求和中断，[`timing.ts`](../src/browser/timing.ts) 提供等待，[`files.ts`](../src/browser/files.ts) 提供文件触发与 Blob 转换，[`script-loader.ts`](../src/browser/script-loader.ts) 提供脚本加载及 fallback。adapter 装配这些能力，下载内核通过端口调用，不直接依赖 `browser/` 或字体 DOM 规范化函数。
 
 ### 全本成功
 

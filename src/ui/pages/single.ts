@@ -2,7 +2,7 @@ import { el } from "../../utils/dom";
 import { showMessagePopup } from "../dialogs/message";
 import { downloadCurrentPage } from "../../scrapers/single";
 import { parseChapterHtml } from "../../core/parser";
-import { MappingFontError, normalizeChapterMappingFont } from "../../core/mapping-font";
+import { MappingFontError, normalizeChapterMappingFont } from "../../content/mapping-font";
 import { isProtectedChapterHtml } from "../../adapters/browser-protected-chapter";
 import { bindInterfaceAttribute, subscribeInterfaceLocaleChange, t } from "../locale";
 import { formatMappingFontError } from "../messages/mapping-font";

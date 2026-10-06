@@ -1,6 +1,6 @@
 import type { DownloadDependencies, DownloadOptions, DownloadResult } from "./contracts";
 import { StorageError, toStorageFailure, createStorageError } from "../cache/storage-error";
-import { MappingFontError } from "../mapping-font";
+import { MappingFontError } from "../../content/mapping-font";
 import { createDownloadScope } from "./download-scope";
 import { DownloadProgress } from "./download-progress";
 import { createTaskCacheWriter, type TaskCacheWriter } from "./task-cache-writer";

@@ -1,4 +1,5 @@
-import type { BookCover, CachedData, Chapter } from "../../types";
+import type { CachedData } from "../../types";
+import type { BookCover, Chapter } from "../../content/model";
 import type { DownloadDependencies, DownloadOptions } from "./contracts";
 import type { DownloadScope } from "./download-scope";
 import { createMissingChapterPlaceholder } from "./incomplete-chapters";
