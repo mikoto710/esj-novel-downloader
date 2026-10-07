@@ -190,11 +190,13 @@ export async function loadForumBook(bookId: string, origin: string, signal?: Abo
     try {
         html = await fetchPageText(detailUrl, signal ? { signal } : {});
     } catch (error) {
-        if (error instanceof Error && error.name === "AbortError") {
+        if ((error instanceof Error || error instanceof DOMException) && error.name === "AbortError") {
             throw error;
         }
         throw new BookPreflightError(
-            error instanceof Error && error.name === "TimeoutError" ? "detail-fetch-timeout" : "detail-fetch-failed",
+            (error instanceof Error || error instanceof DOMException) && error.name === "TimeoutError"
+                ? "detail-fetch-timeout"
+                : "detail-fetch-failed",
             "book-metadata",
             { cause: error }
         );

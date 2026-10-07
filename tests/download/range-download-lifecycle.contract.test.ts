@@ -1,5 +1,7 @@
 // @vitest-environment jsdom
 
+import { createSelectionPopupFake } from "../support/fakes";
+
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createBookLock, createCachedData, createDeferred, createDownloadTask } from "../support";
 
@@ -49,7 +51,11 @@ vi.mock("../../src/storage/cache/sync", () => ({
 }));
 vi.mock("../../src/download/run", () => ({ runDownload: mocks.runDownload }));
 
-vi.mock("../../src/ui/dialogs/download-selection", () => ({ createDownloadSelectionPopup: mocks.rangePopup }));
+vi.mock("../../src/ui/dialogs/download-selection", () => ({
+    createDownloadSelectionPopup: (
+        options: import("../../src/ui/dialogs/download-selection").DownloadSelectionPopupOptions
+    ) => createSelectionPopupFake(options, mocks.rangePopup)
+}));
 vi.mock("../../src/ui/popups", async (importOriginal) => ({
     ...(await importOriginal<typeof import("../../src/ui/popups")>()),
     createDownloadPopup: mocks.createDownloadPopup,

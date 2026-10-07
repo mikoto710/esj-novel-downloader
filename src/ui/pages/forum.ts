@@ -52,6 +52,6 @@ async function scrapeForum(): Promise<void> {
         bookId,
         sourcePageType: "forum",
         pageTitle: document.title,
-        loadPlan: () => loadForumBook(bookId, location.origin)
+        loadPlan: (signal) => loadForumBook(bookId, location.origin, signal)
     });
 }

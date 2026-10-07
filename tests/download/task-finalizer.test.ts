@@ -18,7 +18,7 @@ describe("book download task finalization through the app entry", () => {
     beforeEach(async () => {
         runtime = await resetBrowserDownloadHarness();
         mocks.shouldDiscard.mockResolvedValue(true);
-        // End before the core: these faults belong to the app's acquired resources.
+        // 在进入下载核心前注入故障，验证应用层已取得资源的收尾
         mocks.claimCache.mockImplementation(async () => {
             runtime.abortActiveDownload("discard");
             throw new DOMException("cancelled claim", "AbortError");

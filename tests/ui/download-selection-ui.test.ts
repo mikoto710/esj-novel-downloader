@@ -40,8 +40,37 @@ describe("unified download selection UI", () => {
         publishInterfaceLocaleChange();
     });
 
+    it("does not allow a download until preparation supplies the directory", async () => {
+        const popup = createDownloadSelectionPopup(selectionOptions({ preparationStage: "reading-book" }));
+        expect(document.querySelector<HTMLInputElement>("#esj-download-all")?.disabled).toBe(true);
+        expect(document.querySelector<HTMLButtonElement>("#esj-range-download")?.disabled).toBe(true);
+
+        popup.showReady(selectionOptions());
+        selectRange("2", "4");
+        document.querySelector<HTMLButtonElement>("#esj-range-download")?.click();
+        await expect(popup.decision).resolves.toEqual({
+            action: "download",
+            selection: { mode: "range", sourceTotalChapters: 5, startIndex: 1, endIndex: 3 }
+        });
+    });
+
+    it("ignores preparation results after the previous-export decision closes its window", async () => {
+        const popup = createDownloadSelectionPopup(
+            selectionOptions({ preparationStage: "reading-book", hasExistingExport: true })
+        );
+        document.querySelector<HTMLButtonElement>("#esj-range-open-previous")?.click();
+        await expect(popup.decision).resolves.toEqual({ action: "open-existing" });
+
+        const next = createDownloadSelectionPopup(selectionOptions());
+        popup.showPreparing("checking-cache");
+        popup.showReady(selectionOptions({ preparationErrorKey: "page.cacheUnavailable.message" }));
+        expect(document.querySelector<HTMLButtonElement>("#esj-range-download")?.disabled).toBe(false);
+        next.close();
+        await expect(next.decision).resolves.toEqual({ action: "cancel" });
+    });
+
     it("enables range inputs and retains their values when switching back", async () => {
-        const decision = createDownloadSelectionPopup(selectionOptions());
+        const { decision } = createDownloadSelectionPopup(selectionOptions());
         selectRange("2", "4");
         expect(document.querySelector<HTMLInputElement>("#esj-range-start")?.disabled).toBe(false);
 
@@ -58,7 +87,7 @@ describe("unified download selection UI", () => {
 
     it("previews only selected cached chapters and preserves selection across locale changes", async () => {
         document.body.innerHTML = '<button class="esj-settings-trigger"></button>';
-        const decision = createDownloadSelectionPopup(
+        const { decision } = createDownloadSelectionPopup(
             selectionOptions({ cachedIndexes: new Set([0, 1, 3]), cacheCount: 3 })
         );
         selectRange("2", "4");
@@ -82,7 +111,7 @@ describe("unified download selection UI", () => {
 
     it("retains the chosen range when a changed cache requires another confirmation", async () => {
         const selection = { mode: "range" as const, sourceTotalChapters: 5, startIndex: 1, endIndex: 3 };
-        const decision = createDownloadSelectionPopup(
+        const { decision } = createDownloadSelectionPopup(
             selectionOptions({ initialSelection: selection, cacheWillBeInvalidated: true })
         );
 
@@ -94,7 +123,7 @@ describe("unified download selection UI", () => {
     });
 
     it("keeps the previous range export available when cache preparation fails", async () => {
-        const decision = createDownloadSelectionPopup(
+        const { decision } = createDownloadSelectionPopup(
             selectionOptions({
                 hasExistingExport: true,
                 existingSelection: { mode: "range", sourceTotalChapters: 10, startChapter: 2, endChapter: 3 },
@@ -117,7 +146,7 @@ describe("unified download selection UI", () => {
     it("keeps page actions locked until the chosen task settles", async () => {
         const flow = createDeferred<void>();
         const button = createDownloadButton("download", undefined, async () => {
-            const decision = await createDownloadSelectionPopup(selectionOptions());
+            const decision = await createDownloadSelectionPopup(selectionOptions()).decision;
             if (decision.action === "download") {
                 await flow.promise;
             }
@@ -140,7 +169,7 @@ describe("unified download selection UI", () => {
     it("restores the disabled state that existed before the selection dialog", async () => {
         document.body.innerHTML =
             '<button id="download" class="esj-download-trigger" disabled></button><button class="esj-settings-trigger"></button>';
-        const decision = createDownloadSelectionPopup(selectionOptions());
+        const { decision } = createDownloadSelectionPopup(selectionOptions());
 
         document.querySelector<HTMLButtonElement>("#esj-range-cancel")?.click();
         await expect(decision).resolves.toEqual({ action: "cancel" });
@@ -151,7 +180,7 @@ describe("unified download selection UI", () => {
     it("keeps page actions locked until the selected previous-export dialog closes", async () => {
         const previous = createCachedData();
         const button = createDownloadButton("download", undefined, async () => {
-            const decision = await createDownloadSelectionPopup(selectionOptions({ hasExistingExport: true }));
+            const decision = await createDownloadSelectionPopup(selectionOptions({ hasExistingExport: true })).decision;
             if (decision.action === "open-existing") {
                 showFormatChoice(previous);
             }

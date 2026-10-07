@@ -1,6 +1,7 @@
 import { expect, vi } from "vitest";
 import type { DownloadResult, ProtectedChapterDecision } from "../../src/download/contracts";
 import { createBookLock, createDownloadTask } from "./factories";
+import { createSelectionPopupFake } from "./fakes";
 
 const hoistedBrowserDownloadMocks = vi.hoisted(() => ({
     log: vi.fn(),
@@ -39,6 +40,7 @@ const hoistedBrowserDownloadMocks = vi.hoisted(() => ({
     previewCache: vi.fn(),
     claimCache: vi.fn(),
     selectionPopup: vi.fn(),
+    selectionView: vi.fn(),
     showFormatChoice: vi.fn(),
     showCacheDiscardFailure: vi.fn(),
     getImageDownloadSetting: vi.fn()
@@ -50,7 +52,7 @@ export function getBrowserDownloadMocks() {
 
 vi.mock("../../src/download/run", () => ({ runDownload: hoistedBrowserDownloadMocks.runDownload }));
 vi.mock("../../src/ui/dialogs/download-selection", () => ({
-    createDownloadSelectionPopup: hoistedBrowserDownloadMocks.selectionPopup
+    createDownloadSelectionPopup: hoistedBrowserDownloadMocks.selectionView
 }));
 vi.mock("../../src/ui/dialogs/message", () => ({ showMessagePopup: vi.fn() }));
 vi.mock("../../src/storage/cache/sync", () => ({
@@ -62,8 +64,14 @@ vi.mock("../../src/browser/timing", () => ({
     sleepWithAbort: hoistedBrowserDownloadMocks.sleepWithAbort,
     sleep: hoistedBrowserDownloadMocks.sleep
 }));
-vi.mock("../../src/browser/request", () => ({ fetchWithTimeout: hoistedBrowserDownloadMocks.fetchWithTimeout }));
-vi.mock("../../src/ui/dom", () => ({ fullCleanup: hoistedBrowserDownloadMocks.fullCleanup }));
+vi.mock("../../src/browser/request", async (importOriginal) => ({
+    ...(await importOriginal<typeof import("../../src/browser/request")>()),
+    fetchWithTimeout: hoistedBrowserDownloadMocks.fetchWithTimeout
+}));
+vi.mock("../../src/ui/dom", async (importOriginal) => ({
+    ...(await importOriginal<typeof import("../../src/ui/dom")>()),
+    fullCleanup: hoistedBrowserDownloadMocks.fullCleanup
+}));
 vi.mock("../../src/ui/popups", () => ({
     createDownloadPopup: hoistedBrowserDownloadMocks.createDownloadPopup,
     showFormatChoice: hoistedBrowserDownloadMocks.showFormatChoice,
@@ -89,7 +97,8 @@ vi.mock("../../src/storage/cache/book-cache", () => ({
     loadBookCover: hoistedBrowserDownloadMocks.loadCoverCache,
     putBookCoverForTask: hoistedBrowserDownloadMocks.saveCoverCache
 }));
-vi.mock("../../src/storage/settings", () => ({
+vi.mock("../../src/storage/settings", async (importOriginal) => ({
+    ...(await importOriginal<typeof import("../../src/storage/settings")>()),
     getImageDownloadSetting: hoistedBrowserDownloadMocks.getImageDownloadSetting,
     getConcurrency: hoistedBrowserDownloadMocks.getConcurrency,
     getInterfaceLocalePreference: hoistedBrowserDownloadMocks.getInterfaceLocalePreference
@@ -153,6 +162,9 @@ export async function resetBrowserDownloadHarness(): Promise<BrowserDownloadRunt
     };
     const actual = await vi.importActual<typeof import("../../src/download/run")>("../../src/download/run");
     hoistedBrowserDownloadMocks.runDownload.mockImplementation(actual.runDownload);
+    hoistedBrowserDownloadMocks.selectionView.mockImplementation((options) =>
+        createSelectionPopupFake(options, hoistedBrowserDownloadMocks.selectionPopup)
+    );
     hoistedBrowserDownloadMocks.getConflict.mockResolvedValue(null);
     hoistedBrowserDownloadMocks.acquire.mockResolvedValue({ acquired: true, lock: task.lock });
     hoistedBrowserDownloadMocks.markRunning.mockResolvedValue(true);
@@ -235,7 +247,7 @@ export async function resetBrowserDownloadHarness(): Promise<BrowserDownloadRunt
             await start(options);
             const result = hoistedBrowserDownloadMocks.runDownload.mock.results[call];
             if (!result) throw new Error("Download core was not entered");
-            // Observe the result of the real core reached through the public app entry.
+            // 返回本次应用流程调用下载核心所得的结果
             return await result.value;
         },
         task,

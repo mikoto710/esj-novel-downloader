@@ -60,7 +60,7 @@ describe("page action popup locks", () => {
                 cacheWillBeInvalidated: false,
                 imageEnabled: false,
                 hasExistingExport: false
-            });
+            }).decision;
             if (decision.action === "download") {
                 createDownloadPopup();
             }

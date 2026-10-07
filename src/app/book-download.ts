@@ -89,11 +89,11 @@ interface RunBookDownloadOptions {
     bookId: string;
     sourcePageType: BookSourcePageType;
     pageTitle: string;
-    loadPlan(): Promise<PreparedBook>;
+    loadPlan(signal?: AbortSignal): Promise<PreparedBook>;
 }
 
 /**
- * 预检冲突并选择范围，再取得锁执行同一任务流程
+ * 管理书籍准备与范围选择，确认后取得锁并进入正式下载
  */
 export async function runBookDownload(options: RunBookDownloadOptions): Promise<void> {
     const { bookId, sourcePageType } = options;
@@ -105,63 +105,118 @@ export async function runBookDownload(options: RunBookDownloadOptions): Promise<
     let preparationErrorKey: LocaleKey | undefined;
     let storageStage: "lock-read" | "cache-read" = "lock-read";
 
-    try {
-        // 预检只提前提示，确认后的原子获取仍负责互斥
-        const conflictingLock = await getConflictingBookDownloadLock(bookId);
-        if (conflictingLock) {
-            showBookDownloadInProgressPopup(conflictingLock);
-            return;
-        }
+    const initialPreview = {
+        tasks: [],
+        cachedIndexes: new Set<number>(),
+        cacheWillBeInvalidated: false,
+        cacheCount: 0
+    };
+    const viewOptions = {
+        imageEnabled,
+        hasExistingExport: Boolean(previousExport),
+        ...(previousExport?.exportContext?.selection
+            ? { existingSelection: previousExport.exportContext.selection }
+            : {})
+    };
+    const preparation = new AbortController();
+    const popup = createDownloadSelectionPopup({
+        ...initialPreview,
+        ...viewOptions,
+        preparationStage: "checking-task"
+    });
+    const isPreparing = () => !preparation.signal.aborted && !popup.closed;
 
-        storageStage = "cache-read";
-        plan = await options.loadPlan().catch((error: unknown) => {
-            throw error instanceof BookPreflightError
-                ? error
-                : new BookPreflightError("detail-fetch-failed", "book-metadata", { cause: error });
-        });
-        if (plan.tasks.length === 0) {
-            throw new BookPreflightError("chapter-list-missing", "chapter-list");
-        }
-        preview = await previewBookCache(bookId, imageEnabled);
-    } catch (error) {
-        const failure = error instanceof BookPreflightError ? error : normalizeStorageError(error, "read");
-        preparationErrorKey =
-            failure instanceof BookPreflightError
-                ? failure.code === "chapter-list-missing"
-                    ? "page.chaptersMissing.message"
-                    : "page.detailFailed.message"
-                : "page.cacheUnavailable.message";
-        recordBrowserPreflightDiagnosticFailure({
-            bookId,
-            bookTitle: options.pageTitle,
-            pageUrl: location.href,
-            sourcePageType,
-            imageEnabled,
-            failure: {
-                scope: failure instanceof BookPreflightError ? "page" : "storage",
-                stage: failure instanceof BookPreflightError ? failure.stage : storageStage,
-                code: failure instanceof BookPreflightError ? failure.code : failure.reason,
-                message: failure.message
-            }
-        });
-    }
-
-    let initialSelection: DownloadSelection | undefined;
-    while (true) {
-        const invalidatesCache = Boolean(preview && preview.size > 0 && preview.compatibility !== "compatible");
-        const decision = await createDownloadSelectionPopup({
+    // 将本次预检事实转换为选择窗口预览，旧导出和插图设置保持创建时的值
+    function selectionPreview(initialSelection?: DownloadSelection) {
+        return {
             tasks: plan?.tasks || [],
             cachedIndexes: new Set(preview?.indexes || []),
-            cacheWillBeInvalidated: invalidatesCache,
+            cacheWillBeInvalidated: Boolean(preview && preview.size > 0 && preview.compatibility !== "compatible"),
             cacheCount: preview?.size || 0,
-            imageEnabled,
-            hasExistingExport: Boolean(previousExport),
-            ...(previousExport?.exportContext?.selection
-                ? { existingSelection: previousExport.exportContext.selection }
-                : {}),
             ...(initialSelection ? { initialSelection } : {}),
             ...(preparationErrorKey ? { preparationErrorKey } : {})
-        });
+        };
+    }
+
+    // 只读准备目录与缓存，窗口结束后不再启动读取、展示冲突或记录失败
+    async function prepare(): Promise<void> {
+        try {
+            const conflictingLock = await getConflictingBookDownloadLock(bookId);
+            if (!isPreparing()) {
+                return;
+            }
+            // 预检只提前提示，确认后的原子获取仍负责互斥
+            if (conflictingLock) {
+                popup.close();
+                showBookDownloadInProgressPopup(conflictingLock);
+                return;
+            }
+
+            storageStage = "cache-read";
+            popup.showPreparing("reading-book");
+            plan = await options.loadPlan(preparation.signal).catch((error: unknown) => {
+                if ((error instanceof Error || error instanceof DOMException) && error.name === "AbortError") {
+                    throw error;
+                }
+                throw error instanceof BookPreflightError
+                    ? error
+                    : new BookPreflightError("detail-fetch-failed", "book-metadata", { cause: error });
+            });
+            if (!isPreparing()) {
+                return;
+            }
+            if (plan.tasks.length === 0) {
+                throw new BookPreflightError("chapter-list-missing", "chapter-list");
+            }
+            popup.showPreparing("checking-cache");
+            preview = await previewBookCache(bookId, imageEnabled);
+            if (isPreparing()) {
+                popup.showReady(selectionPreview());
+            }
+        } catch (error) {
+            if (!isPreparing()) {
+                return;
+            }
+            const failure = error instanceof BookPreflightError ? error : normalizeStorageError(error, "read");
+            preparationErrorKey =
+                failure instanceof BookPreflightError
+                    ? failure.code === "chapter-list-missing"
+                        ? "page.chaptersMissing.message"
+                        : failure.code === "detail-fetch-timeout"
+                          ? "page.detailTimeout.message"
+                          : "page.detailFailed.message"
+                    : "page.cacheUnavailable.message";
+            recordBrowserPreflightDiagnosticFailure({
+                bookId,
+                bookTitle: options.pageTitle,
+                pageUrl: location.href,
+                sourcePageType,
+                imageEnabled,
+                failure: {
+                    scope: failure instanceof BookPreflightError ? "page" : "storage",
+                    stage: failure instanceof BookPreflightError ? failure.stage : storageStage,
+                    code: failure instanceof BookPreflightError ? failure.code : failure.reason,
+                    message: failure.message
+                }
+            });
+            popup.showReady(selectionPreview());
+        }
+    }
+
+    // 选择不等待预检完成，用户取消或打开旧结果都能及时结束入口等待
+    void prepare().catch((error) => {
+        if (isPreparing()) {
+            console.error(error);
+            popup.close();
+        }
+    });
+    let decision: Awaited<typeof popup.decision>;
+    try {
+        decision = await popup.decision;
+    } finally {
+        preparation.abort();
+    }
+    while (true) {
         if (decision.action === "open-existing") {
             if (previousExport) {
                 showFormatChoice(previousExport);
@@ -171,13 +226,18 @@ export async function runBookDownload(options: RunBookDownloadOptions): Promise<
         if (decision.action === "cancel" || !plan || !preview || preparationErrorKey) {
             return;
         }
-        initialSelection = decision.selection;
+        const initialSelection = decision.selection;
+        const invalidatesCache = selectionPreview().cacheWillBeInvalidated;
         // 仅未确认的缓存失效返回新预览；释放锁后再让用户选择
-        const latest = await executeBookDownload(options, plan, decision.selection, imageEnabled, invalidatesCache);
+        const latest = await executeBookDownload(options, plan, initialSelection, imageEnabled, invalidatesCache);
         if (!latest) {
             return;
         }
         preview = latest;
+        decision = await createDownloadSelectionPopup({
+            ...selectionPreview(initialSelection),
+            ...viewOptions
+        }).decision;
     }
 }
 

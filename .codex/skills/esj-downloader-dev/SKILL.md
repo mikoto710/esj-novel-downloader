@@ -24,7 +24,7 @@ Keep types with their owning rule: content/source in `content/model.ts`, cancell
 - Preserve setting timing: fix image settings before cache preview, read concurrency at task assembly, and fix EPUB settings when generating the original result.
 - During bulk cache recovery, aggregate diagnostics in memory instead of persisting one diagnostic update per restored chapter.
 - Keep localization in the presentation boundary: business code emits stable codes, parameters, or locale-neutral details; `ui/locale.ts` and `ui/messages/` present them using the pure catalog. Read/save preferences through `storage/settings.ts`; site conversion detection only supplies hints and never converts content. Never translate novel content, book metadata, source URLs, exported novel data, or ESJZone `status === 206` protocol text. Localize `zh-TW` manually with Taiwanese software terminology.
-- Production comments use Chinese and explain business invariants, lifecycle ownership, or race ordering. Use caller-focused JSDoc without a final period only where exported APIs need a contract; keep implementation details in adjacent `//` comments and do not mix ordinary block comments with JSDoc.
+- Follow [CONTRIBUTING.md](../../../CONTRIBUTING.md) for source/test comment language and JSDoc conventions. Explain business invariants, lifecycle ownership, or race ordering.
 - Use fixtures, fakes, fake clocks, and userscript mocks. Do not access ESJZone, live network services, or production IndexedDB in automated tests.
 - Version changes, tag creation/push, GitHub Releases, and committing `dist/` require explicit authorization for that operation. Required local builds may regenerate ignored `dist/` artifacts within the authorized implementation or validation scope.
 
