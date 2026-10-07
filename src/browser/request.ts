@@ -50,6 +50,42 @@ export async function fetchWithTimeoutNative(
 }
 
 /**
+ * 原生请求页面文本，期限覆盖响应正文读取，取消与超时分别抛出 AbortError 和 TimeoutError
+ */
+export async function fetchPageText(url: string, options: RequestInit = {}, timeoutMs = 15000): Promise<string> {
+    const signal = options.signal;
+    if (signal?.aborted) {
+        throw new DOMException("Page request cancelled", "AbortError");
+    }
+    const controller = new AbortController();
+    let rejectInterruption!: (reason: unknown) => void;
+    const interruption = new Promise<never>((_resolve, reject) => {
+        rejectInterruption = reject;
+    });
+    const interrupt = (reason: DOMException) => {
+        controller.abort(reason);
+        rejectInterruption(reason);
+    };
+    const onAbort = () => interrupt(new DOMException("Page request cancelled", "AbortError"));
+    signal?.addEventListener("abort", onAbort, { once: true });
+    const timer = setTimeout(() => interrupt(new DOMException("Page request timed out", "TimeoutError")), timeoutMs);
+    try {
+        // 即使底层读取尚未响应中止，也先结束调用方等待；晚到结果由 race 消费
+        const responseText = (async () => {
+            const response = await fetch(url, { ...options, signal: controller.signal });
+            if (!response.ok) {
+                throw new Error(`HTTP Error ${response.status}`);
+            }
+            return response.text();
+        })();
+        return await Promise.race([responseText, interruption]);
+    } finally {
+        clearTimeout(timer);
+        signal?.removeEventListener("abort", onAbort);
+    }
+}
+
+/**
  * 通过 GM 发起支持超时和外部中断的请求
  */
 export function fetchWithTimeout(

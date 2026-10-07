@@ -1,4 +1,5 @@
 import type { DownloadTask } from "../download/contracts";
+import { fetchPageText } from "../browser/request";
 
 /**
  * 解析书籍元数据，相对封面地址沿用当前页面 origin
@@ -127,7 +128,7 @@ export interface PreparedBook {
 
 export class BookPreflightError extends Error {
     constructor(
-        readonly code: "chapter-list-missing" | "detail-fetch-failed",
+        readonly code: "chapter-list-missing" | "detail-fetch-failed" | "detail-fetch-timeout",
         readonly stage: "chapter-list" | "book-metadata",
         options?: ErrorOptions
     ) {
@@ -183,17 +184,21 @@ export function loadDetailBook(doc: Document, pageUrl: string): PreparedBook {
 /**
  * 论坛入口获取详情文档，按详情地址解释相对章节链接
  */
-export async function loadForumBook(bookId: string, origin: string): Promise<PreparedBook> {
+export async function loadForumBook(bookId: string, origin: string, signal?: AbortSignal): Promise<PreparedBook> {
     const detailUrl = `${origin}/detail/${bookId}.html`;
-    let response: Response;
+    let html: string;
     try {
-        response = await fetch(detailUrl);
-        if (!response.ok) {
-            throw new Error(`HTTP Error ${response.status}`);
-        }
+        html = await fetchPageText(detailUrl, signal ? { signal } : {});
     } catch (error) {
-        throw new BookPreflightError("detail-fetch-failed", "book-metadata", { cause: error });
+        if (error instanceof Error && error.name === "AbortError") {
+            throw error;
+        }
+        throw new BookPreflightError(
+            error instanceof Error && error.name === "TimeoutError" ? "detail-fetch-timeout" : "detail-fetch-failed",
+            "book-metadata",
+            { cause: error }
+        );
     }
-    const doc = new DOMParser().parseFromString(await response.text(), "text/html");
+    const doc = new DOMParser().parseFromString(html, "text/html");
     return readBookPlan(doc, detailUrl, true);
 }
