@@ -282,7 +282,7 @@ export function createDiagnosticPopup(): void {
         const detailScrollTop = preserveScroll ? detail.scrollTop : 0;
         const view = listBrowserDiagnosticSessionView();
 
-        // 关闭后未确认会话不占用进行中位置但保留检查
+        // 已观察到页面关闭但终态未确认的会话单独列出，仍可查看、导出和删除
         const sessions = [...view.active, ...view.unconfirmed, ...view.history];
         if (!selectedId || !sessions.some((item) => item.session.id === selectedId)) {
             selectedId = sessions[0]?.session.id || null;

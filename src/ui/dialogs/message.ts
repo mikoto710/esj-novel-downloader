@@ -6,6 +6,9 @@ import { t } from "../locale";
 
 export type MessagePopupTone = "info" | "warning" | "error";
 
+/**
+ * 通用消息弹窗的展示输入，详情可折叠，默认标题按消息级别选择
+ */
 export interface MessagePopupOptions {
     tone: MessagePopupTone;
     title?: string;

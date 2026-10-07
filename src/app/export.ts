@@ -10,7 +10,9 @@ import { recordBrowserDiagnosticExport, recordBrowserDiagnosticFailure } from ".
 import { triggerDownload } from "../browser/files";
 import { getExportErrorDetails } from "../ui/messages/export";
 
-// 正文快照保持原对象，应用层独占可失效的 EPUB 派生产物
+/**
+ * 正文快照保持原对象，应用层独占可失效的 EPUB 派生产物
+ */
 export interface CachedData extends ExportSnapshot {
     epubBlob?: Blob | null;
     epubTagPageEnabled?: boolean;
@@ -28,7 +30,7 @@ interface RichExportView extends ExportView {
 }
 
 /**
- * 使指定原结果的派生产物失效，进行中的生成也不得写回
+ * 清除原结果的 EPUB 缓存并递增版本，旧生成结果不得回写缓存
  */
 export function invalidateCachedEpub(data: CachedData | null): void {
     if (data) {
@@ -39,7 +41,7 @@ export function invalidateCachedEpub(data: CachedData | null): void {
 }
 
 /**
- * 汇总原结果的格式能力，TXT 与富文本共用字体约束
+ * 汇总已携带映射字体的章节与字节数，存在映射字体时禁用 TXT
  */
 export function getExportCapabilities(chapters: ExportSnapshot["chapters"]): {
     mappingSummary: MappingFontSummary;
@@ -56,7 +58,7 @@ export function getExportCapabilities(chapters: ExportSnapshot["chapters"]): {
 }
 
 /**
- * 固定格式窗口展示的插图设置，优先使用原任务快照
+ * 读取原任务的插图设置，旧结果缺少该信息时回退到当前设置
  */
 export function getExportImageSetting(data: CachedData): boolean {
     return data.exportContext?.imageEnabled ?? getImageDownloadSetting();
@@ -97,7 +99,7 @@ function recordFailedExport(
 }
 
 /**
- * 同步导出 TXT，保留触发失败后的重试入口
+ * 导出已准备的 TXT 并报告生成或触发失败，重试入口由调用方维护
  */
 export function exportBookTxt(data: CachedData, view: ExportView): void {
     if (!getExportCapabilities(data.chapters).txtEnabled) {

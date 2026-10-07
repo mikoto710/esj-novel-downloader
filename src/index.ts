@@ -18,7 +18,7 @@ subscribeInterfaceLocaleChange(() => refreshUiLogTruncationText());
     const isForumPage = url.includes("/forum/") && !url.endsWith(".html");
     const isSinglePage = url.includes("/forum/") && url.endsWith(".html");
 
-    // 定义通用的注入尝试函数
+    // 按页面类型检查挂载容器，存在时注入对应下载入口
     const tryInject = () => {
         if (isDetailPage) {
             if (document.querySelector(".sp-buttons")) {

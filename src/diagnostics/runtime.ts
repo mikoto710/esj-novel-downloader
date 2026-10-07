@@ -17,23 +17,19 @@ import { log } from "../ui/log-view";
 import { formatDownloadLog } from "../ui/messages/download-log";
 
 const manager = new DiagnosticManager(new GmDiagnosticRepository());
-// 页面内只会有一个全本任务；lastTaskId 用于下载完成后的导出失败仍写回本页对应会话
+// currentTaskId 记录默认日志归属；lastTaskId 为任务结束后未指定身份的失败与导出提供回退
 let currentTaskId: string | null = null;
 let lastTaskId: string | null = null;
 const closeObserverCleanups = new Map<string, () => void>();
 
-/**
- * 停止指定任务的 pagehide 监听，并移除该任务登记的清理回调
- */
+// 停止指定任务的 pagehide 监听，并移除该任务登记的清理回调
 function stopBrowserDiagnosticCloseObserver(taskId: string): void {
     const cleanup = closeObserverCleanups.get(taskId);
     closeObserverCleanups.delete(taskId);
     cleanup?.();
 }
 
-/**
- * 为诊断会话监听真实的 pagehide；bfcache 挂起不视为页面关闭，监听由任务收尾或全量清理路径移除
- */
+// 为诊断会话监听真实的 pagehide；bfcache 挂起不视为页面关闭，监听由任务收尾或全量清理路径移除
 function observeBrowserDiagnosticPageClose(taskId: string): void {
     stopBrowserDiagnosticCloseObserver(taskId);
     const onPageHide = (event: PageTransitionEvent) => {
@@ -65,9 +61,7 @@ function getApplicationInfo(): StartDiagnosticSessionInput["application"] {
 }
 
 /**
- * 创建浏览器侧诊断会话并固定任务启动时的应用与设置快照
- * @param options 控制未显式提供 taskId 的失败和导出记录是否回写到本会话，以及是否记录页面关闭
- * @returns 活动诊断会话；诊断不可用时返回 undefined
+ * 固定任务诊断快照，options 控制默认回写归属和页面关闭观察，诊断不可用时返回 undefined
  */
 export function startBrowserDiagnosticSession(
     input: Omit<StartDiagnosticSessionInput, "application" | "settings"> & {
@@ -120,7 +114,7 @@ export function recordBrowserPreflightDiagnosticFailure(
 }
 
 /**
- * 使用 options.taskId 更新全本诊断会话，并将 browserDiagnosticLog 的默认归属切换到该任务
+ * 使用 options.taskId 更新书籍诊断会话，并将 browserDiagnosticLog 的默认归属切换到该任务
  */
 export function updateBrowserDiagnosticSession(options: DownloadOptions): void {
     currentTaskId = options.taskId;
@@ -138,7 +132,7 @@ export function updateBrowserDiagnosticSessionMetadata(
 }
 
 /**
- * 将 taskId 标识的全本诊断会话写入 result 终态并停止页面关闭观察
+ * 将 taskId 标识的书籍诊断会话写入 result 终态并停止页面关闭观察
  */
 export function finishBrowserDiagnosticSession(taskId: string, result: Exclude<DiagnosticResult, "running">): void {
     stopBrowserDiagnosticCloseObserver(taskId);
@@ -191,7 +185,7 @@ export function recordBrowserDiagnosticExport(input: RecordDiagnosticExportInput
 }
 
 /**
- * 将日志写入 UI 和控制台，并在存在活动会话时追加诊断记录；诊断存储失败不影响前两项输出
+ * 按 display 决定界面与控制台输出，并向 taskId 对应的活动会话追加诊断日志
  */
 export function browserDiagnosticLog(message: string | DownloadLog, taskId = currentTaskId, display = true): void {
     // 先保持原有 UI/控制台日志，再以最佳努力写入诊断；诊断异常不得改变下载行为

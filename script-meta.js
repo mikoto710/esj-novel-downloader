@@ -27,7 +27,7 @@ export default function getMeta() {
         "run-at": "document-start",
         grant: ["GM_setValue", "GM_getValue", "GM_xmlhttpRequest", "GM_info", "unsafeWindow"],
         connect: [
-            "*" // 允许连接所有图床域名
+            "*" // 图片来源域名不固定，允许 GM 跨域请求连接任意域名
         ]
     };
 }

@@ -94,8 +94,7 @@ export class ChapterCacheWriteBuffer {
     }
 
     /**
-     * 将章节合并到待写批次，并在达到数量或容量阈值时等待立即刷新
-     * 返回 false 表示缓冲区已停止接受章节，或本次触发的缓存写入失败
+     * 合并待写章节并在触发阈值时等待写入，停止接收或触发写入失败时返回 false
      */
     async add(index: number, chapter: Chapter): Promise<boolean> {
         if (this.sealed || this.rejected || this.discarded) {
@@ -113,12 +112,12 @@ export class ChapterCacheWriteBuffer {
         if (this.pending.size >= this.policy.maxChapterCount || this.pendingBytes >= this.policy.maxBytes) {
             return this.flush();
         }
+        // 未触发写入时 true 只表示已接收待写章节，落盘数量仍由 writer 确认
         return true;
     }
 
     /**
-     * 永久停止接收新章节并等待当前批次及既有写入链完成
-     * 重复调用保持幂等，供范围任务在关闭持久 writer 前建立明确写入边界
+     * 永久停止接收新章节并等待既有写入，重复调用保持幂等
      */
     async seal(): Promise<boolean> {
         this.sealed = true;
@@ -127,8 +126,7 @@ export class ChapterCacheWriteBuffer {
     }
 
     /**
-     * 串行写入调用时待处理的批次，没有新章节时等待已启动的写入链完成
-     * 返回 false 表示批次未保存，且缓冲区将停止接受新章节
+     * 串行刷新并等待既有写入链，未保存时返回 false 且停止接收章节
      */
     async flush(): Promise<boolean> {
         if (this.discarded || this.cancellationTimedOut) {
@@ -196,9 +194,10 @@ export class ChapterCacheWriteBuffer {
     }
 
     /**
-     * 在取消收尾期限内刷新待写章节，并区分保存、失败、超时和主动丢弃结果
+     * 等待已启动取消期限内的缓存刷新，返回保存、失败、超时或丢弃结果
      */
     async flushForCancellation(): Promise<CancellationCacheFlushResult> {
+        // 调用前须经取消订阅启动期限；此入口不另行计时
         if (this.discarded) {
             return "discarded";
         }

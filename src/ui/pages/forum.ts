@@ -41,9 +41,7 @@ export function injectForumButton(): void {
     container.append(downloadBtn, settingBtn);
 }
 
-/**
- * 取得完整目录并进入书籍下载流程
- */
+// 取得完整目录并进入书籍下载流程
 async function scrapeForum(): Promise<void> {
     const bookId = getForumBookId(location.pathname);
     if (!bookId) {

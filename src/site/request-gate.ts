@@ -20,22 +20,21 @@ export class RequestGate {
     private activeExclusive = false;
 
     /**
-     * 将普通请求加入共享队列，不存在正在执行或已排队的独占请求时可与其他共享请求并行
-     * 排队期间取消会以 AbortError 拒绝；操作开始后 gate 不再代为中止，operation 应自行响应同一 signal
+     * 排队共享请求，已有独占请求等待或执行时禁止新共享请求越过
      */
     runShared<T>(operation: () => Promise<T>, signal?: AbortSignal): Promise<T> {
         return this.enqueue("shared", operation, signal);
     }
 
     /**
-     * 将授权请求加入独占队列，开始前等待正在执行的共享请求完成，并阻止其后提交的共享请求越过
-     * 排队期间取消会以 AbortError 拒绝；操作开始后 gate 不再代为中止，operation 应自行响应同一 signal
+     * 排队独占授权，等待在途共享请求结束并阻止后续共享请求越过
      */
     runExclusive<T>(operation: () => Promise<T>, signal?: AbortSignal): Promise<T> {
         return this.enqueue("exclusive", operation, signal);
     }
 
     private enqueue<T>(kind: PendingRequest<T>["kind"], operation: () => Promise<T>, signal?: AbortSignal): Promise<T> {
+        // 排队取消会拒绝；开始执行后由操作自身响应同一个 signal
         if (signal?.aborted) {
             return Promise.reject(createAbortError());
         }

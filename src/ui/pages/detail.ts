@@ -22,9 +22,7 @@ export function injectDetailButton(): void {
     btnGroup.append(downloadBtn, settingBtn);
 }
 
-/**
- * 取得完整目录并进入书籍下载流程
- */
+// 取得完整目录并进入书籍下载流程
 async function scrapeDetail(): Promise<void> {
     const bookId = getDetailBookId(location.href);
     if (bookId === "unknown") {

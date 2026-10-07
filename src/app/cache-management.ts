@@ -9,10 +9,14 @@ import {
     waitForBookDownloadCancellation
 } from "../storage/book-lock";
 
-// 缓存条目的数据来源
+/**
+ * 缓存条目的数据来源
+ */
 export type CacheSource = "indexeddb" | "runtime";
 
-// 缓存管理弹窗中的统一条目视图
+/**
+ * 缓存管理弹窗中的统一条目视图
+ */
 export interface CacheListItem {
     bookId: string;
     bookName: string;
@@ -20,6 +24,7 @@ export interface CacheListItem {
     author: string;
     pageUrl: string;
     totalChapters: number | null;
+    // 管理进度合并处理数、缓存章节数或导出章节数，不能作为已落盘章节数
     progressCount: number;
     persistentChapterCount: number;
     runtimeChapterCount: number;
@@ -91,7 +96,7 @@ function mergeStatus(current: CacheStatus, next: CacheStatus): CacheStatus {
 }
 
 /**
- * 合并持久缓存、当前页会话和活动任务锁
+ * 合并持久缓存、当前页任务摘要、保留的导出结果及活动书籍锁
  */
 export async function listManagedCaches(): Promise<CacheListItem[]> {
     const [persistentEntries, activeLocks] = await Promise.all([listBookCaches(), listActiveBookDownloadLocks()]);
@@ -104,7 +109,7 @@ export async function listManagedCaches(): Promise<CacheListItem[]> {
         result.set(entry.bookId, createPersistentListItem(entry));
     });
 
-    // 当前页会话必须仍对应同一 writer 和活动锁才能参与合并
+    // 存在的 writer 或活动锁不得指向其他任务；缺失事实不单独排除会话摘要
     const runtime = state.runtimeCacheSession;
     if (runtime) {
         const existing = result.get(runtime.bookId);
@@ -209,8 +214,7 @@ export async function listManagedCaches(): Promise<CacheListItem[]> {
 }
 
 /**
- * 按范围清理指定书籍缓存
- * 活动任务保护中的书籍不会被清理
+ * 按缓存来源清理指定书籍，活动任务保护项保持不变
  */
 export async function clearManagedCache(bookId: string, scope: CacheClearScope): Promise<CacheClearResult> {
     if (await getActiveBookDownloadLock(bookId)) {

@@ -1,15 +1,12 @@
 /**
- * 异步延迟
- * @param ms 延迟时间
+ * 等待指定毫秒数后结束
  */
 export function sleep(ms: number): Promise<void> {
     return new Promise((r) => setTimeout(r, ms));
 }
 
 /**
- * 支持中断的异步延迟
- * @param ms 延迟时间
- * @param signal 中断信号
+ * 等待指定时长或中止信号，结束后由调用方复核是否取消
  */
 export function sleepWithAbort(ms: number, signal?: AbortSignal): Promise<void> {
     return new Promise((resolve) => {

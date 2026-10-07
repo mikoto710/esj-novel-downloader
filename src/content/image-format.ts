@@ -32,7 +32,7 @@ function matches(bytes: Uint8Array, signature: number[], offset = 0): boolean {
 }
 
 /**
- * 根据文件签名检测真实图片格式，不直接信任 HTTP Content-Type
+ * 仅按文件签名识别支持的图片格式，未匹配时返回 null，不验证完整图片
  */
 export async function detectImageFormat(blob: Blob): Promise<DetectedImageFormat | null> {
     const bytes = new Uint8Array(await blob.slice(0, 16).arrayBuffer());
@@ -54,7 +54,7 @@ export async function detectImageFormat(blob: Blob): Promise<DetectedImageFormat
 }
 
 /**
- * 返回 MIME 与实际图片内容一致的 Blob
+ * 按文件签名修正 Blob 的 MIME 并返回扩展名，未识别格式时返回 null
  */
 export async function normalizeImageBlob(blob: Blob): Promise<NormalizedImage | null> {
     const format = await detectImageFormat(blob);

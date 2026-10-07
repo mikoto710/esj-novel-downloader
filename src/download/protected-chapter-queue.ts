@@ -1,5 +1,8 @@
 import type { DownloadTask } from "./contracts";
 
+/**
+ * 密码交互队列中的章节与抓取页面，不写入章节缓存
+ */
 export interface ProtectedChapterWorkItem {
     task: DownloadTask;
     pageHtml: string;
@@ -59,7 +62,7 @@ export class ProtectedChapterQueue {
     }
 
     /**
-     * 按索引顺序取得下一项，生产结束、跳过剩余或取消等待时返回 null
+     * 优先取出当前已排队的最小索引项；空队列关闭、跳过剩余或取消等待时返回 null
      */
     take(signal?: AbortSignal): Promise<ProtectedChapterWorkItem | null> {
         const item = this.pending.shift();

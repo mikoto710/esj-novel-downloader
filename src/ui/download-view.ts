@@ -39,7 +39,7 @@ export function createDownloadView(task: {
     let cleaned = false;
     let prepared = false;
 
-    // 下载核心只发布快照，所有标题、进度条、托盘和弹窗更新在此落到 DOM
+    // 将任务快照转换为标题、进度与托盘文本，并调用相应弹窗；具体布局由视图模块维护
     const ui: DownloadUiPort = {
         prepare(selection) {
             if (!isCurrent()) {

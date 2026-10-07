@@ -1,7 +1,5 @@
 /**
- * XML/HTML 特殊字符转义
- * @param s 输入字符串
- * @returns 转义后的字符串
+ * 转义 XML 与 HTML 特殊字符，空值返回空字符串
  */
 export function escapeXml(s: string | null | undefined): string {
     if (!s) {

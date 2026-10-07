@@ -22,8 +22,7 @@ interface ChapterIntegrityData {
 }
 
 /**
- * 判断章节是否需要补抓
- * 关闭图片下载时只要求章节存在，不检查图片错误和媒体类型
+ * 判断章节补抓原因，关闭插图时不检查图片故障或媒体类型
  */
 export function getChapterRetryReason(
     chapter: ChapterIntegrityData | undefined,
@@ -63,7 +62,7 @@ export function scanChapterIntegrity(
 }
 
 /**
- * 只返回正文仍未进入运行时章节表的任务；图片失败不属于 D-03 缺章决策范围
+ * 返回尚无章节记录的任务，图片异常不进入缺正文决策
  */
 export function scanMissingChapterTasks(
     tasks: readonly DownloadTask[],

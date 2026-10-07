@@ -144,7 +144,7 @@ async function embedMappingFont(
 }
 
 /**
- * 构建当前页面单章布局；调用方已按原工作流完成插图准备
+ * 构建单章布局与字体样式，正文中的图片地址须由调用方预先准备
  */
 export async function buildCurrentChapterHtml(
     chapter: Chapter,

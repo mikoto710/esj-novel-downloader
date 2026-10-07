@@ -50,9 +50,7 @@ export function createChapterPipeline(
     const mapping = createMappedChapters(ports, plan, pageUrl, progress, cache, decisions);
     const protectedChapters = createProtectedChapters(ports, plan, progress, decisions);
     const shouldStop = () => ports.cancellation.isCancellationRequested() || Boolean(cache.failure);
-    /**
-     * 按既有重试策略获取正文，普通失败交给后续完整性检查
-     */
+    // 按既有重试策略获取正文，普通失败交给后续完整性检查
     async function downloadChapterHtml(task: DownloadTask, isRetry: boolean): Promise<string | null> {
         const result = await runWithRetry({
             policy: DEFAULT_CHAPTER_RETRY_POLICY,
@@ -93,9 +91,7 @@ export function createChapterPipeline(
         return null;
     }
 
-    /**
-     * 解析正文并增量落盘，映射字体需先获得用户确认
-     */
+    // 处理已获取正文并提交缓存缓冲，随后等待字体确认
     async function processFetchedChapterHtml(
         task: DownloadTask,
         html: string,
@@ -188,9 +184,7 @@ export function createChapterPipeline(
         return ports.cancellation.isCancellationRequested() ? "cancelled" : "completed";
     }
 
-    /**
-     * 处理缓存命中、外部链接、密码章节和普通正文
-     */
+    // 处理缓存命中、外部链接、密码章节和普通正文
     async function processChapterTask(task: DownloadTask, isRetry = false): Promise<ChapterTaskResult> {
         if (ports.cancellation.isCancellationRequested()) {
             return "cancelled";
@@ -278,9 +272,10 @@ export function createChapterPipeline(
         }
     }
     /**
-     * 自动补抓与手动补章共用串行重试路径
+     * 串行重试调用方选定的章节问题，保存和再扫描仍由调用方负责
      */
     async function retry(issues: readonly ChapterIntegrityIssue[], missingOnly = false): Promise<void> {
+        // missingOnly 只区分缺章轮次日志，不筛选重试对象或改变输出范围
         protectedChapters.beginRetryRound();
         progress.update({ retryPendingCount: issues.length, failedCount: issues.length });
         await runWorkerPool({

@@ -2,10 +2,14 @@ import { createStore, entries, get, update } from "idb-keyval";
 import type { DownloadCancellationMode } from "../download/contracts";
 import type { SourcePageType } from "../content/model";
 
-// 全本下载任务锁状态
+/**
+ * 书籍下载任务锁状态，全本与范围共用
+ */
 export type BookDownloadLockStatus = "preparing" | "running" | "released";
 
-// 跨页面的全本下载任务锁，单章导出不使用
+/**
+ * 跨页面的书籍下载任务锁，全本与范围共用，当前单章导出不使用
+ */
 export interface BookDownloadLock {
     bookId: string;
     bookName?: string;
@@ -67,7 +71,7 @@ function hasLockPresence(lock: BookDownloadLock): boolean {
 }
 
 /**
- * 判断指定任务是否仍有页面 presence 标记
+ * 查询任务页面 presence，读取不可用时保守视为仍在线
  */
 export function hasBookDownloadTaskPresence(taskId: string): boolean {
     try {
@@ -255,8 +259,7 @@ function createReleasedLock(lock: BookDownloadLock): BookDownloadLock {
 }
 
 /**
- * 原子获取指定书籍的下载任务锁
- * 已存在有效任务时返回冲突锁，不覆盖现有所有者
+ * 原子获取书籍锁，有效冲突存在时返回原所有者而不覆盖
  */
 export async function acquireBookDownloadLock(
     bookId: string,
@@ -353,8 +356,7 @@ export async function heartbeatBookDownloadLock(lock: BookDownloadLock): Promise
 }
 
 /**
- * 启动任务锁心跳和页面关闭监听
- * 返回函数用于停止定时器和移除监听器
+ * 启动任务心跳与页面关闭监听，返回停止定时器及监听的清理函数
  */
 export function startBookDownloadLockHeartbeat(
     lock: BookDownloadLock,

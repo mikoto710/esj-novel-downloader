@@ -245,9 +245,7 @@ export function showFormatChoice(data: CachedData): void {
     disposeActiveFormatLocaleRefresh = disposeLocaleRefresh;
     registerElementCleanup(popup, disposeLocaleRefresh);
 
-    /**
-     * 校验原任务及最新格式视图的标题写入权
-     */
+    // 校验原任务及最新格式视图的标题写入权
     function ownsTitle(): boolean {
         return (
             activeFormatView === formatView &&
@@ -255,9 +253,7 @@ export function showFormatChoice(data: CachedData): void {
         );
     }
 
-    /**
-     * 生成并导出所选格式，各格式独立防重并允许失败后重试
-     */
+    // 生成并导出所选格式，各格式独立防重并允许失败后重试
     async function handleRichDownload(format: "epub" | "html", button: HTMLButtonElement): Promise<void> {
         if (exporting.has(format)) {
             return;

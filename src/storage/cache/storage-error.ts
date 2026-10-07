@@ -18,12 +18,12 @@ export type StorageOperation = "read" | "claim" | "migrate" | "write" | "clear" 
 import type { DomainMessageParams } from "../../messages";
 
 /**
- * 可安全传递给 Coordinator、事件和 UI 的存储失败摘要
- * message 仅保留稳定技术摘要，展示文案由外层决定
+ * 传递给流程、事件与 UI 的中性存储失败摘要，展示文案由外层决定
  */
 export interface StorageFailure {
     reason: StorageFailureReason;
     operation: StorageOperation;
+    // 仅保留稳定技术摘要，不包含底层错误对象或正文
     message: string;
     params?: DomainMessageParams;
     causeReason?: Exclude<StorageFailureReason, "migration-failed">;

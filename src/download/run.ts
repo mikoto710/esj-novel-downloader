@@ -165,7 +165,7 @@ export async function runDownload(
         log({ code: "export-preparation-started" });
         const bookCover = await cover;
         checkActive();
-        // 先封闭缓存 writer，再发布导出结果，避免成功后仍有后台写入
+        // 构造快照后完成缓存收尾，再返回导出结果，避免成功后仍有后台写入
         const data = createExportData(options, plan, meta.pageUrl, chapters, bookCover, progress.snapshot.failedCount);
         await cache.finish();
         checkActive();
@@ -198,9 +198,7 @@ export async function runDownload(
     }
 }
 
-/**
- * 取消只在此收尾一次，缓存处理结果决定最终提示
- */
+// 取消只在此收尾一次，缓存处理结果决定最终提示
 async function finishCancellation(
     dependencies: Pick<DownloadDependencies, "ui" | "log" | "scheduler">,
     progress: DownloadProgress,
@@ -233,9 +231,7 @@ async function finishCancellation(
     }
     return { status: "cancelled", outcome };
 }
-/**
- * 统一记录失败并关闭进度界面，不覆盖之前的导出结果
- */
+// 统一记录失败并关闭进度界面，不覆盖之前的导出结果
 function reportFailure(
     error: unknown,
     dependencies: Pick<DownloadDependencies, "ui" | "log" | "events">,
@@ -283,9 +279,7 @@ function reportFailure(
 }
 
 type CoverPorts = Pick<DownloadDependencies, "coverCache" | "coverFetcher" | "cancellation" | "log">;
-/**
- * 优先复用封面缓存，封面缺失不阻断正文导出
- */
+// 优先复用封面缓存，封面缺失不阻断正文导出
 async function prepareCover(options: DownloadOptions, ports: CoverPorts): Promise<BookCover | null> {
     const coverUrl = options.coverUrl;
     if (!coverUrl) {

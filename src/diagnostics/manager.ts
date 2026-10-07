@@ -17,7 +17,7 @@ export const DIAGNOSTIC_TOTAL_BYTES_LIMIT = 4 * 1024 * 1024;
 export const DIAGNOSTIC_SESSION_BYTES_LIMIT = 256 * 1024;
 const DIAGNOSTIC_LOG_LIMIT = 500;
 const DIAGNOSTIC_EVENT_LIMIT = 500;
-// 同一全本任务只保留最近导出结果
+// 每个诊断会话只保留容量上限内的近期导出记录
 const DIAGNOSTIC_EXPORT_LIMIT = 50;
 const DIAGNOSTIC_MESSAGE_LIMIT = 2_000;
 const DIAGNOSTIC_ACTIVE_STALE_MS = 24 * 60 * 60 * 1000;
@@ -28,6 +28,9 @@ type DiagnosticPhase = DownloadPhase | "completed" | "releasing-lock" | "release
 
 export type DiagnosticResult = "running" | "success" | "cancelled" | "failed" | "interrupted";
 
+/**
+ * 诊断会话保存的脚本与浏览器环境信息，未知浏览器版本用标记说明
+ */
 export interface DiagnosticApplicationInfo {
     version: string;
     browser: string;
@@ -35,6 +38,9 @@ export interface DiagnosticApplicationInfo {
     userscriptManager: string;
 }
 
+/**
+ * 诊断中用于定位来源作品的信息，URL 由记录入口脱敏
+ */
 export interface DiagnosticBookInfo {
     bookId: string;
     title: string;
@@ -42,18 +48,27 @@ export interface DiagnosticBookInfo {
     sourcePageType: string;
 }
 
+/**
+ * 任务启动时固定的设置摘要，不跟随后续偏好变化
+ */
 export interface DiagnosticSettings {
     concurrency: number;
     imageEnabled: boolean;
     epubTagPageEnabled: boolean;
 }
 
+/**
+ * 故障记录关联的章节身份，index 沿用原书绝对索引
+ */
 export interface DiagnosticChapterInfo {
     index: number;
     title: string;
     url: string;
 }
 
+/**
+ * 诊断会话中的带时间故障记录，文字由记录入口脱敏并限制长度
+ */
 export interface DiagnosticFailure {
     at: number;
     scope: "download" | "chapter" | "image" | "storage" | "export" | "page";
@@ -64,6 +79,9 @@ export interface DiagnosticFailure {
     chapter?: DiagnosticChapterInfo;
 }
 
+/**
+ * 诊断时间线中的业务事件，详情限于可序列化的标量字段
+ */
 export interface DiagnosticEventRecord {
     at: number;
     type: string;
@@ -71,6 +89,9 @@ export interface DiagnosticEventRecord {
     details?: Record<string, string | number | boolean | null>;
 }
 
+/**
+ * 可兼容旧字符串消息的诊断日志，新记录使用稳定消息码与参数
+ */
 export interface DiagnosticLogRecord {
     at: number;
     level: "info" | "warning" | "error";
@@ -81,6 +102,9 @@ export interface DiagnosticLogRecord {
     params?: DomainMessageParams;
 }
 
+/**
+ * 调用方提交的日志内容与级别，记录时间由诊断管理器补充
+ */
 export interface RecordDiagnosticLogInput {
     level: DiagnosticLogRecord["level"];
     message?: string;
@@ -88,6 +112,9 @@ export interface RecordDiagnosticLogInput {
     params?: DomainMessageParams;
 }
 
+/**
+ * 记录生成和下载触发事实，不表示浏览器已经保存文件
+ */
 export interface DiagnosticExportRecord {
     at: number;
     scope: "full" | "single";
@@ -98,6 +125,9 @@ export interface DiagnosticExportRecord {
     failureStage: "generate" | "download" | null;
 }
 
+/**
+ * 从下载事件汇总的诊断计数与阶段，不反向驱动下载任务
+ */
 export interface DiagnosticTaskSummary {
     phase: DiagnosticPhase;
     totalChapters: number;
@@ -121,6 +151,9 @@ export interface DiagnosticTaskSummary {
     storageFailureCode: string | null;
 }
 
+/**
+ * 绑定来源 taskId 的诊断会话，集中保存启动快照、过程记录与终态
+ */
 export interface DiagnosticSession {
     schemaVersion: typeof DIAGNOSTIC_SCHEMA_VERSION;
     id: string;
@@ -143,28 +176,43 @@ export interface DiagnosticSession {
 
 export type DiagnosticSessionPresentation = DiagnosticResult | "closed-unconfirmed" | "superseded";
 
+/**
+ * 保留原诊断记录并附加展示状态，不代表持久终态已经变更
+ */
 export interface DiagnosticSessionView {
     session: DiagnosticSession;
     presentation: DiagnosticSessionPresentation;
 }
 
+/**
+ * 按活动、页面关闭待确认和历史分类的诊断展示集合
+ */
 export interface DiagnosticSessionViewStore {
     active: DiagnosticSessionView[];
     unconfirmed: DiagnosticSessionView[];
     history: DiagnosticSessionView[];
 }
 
+/**
+ * 诊断仓库保存的活动与历史会话集合，schemaVersion 用于兼容读取
+ */
 export interface DiagnosticStore {
     schemaVersion: typeof DIAGNOSTIC_SCHEMA_VERSION;
     active: DiagnosticSession[];
     history: DiagnosticSession[];
 }
 
+/**
+ * 同步读写诊断记录的能力，具体存储和故障处理由外层实现
+ */
 export interface DiagnosticRepository {
     load(): DiagnosticStore;
     save(store: DiagnosticStore): void;
 }
 
+/**
+ * 创建诊断会话的来源身份与启动快照，taskId 由调用方提供
+ */
 export interface StartDiagnosticSessionInput {
     taskId: string;
     bookId: string;
@@ -177,6 +225,9 @@ export interface StartDiagnosticSessionInput {
     settings: DiagnosticSettings;
 }
 
+/**
+ * 管理器补充故障时间并脱敏，调用方不得传入正文或资源对象
+ */
 export interface RecordDiagnosticFailureInput {
     scope: DiagnosticFailure["scope"];
     stage: string;
@@ -243,7 +294,7 @@ function trimSessionToLimit(session: DiagnosticSession): DiagnosticSession {
             ...(entry.message === undefined ? {} : { message: limitText(entry.message) })
         }))
     };
-    // 先牺牲普通日志和阶段事件，最后才裁剪失败定位，并始终保留至少一条失败原因
+    // 超限时先裁剪日志和事件；已有失败记录时保留最后一条，不凭空补充失败
     while (stringBytes(trimmed) > DIAGNOSTIC_SESSION_BYTES_LIMIT && trimmed.logs.length > 0) {
         trimmed.logs.shift();
     }
@@ -264,7 +315,7 @@ function repairTerminalResult(session: DiagnosticSession): DiagnosticSession {
         exports: Array.isArray(session.exports) ? session.exports : [],
         logs: (Array.isArray(session.logs) ? session.logs : []).map(normalizeDiagnosticLogRecord)
     };
-    // 早期诊断实现可能被页面 finally 将已成功的 export-ready 会话覆盖为 failed；无失败证据时安全修正
+    // 兼容旧版收尾误写 failed 的记录：阶段已是 export-ready 且没有失败记录时修正为 success
     if (
         normalized.result === "failed" &&
         normalized.task.phase === "export-ready" &&
@@ -686,7 +737,7 @@ export class DiagnosticManager {
      * 完成 taskId 标识的活动会话并合并可选任务摘要，任务已转入历史时不覆盖终态
      */
     finish(taskId: string, result: Exclude<DiagnosticResult, "running">, task?: Partial<DiagnosticTaskSummary>): void {
-        // 页面 finally 只负责收尾仍处于 active 的启动阶段会话，不得覆盖 coordinator 已发布的终态
+        // 应用 finally 只结束仍活跃的启动会话，不覆盖下载事件已发布的终态
         this.mutateSession(taskId, (session, now) => {
             if (task) {
                 session.task = { ...session.task, ...task };

@@ -1,6 +1,8 @@
 import type { DownloadSelectionSummary } from "../download/plan";
 
-// 导出格式与文件扩展名共用的约定
+/**
+ * 导出格式与文件扩展名共用的约定
+ */
 export type DownloadFormat = "txt" | "epub" | "html";
 
 /**

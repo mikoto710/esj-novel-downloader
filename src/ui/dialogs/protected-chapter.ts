@@ -18,7 +18,7 @@ export function closeProtectedChapterPrompt(): void {
 }
 
 /**
- * 将已打开的密码章节弹窗切换为不可交互的处理中状态，弹窗不存在时不执行操作
+ * 将密码弹窗切换为处理中状态，保留取消与关闭操作
  */
 export function setProtectedChapterPromptBusy(message = t("protected.busy")): void {
     const popup = document.querySelector("#esj-protected-chapter") as HTMLElement | null;
@@ -81,7 +81,7 @@ function formatProtectedPromptMessage(prompt: ProtectedChapterPrompt): string {
 }
 
 /**
- * 提交密码时保留弹窗，授权结果可以在同一弹窗内继续显示；跳过或取消才结束当前交互
+ * 提交结束本次等待但保留窗口，授权中的取消经回调通知任务
  */
 export function promptProtectedChapterPassword(
     prompt: ProtectedChapterPrompt,

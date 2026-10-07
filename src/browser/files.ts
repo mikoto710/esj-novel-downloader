@@ -1,5 +1,5 @@
 /**
- * 触发文件下载；单章即时回收，书籍保留下载消费 URL 的时间
+ * 触发文件下载，默认 60 秒后回收对象 URL，传入 revokeDelayMs 为 0 时即时回收
  */
 export function triggerDownload(
     blob: Blob,
@@ -47,7 +47,7 @@ export function blobToBase64(blob: Blob): Promise<string> {
 }
 
 /**
- * 复制文本，剪贴板不可用时沿用页面选择回退
+ * 复制文本；缺少剪贴板 API 时回退到页面选择，API 调用拒绝时向上抛出
  */
 export async function copyText(text: string): Promise<void> {
     if (navigator.clipboard?.writeText) {

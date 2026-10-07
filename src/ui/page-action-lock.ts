@@ -8,7 +8,7 @@ interface PageActionLockState {
 const lockStates = new WeakMap<HTMLButtonElement, PageActionLockState>();
 
 /**
- * 锁定指定页面操作按钮，并在当前持有者释放后恢复加锁前状态
+ * 锁定指定页面操作按钮，并在最后一个持有者释放后恢复加锁前状态
  */
 export function acquirePageActionLock(elements: ArrayLike<Element>): () => void {
     const owner = Symbol("page-action-lock");

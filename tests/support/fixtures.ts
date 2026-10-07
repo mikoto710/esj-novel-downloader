@@ -20,6 +20,9 @@ export interface ChapterFixtureOptions {
     contentHtml?: string;
 }
 
+/**
+ * 密码保护章节页测试夹具的标题与站点提示
+ */
 export interface ProtectedChapterFixtureOptions {
     title?: string;
     message?: string;

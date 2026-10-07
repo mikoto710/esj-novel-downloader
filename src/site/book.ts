@@ -1,7 +1,7 @@
 import type { DownloadTask } from "../download/contracts";
 
 /**
- * 解析书籍详情页的 DOM，提取元数据
+ * 解析书籍元数据，相对封面地址沿用当前页面 origin
  */
 export function parseBookMetadata(doc: Document, pageUrl: string) {
     let bookName = "未命名小说";
@@ -53,7 +53,6 @@ export function parseBookMetadata(doc: Document, pageUrl: string) {
                 author = authorLink ? authorLink.innerText.trim() : text.replace(/作者[:：]/g, "").trim();
             }
 
-            // 拼接到信息块
             infoBlock += text + "\n";
         });
 
@@ -117,6 +116,9 @@ export function parseBookMetadata(doc: Document, pageUrl: string) {
     };
 }
 
+/**
+ * 站点目录与元数据预检结果，任务保留原书 0-based 章序
+ */
 export interface PreparedBook {
     tasks: DownloadTask[];
     meta: ReturnType<typeof parseBookMetadata>;
@@ -135,7 +137,7 @@ export class BookPreflightError extends Error {
 }
 
 /**
- * 从详情页地址读取书籍身份，保留无法识别时的原有结果
+ * 提取详情页路径中的数字书籍 ID，无法识别时返回 unknown
  */
 export function getDetailBookId(pageUrl: string): string {
     const match = pageUrl.match(/\/detail\/(\d+)/);
@@ -143,7 +145,7 @@ export function getDetailBookId(pageUrl: string): string {
 }
 
 /**
- * 从论坛路径末尾读取书籍身份
+ * 从论坛路径末尾向前查找数字段作为书籍 ID，未找到时返回空字符串
  */
 export function getForumBookId(pathname: string): string {
     const urlParts = pathname.split("/").filter(Boolean);

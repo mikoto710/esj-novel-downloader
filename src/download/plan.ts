@@ -10,6 +10,9 @@ export interface DownloadSelection {
     endIndex: number;
 }
 
+/**
+ * 诊断、导出和历史共用的选择摘要，起止章序为 1-based 闭区间
+ */
 export interface DownloadSelectionSummary {
     mode: "all" | "range";
     sourceTotalChapters: number;
@@ -64,7 +67,7 @@ export function createRangeSelection(
 }
 
 /**
- * 按绝对章节索引选择任务，禁止重排缓存键
+ * 从完整原书目录选出范围内任务，保留原书绝对索引作为缓存键
  */
 export function selectDownloadTasks(
     sourceTasks: readonly DownloadTask[],
@@ -157,7 +160,7 @@ export function createDownloadSelectionSummary(selection: DownloadSelection): Do
 }
 
 /**
- * 固定输出章节集合与绝对索引视图；恢复和补抓只改变实际请求对象
+ * 用已按范围选出的连续绝对索引任务创建固定计划及成功缓存策略
  */
 export function createDownloadPlan(input: DownloadPlanInput) {
     const selection = Object.freeze(resolveDownloadSelection(input));
@@ -171,6 +174,9 @@ export function createDownloadPlan(input: DownloadPlanInput) {
         retainCacheOnSuccess: selection.mode === "range",
         indexes,
         taskOrderByIndex,
+        /**
+         * 仅按章节索引存在性统计范围内命中数，不检查正文或资源完整性
+         */
         readyCount(chapters: Pick<ReadonlySet<number>, "has">): number {
             let count = 0;
             for (const task of tasks) {
@@ -180,6 +186,9 @@ export function createDownloadPlan(input: DownloadPlanInput) {
             }
             return count;
         },
+        /**
+         * 返回范围内位置 index 和原书章序 sourceIndex，两者均从 1 开始，任务键仍从 0 开始
+         */
         position(task: DownloadTask) {
             const order = taskOrderByIndex.get(task.index);
             if (order === undefined) {

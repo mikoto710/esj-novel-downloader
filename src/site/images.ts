@@ -7,6 +7,9 @@ const IMAGE_FETCH_TIMEOUT = 20_000;
 
 export type ImageFailureStage = "url" | "request" | "format" | "processing";
 
+/**
+ * 供调用方关联任务的插图故障摘要，count 表示同类故障数量
+ */
 export interface ImageProcessingFailure {
     stage: ImageFailureStage;
     code: string;
@@ -30,12 +33,7 @@ function recordImageFailure(
     failures.push({ stage, code, message, count: 1 });
 }
 
-/**
- * 使用 Canvas 压缩图片
- * @param blob 原始图片 Blob
- * @param quality 压缩质量 (0.1 - 1.0)
- * @param maxWidth 最大宽度 (防止过大)
- */
+// 按尺寸与质量尝试压缩图片，返回 null 时由调用方保留原图
 async function compressImage(blob: Blob, quality = 0.7, maxWidth = 800): Promise<Blob | null> {
     return new Promise((resolve) => {
         const img = new Image();
@@ -92,10 +90,7 @@ async function compressImage(blob: Blob, quality = 0.7, maxWidth = 800): Promise
 }
 
 /**
- * 处理 HTML 字符串，提取并下载所有图片
- * @param htmlContent 章节 HTML
- * @param chapterIndex 章节索引 (用于生成唯一 ID)
- * @param signal 中断信号
+ * 按当前页面地址采集章节插图，返回替换正文及图片故障信息
  */
 export async function processHtmlImages(
     htmlContent: string,
@@ -132,6 +127,7 @@ export async function processHtmlImages(
         let failureCode = "invalid-image-url";
 
         // URL 预处理
+        // 相对图片沿用发起页面的地址基准，批量采集也不改用目标章节 URL
         const resolvedSrc = resolveImageUrl(src, location.href);
         if (resolvedSrc) {
             src = resolvedSrc;
@@ -243,8 +239,7 @@ export async function processHtmlImages(
 }
 
 /**
- * 根据章节页面 URL 解析图片地址
- * 协议相对地址使用图片自身域名，不回退到 ESJZone 域名
+ * 按调用方提供的 baseUrl 解析 HTTP 图片地址，非法地址返回 null
  */
 export function resolveImageUrl(src: string, baseUrl: string): string | null {
     try {

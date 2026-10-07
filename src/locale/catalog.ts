@@ -19,7 +19,7 @@ export function isInterfaceLocalePreference(value: unknown): value is InterfaceL
 }
 
 /**
- * 按优先级解析界面语言
+ * 显式语言偏好优先，自动模式依次采用站点提示和浏览器语言
  */
 export function resolveInterfaceLocale(
     preference: InterfaceLocalePreference,
@@ -30,7 +30,7 @@ export function resolveInterfaceLocale(
 }
 
 /**
- * 映射浏览器语言
+ * 将 zh-CN 与 zh-SG 映射为简体界面，其余或缺失语言回退为繁体
  */
 export function detectBrowserInterfaceLocale(language: string | undefined): InterfaceLocale {
     const normalized = language?.trim().toLowerCase().replace("_", "-");
@@ -569,7 +569,7 @@ export function assertLocaleCatalogsComplete(
 }
 
 /**
- * 替换文案参数
+ * 替换文案占位参数，缺少对应参数时抛出 MissingLocaleParameterError
  */
 export function interpolateLocaleMessage(key: string, template: string, params: LocaleMessageParams = {}): string {
     return template.replace(LOCALE_PARAMETER_PATTERN, (_placeholder, parameter: string) => {
@@ -581,7 +581,7 @@ export function interpolateLocaleMessage(key: string, template: string, params: 
 }
 
 /**
- * 生成指定语言的文案
+ * 读取指定语言的文案并插值，缺少键或参数时抛出对应错误
  */
 export function translate(locale: InterfaceLocale, key: LocaleKey, params?: LocaleMessageParams): string {
     const message = LOCALE_CATALOGS[locale][key];

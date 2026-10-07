@@ -4,6 +4,9 @@ import { t } from "../locale";
 
 const MAX_EXPORT_ERROR_DETAIL_LENGTH = 2_000;
 
+/**
+ * 生成当前界面语言下有限长度的导出错误摘要
+ */
 export function getExportErrorDetails(error: unknown): string {
     const details =
         error instanceof MappingFontError

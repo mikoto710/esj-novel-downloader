@@ -48,9 +48,7 @@ export function createMappedChapters(
         return true;
     }
 
-    /**
-     * 并发 worker 共用首次字体确认，拒绝时取消下载
-     */
+    // 并发 worker 共用首次字体确认，拒绝时取消下载
     function ensureMappingConsent(task: DownloadTask, inFlightLimit: number): Promise<boolean> {
         if (mappingConsentGranted) {
             return Promise.resolve(true);

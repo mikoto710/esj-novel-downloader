@@ -4,13 +4,17 @@ import type { DownloadPlan, DownloadSelectionSummary } from "../download/plan";
 import { escapeXml } from "./text";
 import { assembleBookTxt } from "./txt";
 
-// 导出快照与历史共用的章节完整性摘要
+/**
+ * 导出快照与历史共用的章节完整性摘要
+ */
 export interface ChapterSummary {
     totalCount: number;
     missingCount: number;
 }
 
-// 导出数据结构
+/**
+ * 已准备的输出正文与原任务身份，不包含持续下载的任务状态
+ */
 export interface ExportSnapshot {
     txt: string;
     chapters: Chapter[];
@@ -69,7 +73,7 @@ function assembleExportChapters(tasks: readonly DownloadTask[], source: Readonly
 }
 
 /**
- * 缺章占位只进入导出快照，不回写章节缓存
+ * 按固定计划组装原任务快照，复用已有章节，缺章占位仅用于输出
  */
 export function createExportData(
     options: DownloadOptions,

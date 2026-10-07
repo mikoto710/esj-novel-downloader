@@ -6,7 +6,9 @@ import type { DomainMessage, DomainMessageParams } from "../messages";
 import type { StorageFailure } from "../storage/cache/storage-error";
 import type { MappingFontErrorCode, MappingFontErrorReason, NormalizedChapterMapping } from "../content/mapping-font";
 
-// 取消请求决定尚未落盘缓存的处理方式
+/**
+ * 取消请求决定尚未落盘缓存的处理方式
+ */
 export type DownloadCancellationMode = "flush" | "discard";
 
 /**
@@ -96,10 +98,16 @@ export interface ProtectedChapterAuthPort {
     ): Promise<ProtectedChapterUnlockResult>;
 }
 
+/**
+ * 由站点实现密码正文识别，下载核心仅接收判断结果
+ */
 export interface ProtectedChapterDetectorPort {
     isProtected(html: string): boolean;
 }
 
+/**
+ * 密码决策弹窗的任务位置、原站提示和重试输入，密码仅留任务内存
+ */
 export interface ProtectedChapterPrompt {
     task: DownloadTask;
     // 范围内 1-based 顺序；原书位置继续由 task.index 表示
@@ -124,7 +132,7 @@ export type ProtectedChapterDecision =
     | { action: "cancel" };
 
 /**
- * 页面适配层启动一次书籍下载所需的数据
+ * 单书应用流程传入下载内核的任务数据
  */
 export interface DownloadOptions {
     bookId: string;
@@ -144,8 +152,7 @@ export interface DownloadOptions {
 }
 
 /**
- * 用户可观察的下载业务阶段
- * 锁的 preparing/running/released 状态由 BookLockService 单独维护，不与此状态机混用
+ * 用户可观察的下载业务阶段，锁状态由外层生命周期维护
  */
 export type DownloadPhase =
     | "idle"
@@ -161,7 +168,7 @@ export type DownloadPhase =
     | "failed";
 
 /**
- * 取消终态对应的缓存处理结果
+ * 取消终态对应的待写缓存处理结果，discarded 不表示持久缓存已清除
  */
 export type DownloadCancellationOutcome = "saved" | "save-failed" | "save-timed-out" | "discarded" | "ownership-lost";
 
@@ -204,7 +211,7 @@ export interface DownloadSnapshot {
 }
 
 /**
- * 当前任务已经确认的映射字体章节摘要
+ * 已识别的映射字体章节摘要，不代表用户已经同意继续
  */
 export interface MappingFontSummary {
     chapterCount: number;
@@ -220,6 +227,9 @@ export interface MappingFontDetection extends MappingFontSummary {
     inFlightLimit: number;
 }
 
+/**
+ * 与原章节任务关联的字体错误，供补抓与最终失败说明使用
+ */
 export interface MappingFontFailure {
     task: DownloadTask;
     code: MappingFontErrorCode;
@@ -241,8 +251,7 @@ export interface IncompleteChapterDetection {
 }
 
 /**
- * 核心流程产生的结构化事件
- * 观察者不得通过事件直接修改下载状态
+ * 核心流程产生的结构化事件，观察者不得通过事件修改下载状态
  */
 export type DownloadEvent =
     | { type: "task-started"; meta: CacheMeta; taskId: string; bookChapterCount: number }
@@ -285,7 +294,7 @@ export interface DownloadCancellationPort {
 }
 
 /**
- * 成功携带可直接导出的快照；取消不替换调用方已有结果
+ * 成功携带导出快照；取消保留旧结果，持久清除仍由外层收尾确认
  */
 export type DownloadResult =
     | { status: "ready"; data: ExportSnapshot }
@@ -347,8 +356,7 @@ export interface CoverCacheRepository {
 }
 
 /**
- * 下载核心所需的缓存操作
- * 写入接口只接收本批发生变化的章节
+ * 下载核心所需的缓存操作，写入接口只接收本批发生变化的章节
  */
 export interface ChapterCacheRepository {
     putBatch(
@@ -388,7 +396,7 @@ export interface DownloadSchedulerPort {
 }
 
 /**
- * 完成一次下载所需的业务端口
+ * 下载任务使用的章节表、取消状态与外部能力
  */
 export interface DownloadPorts {
     chapters: Map<number, Chapter>;
@@ -406,7 +414,7 @@ export interface DownloadPorts {
 }
 
 /**
- * run 的完整构造参数
+ * runDownload 使用的运行能力与装配时固定的并发数、地址和启动时间
  */
 export interface DownloadDependencies extends DownloadPorts {
     scheduler: DownloadSchedulerPort;

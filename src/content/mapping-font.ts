@@ -4,12 +4,18 @@ export const MAX_CHAPTER_MAPPING_FONT_BYTES = 4 * 1024 * 1024;
 
 export type ChapterMappingKind = "normal" | "mapped";
 
+/**
+ * 字体规范化后的章节与识别结果，changed 表示内容或字体表示发生变化
+ */
 export interface NormalizedChapterMapping {
     kind: ChapterMappingKind;
     chapter: Chapter;
     changed: boolean;
 }
 
+/**
+ * 供格式生成器绑定的字体资源、局部字体名称与规范化正文
+ */
 export interface PreparedChapterMappingExport {
     contentHtml: string;
     fontFamily: string;
@@ -160,6 +166,7 @@ function isDataCssLink(element: Element): element is HTMLLinkElement {
     );
 }
 
+// 识别站点允许的顶层字体链接及其有限兼容包装
 function findDataCssLinkLocations(template: HTMLTemplateElement): {
     signalCount: number;
     locations: DataCssLinkLocation[];
@@ -170,6 +177,7 @@ function findDataCssLinkLocations(template: HTMLTemplateElement): {
             return [{ link, wrapper: null }];
         }
 
+        // 只兼容无属性且仅含字体链接的顶层 p 包装，其他嵌套不能视为受控字体源
         const wrapper = link.parentElement;
         if (
             !wrapper ||
@@ -201,6 +209,7 @@ function findMappedSection(elements: Element[]): HTMLElement[] {
     });
 }
 
+// 提取唯一且完整的映射字体绑定，部分结构信号必须报错
 function extractMappingFont(contentHtml: string): ExtractedMappingFont | null {
     const template = createTemplate(contentHtml);
     const elements = getDirectElements(template);
@@ -313,8 +322,7 @@ async function validateStoredMappingFont(
 }
 
 /**
- * 严格识别并规范化新抓取或旧缓存中的章节字体
- * 正常章节保持原样；出现部分映射信号时抛出明确错误，避免静默导出错误正文
+ * 识别并校验新正文或缓存字体，普通章节保持原样，不完整映射信号抛错
  */
 export async function normalizeChapterMappingFont(
     chapter: Chapter,
@@ -344,7 +352,7 @@ export async function normalizeChapterMappingFont(
 }
 
 /**
- * 为单个导出文档生成受控且唯一的 family，不复用页面提供的任意 CSS
+ * 为已规范化并校验的章节生成受控字体绑定，不重新验证字体字节
  */
 export function prepareChapterMappingExport(
     chapter: Chapter,

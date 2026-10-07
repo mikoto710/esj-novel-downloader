@@ -32,9 +32,7 @@ export function createTaskCacheWriter(
         schedule: ports.scheduler.schedule,
         subscribeCancellation: ports.cancellation.subscribeCancellation
     });
-    /**
-     * 增量写入脏章节，丢失 writer 所有权时停止旧任务
-     */
+    // 增量写入本批变更的章节，writer 所有权不匹配时按写入失败处理
     async function persistTaskCacheBatch(entries: ReadonlyMap<number, Chapter>, signal: AbortSignal): Promise<boolean> {
         ports.events.emit({ type: "cache-write-started", chapterCount: entries.size });
         for (let attempt = 1; attempt <= 2; attempt++) {
@@ -83,9 +81,7 @@ export function createTaskCacheWriter(
         return false;
     }
 
-    /**
-     * 范围成功后关闭 writer，暂时写入故障允许重试一次
-     */
+    // 范围成功后关闭 writer，暂时写入故障允许重试一次
     async function finishRangeCacheWriter(): Promise<boolean> {
         for (let attempt = 1; attempt <= 2; attempt++) {
             try {

@@ -116,8 +116,7 @@ function parsePasswordResponse(text: string): unknown {
 }
 
 /**
- * 创建在独占请求窗口内完成页面刷新、令牌获取和密码提交的浏览器授权端口
- * 密码和令牌只参与一次 unlock 调用发起的请求，不写入下载核心、缓存或诊断
+ * 创建独占刷新与密码授权端口，密码和令牌仅留在本次请求上下文
  */
 export function createProtectedChapterAuth(
     request: ProtectedChapterRequest = fetchWithTimeout,

@@ -19,8 +19,7 @@ export interface WorkerPoolResult {
 }
 
 /**
- * 使用共享游标并发处理任务
- * 每个 worker 必须等待当前任务及其下游写入完成后才领取下一项，从而将 backpressure 传回任务队列
+ * 并发处理共享任务列表，等待单项返回后再领取，单项异常向调用方抛出
  */
 export async function runWorkerPool<T>(options: WorkerPoolOptions<T>): Promise<WorkerPoolResult> {
     const { items, isCancellationRequested, process } = options;
@@ -46,6 +45,7 @@ export async function runWorkerPool<T>(options: WorkerPoolOptions<T>): Promise<W
         }
     };
 
+    // 单个 worker 拒绝不会自动停止其他 worker，调用方仍须通过取消状态终止它们
     await Promise.all(Array.from({ length: workerCount }, () => worker()));
     return {
         claimedCount: cursor,

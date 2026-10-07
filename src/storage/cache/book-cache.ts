@@ -29,12 +29,18 @@ import { evaluateImageCacheCompatibility, type ImageCacheCompatibility } from ".
 
 const CACHE_EXPIRE_TIME = 24 * 60 * 60 * 1000;
 
+/**
+ * 已读取的章节 Map 与数量，无可用章节时 map 为 null
+ */
 export interface BookCacheLoadResult {
     size: number;
     map: Map<number, Chapter> | null;
     meta?: CacheMeta;
 }
 
+/**
+ * 缓存章节索引与兼容性预览，valid 不表示插图设置兼容
+ */
 export interface BookCachePreviewResult {
     valid: boolean;
     size: number;
@@ -47,6 +53,9 @@ export type BookCacheClaimResult =
     | (BookCacheLoadResult & { status: "claimed"; compatibility: ImageCacheCompatibility; invalidatedCount: number })
     | (BookCachePreviewResult & { status: "needs-confirmation" });
 
+/**
+ * 缓存认领的清除许可，插图不兼容的缓存只在用户同意后允许清除
+ */
 export interface BookCacheClaimOptions {
     allowInvalidation?: boolean;
 }
@@ -105,7 +114,7 @@ function toLegacyPersistentEntry(record: LegacyCacheRecord): PersistentCacheEntr
 }
 
 /**
- * 只读预览有效库存；兼容性不符时，所列章节不能复用
+ * 只读返回未过期缓存的章节索引及插图兼容结果，不认领、迁移或清除缓存
  */
 export async function previewBookCache(
     bookId: string,
@@ -188,7 +197,7 @@ export async function loadBookCache(bookId: string): Promise<BookCacheLoadResult
 }
 
 /**
- * 持锁认领或迁移缓存；未经明确确认的失效只返回预览
+ * 调用方须先持有书籍锁；认领或迁移缓存，未经同意的兼容失效只返回预览
  */
 export async function claimBookCache(
     bookId: string,
@@ -367,7 +376,7 @@ export async function clearBookCacheForTask(bookId: string, taskId: string, sign
 }
 
 /**
- * 列出所有持久缓存条目
+ * 列出持久缓存条目，读取失败时回退为空列表
  */
 export async function listBookCaches(): Promise<PersistentCacheEntry[]> {
     try {
@@ -394,7 +403,7 @@ export async function listBookCaches(): Promise<PersistentCacheEntry[]> {
 }
 
 /**
- * 清理指定 ID 的缓存
+ * 清理指定书籍缓存，受到 writer 保护或清理失败时返回 false
  */
 export async function clearBookCache(bookId: string): Promise<boolean> {
     try {
@@ -419,7 +428,7 @@ async function listStoredBookIds(): Promise<string[]> {
     const [manifests, legacyRecords] = await Promise.all([listCacheManifestsV3(), listLegacyCacheRecords()]);
     return Array.from(
         new Set([
-            // cleared manifest 是阻止旧 v2 缓存回流的墓碑，不应重复作为可清理书籍列举
+            // cleared 清单阻止旧缓存重新导入，不应重复作为可清理书籍列举
             ...manifests.filter((manifest) => !manifest.cleared).map((manifest) => manifest.bookId),
             ...legacyRecords.map((record) => getLegacyCacheBookId(record.key))
         ])
@@ -427,9 +436,10 @@ async function listStoredBookIds(): Promise<string[]> {
 }
 
 /**
- * 仅清理 IndexedDB 中的全部持久缓存
+ * 跳过受保护书籍并清理其余持久缓存，返回本轮未清理的书籍 ID
  */
 export async function clearAllPersistentCaches(protectedBookIds: ReadonlySet<string> = new Set()): Promise<string[]> {
+    // 返回值不含入参中已跳过的保护项；枚举或批量准备失败仍抛出存储错误
     try {
         const targetBookIds = (await listStoredBookIds()).filter((bookId) => !protectedBookIds.has(bookId));
         const results = await Promise.all(

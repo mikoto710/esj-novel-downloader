@@ -17,6 +17,9 @@ export type DownloadSelectionDecision =
     | { action: "open-existing" }
     | { action: "cancel" };
 
+/**
+ * 调用方固定的目录、缓存预览与旧导出摘要，弹窗不自行读取或清理缓存
+ */
 export interface DownloadSelectionPopupOptions {
     tasks: readonly DownloadTask[];
     cachedIndexes: ReadonlySet<number>;
@@ -300,7 +303,7 @@ export function createDownloadSelectionPopup(
             const plan = createDownloadPlan({ tasks: selectDownloadTasks(options.tasks, selection), selection });
             const selectedTasks = plan.tasks;
 
-            // 不兼容的库存会整书失效，不能计入本次可复用数量
+            // 确认下载时需清除的整书缓存，不计入本次预览的可复用章节数
             const cached = options.cacheWillBeInvalidated ? 0 : plan.readyCount(options.cachedIndexes);
             validation.textContent = "";
             validation.style.display = "none";

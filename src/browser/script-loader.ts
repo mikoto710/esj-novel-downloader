@@ -1,7 +1,4 @@
-/**
- * 获取兼容油猴沙箱的全局变量
- * @param name 变量名，如 'JSZip'
- */
+// 读取脚本或油猴沙箱提供的指定全局变量
 function getGlobalVar<T>(name: string): T | undefined {
     // 优先检查当前上下文
     const win = window as unknown as Record<string, unknown>;
@@ -20,13 +17,10 @@ function getGlobalVar<T>(name: string): T | undefined {
 }
 
 /**
- * 单脚本加载
- * @param src 脚本 URL
- * @param globalName 全局变量名，如 'JSZip'
+ * 复用已有全局对象或加载指定脚本，失败时拒绝
  */
 export function loadSingleScript<T>(src: string, globalName: string): Promise<T> {
     return new Promise((resolve, reject) => {
-        // 检查是否存在
         const existing = getGlobalVar<T>(globalName);
         if (existing) {
             return resolve(existing);
@@ -57,9 +51,7 @@ export function loadSingleScript<T>(src: string, globalName: string): Promise<T>
 }
 
 /**
- * 支持自动 Fallback 的脚本加载器
- * @param srcs 按顺序重试的 URL 列表
- * @param globalName 全局变量名，如 'JSZip'
+ * 按 URL 顺序尝试加载脚本，全部失败时拒绝
  */
 export async function loadScript<T>(srcs: string | string[], globalName: string): Promise<T> {
     const urls = Array.isArray(srcs) ? srcs : [srcs];
@@ -74,6 +66,5 @@ export async function loadScript<T>(srcs: string | string[], globalName: string)
         }
     }
 
-    // 如果循环结束还没返回，说明全挂了
     throw new Error(`All scripts failed: ${lastError?.message}`);
 }

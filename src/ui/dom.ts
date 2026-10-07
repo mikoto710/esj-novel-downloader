@@ -22,7 +22,7 @@ function runElementCleanup(element: Element): void {
 }
 
 /**
- * 注册与元素生命周期绑定的清理回调；外部移除元素时也会执行
+ * 注册清理回调并返回解除函数，支持 MutationObserver 时也监听外部移除
  */
 export function registerElementCleanup(element: Element, callback: () => void): () => void {
     let state = elementCleanupStates.get(element);
@@ -112,9 +112,10 @@ export function enableDrag(popup: HTMLElement, headerSelector: string): void {
 }
 
 /**
- * 清理所有弹窗和悬浮球，并恢复标题
+ * 移除预设选择器匹配的弹窗与托盘，传入非空标题时恢复页面标题
  */
 export function fullCleanup(originalTitle?: string): void {
+    // 用户决策、请求、缓存写入与书籍锁仍由各自生命周期结束
     const selectors = [
         "#esj-popup",
         "#esj-min-tray",

@@ -24,7 +24,7 @@ function validateChapterImage(image: ChapterImage, chapterIndex: number): void {
 }
 
 /**
- * 封装数据，生成 EPUB 文件
+ * 校验章节资源并组装 EPUB，无效图片或字体绑定使生成失败
  */
 export async function buildEpub(chapters: Chapter[], metadata: BookMetadata, includeTagPage: boolean): Promise<Blob> {
     let ZipClass: new () => JSZip;
@@ -41,6 +41,7 @@ export async function buildEpub(chapters: Chapter[], metadata: BookMetadata, inc
         throw new Error("Failed to load JSZip: " + e.message);
     }
 
+    // 建立 EPUB 容器，mimetype 保持未压缩以满足阅读器识别要求
     const zip = new ZipClass();
     zip.file("mimetype", "application/epub+zip", { binary: true, compression: "STORE" });
 
@@ -62,6 +63,7 @@ export async function buildEpub(chapters: Chapter[], metadata: BookMetadata, inc
     const manifestItems: string[] = [];
     const spineItems: string[] = [];
 
+    // 封面独立注册资源；标签页仅在本次设置启用且存在标签时加入阅读顺序
     let coverMeta = "";
     if (metadata.coverBlob) {
         const coverFilename = "cover." + metadata.coverExt;
@@ -107,6 +109,7 @@ export async function buildEpub(chapters: Chapter[], metadata: BookMetadata, inc
         navHtml += `<li><a href="tags.xhtml">标签</a></li>`;
     }
 
+    // 逐章绑定已校验字体和图片，同时累积文档、阅读顺序与导航
     for (let i = 0; i < chapters.length; i++) {
         const id = `chap_${i + 1}`;
         const filename = `${id}.xhtml`;
@@ -127,9 +130,7 @@ export async function buildEpub(chapters: Chapter[], metadata: BookMetadata, inc
         if (chap.images && chap.images.length > 0) {
             chap.images.forEach((img) => {
                 validateChapterImage(img, i);
-                // 写入文件到 OEBPS 根目录
                 oebps.file(img.id, img.blob);
-                // 添加到 Manifest
                 manifestItems.push(
                     `<item id="${img.id.replace(".", "_")}" href="${img.id}" media-type="${img.mediaType}" />`
                 );
@@ -161,6 +162,7 @@ export async function buildEpub(chapters: Chapter[], metadata: BookMetadata, inc
     const tagMetadata = tags.map((tag) => `<dc:subject>${escapeXml(tag)}</dc:subject>`).join("\n");
     const pubdate = new Date().toISOString();
 
+    // 汇总元数据和资源关系，生成阅读器使用的 OPF 包描述
     const contentOpf = `<?xml version="1.0" encoding="utf-8"?>
         <package xmlns="http://www.idpf.org/2007/opf" unique-identifier="BookId" version="3.0">
           <metadata xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:opf="http://www.idpf.org/2007/opf">
@@ -187,21 +189,17 @@ export async function buildEpub(chapters: Chapter[], metadata: BookMetadata, inc
     return blob;
 }
 
-/**
- * 将 HTML 字符串转换为 EPUB XHTML
- * @param htmlString 输入的 HTML 字符串
- * @returns 转换后的 XHTML 字符串
- */
+// 将章节 HTML 序列化为 XHTML 并清理属性，单个节点序列化失败时跳过该节点
 function convertToXhtml(htmlString: string): string {
     if (!htmlString) {
         return "";
     }
 
-    // 使用 DOMParser 不会加载 img src，避免 console 报错
+    // 先解析为独立文档，再清理属性并序列化各个正文节点
     const parser = new DOMParser();
     const doc = parser.parseFromString(htmlString, "text/html");
 
-    // 清洗 DOM 树：移除所有带冒号的非法属性
+    // 检查 XML 属性名，并清理不允许的带冒号属性
     const allElements = doc.body.querySelectorAll("*");
 
     // XML 属性名正则
@@ -221,7 +219,7 @@ function convertToXhtml(htmlString: string): string {
 
             // 检查冒号命名空间
             if (name.includes(":")) {
-                // 只保留标准的 xml/xmlns 命名空间
+                // 以 xml 开头的属性名不在此处移除，不进一步校验命名空间绑定
                 if (!name.startsWith("xmlns") && !name.startsWith("xml")) {
                     el.removeAttribute(name);
                 }

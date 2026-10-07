@@ -148,7 +148,7 @@ export async function downloadCurrentPage(format: "txt" | "html" = "txt"): Promi
         let imageSuccessCount = 0;
         let imageFailureCount = 0;
 
-        // 根据格式检查内容
+        // TXT 空正文提前退出，其余情况继续共用资源准备与格式生成
         if (format === "txt" && !contentText) {
             recordBrowserDiagnosticFailure(
                 {

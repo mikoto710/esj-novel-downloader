@@ -19,7 +19,7 @@ type ProtectedPorts = Pick<DownloadDependencies, "cancellation" | "protectedChap
 };
 
 /**
- * 密码仅在当前任务内存中保存；密码决策与正文抓取共用串行弹窗入口
+ * 密码仅保存在当前任务内存；密码、映射字体和缺章决策共用串行弹窗入口
  */
 export function createProtectedChapters(
     ports: ProtectedPorts,
@@ -105,9 +105,7 @@ export function createProtectedChapters(
         );
     }
 
-    /**
-     * 依次处理密码提交、跳过和取消，只重试连接故障
-     */
+    // 依次处理密码提交、跳过和取消，只重试连接故障
     async function resolveProtectedChapter(
         item: ProtectedChapterWorkItem,
         processChapter: ProcessUnlockedChapter,
@@ -136,7 +134,7 @@ export function createProtectedChapters(
                 if (isRetry && decision.action === "skip-all") {
                     skipRemainingProtectedRetries = true;
                 }
-                // 首轮清空等待队列；补抓轮只跳过该轮后续密码章节
+                // 选择跳过全部时，首轮清空密码队列；补抓轮只跳过该轮后续密码章节
                 const skippedItems =
                     decision.action === "skip-all" && !isRetry ? protectedQueue.skipAllRemaining() : [];
                 for (const skipped of [item, ...skippedItems]) {

@@ -44,9 +44,7 @@ function enableSingleExport(button: HTMLElement, title: string): void {
     button.style.cursor = "pointer";
 }
 
-/**
- * 保留密码章节按钮入口，并引导用户先在原站解锁
- */
+// 保留密码章节按钮入口，并引导用户先在原站解锁
 function guideSingleProtectedExport(elements: SingleExportElements): void {
     for (const button of [elements.txtButton, elements.htmlButton]) {
         button.dataset.esjProtected = "true";
@@ -89,9 +87,7 @@ function showSingleMappingFailure(elements: SingleExportElements, reason: string
     replaceSingleMappingNotice(elements.container, t("mapping.single.blocked", { reason }), "#c62828");
 }
 
-/**
- * 根据当前正文预检结果更新单章按钮与提示
- */
+// 根据当前正文预检结果更新单章按钮与提示
 async function updateSinglePageMappingUi(version: number): Promise<void> {
     const elements = getSingleExportElements();
     if (!elements) {
@@ -154,9 +150,7 @@ async function updateSinglePageMappingUi(version: number): Promise<void> {
     }
 }
 
-/**
- * 合并预检刷新，并使先前异步结果失效
- */
+// 合并预检刷新，并使先前异步结果失效
 function scheduleSinglePageMappingUiRefresh(delayMs = 0): void {
     mappingUiRefreshVersion += 1;
     if (mappingUiRefreshTimer !== null) {

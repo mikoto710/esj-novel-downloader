@@ -181,9 +181,7 @@ export async function runBookDownload(options: RunBookDownloadOptions): Promise<
     }
 }
 
-/**
- * 持锁执行下载，所有退出路径统一释放资源
- */
+// 持锁执行下载，所有退出路径统一释放资源
 async function executeBookDownload(
     options: RunBookDownloadOptions,
     plan: PreparedBook,
@@ -392,9 +390,7 @@ async function executeBookDownload(
     }
 }
 
-/**
- * 创建任务独立的取消意图和网络信号，discard 只可升级
- */
+// 创建任务独立的取消意图和网络信号，discard 只可升级
 function createDownloadCancellation(): DownloadCancellationPort & { readonly mode: DownloadCancellationMode } {
     const controller = new AbortController();
     const listeners = new Set<(mode: DownloadCancellationMode) => void>();
@@ -423,8 +419,6 @@ function createDownloadCancellation(): DownloadCancellationPort & { readonly mod
     };
 }
 
-// 下载核心的浏览器实现边界
-// 任务数据显式传入，DOM、网络、缓存和锁实现在此装配
 function getErrorMessage(error: unknown): string {
     return error instanceof Error ? error.message : String(error);
 }
@@ -459,7 +453,7 @@ interface BrowserDownloadTask {
 
 const protectedChapterDetector = { isProtected: isProtectedChapterHtml };
 
-// 解析正文并根据当前设置处理或移除图片
+// 创建绑定本任务身份的正文处理端口，插图开关由任务固定输入
 function createChapterProcessor(taskId: string): ChapterProcessorPort {
     const taskLog = (message: string) => {
         if (isCurrentDownload(taskId)) {
@@ -501,7 +495,7 @@ function createChapterProcessor(taskId: string): ChapterProcessorPort {
     };
 }
 
-// 封面是可选资源，任何获取异常都降级为无封面导出
+// 创建绑定本任务身份的封面端口，获取异常降级为无封面
 function createCoverFetcher(taskId: string): CoverFetcherPort {
     const taskLog = (message: string) => {
         if (isCurrentDownload(taskId)) {
@@ -549,9 +543,7 @@ const cache: ChapterCacheRepository = {
     clearForTask: clearBookCacheForTask
 };
 
-/**
- * 创建本次下载使用的浏览器依赖
- */
+// 装配本任务的站点、浏览器、存储和视图能力，保持原任务身份
 function createDownloadDependencies(task: BrowserDownloadTask): DownloadDependencies {
     const concurrency = getConcurrency();
     const fallbackPageUrl = location.href;
@@ -626,17 +618,13 @@ function createDownloadDependencies(task: BrowserDownloadTask): DownloadDependen
     };
 }
 
-/**
- * 书籍下载收尾时的缓存清理结果
- */
+// 书籍下载收尾时的缓存清理结果
 interface BookDownloadFinalizationResult {
     cacheDiscarded: boolean;
     cacheClearFailure: StorageFailure | null;
 }
 
-/**
- * 处理缓存清除请求，并在所有退出路径停止心跳、释放锁
- */
+// 处理缓存清除请求，并在所有退出路径停止心跳、释放锁
 async function finalizeBookDownloadTask(
     lock: BookDownloadLock,
     stopHeartbeat: () => void,

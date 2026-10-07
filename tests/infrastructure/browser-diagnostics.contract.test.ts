@@ -357,7 +357,7 @@ describe("browser diagnostic persistence", () => {
             snapshot
         });
 
-        // 页面 finally 无法判断 coordinator 是否已经结束，因此仍会执行失败兜底
+        // 页面 finally 无法判断下载流程是否已经结束，因此仍会执行失败兜底
         finishBrowserDiagnosticSession("task-success-finalizer", "failed");
 
         const session = listBrowserDiagnosticSessions().history[0];

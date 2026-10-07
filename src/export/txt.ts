@@ -1,14 +1,14 @@
 import type { Chapter } from "../content/model";
 
 /**
- * 任务就绪前固定简介与原输出范围的 TXT 文本
+ * 按传入顺序拼接简介与章节 TXT 片段，不重新选择章节
  */
 export function assembleBookTxt(intro: string, chapters: readonly Chapter[]): string {
     return [intro, ...chapters.map((chapter) => chapter.txtSegment)].join("");
 }
 
 /**
- * 按现有文件触发时机生成 TXT Blob
+ * 将已准备的 TXT 文本封装为 UTF-8 Blob
  */
 export function buildTxt(text: string): Blob {
     return new Blob([text], { type: "text/plain;charset=utf-8" });

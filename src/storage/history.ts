@@ -4,7 +4,9 @@ import type { DownloadFormat } from "../export/filename";
 import type { SourcePageType } from "../content/model";
 import type { DownloadSelectionSummary } from "../download/plan";
 
-// 已完成导出的下载记录
+/**
+ * 已触发文件下载的导出历史，不表示浏览器已经保存文件
+ */
 export interface DownloadHistoryItem {
     id: string;
     bookId?: string;

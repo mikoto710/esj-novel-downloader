@@ -6,7 +6,7 @@ import { processHtmlImages, type ImageProcessingFailure } from "./images";
 import { RequestGate } from "./request-gate";
 
 /**
- * 解析单个章节页面的 HTML，提取标题、作者和正文
+ * 解析章节 HTML 的标题、作者和正文，书名沿用当前页面标题
  */
 export function parseChapterHtml(html: string, defaultTitle: string) {
     const doc = new DOMParser().parseFromString(html, "text/html");
@@ -19,7 +19,7 @@ export function parseChapterHtml(html: string, defaultTitle: string) {
 
     const contentEl = doc.querySelector(".forum-content") as HTMLElement;
 
-    // 获取用于 EPUB 的 HTML (包含 img 标签)
+    // HTML 与 EPUB 共用原始正文 HTML，插图和字体随后处理
     const contentHtml = contentEl ? contentEl.innerHTML : "";
 
     // 获取用于 TXT 的纯文本
@@ -55,6 +55,9 @@ export function normalizeParsedChapter(result: ReturnType<typeof parseChapterHtm
     );
 }
 
+/**
+ * 正文与插图采集故障，任务和诊断归属由调用方附加
+ */
 export interface ProcessedSourceChapter {
     chapter: Chapter;
     imageFailures: ImageProcessingFailure[];
@@ -126,9 +129,7 @@ export function createChapterFetcher(requestGate: RequestGate): ChapterFetcherPo
     };
 }
 
-/**
- * 移除 HTML 字符串中的所有 img 标签
- */
+// 移除 HTML 字符串中的所有 img 标签
 function removeImgTags(html: string): string {
     return html.replace(/<img[^>]*>/gi, "");
 }

@@ -6,10 +6,14 @@ import { subscribeCacheSync } from "../storage/cache/sync";
 import { readCacheManifestV3 } from "../storage/cache/indexeddb-repository";
 import { getActiveBookDownloadLock } from "../storage/book-lock";
 
-// 缓存条目的业务状态
+/**
+ * 缓存条目的业务状态
+ */
 export type CacheStatus = "downloading" | "cancelled" | "export-ready" | "persisted";
 
-// 当前页运行中的会话缓存摘要
+/**
+ * 当前页书籍任务的缓存摘要，不持有章节内容
+ */
 export interface RuntimeCacheSession extends CacheMeta {
     taskId: string;
     completedCount: number;
@@ -18,7 +22,9 @@ export interface RuntimeCacheSession extends CacheMeta {
     hasExportData: boolean;
 }
 
-// 页面会话只持有停止入口、显示摘要与最近结果
+/**
+ * 页面会话只持有停止入口、显示摘要与最近结果
+ */
 export interface AppState {
     originalTitle: string;
     cachedData: CachedData | null;
@@ -41,7 +47,7 @@ export const state: AppState = {
 };
 
 /**
- * 登记当前任务的停止入口，替换时先停止旧任务
+ * 登记当前任务的停止入口，替换前请求取消旧任务，不等待其收尾
  */
 export function activateDownload(bookId: string, taskId: string, cancellation: DownloadCancellationPort): void {
     state.activeDownload?.requestCancellation();
@@ -56,7 +62,7 @@ export function isCurrentDownload(taskId: string): boolean {
 }
 
 /**
- * 移除已结束任务的操作入口，晚到收尾不影响新任务
+ * 按 taskId 移除当前操作入口，晚到收尾不影响新任务
  */
 export function releaseActiveDownload(taskId: string): void {
     if (isCurrentDownload(taskId)) {
@@ -111,7 +117,7 @@ export function updateRuntimeCacheSession(progress: Partial<RuntimeCacheSession>
 }
 
 /**
- * 移除指定任务摘要，保留章节表和最近导出
+ * 按已提供的书籍和任务身份清除摘要，省略筛选时清除当前摘要，保留章节表和导出
  */
 export function clearRuntimeCacheSession(bookId?: string, taskId?: string): void {
     if (
@@ -125,7 +131,7 @@ export function clearRuntimeCacheSession(bookId?: string, taskId?: string): void
 }
 
 /**
- * 显式清除对应书籍的导出结果
+ * 清除匹配书籍的保留导出结果，未指定书籍时直接清除当前结果
  */
 export function clearCachedExport(bookId?: string): void {
     if (bookId && state.cachedData?.exportContext?.bookId !== bookId) {

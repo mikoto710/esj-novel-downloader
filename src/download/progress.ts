@@ -93,7 +93,7 @@ export class DownloadProgress {
     }
 
     /**
-     * 返回显示快照，调用方修改不影响任务状态
+     * 返回顶层浅快照，嵌套失败摘要仍由任务持有，调用方不得改写
      */
     get snapshot(): DownloadSnapshot {
         return { ...this.current };
@@ -115,7 +115,7 @@ export class DownloadProgress {
     }
 
     /**
-     * 更新业务计数并重新计算本次范围内的正文数
+     * 更新业务计数并重新统计范围内已有章节记录数，不检查正文或图片完整性
      */
     update(values: Partial<Omit<DownloadSnapshot, "phase" | "readyChapterCount">>): void {
         this.current = { ...this.current, ...values, readyChapterCount: this.plan.readyCount(this.chapters) };

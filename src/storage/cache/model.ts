@@ -1,6 +1,8 @@
 import type { SourcePageType } from "../../content/model";
 
-// 缓存展示和持久化共用的元信息
+/**
+ * 缓存展示和持久化共用的元信息
+ */
 export interface CacheMeta {
     bookId: string;
     bookName: string;
@@ -13,7 +15,9 @@ export interface CacheMeta {
     updatedAt: number;
 }
 
-// IndexedDB 持久缓存条目
+/**
+ * 持久缓存列表条目，仅含摘要与写入者标识，不含章节内容或 Blob
+ */
 export interface PersistentCacheEntry {
     key: string;
     bookId: string;

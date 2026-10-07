@@ -14,7 +14,6 @@ const DEFAULT_INTERFACE_LOCALE_PREFERENCE: InterfaceLocalePreference = "auto";
  * 获取并发数
  */
 export function getConcurrency(): number {
-    // 从 Tampermonkey 存储中读取
     let val = GM_getValue("concurrency", DEFAULT_CONFIG.concurrency);
 
     if (typeof val !== "number" || val <= 0) {

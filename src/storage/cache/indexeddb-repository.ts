@@ -120,6 +120,7 @@ function createCacheAbortError(): DOMException {
     return new DOMException("缓存事务已中止", "AbortError");
 }
 
+// 在事务提交后返回已登记的业务结果，同步回调只负责安排 IDB 请求
 function runWriteTransaction<T>(
     operation: (store: IDBObjectStore, setResult: CacheTransactionResult<T>) => void,
     signal?: AbortSignal
@@ -142,6 +143,7 @@ function runWriteTransaction<T>(
                     reject(createCacheAbortError());
                 };
 
+                // 请求回调只登记结果，事务提交后才向上层确认；回调中不插入非 IDB 异步等待
                 transaction.oncomplete = () => {
                     cleanupAbortListener();
                     if (!hasResult) {
@@ -313,7 +315,7 @@ export async function claimCacheV3(
                 return;
             }
 
-            // 已有 v3（含墓碑）时，旧缓存不能回流
+            // 已有 v3 清单（含 cleared 标记）时，不导入旧缓存
             const source = current ? null : migrationSource;
             const migrationCompatibility = source
                 ? evaluateImageCacheCompatibility(source.meta?.imageEnabled, requestedImageEnabled)
@@ -489,7 +491,7 @@ export async function finishCacheV3ForTask(
 }
 
 /**
- * 仅允许当前 writer 清理章节并写入 v3 墓碑
+ * 仅允许当前 writer 清理章节和封面，并写入 cleared 清单
  */
 export async function clearCacheV3ForTask(bookId: string, taskId: string, signal?: AbortSignal): Promise<boolean> {
     return runWriteTransaction<boolean>((store, setResult) => {
@@ -519,7 +521,7 @@ export async function clearCacheV3ForTask(bookId: string, taskId: string, signal
 }
 
 /**
- * 清理未受活动 writer 保护的章节并写入 v3 墓碑
+ * 清理未受活动 writer 保护的章节和封面，并写入 cleared 清单
  */
 export async function clearCacheV3(bookId: string, isWriterActive: (taskId: string) => boolean): Promise<boolean> {
     return runWriteTransaction<boolean>((store, setResult) => {

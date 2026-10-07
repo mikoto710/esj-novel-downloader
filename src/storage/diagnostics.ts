@@ -8,7 +8,9 @@ import {
 const DIAGNOSTIC_STORAGE_KEY = "esj_diagnostic_sessions_v1";
 
 export class GmDiagnosticRepository implements DiagnosticRepository {
-    // 版本或结构不兼容时回退为空存储，避免旧数据阻断诊断流程
+    /**
+     * 读取诊断记录，版本或结构不兼容时回退为空存储，避免旧数据阻断诊断流程
+     */
     load(): DiagnosticStore {
         try {
             const stored = GM_getValue<DiagnosticStore | null>(DIAGNOSTIC_STORAGE_KEY, null);

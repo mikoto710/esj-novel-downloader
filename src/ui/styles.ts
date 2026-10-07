@@ -1,5 +1,5 @@
 const STYLES = `
-    /* 遮罩与弹窗基础 */
+    /* 下载进度弹窗 */
     #esj-popup {
         position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%);
         width: 520px; background: #fff; border-radius: 8px;

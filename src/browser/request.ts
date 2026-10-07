@@ -1,10 +1,5 @@
 /**
- * 支持超时和外部中断的 fetch
- * @param url 请求地址
- * @param options fetch配置
- * @param timeout 超时时间 (ms)
- * @param cancelSignal 外部取消信号
- * @deprecated 请使用 fetchWithTimeout 代替
+ * @deprecated 原生超时请求已弃用，请使用 fetchWithTimeout
  */
 export async function fetchWithTimeoutNative(
     url: string,
@@ -55,11 +50,7 @@ export async function fetchWithTimeoutNative(
 }
 
 /**
- * 基于 GM_xmlhttpRequest 的请求封装，支持超时和外部中断
- * @param url 请求地址
- * @param options fetch配置
- * @param timeout 超时时间 (ms)
- * @param cancelSignal 外部取消信号
+ * 通过 GM 发起支持超时和外部中断的请求
  */
 export function fetchWithTimeout(
     url: string,
@@ -75,7 +66,7 @@ export function fetchWithTimeout(
 
         let requestHandle: { abort: () => void } | null = null;
 
-        // GM 提供的物理中断
+        // 中止在途 GM 请求，并以取消错误结束等待
         const onAbort = () => {
             if (requestHandle) {
                 requestHandle.abort();
@@ -99,7 +90,6 @@ export function fetchWithTimeout(
             anonymous: options.credentials === "omit",
 
             onload: (res) => {
-                // 清理监听
                 if (cancelSignal) {
                     cancelSignal.removeEventListener("abort", onAbort);
                 }

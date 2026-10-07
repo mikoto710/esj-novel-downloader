@@ -45,9 +45,7 @@ function selectOptions(values: Array<[string, string]>): HTMLElement[] {
     return values.map(([value, text]) => el("option", { value }, [text]));
 }
 
-/**
- * 调整相邻列宽，并返回拖拽监听的清理函数
- */
+// 调整相邻列宽，并返回拖拽监听的清理函数
 function enableHistoryColumnResize(table: HTMLTableElement): () => void {
     const columns = Array.from(table.querySelectorAll<HTMLTableColElement>("col"));
     const headers = Array.from(table.querySelectorAll<HTMLTableCellElement>("thead th"));
@@ -157,9 +155,7 @@ function chapterStatusText(item: DownloadHistoryItem): string {
         : t("history.chapter.total", { total: item.chapterSummary.totalCount });
 }
 
-/**
- * 确认清空全部下载记录，关闭视为取消
- */
+// 确认清空全部下载记录，关闭视为取消
 function showHistoryClearConfirm(): Promise<boolean> {
     document.querySelector("#esj-download-history-confirm")?.remove();
 

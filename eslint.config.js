@@ -44,7 +44,7 @@ export default [
             // 强制所有控制语句 (if, else, for, while) 必须使用大括号
             curly: ["error", "all"],
 
-            // 允许使用 any
+            // 显式 any 产生警告，不作为错误阻断检查
             "@typescript-eslint/no-explicit-any": "warn",
 
             // 允许非空断言 (DOM操作常用)

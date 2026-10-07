@@ -113,6 +113,9 @@ vi.mock("../../src/storage/book-lock", () => ({
     shouldDiscardBookDownloadCache: hoistedBrowserDownloadMocks.shouldDiscard
 }));
 
+/**
+ * 下载应用测试的运行入口、任务资源及依赖替身
+ */
 export interface BrowserDownloadRuntime {
     runBookDownload(options: import("../../src/download/contracts").DownloadOptions): Promise<DownloadResult>;
     task: {

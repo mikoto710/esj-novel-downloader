@@ -70,7 +70,7 @@ function flushPendingUiLogs(): void {
         return;
     }
 
-    // 日志也会被无 DOM 的基础设施适配器复用，此时只保留控制台与诊断记录，不刷新 UI
+    // 无 document 时丢弃待显示的日志；控制台输出已完成，诊断记录由调用层负责
     if (typeof document === "undefined") {
         return;
     }
@@ -106,8 +106,7 @@ function scheduleUiLogFlush(): void {
 }
 
 /**
- * 输出日志到 UI 面板和控制台
- * @param msg 日志内容
+ * 将日志同时输出到控制台及可用的界面面板
  */
 export function log(msg: string): void {
     const prefix = new Date().toLocaleTimeString();
