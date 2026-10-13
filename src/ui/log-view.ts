@@ -2,13 +2,17 @@ const UI_LOG_BATCH_DELAY_MS = 50;
 const UI_LOG_EVENT_LIMIT = 1000;
 let pendingUiLogLines: string[] = [];
 let uiLogFlushTimer: ReturnType<typeof setTimeout> | null = null;
+
 interface UiLogState {
     nodes: Text[];
     omittedCount: number;
     truncationMarker: HTMLElement | null;
 }
+
 const uiLogStates = new WeakMap<Element, UiLogState>();
+
 type UiLogTruncationFormatter = (count: number) => string;
+
 let uiLogTruncationFormatter: UiLogTruncationFormatter | null = null;
 
 /**

@@ -92,6 +92,7 @@ export type FullBookSourcePageType = Extract<SourcePageType, "detail" | "forum">
 export type AcquireBookLockResult =
     | { acquired: true; lock: BookDownloadLock }
     | { acquired: false; lock: BookDownloadLock };
+
 /**
  * 请求取消任务的结果
  */

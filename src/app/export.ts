@@ -20,10 +20,13 @@ export interface CachedData extends ExportSnapshot {
 }
 
 export type ExportFormat = DownloadFormat;
+
 export type ExportFailureStage = "generate" | "download";
+
 interface ExportView {
     failed(format: ExportFormat, stage: ExportFailureStage, details: string): void;
 }
+
 interface RichExportView extends ExportView {
     confirm(format: "epub" | "html", summary: MappingFontSummary): Promise<boolean>;
     generating(format: "epub" | "html"): void;

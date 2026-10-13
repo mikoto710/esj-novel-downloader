@@ -34,12 +34,14 @@ describe("cross-page lock recovery contracts", () => {
 
     it("disables cache sync after BroadcastChannel construction fails", async () => {
         const constructorMock = vi.fn();
+
         class ThrowingBroadcastChannel {
             constructor() {
                 constructorMock();
                 throw new DOMException("channel unavailable", "NotSupportedError");
             }
         }
+
         vi.stubGlobal("BroadcastChannel", ThrowingBroadcastChannel);
         const sync = await import("../../src/storage/cache/sync");
 

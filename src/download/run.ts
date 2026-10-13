@@ -37,6 +37,7 @@ export async function runDownload(
     const ports = { ...dependencies, concurrency: Math.max(1, Math.floor(dependencies.concurrency) || 1) };
     const progress = new DownloadProgress(plan, chapters, events, ui);
     const cache = createTaskCacheWriter(ports, options, plan, meta, chapters, progress);
+
     // 字体、密码和缺章选择共享任务内唯一的决策队列
     const decisions = new UserDecisionGate();
     const pipeline = createChapterPipeline(ports, plan, options.imageEnabled, meta.pageUrl, progress, cache, decisions);
@@ -47,6 +48,7 @@ export async function runDownload(
         }
         cache.assertHealthy();
     }
+
     async function flush(
         code: "download-main-flush-started" | "download-integrity-flush-started" | "missing-chapter-retry-saved"
     ): Promise<void> {
@@ -118,6 +120,7 @@ export async function runDownload(
             if (progress.snapshot.phase === "flushing-cache") {
                 progress.transition("checking-integrity");
             }
+
             // 自动补抓仍有缺章，才要求用户决定下一步；图片异常不进入缺正文决策
             const decision = await runUserDecision(
                 decisions,
@@ -156,6 +159,7 @@ export async function runDownload(
                 true
             );
             checkActive();
+
             // 新补章节先落盘，再重新计算缺章列表，输出始终沿用原计划
             await flush("missing-chapter-retry-saved");
         }
@@ -165,6 +169,7 @@ export async function runDownload(
         log({ code: "export-preparation-started" });
         const bookCover = await cover;
         checkActive();
+
         // 构造快照后完成缓存收尾，再返回导出结果，避免成功后仍有后台写入
         const data = createExportData(options, plan, meta.pageUrl, chapters, bookCover, progress.snapshot.failedCount);
         await cache.finish();
@@ -231,6 +236,7 @@ async function finishCancellation(
     }
     return { status: "cancelled", outcome };
 }
+
 // 统一记录失败并关闭进度界面，不覆盖之前的导出结果
 function reportFailure(
     error: unknown,
@@ -279,6 +285,7 @@ function reportFailure(
 }
 
 type CoverPorts = Pick<DownloadDependencies, "coverCache" | "coverFetcher" | "cancellation" | "log">;
+
 // 优先复用封面缓存，封面缺失不阻断正文导出
 async function prepareCover(options: DownloadOptions, ports: CoverPorts): Promise<BookCover | null> {
     const coverUrl = options.coverUrl;

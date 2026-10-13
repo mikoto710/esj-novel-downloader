@@ -294,6 +294,7 @@ function trimSessionToLimit(session: DiagnosticSession): DiagnosticSession {
             ...(entry.message === undefined ? {} : { message: limitText(entry.message) })
         }))
     };
+
     // 超限时先裁剪日志和事件；已有失败记录时保留最后一条，不凭空补充失败
     while (stringBytes(trimmed) > DIAGNOSTIC_SESSION_BYTES_LIMIT && trimmed.logs.length > 0) {
         trimmed.logs.shift();
@@ -315,6 +316,7 @@ function repairTerminalResult(session: DiagnosticSession): DiagnosticSession {
         exports: Array.isArray(session.exports) ? session.exports : [],
         logs: (Array.isArray(session.logs) ? session.logs : []).map(normalizeDiagnosticLogRecord)
     };
+
     // 兼容旧版收尾误写 failed 的记录：阶段已是 export-ready 且没有失败记录时修正为 success
     if (
         normalized.result === "failed" &&
@@ -363,6 +365,7 @@ function normalizeStore(store: DiagnosticStore, now: number): DiagnosticStore {
         .map(trimSessionToLimit);
 
     history.sort((a, b) => (b.endedAt || b.updatedAt) - (a.endedAt || a.updatedAt));
+
     // 当前任务不占历史条数；历史始终按时间保留最近记录，并与全部进行中会话共同受总容量上限约束
     while (history.length > DIAGNOSTIC_HISTORY_LIMIT) {
         history.pop();
@@ -496,6 +499,7 @@ export class DiagnosticManager {
     start(input: StartDiagnosticSessionInput): DiagnosticSession {
         const now = this.now();
         const store = normalizeStore(this.repository.load(), now);
+
         // 同一 taskId 重入时替换旧的进行中记录，避免重复会话持续占用容量
         store.active = store.active.filter((session) => session.taskId !== input.taskId);
         const session: DiagnosticSession = {
@@ -536,6 +540,7 @@ export class DiagnosticManager {
         if (!session || session.closeObservedAt !== undefined) {
             return;
         }
+
         // 页面关闭只记录可观察事实
         session.closeObservedAt = now;
         session.updatedAt = now;
@@ -789,6 +794,7 @@ export class DiagnosticManager {
         }
         mutator(session, now);
         session.updatedAt = now;
+
         // 终态变更与历史搬移在同一次 repository save 中完成，避免同时存在于 active 和 history
         if (activeIndex >= 0 && session.result !== "running") {
             store.active.splice(activeIndex, 1);

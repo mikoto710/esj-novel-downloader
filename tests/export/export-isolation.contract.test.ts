@@ -30,10 +30,12 @@ describe("full-book and single-chapter export isolation", () => {
         installDocumentFixture(fixture);
         document.title = "单章测试 - ESJZone";
         const NativeURL = globalThis.URL;
+
         class TestURL extends NativeURL {
             static createObjectURL = createObjectUrlMock;
             static revokeObjectURL = vi.fn();
         }
+
         vi.stubGlobal("URL", TestURL);
         vi.stubGlobal("alert", alertMock);
         vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(clickMock);

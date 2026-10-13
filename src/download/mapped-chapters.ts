@@ -11,6 +11,7 @@ type MappingPorts = Pick<DownloadDependencies, "chapters" | "concurrency" | "can
     scheduler: Pick<DownloadDependencies["scheduler"], "sleepWithAbort">;
     chapterProcessor: Pick<DownloadDependencies["chapterProcessor"], "normalizeCached">;
 };
+
 const CACHE_RESTORE_YIELD_INTERVAL = 25;
 
 /**
@@ -30,6 +31,7 @@ export function createMappedChapters(
     const mappedChapterIndexes = new Set<number>();
     let mappedFontBytes = 0;
     const mappingFailures = new Map<number, MappingFontFailure>();
+
     function getMappingFontSummary() {
         return {
             chapterCount: mappedChapterIndexes.size,
@@ -195,6 +197,7 @@ export function createMappedChapters(
         const failures = Array.from(mappingFailures.values());
         throw new MappingFontError("font-source-invalid", "chapter-structure-invalid", { count: failures.length });
     }
+
     return {
         restore: normalizeRestoredChapters,
         register: registerMappedChapter,
@@ -208,4 +211,5 @@ export function createMappedChapters(
         }
     };
 }
+
 export type MappedChapters = ReturnType<typeof createMappedChapters>;

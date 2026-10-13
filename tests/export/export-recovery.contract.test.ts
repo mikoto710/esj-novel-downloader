@@ -356,11 +356,13 @@ describe("full-book export recovery contracts", () => {
     it("restores TXT export after Blob construction fails", async () => {
         const NativeBlob = globalThis.Blob;
         await prepareExportPopup();
+
         class ThrowingBlob {
             constructor() {
                 throw new Error("blob allocation failed");
             }
         }
+
         vi.stubGlobal("Blob", ThrowingBlob);
 
         click("#esj-txt");

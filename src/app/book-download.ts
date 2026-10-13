@@ -85,6 +85,7 @@ import { fullCleanup } from "../ui/dom";
 import { log } from "../ui/log-view";
 
 type BookSourcePageType = Extract<SourcePageType, "detail" | "forum">;
+
 interface RunBookDownloadOptions {
     bookId: string;
     sourcePageType: BookSourcePageType;
@@ -145,6 +146,7 @@ export async function runBookDownload(options: RunBookDownloadOptions): Promise<
             if (!isPreparing()) {
                 return;
             }
+
             // 预检只提前提示，确认后的原子获取仍负责互斥
             if (conflictingLock) {
                 popup.close();
@@ -423,6 +425,7 @@ async function executeBookDownload(
             );
         }
         const wasCurrent = isCurrentDownload(lock.taskId);
+
         // 装配或初始化失败仍结束视图；清理异常不能跳过书籍锁收尾
         let finalization: BookDownloadFinalizationResult;
         try {
@@ -466,6 +469,7 @@ function createDownloadCancellation(): DownloadCancellationPort & { readonly mod
             if (requested && (mode === "discard" || next !== "discard")) {
                 return;
             }
+
             // 先固定意图再中止网络；缓存 writer 使用独立信号完成有界保存
             mode = next;
             requested = true;

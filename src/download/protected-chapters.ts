@@ -13,7 +13,9 @@ import { runUserDecision, UserDecisionGate } from "./user-decision-gate";
 import { isCancellationError } from "./errors";
 
 export type ChapterTaskResult = "completed" | "failed" | "cancelled" | "deferred";
+
 type ProcessUnlockedChapter = (task: DownloadTask, html: string, retry: boolean) => Promise<ChapterTaskResult>;
+
 type ProtectedPorts = Pick<DownloadDependencies, "cancellation" | "protectedChapterAuth" | "events" | "log"> & {
     ui: Pick<DownloadDependencies["ui"], "promptProtectedChapterPassword" | "closeProtectedChapterPrompt">;
 };
@@ -34,6 +36,7 @@ export function createProtectedChapters(
     let rememberedPassword: string | null = null;
     let rememberPassword = false;
     let skipRemainingProtectedRetries = false;
+
     function registerProtectedDetection(task: DownloadTask, skipped: boolean): void {
         const snapshot = progress.snapshot;
         const firstDetection = !protectedDetectedIndexes.has(task.index);
@@ -134,6 +137,7 @@ export function createProtectedChapters(
                 if (isRetry && decision.action === "skip-all") {
                     skipRemainingProtectedRetries = true;
                 }
+
                 // 选择跳过全部时，首轮清空密码队列；补抓轮只跳过该轮后续密码章节
                 const skippedItems =
                     decision.action === "skip-all" && !isRetry ? protectedQueue.skipAllRemaining() : [];
@@ -156,6 +160,7 @@ export function createProtectedChapters(
 
             rememberPassword = decision.rememberPassword;
             rememberedPassword = decision.rememberPassword ? decision.password : null;
+
             // 连接故障重试一次；密码拒绝不会进入自动重试
             let result;
             let technicalFailure = false;
@@ -275,6 +280,7 @@ export function createProtectedChapters(
             await resolveProtectedChapter(item, processChapter);
         }
     }
+
     return {
         beginRetryRound: beginProtectedRetryRound,
         consume: consumeProtectedChapters,

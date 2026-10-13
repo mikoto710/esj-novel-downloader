@@ -32,6 +32,7 @@ export function createTaskCacheWriter(
         schedule: ports.scheduler.schedule,
         subscribeCancellation: ports.cancellation.subscribeCancellation
     });
+
     // 增量写入本批变更的章节，writer 所有权不匹配时按写入失败处理
     async function persistTaskCacheBatch(entries: ReadonlyMap<number, Chapter>, signal: AbortSignal): Promise<boolean> {
         ports.events.emit({ type: "cache-write-started", chapterCount: entries.size });
@@ -104,11 +105,13 @@ export function createTaskCacheWriter(
         }
         return false;
     }
+
     function assertHealthy(): void {
         if (buffer.failure) {
             throw new StorageError(buffer.failure);
         }
     }
+
     return {
         get failure() {
             return buffer.failure;
@@ -122,6 +125,7 @@ export function createTaskCacheWriter(
                 assertHealthy();
                 throw createStorageError("ownership-lost", "write");
             }
+
             // 全本成功清理整书缓存；范围成功只关闭 writer，保留已积累的章节
             const operation = plan.retainCacheOnSuccess ? "write" : "clear";
             try {
@@ -158,4 +162,5 @@ export function createTaskCacheWriter(
         dispose: () => buffer.dispose()
     };
 }
+
 export type TaskCacheWriter = ReturnType<typeof createTaskCacheWriter>;

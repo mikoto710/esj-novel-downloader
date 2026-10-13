@@ -180,6 +180,7 @@ export function createDownloadSelectionPopup(options: DownloadSelectionPopupOpti
         ]),
         el("div", { style: "display:flex;flex-direction:column;gap:2px;" }, [startTitle, endTitle])
     ]);
+
     // 章数、插图和缓存各占一行，只强调状态与可复用数量
     const chapterCount = el("div");
     const cacheLabel = el("span");

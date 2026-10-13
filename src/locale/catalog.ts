@@ -9,6 +9,7 @@ export { ZH_CN_MESSAGES, ZH_TW_MESSAGES };
 export type InterfaceLocale = "zh-CN" | "zh-TW";
 
 export const INTERFACE_LOCALE_PREFERENCES = ["auto", "zh-CN", "zh-TW"] as const;
+
 export type InterfaceLocalePreference = (typeof INTERFACE_LOCALE_PREFERENCES)[number];
 
 /**
@@ -41,8 +42,11 @@ export function detectBrowserInterfaceLocale(language: string | undefined): Inte
 }
 
 export type LocaleMessageValue = string | number | boolean;
+
 export type LocaleMessageParams = Readonly<Record<string, LocaleMessageValue>>;
+
 export type LocaleCatalog = Readonly<Record<string, string>>;
+
 export type LocaleCatalogs = Readonly<Record<InterfaceLocale, LocaleCatalog>>;
 
 /**

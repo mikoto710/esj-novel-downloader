@@ -1,8 +1,11 @@
 import { vi } from "vitest";
 
 type GmRequestDetails = Tampermonkey.Request<unknown>;
+
 type GmLoadResponse = Tampermonkey.Response<unknown>;
+
 type GmErrorResponse = Tampermonkey.ErrorResponse;
+
 const GM_READY_STATE_DONE = 4 as Tampermonkey.ReadyState;
 
 interface PendingGmRequest {

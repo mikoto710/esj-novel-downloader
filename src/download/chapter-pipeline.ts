@@ -50,6 +50,7 @@ export function createChapterPipeline(
     const mapping = createMappedChapters(ports, plan, pageUrl, progress, cache, decisions);
     const protectedChapters = createProtectedChapters(ports, plan, progress, decisions);
     const shouldStop = () => ports.cancellation.isCancellationRequested() || Boolean(cache.failure);
+
     // 按既有重试策略获取正文，普通失败交给后续完整性检查
     async function downloadChapterHtml(task: DownloadTask, isRetry: boolean): Promise<string | null> {
         const result = await runWithRetry({
@@ -140,6 +141,7 @@ export function createChapterPipeline(
         if (ports.cancellation.isCancellationRequested()) {
             return "cancelled";
         }
+
         // 确认期间允许已完成的章节落盘，但暂停领取新任务
         const mappingConsent = mapping.register(task, chapter);
         chapters.set(task.index, chapter);
@@ -245,6 +247,7 @@ export function createChapterPipeline(
 
         return processFetchedChapterHtml(task, html, isRetry);
     }
+
     /**
      * 并发抓取普通章节，并等待密码队列收尾
      */
@@ -271,6 +274,7 @@ export function createChapterPipeline(
             throw workerFailure;
         }
     }
+
     /**
      * 串行重试调用方选定的章节问题，保存和再扫描仍由调用方负责
      */
@@ -313,6 +317,7 @@ export function createChapterPipeline(
             mapping.assertHealthy();
         }
     }
+
     return {
         restore: mapping.restore,
         download,

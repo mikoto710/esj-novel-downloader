@@ -31,6 +31,7 @@ const DIRECT_LOG_KEYS = {
 } as const satisfies Partial<Record<DownloadLogCode, LocaleKey>>;
 
 type DirectDownloadLogCode = keyof typeof DIRECT_LOG_KEYS;
+
 type ComplexDownloadLogCode = Exclude<DownloadLogCode, DirectDownloadLogCode>;
 
 function value(message: DownloadLog, key: string, fallback = ""): string {

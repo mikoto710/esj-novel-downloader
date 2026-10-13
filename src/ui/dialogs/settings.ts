@@ -263,6 +263,7 @@ export function createSettingsPanel(): void {
         onchange: async (e: Event) => {
             const input = e.target as HTMLInputElement;
             const checked = (e.target as HTMLInputElement).checked;
+
             // 读取也可能失败，先保留本面板最后确认的值作为回退
             let previous = isImageEnabled;
 
@@ -285,6 +286,7 @@ export function createSettingsPanel(): void {
             } finally {
                 input.disabled = false;
             }
+
             // 已有章节由后续任务按 imageEnabled 逐书判断，不在设置变更时全局清理
             log(
                 t("settings.log.image", {
