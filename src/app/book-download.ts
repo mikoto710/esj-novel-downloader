@@ -94,7 +94,7 @@ interface RunBookDownloadOptions {
 }
 
 /**
- * 管理书籍准备与范围选择，确认后取得锁并进入正式下载
+ * 管理书籍准备与章节选择，确认后取得锁并进入正式下载
  */
 export async function runBookDownload(options: RunBookDownloadOptions): Promise<void> {
     const { bookId, sourcePageType } = options;
@@ -131,6 +131,7 @@ export async function runBookDownload(options: RunBookDownloadOptions): Promise<
     function selectionPreview(initialSelection?: DownloadSelectionInput) {
         return {
             tasks: plan?.tasks || [],
+            ...(plan ? { directory: plan.directory, bookTitle: plan.meta.rawBookName || plan.meta.bookName } : {}),
             cachedIndexes: new Set(preview?.indexes || []),
             cacheWillBeInvalidated: Boolean(preview && preview.size > 0 && preview.compatibility !== "compatible"),
             cacheCount: preview?.size || 0,

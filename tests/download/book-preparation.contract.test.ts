@@ -159,10 +159,9 @@ describe("book preparation lifetime", () => {
         expect(fetch).not.toHaveBeenCalled();
         expect(mocks.acquire).not.toHaveBeenCalled();
         document.querySelector<HTMLInputElement>("#esj-download-range")?.click();
-        document.querySelector<HTMLInputElement>("#esj-range-start")!.value = "2";
-        const end = document.querySelector<HTMLInputElement>("#esj-range-end")!;
-        end.value = "3";
-        end.dispatchEvent(new Event("input"));
+        document.querySelector<HTMLButtonElement>("#esj-range-clear-selection")!.click();
+        document.querySelector<HTMLInputElement>('#esj-range-directory input[data-esj-select-index="1"]')!.click();
+        document.querySelector<HTMLInputElement>('#esj-range-directory input[data-esj-select-index="2"]')!.click();
         document.querySelector<HTMLButtonElement>("#esj-range-download")?.click();
         await running;
         expect(mocks.runDownload.mock.calls[0][0].tasks.map((task: { index: number }) => task.index)).toEqual([1, 2]);

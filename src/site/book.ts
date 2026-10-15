@@ -1,3 +1,4 @@
+import { createBookDirectorySnapshot, type BookDirectorySnapshot } from "./book-directory";
 import type { DownloadTask } from "../download/contracts";
 import { fetchPageText } from "../browser/request";
 
@@ -122,6 +123,7 @@ export function parseBookMetadata(doc: Document, pageUrl: string) {
  */
 export interface PreparedBook {
     tasks: DownloadTask[];
+    directory: BookDirectorySnapshot;
     meta: ReturnType<typeof parseBookMetadata>;
     pageUrl: string;
 }
@@ -159,15 +161,17 @@ export function getForumBookId(pathname: string): string {
 }
 
 function readBookPlan(doc: Document, pageUrl: string, fetched: boolean): PreparedBook {
-    const chapterLinks = Array.from(doc.querySelectorAll("#chapterList a")) as HTMLAnchorElement[];
-    if (chapterLinks.length === 0) {
+    const container = doc.querySelector("#chapterList");
+    const chapterLinks = Array.from(container?.querySelectorAll("a") || []) as HTMLAnchorElement[];
+    if (!container || chapterLinks.length === 0) {
         throw new BookPreflightError("chapter-list-missing", "chapter-list");
     }
     return {
+        directory: createBookDirectorySnapshot(container, chapterLinks),
         tasks: chapterLinks.map((node, index) => ({
             index,
             url: fetched ? new URL(node.getAttribute("href") || node.href, pageUrl).href : node.href,
-            title: (node.getAttribute("data-title") || node.innerText || "").trim()
+            title: node.textContent?.trim() || node.getAttribute("data-title")?.trim() || `第 ${index + 1} 章`
         })),
         meta: parseBookMetadata(doc, pageUrl),
         pageUrl

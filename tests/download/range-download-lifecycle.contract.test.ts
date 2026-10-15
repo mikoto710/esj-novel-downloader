@@ -87,6 +87,7 @@ describe("range download lifecycle", () => {
     const tasks = [createDownloadTask(0), createDownloadTask(1), createDownloadTask(2)];
     const plan = {
         tasks,
+        directory: { html: "", chapterCount: tasks.length },
         meta: {
             bookName: "测试小说",
             rawBookName: "测试小说",
@@ -240,8 +241,8 @@ describe("range download lifecycle", () => {
         expect(mocks.claimCache).not.toHaveBeenCalled();
         expect(mocks.release).not.toHaveBeenCalled();
     });
-    it("returns to confirmation without starting when the latest cache became incompatible", async () => {
-        const selection = { mode: "range", sourceTotalChapters: 3, startIndex: 1, endIndex: 2 };
+    it("retains a sparse selection when incompatible cache requires confirmation again", async () => {
+        const selection = { mode: "selected", sourceTotalChapters: 3, indexes: [0, 2] };
         mocks.rangePopup
             .mockResolvedValueOnce({ action: "download", selection })
             .mockResolvedValueOnce({ action: "cancel" });
@@ -266,7 +267,13 @@ describe("range download lifecycle", () => {
         expect(mocks.release).toHaveBeenCalledOnce();
         expect(mocks.release.mock.invocationCallOrder[0]).toBeLessThan(mocks.rangePopup.mock.invocationCallOrder[1]);
         expect(mocks.rangePopup).toHaveBeenLastCalledWith(
-            expect.objectContaining({ cacheWillBeInvalidated: true, cacheCount: 3, initialSelection: selection })
+            expect.objectContaining({
+                cacheWillBeInvalidated: true,
+                cacheCount: 3,
+                initialSelection: selection,
+                tasks,
+                directory: plan.directory
+            })
         );
         expect(state.cachedData).toBe(old);
     });

@@ -226,6 +226,7 @@ export async function resetBrowserDownloadHarness(): Promise<BrowserDownloadRunt
             pageTitle: document.title,
             loadPlan: async () => ({
                 tasks: options.tasks,
+                directory: { html: "", chapterCount: options.tasks.length },
                 pageUrl: options.pageUrl!,
                 meta: {
                     bookName: options.bookName,

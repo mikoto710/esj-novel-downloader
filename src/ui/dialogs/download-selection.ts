@@ -1,33 +1,35 @@
-import { formatSelectionSummary } from "../messages/selection";
+import type { BookDirectorySnapshot } from "../../site/book-directory";
 import type { DownloadSelection, DownloadSelectionInput, StoredDownloadSelectionSummary } from "../../download/plan";
 import type { LocaleKey } from "../../locale/catalog";
 import type { DownloadTask } from "../../download/contracts";
 import {
-    createDownloadPlan,
     createChapterSelection,
-    createDownloadSelectionSummary,
+    createDownloadPlan,
     createRangeSelection,
     selectDownloadTasks
 } from "../../download/plan";
 import { enableDrag, el, registerElementCleanup, removeElement } from "../dom";
-import { createCommonHeader } from "./common";
 import { subscribeInterfaceLocaleChange, t } from "../locale";
 import { acquirePageActionGroupLockForPopup } from "../page-action-lock";
+import { formatSelectionSummary } from "../messages/selection";
+import { createCommonHeader } from "./common";
+import { createChapterDirectoryView, type ChapterDirectoryView } from "./chapter-directory";
+import { createChapterSearchView } from "./chapter-search";
+import { DOWNLOAD_SELECTION_STYLES } from "./download-selection-styles";
 
 export type DownloadSelectionDecision =
     | { action: "download"; selection: DownloadSelectionInput }
     | { action: "open-existing" }
     | { action: "cancel" };
 
-/**
- * 选择窗口的准备提示阶段，与正式下载阶段分别维护
- */
 export type DownloadPreparationStage = "checking-task" | "reading-book" | "checking-cache";
 
 /**
- * 准备完成后的目录与缓存预览，章节索引沿用原书章序
+ * 固定目录与只读缓存预览，章节身份始终使用原书索引
  */
 export interface DownloadSelectionPreview {
+    directory?: BookDirectorySnapshot;
+    bookTitle?: string;
     tasks: readonly DownloadTask[];
     cachedIndexes: ReadonlySet<number>;
     cacheWillBeInvalidated: boolean;
@@ -37,7 +39,7 @@ export interface DownloadSelectionPreview {
 }
 
 /**
- * 选择窗口的初始显示输入，插图设置与旧导出入口在创建时固定
+ * 选择窗口的初始输入，插图设置与旧导出入口在创建时固定
  */
 export interface DownloadSelectionPopupOptions extends DownloadSelectionPreview {
     hasExistingExport: boolean;
@@ -47,7 +49,7 @@ export interface DownloadSelectionPopupOptions extends DownloadSelectionPreview 
 }
 
 /**
- * 选择窗口的决策与显示控制，窗口结束后所有更新失效
+ * 选择会话的决策与准备状态，结束后忽略晚到更新
  */
 export interface DownloadSelectionPopup {
     decision: Promise<DownloadSelectionDecision>;
@@ -63,45 +65,55 @@ const PREPARATION_MESSAGES: Record<DownloadPreparationStage, LocaleKey> = {
     "checking-cache": "range.preparingCache"
 };
 
-let finishActiveRangeSelection: ((decision: DownloadSelectionDecision) => void) | null = null;
+let finishActiveSelection: ((decision: DownloadSelectionDecision) => void) | null = null;
 
 /**
- * 显示可更新的准备态与范围选择，缓存命中仅作锁前预览
+ * 统一从目录勾选固定章节集合；准备与勾选均不取得任务锁或写入缓存
  */
 export function createDownloadSelectionPopup(options: DownloadSelectionPopupOptions): DownloadSelectionPopup {
-    finishActiveRangeSelection?.({ action: "cancel" });
+    finishActiveSelection?.({ action: "cancel" });
     removeElement(document.querySelector("#esj-range-selection"));
 
     let resolveDecision!: (decision: DownloadSelectionDecision) => void;
     const decision = new Promise<DownloadSelectionDecision>((resolve) => {
         resolveDecision = resolve;
     });
+
+    // 预览与勾选属于当前选择会话，切换下载方式时保留
     let preview: DownloadSelectionPreview = options;
-    let preparationStage = options.preparationStage;
-    let total = preview.tasks.length;
-    const initialSummary = options.initialSelection
-        ? createDownloadSelectionSummary(options.initialSelection)
-        : undefined;
-    let retainedSelection = options.initialSelection;
+    let stage = options.preparationStage;
     let settled = false;
     let unsubscribeLocale: () => void = () => undefined;
+    let directoryView: ChapterDirectoryView | undefined;
+    let selected = new Set<number>();
 
-    // 关闭按钮、替换弹窗和外部移除共用同一次决策收尾
-    const finish = (decision: DownloadSelectionDecision) => {
+    const restoreSelection = (selection?: DownloadSelectionInput) => {
+        selected = new Set(
+            (selection ? selectDownloadTasks(preview.tasks, selection) : preview.tasks).map((task) => task.index)
+        );
+    };
+    restoreSelection(options.initialSelection);
+
+    // 所有关闭入口共用决策收尾，统一释放订阅与子视图
+    const finish = (value: DownloadSelectionDecision) => {
         if (settled) {
             return;
         }
+
         settled = true;
-        if (finishActiveRangeSelection === finish) {
-            finishActiveRangeSelection = null;
+        if (finishActiveSelection === finish) {
+            finishActiveSelection = null;
         }
         unsubscribeLocale();
+        searchView.dispose();
+        directoryView?.dispose();
         removeElement(popup);
-        resolveDecision(decision);
+        resolveDecision(value);
     };
-    const header = createCommonHeader(t("range.title"), () => finish({ action: "cancel" }));
+    const unavailable = () => Boolean(stage || preview.preparationErrorKey || !preview.tasks.length);
 
-    // 切换方式只收起范围输入，保留已填写的章序
+    // 下载方式
+    const header = createCommonHeader(t("range.title"), () => finish({ action: "cancel" }));
     const allMode = el("input", {
         id: "esj-download-all",
         type: "radio",
@@ -113,304 +125,265 @@ export function createDownloadSelectionPopup(options: DownloadSelectionPopupOpti
         id: "esj-download-range",
         type: "radio",
         name: "esj-download-mode",
-        value: "range",
+        value: "selected",
         checked: Boolean(options.initialSelection && options.initialSelection.mode !== "all")
     });
-    const allModeText = el("span");
-    const rangeModeText = el("span");
-    const mode = el(
-        "div",
-        {
-            id: "esj-download-mode",
-            role: "radiogroup",
-            style: "display:flex;gap:20px;flex-wrap:wrap;"
-        },
-        [
-            el("label", { style: "display:flex;align-items:center;gap:6px;cursor:pointer;" }, [allMode, allModeText]),
-            el("label", { style: "display:flex;align-items:center;gap:6px;cursor:pointer;" }, [
-                rangeMode,
-                rangeModeText
-            ])
-        ]
-    );
+    const allText = el("span"),
+        selectedText = el("span");
+    const mode = el("div", { role: "radiogroup", className: "esj-selection-modes" }, [
+        el("label", {}, [allMode, allText]),
+        el("label", {}, [rangeMode, selectedText])
+    ]);
+
+    const bookTitle = el("div", { className: "esj-selection-book-title" });
+    const chapterCount = el("strong", { id: "esj-selection-count", "aria-live": "polite" });
+    const totalCount = el("div", { className: "esj-selection-total" });
+
+    // 搜索只跳转目录，批量勾选统一更新已选集合
+    const directoryBox = el("div", { id: "esj-range-directory", className: "esj-selection-directory" });
+    const searchView = createChapterSearchView({
+        search: (query) => directoryView?.search(query) || [],
+        getBounds: () => ({
+            top: header.getBoundingClientRect().bottom + 4,
+            bottom: footer.getBoundingClientRect().top - 4
+        }),
+        onNavigate(index) {
+            if (!settled) {
+                directoryView?.reveal(index);
+            }
+        }
+    });
+
+    const selectAll = el("button", {
+        type: "button",
+        onclick: () => {
+            selected = new Set(preview.tasks.map((task) => task.index));
+            refresh();
+        }
+    });
+    const invertSelection = el("button", {
+        type: "button",
+        onclick: () => {
+            selected = new Set(preview.tasks.filter((task) => !selected.has(task.index)).map((task) => task.index));
+            refresh();
+        }
+    });
+    const clearSelection = el("button", {
+        id: "esj-range-clear-selection",
+        type: "button",
+        onclick: () => {
+            selected.clear();
+            refresh();
+        }
+    });
+
+    const rangeFields = el("div", { id: "esj-range-fields", className: "esj-selection-fields" }, [
+        searchView.element,
+        el("div", { className: "esj-selection-toolbar" }, [selectAll, invertSelection, clearSelection]),
+        directoryBox
+    ]);
+
+    // 插图和缓存提示保留图标与重点颜色；缓存失效同意仍由正式决策处理
+    const imageValue = el("strong");
     const imageLabel = el("span");
-    const imageStatus = el("span", { style: `color:${options.imageEnabled ? "#237eaf" : "#666"};` });
-    const imageSetting = el("div", { id: "esj-download-images", style: "font-size:13px;color:#666;" }, [
+    const imageStatus = el("div", { id: "esj-download-images" }, [
         el("span", { "aria-hidden": "true" }, ["🖼️ "]),
         imageLabel,
-        imageStatus
-    ]);
-    const startLabel = el("label", { for: "esj-range-start", style: "display:flex;flex-direction:column;gap:5px;" }, [
-        t("range.start")
-    ]);
-    const endLabel = el("label", { for: "esj-range-end", style: "display:flex;flex-direction:column;gap:5px;" }, [
-        t("range.end")
-    ]);
-    const startInput = el("input", {
-        id: "esj-range-start",
-        type: "number",
-        min: 1,
-        max: total,
-        step: 1,
-        value: initialSummary?.ranges[0]?.startChapter ?? 1,
-        style: "width:100%;min-width:0;height:32px;padding:4px 8px;background:#fff;color:#333;border:1px solid #bbb;border-radius:4px;"
-    });
-    const endInput = el("input", {
-        id: "esj-range-end",
-        type: "number",
-        min: 1,
-        max: total,
-        step: 1,
-        value: initialSummary?.ranges.at(-1)?.endChapter ?? total,
-        style: "width:100%;min-width:0;height:32px;padding:4px 8px;background:#fff;color:#333;border:1px solid #bbb;border-radius:4px;"
-    });
-    startLabel.appendChild(startInput);
-    endLabel.appendChild(endInput);
-
-    // 章名、数量和校验结果随输入刷新，不在输入时重新读取缓存
-    const startTitle = el("div", {
-        id: "esj-range-start-title",
-        style: "font-size:12px;color:#666;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
-    });
-    const endTitle = el("div", {
-        id: "esj-range-end-title",
-        style: "font-size:12px;color:#666;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
-    });
-    const rangeFields = el("div", { id: "esj-range-fields", style: "display:none;flex-direction:column;gap:6px;" }, [
-        el("div", { style: "display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px;" }, [
-            startLabel,
-            endLabel
-        ]),
-        el("div", { style: "display:flex;flex-direction:column;gap:2px;" }, [startTitle, endTitle])
+        imageValue
     ]);
 
-    // 章数、插图和缓存各占一行，只强调状态与可复用数量
-    const chapterCount = el("div");
-    const cacheLabel = el("span");
-    const cacheReuseText = el("span");
-    const cacheReuseCount = el("strong", { style: "font-weight:600;color:#444;" });
-    const cacheReuseUnit = el("span");
-    const cacheReuse = el("div", { id: "esj-range-cache-reuse", style: "font-size:13px;color:#666;" }, [
+    const cacheLabel = el("span"),
+        cacheValue = el("strong"),
+        cacheUnit = el("span");
+    const cacheReuse = el("div", { id: "esj-range-cache-reuse" }, [
         el("span", { "aria-hidden": "true" }, ["♻️ "]),
         cacheLabel,
-        cacheReuseText,
-        " ",
-        cacheReuseCount,
-        " ",
-        cacheReuseUnit
+        cacheValue,
+        cacheUnit
     ]);
-    const summary = el("div", { id: "esj-range-summary", style: "display:flex;flex-direction:column;gap:5px;" }, [
-        chapterCount,
-        imageSetting,
-        cacheReuse
-    ]);
-    const validation = el("div", {
-        id: "esj-range-validation",
-        style: "display:none;font-size:12px;color:#b42318;"
-    });
+    const summary = el("div", { className: "esj-selection-summary" }, [imageStatus, cacheReuse]);
+    const validation = el("div", { id: "esj-range-validation", role: "status" });
+    const cacheWarning = el("div", { className: "esj-selection-cache-warning" });
 
-    // 全范围只作轻提示，整书缓存失效才突出警告
-    const allWarning = el("div", {
-        id: "esj-range-all-warning",
-        style: "display:none;color:#666;font-size:12px;"
-    });
-    const cacheWarning = el("div", {
-        id: "esj-range-cache-warning",
-        style: "display:none;padding:8px;border:1px solid #d97706;background:#fff7e6;color:#8a5a00;border-radius:5px;font-size:12px;"
-    });
-    const cancelButton = el(
-        "button",
-        {
-            id: "esj-range-cancel",
-            style: "padding:8px 12px;background:#eee;border:1px solid #ccc;border-radius:6px;cursor:pointer;",
-            onclick: () => finish({ action: "cancel" })
-        },
-        [t("common.cancel")]
-    );
-
-    // 旧结果可独立导出，目录或缓存预检失败时仍保留这个入口
-    const openPreviousButton = options.hasExistingExport
-        ? el(
-              "button",
-              {
-                  id: "esj-range-open-previous",
-                  style: "padding:8px 12px;background:#f3f8fc;border:1px solid #b8d5e8;border-radius:6px;color:#2b6f9f;cursor:pointer;white-space:nowrap;",
-                  onclick: () => finish({ action: "open-existing" })
-              },
-              [t("range.openPrevious")]
-          )
+    // 旧结果入口放在书名信息区，准备中或准备失败时仍可用
+    const previousButton = options.hasExistingExport
+        ? el("button", {
+              id: "esj-range-open-previous",
+              type: "button",
+              onclick: () => finish({ action: "open-existing" })
+          })
         : null;
-    const downloadButton = el(
-        "button",
-        {
-            id: "esj-range-download",
-            style: "padding:8px 12px;background:#2b9bd7;color:#fff;border:none;border-radius:6px;cursor:pointer;"
-        },
-        [t("range.download")]
-    );
+    const bookDetails = el("div", { className: "esj-selection-book-info" }, [bookTitle, summary]);
+    const bookInfo = el("div", { className: "esj-selection-book" }, [
+        bookDetails,
+        ...(previousButton ? [previousButton] : [])
+    ]);
+
+    // 底栏只返回本次下载或取消决策，正式任务由调用方处理
+    const cancelButton = el("button", {
+        id: "esj-range-cancel",
+        type: "button",
+        onclick: () => finish({ action: "cancel" })
+    });
+    const downloadButton = el("button", {
+        id: "esj-range-download",
+        type: "button",
+        className: "esj-selection-download",
+        onclick: () => {
+            const selection = getSelection();
+            if (selection) {
+                finish({ action: "download", selection });
+            }
+        }
+    });
 
     const getSelection = (): DownloadSelection | null => {
-        if (preparationStage || preview.preparationErrorKey || total === 0) {
+        if (unavailable()) {
             return null;
         }
-        if (allMode.checked) {
-            return createRangeSelection(1, total, total);
-        }
-        if (retainedSelection) {
-            return createChapterSelection(
-                selectDownloadTasks(preview.tasks, retainedSelection).map((task) => task.index),
-                total
-            );
-        }
-        const startText = startInput.value.trim();
-        const endText = endInput.value.trim();
-        if (!startText || !endText) {
-            return null;
-        }
-        try {
-            return createRangeSelection(Number(startText), Number(endText), total);
-        } catch {
-            return null;
-        }
+        return allMode.checked
+            ? createRangeSelection(1, preview.tasks.length, preview.tasks.length)
+            : selected.size
+              ? createChapterSelection([...selected], preview.tasks.length)
+              : null;
     };
 
-    // 只刷新文案和预览，切换语言时保留用户输入
     const refresh = () => {
-        const selection = getSelection();
-        const unavailable = Boolean(preparationStage || preview.preparationErrorKey);
-        allMode.disabled = rangeMode.disabled = unavailable;
-        startInput.disabled = endInput.disabled = unavailable || allMode.checked;
-        rangeFields.style.display = rangeMode.checked ? "flex" : "none";
-        allModeText.textContent = t("range.modeAll");
-        rangeModeText.textContent = t("range.modeRange");
-        mode.setAttribute("aria-label", t("range.title"));
-        imageLabel.textContent = t("range.imagesLabel");
-        imageStatus.textContent = t(options.imageEnabled ? "range.imagesEnabled" : "range.imagesDisabled");
-        cacheLabel.textContent = t("range.cacheLabel");
-        cacheReuseText.textContent = t("range.summary");
-        cacheReuseUnit.textContent = t("range.cacheUnit");
-        const headerLabel = header.querySelector("span");
-        if (headerLabel) {
-            headerLabel.textContent = t("range.title");
-        }
-        startLabel.firstChild!.textContent = t("range.start");
-        endLabel.firstChild!.textContent = t("range.end");
-        cancelButton.textContent = t("common.cancel");
-        downloadButton.textContent = t(preview.cacheWillBeInvalidated ? "range.clearAndDownload" : "range.download");
-        if (openPreviousButton) {
-            const label = formatSelectionSummary(options.existingSelection);
-            openPreviousButton.textContent = t("range.openPrevious");
-            openPreviousButton.title = `${t("range.openPrevious")}（${label}）`;
-            openPreviousButton.setAttribute("aria-label", openPreviousButton.title);
-        }
-        cacheWarning.textContent = t("range.cacheDiscardWarning", { count: preview.cacheCount });
-        cacheWarning.style.display = !preparationStage && preview.cacheWillBeInvalidated ? "block" : "none";
-        if (!selection) {
-            validation.textContent = preparationStage
-                ? t(PREPARATION_MESSAGES[preparationStage])
-                : preview.preparationErrorKey
-                  ? t(preview.preparationErrorKey)
-                  : t("range.invalid", { total });
-            validation.style.color = preparationStage ? "#666" : "#b42318";
-            startTitle.textContent = "";
-            endTitle.textContent = "";
-            summary.style.display = "none";
-            validation.style.display = "block";
-            allWarning.style.display = "none";
-            downloadButton.disabled = true;
+        if (settled) {
             return;
         }
-        const plan = createDownloadPlan({ tasks: selectDownloadTasks(preview.tasks, selection), selection });
-        const selectedTasks = plan.tasks;
 
-        // 确认下载时需清除的整书缓存，不计入本次预览的可复用章节数
-        const cached = preview.cacheWillBeInvalidated ? 0 : plan.readyCount(preview.cachedIndexes);
-        validation.textContent = "";
-        validation.style.display = "none";
-        summary.style.display = "flex";
-        startTitle.textContent = t("range.startTitle", { title: selectedTasks[0]?.title || "" });
-        endTitle.textContent = t("range.endTitle", { title: selectedTasks.at(-1)?.title || "" });
-        startTitle.title = startTitle.textContent;
-        endTitle.title = endTitle.textContent;
-        chapterCount.textContent = t("range.chapterCount", { count: selectedTasks.length });
-        cacheReuseCount.textContent = String(cached);
-        cacheReuse.style.display = preview.cacheWillBeInvalidated ? "none" : "block";
-        allWarning.textContent = t("range.allEquivalent");
-        allWarning.style.display = rangeMode.checked && selection.mode === "all" ? "block" : "none";
-        downloadButton.disabled = false;
-    };
-    downloadButton.addEventListener("click", () => {
-        const selection = getSelection();
-        if (selection) {
-            finish({ action: "download", selection });
+        const disabled = unavailable();
+        allMode.disabled = rangeMode.disabled = disabled;
+        allText.textContent = t("range.modeAll");
+        selectedText.textContent = t("range.modeRange");
+        mode.setAttribute("aria-label", t("selection.downloadMode"));
+        header.querySelector("span")!.textContent = t("range.title");
+        bookTitle.textContent = preview.bookTitle || "";
+        bookTitle.hidden = !preview.bookTitle;
+        bookDetails.hidden = !preview.bookTitle && disabled;
+        bookInfo.hidden = bookDetails.hidden && !previousButton;
+
+        popup.setAttribute("data-esj-selecting", String(rangeMode.checked && !disabled));
+        rangeFields.hidden = !rangeMode.checked || disabled;
+        if (rangeFields.hidden) {
+            searchView.close();
         }
-    });
+        selectAll.textContent = t("selection.selectAll");
+        invertSelection.textContent = t("selection.invert");
+        clearSelection.textContent = t("selection.clear");
+        selectAll.disabled = invertSelection.disabled = clearSelection.disabled = disabled;
+        directoryView?.setSelection(selected);
+
+        // 章数与缓存复用预览使用同一份选择计划
+        const selection = getSelection();
+        const plan = selection
+            ? createDownloadPlan({ tasks: selectDownloadTasks(preview.tasks, selection), selection })
+            : null;
+        chapterCount.hidden = disabled;
+        chapterCount.textContent = allMode.checked
+            ? t("range.chapterCount", { count: preview.tasks.length })
+            : t("selection.selectedCount", { count: selected.size });
+        totalCount.hidden = disabled || allMode.checked;
+        totalCount.textContent = t("selection.directoryTotal", { count: preview.tasks.length });
+
+        summary.hidden = disabled;
+        imageLabel.textContent = t("range.imagesLabel");
+        imageValue.textContent = t(options.imageEnabled ? "range.imagesEnabled" : "range.imagesDisabled");
+        imageValue.style.color = options.imageEnabled ? "#217745" : "#666";
+        cacheLabel.textContent = t("range.summary") + " ";
+        cacheValue.textContent = String(plan?.readyCount(preview.cachedIndexes) || 0);
+        cacheUnit.textContent = " " + t("range.cacheUnit");
+        cacheReuse.hidden = preview.cacheWillBeInvalidated;
+
+        // 准备状态、空选与整书缓存失效提示
+        cacheWarning.hidden = Boolean(stage) || !preview.cacheWillBeInvalidated;
+        cacheWarning.textContent = "⚠️ " + t("range.cacheDiscardWarning", { count: preview.cacheCount });
+        validation.textContent = stage
+            ? t(PREPARATION_MESSAGES[stage])
+            : preview.preparationErrorKey
+              ? t(preview.preparationErrorKey)
+              : !selection
+                ? t("selection.empty")
+                : "";
+        validation.hidden = !validation.textContent;
+
+        cancelButton.textContent = t("common.cancel");
+        if (previousButton) {
+            previousButton.textContent = t("range.openPrevious");
+            previousButton.title = formatSelectionSummary(options.existingSelection);
+            previousButton.setAttribute("aria-label", t("range.openPrevious") + " " + previousButton.title);
+        }
+        downloadButton.disabled = !selection;
+        downloadButton.textContent = preview.cacheWillBeInvalidated
+            ? t("range.clearAndDownload")
+            : allMode.checked
+              ? t("range.download")
+              : t("selection.downloadSelected", { count: selected.size });
+
+        searchView.refresh();
+    };
+
+    const buildDirectory = () => {
+        directoryView?.dispose();
+        searchView.close();
+        directoryView = createChapterDirectoryView({
+            ...(preview.directory ? { snapshot: preview.directory } : {}),
+            tasks: preview.tasks,
+            selectedIndexes: selected,
+            onSelect(indexes, checked) {
+                if (settled || unavailable() || !rangeMode.checked) {
+                    directoryView?.setSelection(selected);
+                    return;
+                }
+
+                indexes.forEach((index) => {
+                    if (checked) {
+                        selected.add(index);
+                    } else {
+                        selected.delete(index);
+                    }
+                });
+
+                refresh();
+            }
+        });
+        directoryBox.replaceChildren(directoryView.element);
+    };
+
     allMode.addEventListener("change", refresh);
     rangeMode.addEventListener("change", refresh);
-    const rangeEdited = () => {
-        retainedSelection = undefined;
-        refresh();
-    };
-    startInput.addEventListener("input", rangeEdited);
-    endInput.addEventListener("input", rangeEdited);
 
-    // 正文排列选择、预览和警告，底部只负责返回本次操作决策
-    const popup = el(
-        "div",
-        {
-            id: "esj-range-selection",
-            role: "dialog",
-            "aria-modal": "true",
-            style: "position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:400px;max-width:calc(100vw - 32px);max-height:calc(100dvh - 32px);font:14px/1.5 sans-serif;color:#333;text-align:left;box-sizing:border-box;background:#fff;border:1px solid #aaa;border-radius:8px;box-shadow:0 0 18px rgba(0,0,0,.28);z-index:999999;display:flex;flex-direction:column;"
-        },
-        [
-            // 控件字号和间距限定在本弹窗内，避免继承站点的大号表单样式
-            el("style", {}, [
-                `
-                    #esj-range-selection button, #esj-range-selection input {
-                        font: inherit; line-height: 1.5; box-sizing: border-box; margin: 0; min-height: 0;
-                    }
-                    #esj-range-selection button { width: auto; text-transform: none; }
-                    #esj-range-selection button:disabled { opacity: .55; cursor: not-allowed; }
-                    #esj-range-selection label { margin: 0; font: inherit; color: inherit; }
-                    #esj-download-mode input { appearance: auto; width: 14px; height: 14px; padding: 0; flex: 0 0 auto; }
-                    #esj-range-selection .esj-common-header { font-size: 16px; flex-shrink: 0; }
-                `
-            ]),
-            header,
-            el(
-                "div",
-                { style: "padding:16px;display:flex;flex-direction:column;gap:12px;overflow:auto;min-height:0;" },
-                [mode, rangeFields, summary, validation, allWarning, cacheWarning]
-            ),
+    const footer = el("div", { className: "esj-selection-footer" }, [
+        el("div", {}, [chapterCount, totalCount]),
+        el("div", { className: "esj-selection-actions" }, [cancelButton, downloadButton])
+    ]);
 
-            // 旧结果入口靠左，取消和开始下载作为一组靠右
-            el(
-                "div",
-                {
-                    style: "padding:0 16px 16px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;flex-shrink:0;"
-                },
-                [
-                    ...(openPreviousButton ? [openPreviousButton] : []),
-                    el("div", { style: "margin-left:auto;display:flex;justify-content:flex-end;gap:8px;" }, [
-                        cancelButton,
-                        downloadButton
-                    ])
-                ]
-            )
-        ]
-    );
-    finishActiveRangeSelection = finish;
+    // 搜索不放入滚动正文，避免下拉被裁切；只有目录本身负责章节滚动
+    const popup = el("div", { id: "esj-range-selection", role: "dialog", "aria-modal": "true" }, [
+        el("style", {}, [DOWNLOAD_SELECTION_STYLES]),
+        header,
+        el("div", { className: "esj-selection-body" }, [bookInfo, mode, validation, cacheWarning]),
+        rangeFields,
+        footer
+    ]);
+
+    // 挂载窗口后绑定页面锁、拖拽与语言订阅，再展示首次预览
+    finishActiveSelection = finish;
     document.body.appendChild(popup);
     registerElementCleanup(popup, () => finish({ action: "cancel" }));
     acquirePageActionGroupLockForPopup(popup);
     enableDrag(popup, ".esj-common-header");
     unsubscribeLocale = subscribeInterfaceLocaleChange(refresh);
+
+    if (!unavailable()) {
+        buildDirectory();
+    }
     refresh();
-    (preparationStage
+    (stage
         ? cancelButton
-        : preview.preparationErrorKey && openPreviousButton
-          ? openPreviousButton
+        : preview.preparationErrorKey && previousButton
+          ? previousButton
           : rangeMode.checked
             ? rangeMode
             : allMode
@@ -418,42 +391,48 @@ export function createDownloadSelectionPopup(options: DownloadSelectionPopupOpti
 
     return {
         decision,
-        /**
-         * 返回决策是否已结束，供调用方同步阻止晚到的准备工作
-         */
+
         get closed() {
             return settled;
         },
+
         /**
-         * 更新准备提示，不开放目录尚未确定的下载操作
+         * 准备完成前不开放章节选择和下载
          */
-        showPreparing(stage) {
+        showPreparing(next) {
             if (!settled) {
-                preparationStage = stage;
+                stage = next;
                 refresh();
             }
         },
+
         /**
-         * 原地显示准备结果，关闭窗口后忽略晚到目录或错误
+         * 接收准备结果，关闭后忽略更新；仅任务列表引用不变且未传 initialSelection 时保留勾选
          */
         showReady(next) {
             if (settled) {
                 return;
             }
+
+            const changed = preview.tasks !== next.tasks;
             preview = next;
-            preparationStage = undefined;
-            total = next.tasks.length;
-            startInput.max = endInput.max = String(total);
-            const selection = next.initialSelection ? createDownloadSelectionSummary(next.initialSelection) : undefined;
-            retainedSelection = next.initialSelection;
-            allMode.checked = !selection || selection.mode === "all";
-            rangeMode.checked = selection?.mode === "selected";
-            startInput.value = String(selection?.ranges[0]?.startChapter ?? 1);
-            endInput.value = String(selection?.ranges.at(-1)?.endChapter ?? total);
+            stage = undefined;
+
+            if (next.initialSelection || changed) {
+                restoreSelection(next.initialSelection);
+                allMode.checked = !next.initialSelection || next.initialSelection.mode === "all";
+                rangeMode.checked = !allMode.checked;
+            }
+
+            if (!directoryView || changed) {
+                buildDirectory();
+            }
+
             refresh();
         },
+
         /**
-         * 结束选择并释放视图资源，重复关闭保持幂等
+         * 取消本次选择并释放视图，重复调用保持幂等
          */
         close() {
             finish({ action: "cancel" });
