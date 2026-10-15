@@ -107,6 +107,24 @@ export const DOWNLOAD_SELECTION_STYLES = `
     padding: 8px 12px;
 }
 
+#esj-range-selection .esj-selection-filename {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    padding: 0 16px 12px;
+    flex-shrink: 0;
+}
+
+#esj-download-filename {
+    width: 100%;
+    min-width: 0;
+    padding: 8px;
+    border: 1px solid #b8c4ce;
+    border-radius: 5px;
+    background: #fff;
+    color: #333;
+}
+
 #esj-range-selection .esj-selection-summary {
     display: flex;
     gap: 6px 16px;
@@ -500,6 +518,9 @@ export const DOWNLOAD_SELECTION_STYLES = `
         padding: 0 10px 10px;
     }
 
+    #esj-range-selection .esj-selection-filename {
+        padding: 0 10px 10px;
+    }
 
     #esj-range-selection .esj-selection-footer {
         padding: 0 10px 10px;

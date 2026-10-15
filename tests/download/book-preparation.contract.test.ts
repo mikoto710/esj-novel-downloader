@@ -162,10 +162,17 @@ describe("book preparation lifetime", () => {
         document.querySelector<HTMLButtonElement>("#esj-range-clear-selection")!.click();
         document.querySelector<HTMLInputElement>('#esj-range-directory input[data-esj-select-index="1"]')!.click();
         document.querySelector<HTMLInputElement>('#esj-range-directory input[data-esj-select-index="2"]')!.click();
+        const filename = document.querySelector<HTMLInputElement>("#esj-download-filename");
+        expect(filename).not.toBeNull();
+        filename!.value = "周末阅读";
+        filename!.dispatchEvent(new Event("input", { bubbles: true }));
         document.querySelector<HTMLButtonElement>("#esj-range-download")?.click();
         await running;
         expect(mocks.runDownload.mock.calls[0][0].tasks.map((task: { index: number }) => task.index)).toEqual([1, 2]);
         expect(mocks.claimCache).toHaveBeenCalledOnce();
         expect(mocks.release).toHaveBeenCalledOnce();
+        const { state } = await import("../../src/app/page-session");
+        expect(state.cachedData?.exportFilename).toBe("周末阅读");
+        expect(state.cachedData?.metadata.title).toBe("测试小说");
     });
 });

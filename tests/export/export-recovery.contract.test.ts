@@ -201,15 +201,17 @@ describe("full-book export recovery contracts", () => {
     it("keeps the new task title when a closed format popup finishes EPUB generation", async () => {
         const pending = createDeferred<Blob>();
         mocks.buildEpub.mockReturnValueOnce(pending.promise);
-        await prepareExportPopup();
+        const { state } = await prepareExportPopup(createCachedData({ exportFilename: "原始选集" }));
         click("#esj-epub");
         await vi.waitFor(() => expect(mocks.buildEpub).toHaveBeenCalledOnce());
         click("#esj-format .esj-common-header button");
         const { activateDownload } = await import("../../src/app/page-session");
         activateDownload("200", "new-task", createDownloadHarness([]).dependencies.cancellation);
+        state.cachedData = createCachedData({ exportFilename: "后来任务" });
         document.title = "[1/3] new task";
         pending.resolve(new Blob(["epub"]));
         await vi.waitFor(() => expect(mocks.triggerDownload).toHaveBeenCalledOnce());
+        expect(mocks.triggerDownload).toHaveBeenCalledWith(expect.any(Blob), "原始选集.epub");
         expect(document.title).toBe("[1/3] new task");
     });
 
@@ -295,8 +297,9 @@ describe("full-book export recovery contracts", () => {
         history.resolve();
     });
 
-    it("uses the captured range snapshot for filenames and history", async () => {
+    it("keeps the captured filename while preserving the original book and selection in history", async () => {
         const rangeData = createCachedData({
+            exportFilename: "  我的/选集.epub  ",
             exportContext: {
                 bookId: "100",
                 rawBookName: "测试小说",
@@ -314,13 +317,15 @@ describe("full-book export recovery contracts", () => {
         });
         const { state } = await prepareExportPopup(rangeData);
 
-        state.cachedData = createCachedData();
+        state.cachedData = createCachedData({ metadata: { ...rangeData.metadata, title: "Another book" } });
         click("#esj-txt");
 
-        expect(mocks.triggerDownload).toHaveBeenCalledWith(expect.any(Blob), "测试小说_第101-120章.txt");
+        expect(mocks.triggerDownload).toHaveBeenCalledWith(expect.any(Blob), "我的_选集.txt");
+        expect(rangeData.metadata.title).toBe("测试小说");
         await vi.waitFor(() =>
             expect(mocks.addDownloadHistory).toHaveBeenCalledWith(
                 expect.objectContaining({
+                    bookName: "测试小说",
                     chapterSummary: { totalCount: 20, missingCount: 1 },
                     selection: {
                         mode: "range",

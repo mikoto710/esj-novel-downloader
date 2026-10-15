@@ -60,6 +60,10 @@ describe("unified download selection UI", () => {
             })
         );
         expect(checkedIndexes()).toEqual([0, 2, 4]);
+        const filename = document.querySelector<HTMLInputElement>("#esj-download-filename");
+        expect(filename).not.toBeNull();
+        filename!.value = "阅读清单";
+        filename!.dispatchEvent(new Event("input", { bubbles: true }));
         const search = document.querySelector<HTMLInputElement>("#esj-range-search")!;
         search.value = "Ｓａｍｅ";
         search.dispatchEvent(new Event("input", { bubbles: true }));
@@ -70,6 +74,7 @@ describe("unified download selection UI", () => {
         publishInterfaceLocaleChange();
         expect(checkedIndexes()).toEqual([0, 2, 4]);
         expect(search.value).toBe("Ｓａｍｅ");
+        expect(filename!.value).toBe("阅读清单");
         expect(
             document.querySelector<HTMLInputElement>('#esj-range-directory input[data-esj-select-index="1"]')!.checked
         ).toBe(false);
@@ -80,7 +85,8 @@ describe("unified download selection UI", () => {
         document.querySelector<HTMLButtonElement>("#esj-range-download")!.click();
         await expect(popup.decision).resolves.toEqual({
             action: "download",
-            selection: selected
+            selection: selected,
+            filename: "阅读清单"
         });
     });
 

@@ -241,10 +241,10 @@ describe("range download lifecycle", () => {
         expect(mocks.claimCache).not.toHaveBeenCalled();
         expect(mocks.release).not.toHaveBeenCalled();
     });
-    it("retains a sparse selection when incompatible cache requires confirmation again", async () => {
+    it("retains a sparse selection and filename when incompatible cache requires confirmation again", async () => {
         const selection = { mode: "selected", sourceTotalChapters: 3, indexes: [0, 2] };
         mocks.rangePopup
-            .mockResolvedValueOnce({ action: "download", selection })
+            .mockResolvedValueOnce({ action: "download", selection, filename: "选读" })
             .mockResolvedValueOnce({ action: "cancel" });
         mocks.claimCache.mockResolvedValueOnce({
             status: "needs-confirmation",
@@ -271,6 +271,7 @@ describe("range download lifecycle", () => {
                 cacheWillBeInvalidated: true,
                 cacheCount: 3,
                 initialSelection: selection,
+                initialFilename: "选读",
                 tasks,
                 directory: plan.directory
             })

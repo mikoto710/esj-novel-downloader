@@ -83,6 +83,7 @@ import { formatStorageFailure } from "../ui/messages/storage-failure";
 import { showBookDownloadInProgressPopup, showFormatChoice } from "../ui/popups";
 import { fullCleanup } from "../ui/dom";
 import { log } from "../ui/log-view";
+import type { CachedData } from "./export";
 
 type BookSourcePageType = Extract<SourcePageType, "detail" | "forum">;
 
@@ -232,13 +233,21 @@ export async function runBookDownload(options: RunBookDownloadOptions): Promise<
         const initialSelection = decision.selection;
         const invalidatesCache = selectionPreview().cacheWillBeInvalidated;
         // 仅未确认的缓存失效返回新预览；释放锁后再让用户选择
-        const latest = await executeBookDownload(options, plan, initialSelection, imageEnabled, invalidatesCache);
+        const latest = await executeBookDownload(
+            options,
+            plan,
+            initialSelection,
+            imageEnabled,
+            invalidatesCache,
+            decision.filename
+        );
         if (!latest) {
             return;
         }
         preview = latest;
         decision = await createDownloadSelectionPopup({
             ...selectionPreview(initialSelection),
+            initialFilename: decision.filename ?? "",
             ...viewOptions
         }).decision;
     }
@@ -250,7 +259,8 @@ async function executeBookDownload(
     plan: PreparedBook,
     inputSelection: DownloadSelectionInput,
     imageEnabled: boolean,
-    allowInvalidation: boolean
+    allowInvalidation: boolean,
+    filename?: string
 ): Promise<BookCachePreviewResult | undefined> {
     const { bookId, sourcePageType } = options;
     const downloadPlan = createDownloadPlan({
@@ -377,9 +387,11 @@ async function executeBookDownload(
             cleanup();
         }
         if (result.status === "ready" && isCurrentDownload(lock.taskId)) {
-            publishCachedExport(result.data, lock.taskId);
+            // 文件名属于原结果的导出偏好，不改书籍元数据、正文或持久缓存
+            const data: CachedData = filename ? { ...result.data, exportFilename: filename } : result.data;
+            publishCachedExport(data, lock.taskId);
             exportReady = true;
-            showFormatChoice(result.data);
+            showFormatChoice(data);
         }
     } catch (error) {
         const details = error instanceof Error ? error : new Error(String(error));

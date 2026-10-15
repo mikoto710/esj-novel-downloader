@@ -18,7 +18,7 @@ import { createChapterSearchView } from "./chapter-search";
 import { DOWNLOAD_SELECTION_STYLES } from "./download-selection-styles";
 
 export type DownloadSelectionDecision =
-    | { action: "download"; selection: DownloadSelectionInput }
+    | { action: "download"; selection: DownloadSelectionInput; filename?: string }
     | { action: "open-existing" }
     | { action: "cancel" };
 
@@ -35,6 +35,7 @@ export interface DownloadSelectionPreview {
     cacheWillBeInvalidated: boolean;
     cacheCount: number;
     initialSelection?: DownloadSelectionInput;
+    initialFilename?: string;
     preparationErrorKey?: LocaleKey;
 }
 
@@ -112,7 +113,7 @@ export function createDownloadSelectionPopup(options: DownloadSelectionPopupOpti
     };
     const unavailable = () => Boolean(stage || preview.preparationErrorKey || !preview.tasks.length);
 
-    // 下载方式
+    // 下载方式与文件名输入
     const header = createCommonHeader(t("range.title"), () => finish({ action: "cancel" }));
     const allMode = el("input", {
         id: "esj-download-all",
@@ -136,6 +137,18 @@ export function createDownloadSelectionPopup(options: DownloadSelectionPopupOpti
     ]);
 
     const bookTitle = el("div", { className: "esj-selection-book-title" });
+    const filenameLabel = el("span");
+    const filenameInput = el("input", {
+        id: "esj-download-filename",
+        type: "text",
+        value: options.initialFilename ?? options.bookTitle ?? ""
+    });
+    let filenameEdited = false;
+    filenameInput.addEventListener("input", () => {
+        filenameEdited = true;
+    });
+    const filenameField = el("label", { className: "esj-selection-filename" }, [filenameLabel, filenameInput]);
+
     const chapterCount = el("strong", { id: "esj-selection-count", "aria-live": "polite" });
     const totalCount = el("div", { className: "esj-selection-total" });
 
@@ -145,7 +158,7 @@ export function createDownloadSelectionPopup(options: DownloadSelectionPopupOpti
         search: (query) => directoryView?.search(query) || [],
         getBounds: () => ({
             top: header.getBoundingClientRect().bottom + 4,
-            bottom: footer.getBoundingClientRect().top - 4
+            bottom: filenameField.getBoundingClientRect().top - 4
         }),
         onNavigate(index) {
             if (!settled) {
@@ -232,7 +245,8 @@ export function createDownloadSelectionPopup(options: DownloadSelectionPopupOpti
         onclick: () => {
             const selection = getSelection();
             if (selection) {
-                finish({ action: "download", selection });
+                const filename = filenameInput.value.trim();
+                finish({ action: "download", selection, ...(filename ? { filename } : {}) });
             }
         }
     });
@@ -263,6 +277,11 @@ export function createDownloadSelectionPopup(options: DownloadSelectionPopupOpti
         bookTitle.hidden = !preview.bookTitle;
         bookDetails.hidden = !preview.bookTitle && disabled;
         bookInfo.hidden = bookDetails.hidden && !previousButton;
+
+        filenameField.hidden = disabled;
+        filenameInput.disabled = disabled;
+        filenameLabel.textContent = t("selection.filename");
+        filenameInput.placeholder = preview.bookTitle || "book";
 
         popup.setAttribute("data-esj-selecting", String(rangeMode.checked && !disabled));
         rangeFields.hidden = !rangeMode.checked || disabled;
@@ -365,6 +384,7 @@ export function createDownloadSelectionPopup(options: DownloadSelectionPopupOpti
         header,
         el("div", { className: "esj-selection-body" }, [bookInfo, mode, validation, cacheWarning]),
         rangeFields,
+        filenameField,
         footer
     ]);
 
@@ -417,6 +437,11 @@ export function createDownloadSelectionPopup(options: DownloadSelectionPopupOpti
             const changed = preview.tasks !== next.tasks;
             preview = next;
             stage = undefined;
+
+            // 准备完成后填入默认书名，用户编辑过的文件名不随刷新被覆盖
+            if (!filenameEdited) {
+                filenameInput.value = next.initialFilename ?? next.bookTitle ?? "";
+            }
 
             if (next.initialSelection || changed) {
                 restoreSelection(next.initialSelection);

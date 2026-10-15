@@ -14,6 +14,7 @@ import { getExportErrorDetails } from "../ui/messages/export";
  * 正文快照保持原对象，应用层独占可失效的 EPUB 派生产物
  */
 export interface CachedData extends ExportSnapshot {
+    exportFilename?: string;
     epubBlob?: Blob | null;
     epubTagPageEnabled?: boolean;
     epubRevision?: number;
@@ -108,7 +109,7 @@ export function exportBookTxt(data: CachedData, view: ExportView): void {
     if (!getExportCapabilities(data.chapters).txtEnabled) {
         return;
     }
-    const filename = createBookExportFilename(data.metadata.title, "txt", data.exportContext?.selection);
+    const filename = createBookExportFilename(data.metadata.title, "txt", data.exportFilename);
     let blob: Blob;
     try {
         blob = buildTxt(data.txt);
@@ -160,7 +161,7 @@ export async function exportBookRich(data: CachedData, format: "epub" | "html", 
             }
         }
         stage = "download";
-        triggerDownload(blob, createBookExportFilename(data.metadata.title, format, data.exportContext?.selection));
+        triggerDownload(blob, createBookExportFilename(data.metadata.title, format, data.exportFilename));
         recordSuccessfulExport(data, format);
         void recordBookExport(data, format);
     } catch (error) {

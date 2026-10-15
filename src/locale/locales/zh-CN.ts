@@ -60,6 +60,7 @@ export const ZH_CN_MESSAGES = Object.freeze({
     "selection.resultPosition": "目录序号 {index}",
     "selection.empty": "请先选择要下载的章节。",
     "selection.downloadSelected": "下载所选 {count} 项",
+    "selection.filename": "文件名（不含扩展名）",
     "selection.summary": "目录位置 {ranges}，共 {count} 项／全书 {total} 项",
     "selection.moreRanges": "…（另 {count} 段）",
     "selection.unknown": "无法识别的章节选择",

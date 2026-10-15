@@ -60,6 +60,7 @@ export const ZH_TW_MESSAGES = Object.freeze({
     "selection.resultPosition": "目錄序號 {index}",
     "selection.empty": "請先選取要下載的章節。",
     "selection.downloadSelected": "下載所選 {count} 項",
+    "selection.filename": "檔案名稱（不含副檔名）",
     "selection.summary": "目錄位置 {ranges}，共 {count} 項／全書 {total} 項",
     "selection.moreRanges": "…（另 {count} 段）",
     "selection.unknown": "無法辨識的章節選取",

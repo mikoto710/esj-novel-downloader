@@ -113,6 +113,7 @@ export const LOCALE_KEYS = [
     "selection.resultPosition",
     "selection.empty",
     "selection.downloadSelected",
+    "selection.filename",
     "selection.summary",
     "selection.moreRanges",
     "selection.unknown",
