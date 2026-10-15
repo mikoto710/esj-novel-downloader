@@ -13,9 +13,9 @@ export default function getMeta() {
         supportURL: "https://github.com/mikoto710/esj-novel-downloader/issues",
         version: pkg.version,
         description:
-            "下载 ESJZone 小说，支持全本与连续章节范围的 TXT、EPUB、HTML 导出，单章支持 TXT、HTML，并提供缓存续传与插图嵌入",
+            "下载 ESJZone 小说，支持全本或勾选任意章节后合并导出 TXT、EPUB、HTML，单章支持 TXT、HTML，并提供缓存续传与插图嵌入",
         "description:zh-TW":
-            "下載 ESJZone 小說，支援將全本與連續章節範圍匯出為 TXT、EPUB、HTML，單章支援 TXT、HTML，並提供快取接續下載與插圖嵌入",
+            "下載 ESJZone 小說，支援全本或勾選任意章節後合併匯出 TXT、EPUB、HTML，單章支援 TXT、HTML，並提供快取接續下載與插圖嵌入",
         author: "Shigure Sora",
         license: "MIT",
         match: [
