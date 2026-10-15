@@ -2,7 +2,7 @@ import { del, get, set } from "idb-keyval";
 import type { ChapterSummary } from "../export/snapshot";
 import type { DownloadFormat } from "../export/filename";
 import type { SourcePageType } from "../content/model";
-import type { DownloadSelectionSummary } from "../download/plan";
+import type { StoredDownloadSelectionSummary } from "../download/plan";
 
 /**
  * 已触发文件下载的导出历史，不表示浏览器已经保存文件
@@ -15,7 +15,7 @@ export interface DownloadHistoryItem {
     format: DownloadFormat;
     sourcePageType: Extract<SourcePageType, "detail" | "forum" | "single">;
     chapterSummary?: ChapterSummary;
-    selection?: DownloadSelectionSummary;
+    selection?: StoredDownloadSelectionSummary;
     // 兼容旧版下载记录，新记录改用 chapterSummary
     chapterInfo?: string;
     imageInfo?: {

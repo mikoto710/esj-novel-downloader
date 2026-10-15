@@ -50,7 +50,7 @@ export function showBookDownloadInProgressPopup(lock: BookDownloadLock): void {
  * 清理脚本已创建的弹窗和托盘后，创建并挂载下载进度弹窗
  */
 export function createDownloadPopup(
-    mode: "all" | "range" = "all",
+    mode: "all" | "selected" = "all",
     cancel: () => void = abortActiveDownload,
     originalTitle = state.originalTitle
 ): HTMLElement {
@@ -89,7 +89,7 @@ export function createDownloadPopup(
         createMinimizedTray(statusText);
     }
 
-    const titleKey = mode === "range" ? "download.popup.rangeTitle" : "download.popup.title";
+    const titleKey = mode === "selected" ? "download.popup.rangeTitle" : "download.popup.title";
     const header = createCommonHeader(t(titleKey), onClose, onMinimize);
     const headerLabel = header.querySelector("span");
     if (headerLabel instanceof HTMLElement) {

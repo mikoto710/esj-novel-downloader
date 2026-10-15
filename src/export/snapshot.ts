@@ -1,6 +1,6 @@
 import type { BookCover, Chapter, BookMetadata, SourcePageType } from "../content/model";
 import type { DownloadOptions, DownloadTask } from "../download/contracts";
-import type { DownloadPlan, DownloadSelectionSummary } from "../download/plan";
+import type { DownloadPlan, StoredDownloadSelectionSummary } from "../download/plan";
 import { escapeXml } from "./text";
 import { assembleBookTxt } from "./txt";
 
@@ -26,7 +26,7 @@ export interface ExportSnapshot {
         pageUrl: string;
         sourcePageType: Extract<SourcePageType, "detail" | "forum">;
         chapterSummary?: ChapterSummary;
-        selection?: DownloadSelectionSummary;
+        selection?: StoredDownloadSelectionSummary;
         // 兼容旧版运行时导出数据
         chapterInfo?: string;
         imageEnabled: boolean;

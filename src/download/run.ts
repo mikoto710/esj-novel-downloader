@@ -130,7 +130,7 @@ export async function runDownload(
                         {
                             missingTasks,
                             totalChapters: plan.tasks.length,
-                            ...(plan.selection.mode === "range"
+                            ...(plan.selection.mode === "selected"
                                 ? {
                                       sourceTotalChapters: plan.selection.sourceTotalChapters,
                                       selectionMode: plan.selection.mode,

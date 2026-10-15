@@ -1,4 +1,4 @@
-import type { DownloadSelectionSummary } from "../download/plan";
+import { normalizeChapterSelectionSummary, type StoredDownloadSelectionSummary } from "../download/plan";
 
 /**
  * 导出格式与文件扩展名共用的约定
@@ -11,10 +11,18 @@ export type DownloadFormat = "txt" | "epub" | "html";
 export function createBookExportFilename(
     title: string,
     format: DownloadFormat,
-    selection?: DownloadSelectionSummary
+    selection?: StoredDownloadSelectionSummary
 ): string {
     const base = title || "book";
-    const suffix = selection?.mode === "range" ? `_第${selection.startChapter}-${selection.endChapter}章` : "";
+    const summary = normalizeChapterSelectionSummary(selection);
+    const suffix =
+        summary?.mode === "selected"
+            ? summary.ranges.length === 1
+                ? `_第${summary.ranges[0].startChapter}-${summary.ranges[0].endChapter}章`
+                : `_自选${summary.selectedCount}章`
+            : selection !== undefined && !summary
+              ? "_自选"
+              : "";
     return `${base}${suffix}.${format}`;
 }
 

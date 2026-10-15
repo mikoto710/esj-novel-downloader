@@ -23,7 +23,7 @@ export function confirmIncompleteChapters(
         const preview = detection.missingTasks.slice(0, 10).map((task) =>
             el("li", { style: "margin-bottom:8px;" }, [
                 el("div", { style: "font-weight:bold;color:#333;" }, [
-                    detection.selectionMode === "range"
+                    detection.selectionMode === "selected"
                         ? t("download.missing.rangePosition", {
                               index: (detection.taskOrderByIndex?.get(task.index) ?? 0) + 1,
                               total: detection.totalChapters,

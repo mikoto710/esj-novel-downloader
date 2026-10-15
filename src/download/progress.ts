@@ -79,7 +79,7 @@ export function createInitialDownloadSnapshot(scheduledCount: number, restoredCo
 }
 
 /**
- * 统一阶段校验和进度写入，范围就绪数从任务章节表计算
+ * 统一阶段校验和进度写入，本次就绪数从固定任务表计算
  */
 export class DownloadProgress {
     private current: DownloadSnapshot;
@@ -115,7 +115,7 @@ export class DownloadProgress {
     }
 
     /**
-     * 更新业务计数并重新统计范围内已有章节记录数，不检查正文或图片完整性
+     * 更新业务计数并重新统计选中索引的已有章节记录数，不检查正文或图片完整性
      */
     update(values: Partial<Omit<DownloadSnapshot, "phase" | "readyChapterCount">>): void {
         this.current = { ...this.current, ...values, readyChapterCount: this.plan.readyCount(this.chapters) };

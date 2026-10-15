@@ -38,7 +38,7 @@ export interface ChapterImage {
 }
 
 /**
- * 书籍下载封面，全本与范围共用；仅保留当前导出链路稳定支持的 JPEG 与 PNG
+ * 书籍下载封面，全本与自选共用；仅保留当前导出链路稳定支持的 JPEG 与 PNG
  */
 export interface BookCover {
     blob: Blob;

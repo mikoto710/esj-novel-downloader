@@ -34,7 +34,7 @@ import type {
     DownloadResult,
     DownloadUiPort
 } from "../download/contracts";
-import type { DownloadSelection } from "../download/plan";
+import type { DownloadSelectionInput } from "../download/plan";
 import { createDownloadPlan, selectDownloadTasks } from "../download/plan";
 import { runDownload } from "../download/run";
 import { BookPreflightError, type PreparedBook } from "../site/book";
@@ -128,7 +128,7 @@ export async function runBookDownload(options: RunBookDownloadOptions): Promise<
     const isPreparing = () => !preparation.signal.aborted && !popup.closed;
 
     // 将本次预检事实转换为选择窗口预览，旧导出和插图设置保持创建时的值
-    function selectionPreview(initialSelection?: DownloadSelection) {
+    function selectionPreview(initialSelection?: DownloadSelectionInput) {
         return {
             tasks: plan?.tasks || [],
             cachedIndexes: new Set(preview?.indexes || []),
@@ -247,7 +247,7 @@ export async function runBookDownload(options: RunBookDownloadOptions): Promise<
 async function executeBookDownload(
     options: RunBookDownloadOptions,
     plan: PreparedBook,
-    inputSelection: DownloadSelection,
+    inputSelection: DownloadSelectionInput,
     imageEnabled: boolean,
     allowInvalidation: boolean
 ): Promise<BookCachePreviewResult | undefined> {

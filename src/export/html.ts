@@ -3,7 +3,7 @@ import { blobToBase64 } from "../browser/files";
 import { prepareChapterMappingExport } from "../content/mapping-font";
 
 /**
- * 构建含封面和目录的整书或范围 HTML
+ * 构建含封面和目录的整书或自选 HTML
  */
 export async function buildBookHtml(chapters: Chapter[], metadata: BookMetadata): Promise<Blob> {
     const imgMap = new Map<string, string>();

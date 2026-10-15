@@ -13,6 +13,26 @@ import { createChapter, createDeferred, createDownloadTask } from "../support";
 import { MappingFontError } from "../../src/content/mapping-font";
 
 describe("runDownload characterization", () => {
+    it("exports only selected tasks and ignores cached gaps", async () => {
+        const tasks = [createDownloadTask(0), createDownloadTask(2), createDownloadTask(4)];
+        const chapters = new Map<number, Chapter>([
+            [1, createChapter(1)],
+            [2, createChapter(2)],
+            [3, createChapter(3)]
+        ]);
+        const harness = createHarness(tasks, chapters);
+        await harness.run(
+            createOptions(tasks, { selection: { mode: "selected", sourceTotalChapters: 5, indexes: [0, 2, 4] } })
+        );
+        expect(harness.processedIndexes).toEqual([0, 4]);
+        expect(harness.exportData?.chapters).toEqual([createChapter(0), createChapter(2), createChapter(4)]);
+        expect(harness.cacheClears).toEqual([]);
+        expect(harness.cacheFinishes).toHaveLength(1);
+        expect(harness.dependencies.chapters.has(1)).toBe(true);
+        expect(harness.dependencies.chapters.has(3)).toBe(true);
+        expect(harness.ui.snapshots.at(-1)).toMatchObject({ scheduledCount: 3, readyChapterCount: 3, failedCount: 0 });
+    });
+
     it("removes cache cancellation listeners even when prompt teardown fails", async () => {
         const tasks = [createDownloadTask()];
         const harness = createHarness(tasks);
@@ -94,10 +114,11 @@ describe("runDownload characterization", () => {
         expect(harness.exportData?.chapters[0]).toEqual(createChapter(100));
         expect(harness.exportData?.chapters.at(-1)).toEqual(createChapter(119));
         expect(harness.exportData?.exportContext?.selection).toEqual({
-            mode: "range",
+            version: 2,
+            mode: "selected",
             sourceTotalChapters: 120,
-            startChapter: 101,
-            endChapter: 120
+            selectedCount: 20,
+            ranges: [{ startChapter: 101, endChapter: 120 }]
         });
         expect(harness.cacheClears).toEqual([]);
         expect(harness.cacheFinishes).toEqual([

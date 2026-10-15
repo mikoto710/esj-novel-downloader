@@ -80,7 +80,7 @@ export function createProtectedChapters(
         const prompt: ProtectedChapterPrompt = {
             task: item.task,
             totalChapters: plan.tasks.length,
-            ...(plan.selection.mode === "range"
+            ...(plan.selection.mode === "selected"
                 ? {
                       taskOrder: plan.position(item.task).index,
                       sourceTotalChapters: plan.selection.sourceTotalChapters,

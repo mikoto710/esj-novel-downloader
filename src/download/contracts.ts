@@ -1,4 +1,4 @@
-import type { DownloadSelection } from "./plan";
+import type { DownloadSelection, DownloadSelectionInput } from "./plan";
 import type { ExportSnapshot } from "../export/snapshot";
 import type { CacheMeta } from "../storage/cache/model";
 import type { BookCover, Chapter, SourcePageType } from "../content/model";
@@ -110,7 +110,7 @@ export interface ProtectedChapterDetectorPort {
  */
 export interface ProtectedChapterPrompt {
     task: DownloadTask;
-    // 范围内 1-based 顺序；原书位置继续由 task.index 表示
+    // 本次选择的 1-based 顺序；原书位置继续由 task.index 表示
     taskOrder?: number;
     totalChapters: number;
     sourceTotalChapters?: number;
@@ -148,7 +148,7 @@ export interface DownloadOptions {
     sourcePageType?: SourcePageType;
     imageEnabled: boolean;
     tasks: DownloadTask[];
-    selection?: DownloadSelection;
+    selection?: DownloadSelectionInput;
 }
 
 /**
@@ -186,7 +186,7 @@ export type DownloadTerminalFailure =
       };
 
 /**
- * 本次下载范围的阶段和计数快照
+ * 本次下载选择的阶段和计数快照
  */
 export interface DownloadSnapshot {
     phase: DownloadPhase;

@@ -1,3 +1,4 @@
+import { formatSelectionSummary, isPartialSelectionSummary } from "../messages/selection";
 import {
     clearDownloadHistory,
     DOWNLOAD_HISTORY_LIMIT,
@@ -136,16 +137,11 @@ function imageStatusText(item: DownloadHistoryItem): string {
 }
 
 function chapterStatusText(item: DownloadHistoryItem): string {
+    if (isPartialSelectionSummary(item.selection)) {
+        return formatSelectionSummary(item.selection, item.chapterSummary?.missingCount);
+    }
     if (!item.chapterSummary) {
         return item.chapterInfo || "—";
-    }
-    if (item.selection?.mode === "range") {
-        return t(item.chapterSummary.missingCount > 0 ? "history.chapter.rangeWithMissing" : "history.chapter.range", {
-            start: item.selection.startChapter,
-            end: item.selection.endChapter,
-            total: item.chapterSummary.totalCount,
-            missing: item.chapterSummary.missingCount
-        });
     }
     return item.chapterSummary.missingCount > 0
         ? t("history.chapter.withMissing", {
@@ -362,8 +358,8 @@ export function createDownloadHistoryPopup(): void {
                     (scope === "single"
                         ? item.sourcePageType === "single"
                         : scope === "range"
-                          ? item.selection?.mode === "range"
-                          : item.sourcePageType !== "single" && item.selection?.mode !== "range")) &&
+                          ? isPartialSelectionSummary(item.selection)
+                          : item.sourcePageType !== "single" && !isPartialSelectionSummary(item.selection))) &&
                 (format === "all" || item.format === format) &&
                 (source === "all" || item.sourcePageType === source)
         );
@@ -425,7 +421,7 @@ export function createDownloadHistoryPopup(): void {
                         t(
                             item.sourcePageType === "single"
                                 ? "history.type.single"
-                                : item.selection?.mode === "range"
+                                : isPartialSelectionSummary(item.selection)
                                   ? "history.type.range"
                                   : "history.type.book"
                         )

@@ -82,7 +82,7 @@ export function createTaskCacheWriter(
         return false;
     }
 
-    // 范围成功后关闭 writer，暂时写入故障允许重试一次
+    // 部分选择成功后关闭 writer，暂时写入故障允许重试一次
     async function finishRangeCacheWriter(): Promise<boolean> {
         for (let attempt = 1; attempt <= 2; attempt++) {
             try {
@@ -126,7 +126,7 @@ export function createTaskCacheWriter(
                 throw createStorageError("ownership-lost", "write");
             }
 
-            // 全本成功清理整书缓存；范围成功只关闭 writer，保留已积累的章节
+            // 全本成功清理整书缓存；部分选择成功只关闭 writer，保留已积累的章节
             const operation = plan.retainCacheOnSuccess ? "write" : "clear";
             try {
                 const finished = plan.retainCacheOnSuccess

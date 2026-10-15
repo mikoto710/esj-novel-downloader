@@ -1,3 +1,4 @@
+import { formatSelectionSummary, isPartialSelectionSummary } from "./selection";
 import type { DiagnosticLogRecord, DiagnosticSession, DiagnosticSessionPresentation } from "../../diagnostics/manager";
 import type { DownloadLogCode } from "../../download/contracts";
 import { formatDownloadLog } from "./download-log";
@@ -24,6 +25,20 @@ function formatDiagnosticBrowser(session: DiagnosticSession): string {
     return session.application.browserVersionUnknown
         ? t("diagnostics.summary.browserVersionUnknown", { browser: session.application.browser })
         : session.application.browser;
+}
+
+function formatDiagnosticSelection(session: DiagnosticSession): string {
+    const overview = session.selectionOverview;
+    if (overview) {
+        return overview.mode === "unknown"
+            ? t("selection.unknown")
+            : t("diagnostics.summary.selectionOverview", {
+                  count: overview.selectedCount,
+                  total: overview.sourceTotalChapters,
+                  ranges: overview.rangeCount
+              });
+    }
+    return isPartialSelectionSummary(session.selection) ? formatSelectionSummary(session.selection) : "";
 }
 
 function formatPresentation(presentation: DiagnosticSessionPresentation): string {
@@ -64,6 +79,7 @@ export function formatDiagnosticSummary(
 ): string {
     const applicationVersion = session.application.version || t("diagnostics.summary.versionUnknown");
     const bookTitle = formatDiagnosticBookTitle(session);
+    const selectionLine = formatDiagnosticSelection(session);
     const failureLines = session.failures.slice(-10).map((failure) => {
         const chapter = failure.chapter
             ? t("diagnostics.summary.chapterFailure", {
@@ -103,16 +119,7 @@ export function formatDiagnosticSummary(
         `${formatDiagnosticBrowser(session)} / ${session.application.userscriptManager}`,
         t("diagnostics.summary.book", { title: bookTitle, bookId: session.book.bookId }),
         t("diagnostics.summary.link", { url: session.book.url }),
-        ...(session.selection?.mode === "range"
-            ? [
-                  t("diagnostics.summary.range", {
-                      start: session.selection.startChapter,
-                      end: session.selection.endChapter,
-                      count: session.task.totalChapters,
-                      sourceTotal: session.selection.sourceTotalChapters
-                  })
-              ]
-            : []),
+        ...(selectionLine ? [selectionLine] : []),
         ...(presentationLine ? [presentationLine] : []),
         t("diagnostics.summary.result", { result: session.result, phase: session.task.phase }),
         t("diagnostics.summary.chapters", {

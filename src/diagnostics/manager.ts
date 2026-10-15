@@ -7,7 +7,11 @@ import type {
     DownloadTask
 } from "../download/contracts";
 import type { DomainMessageParams } from "../messages";
-import { createDownloadSelectionSummary, type DownloadSelectionSummary } from "../download/plan";
+import {
+    createDownloadSelectionSummary,
+    normalizeChapterSelectionSummary,
+    type StoredDownloadSelectionSummary
+} from "../download/plan";
 
 // 诊断数据独立于章节缓存；容量和保留期同时限制，避免长期占用 userscript 存储
 export const DIAGNOSTIC_SCHEMA_VERSION = 1;
@@ -15,6 +19,8 @@ export const DIAGNOSTIC_HISTORY_LIMIT = 30;
 export const DIAGNOSTIC_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 export const DIAGNOSTIC_TOTAL_BYTES_LIMIT = 4 * 1024 * 1024;
 export const DIAGNOSTIC_SESSION_BYTES_LIMIT = 256 * 1024;
+// 区间详情最多占单会话预算的八分之一，其余空间留给事件、日志和失败记录
+const DIAGNOSTIC_SELECTION_BYTES_LIMIT = DIAGNOSTIC_SESSION_BYTES_LIMIT / 8;
 const DIAGNOSTIC_LOG_LIMIT = 500;
 const DIAGNOSTIC_EVENT_LIMIT = 500;
 // 每个诊断会话只保留容量上限内的近期导出记录
@@ -152,6 +158,13 @@ export interface DiagnosticTaskSummary {
 }
 
 /**
+ * 过长的选择区间在诊断中只保留数量概览，不改变原任务的完整选择
+ */
+export type DiagnosticSelectionOverview =
+    | { mode: "unknown" }
+    | { mode: "all" | "selected"; sourceTotalChapters: number; selectedCount: number; rangeCount: number };
+
+/**
  * 绑定来源 taskId 的诊断会话，集中保存启动快照、过程记录与终态
  */
 export interface DiagnosticSession {
@@ -165,7 +178,8 @@ export interface DiagnosticSession {
     closeObservedAt?: number;
     application: DiagnosticApplicationInfo;
     book: DiagnosticBookInfo;
-    selection?: DownloadSelectionSummary;
+    selection?: StoredDownloadSelectionSummary;
+    selectionOverview?: DiagnosticSelectionOverview;
     settings: DiagnosticSettings;
     task: DiagnosticTaskSummary;
     failures: DiagnosticFailure[];
@@ -220,7 +234,7 @@ export interface StartDiagnosticSessionInput {
     pageUrl: string;
     sourcePageType: string;
     totalChapters?: number;
-    selection?: DownloadSelectionSummary;
+    selection?: StoredDownloadSelectionSummary;
     application: DiagnosticApplicationInfo;
     settings: DiagnosticSettings;
 }
@@ -294,6 +308,23 @@ function trimSessionToLimit(session: DiagnosticSession): DiagnosticSession {
             ...(entry.message === undefined ? {} : { message: limitText(entry.message) })
         }))
     };
+
+    // 先为选择详情限额，避免完整区间挤掉所有日志后仍无法满足会话上限
+    if (trimmed.selection !== undefined) {
+        delete trimmed.selectionOverview;
+        if (stringBytes(trimmed.selection) > DIAGNOSTIC_SELECTION_BYTES_LIMIT) {
+            const selection = normalizeChapterSelectionSummary(trimmed.selection);
+            trimmed.selectionOverview = selection
+                ? {
+                      mode: selection.mode,
+                      sourceTotalChapters: selection.sourceTotalChapters,
+                      selectedCount: selection.selectedCount,
+                      rangeCount: selection.ranges.length
+                  }
+                : { mode: "unknown" };
+            delete trimmed.selection;
+        }
+    }
 
     // 超限时先裁剪日志和事件；已有失败记录时保留最后一条，不凭空补充失败
     while (stringBytes(trimmed) > DIAGNOSTIC_SESSION_BYTES_LIMIT && trimmed.logs.length > 0) {

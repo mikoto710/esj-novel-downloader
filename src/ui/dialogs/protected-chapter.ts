@@ -168,7 +168,7 @@ export function promptProtectedChapterPassword(
         const body = el("div", { style: "padding:16px;font-size:14px;line-height:1.6;color:#333;" }, [
             el("div", { style: "font-weight:bold;" }, [prompt.task.title]),
             el("div", { id: "esj-protected-position", style: "margin:4px 0 10px;color:#666;" }, [
-                t(prompt.selectionMode === "range" ? "protected.positionRange" : "protected.position", {
+                t(prompt.selectionMode === "selected" ? "protected.positionRange" : "protected.position", {
                     index: prompt.taskOrder ?? prompt.task.index + 1,
                     total: prompt.totalChapters,
                     sourceIndex: prompt.task.index + 1,
@@ -278,7 +278,7 @@ export function promptProtectedChapterPassword(
             }
             if (position) {
                 position.textContent = t(
-                    prompt.selectionMode === "range" ? "protected.positionRange" : "protected.position",
+                    prompt.selectionMode === "selected" ? "protected.positionRange" : "protected.position",
                     {
                         index: prompt.taskOrder ?? prompt.task.index + 1,
                         total: prompt.totalChapters,

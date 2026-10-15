@@ -35,7 +35,7 @@ export function createDownloadView(task: {
     const { originalTitle, cancellation } = task;
     const isCurrent = () => isCurrentDownload(task.taskId);
     let lastDownloadSnapshot: DownloadSnapshot | null = null;
-    let activeDownloadMode: "all" | "range" = "all";
+    let activeDownloadMode: "all" | "selected" = "all";
     let cleaned = false;
     let prepared = false;
 
@@ -117,15 +117,20 @@ export function createDownloadView(task: {
             const downloadStatus =
                 pending > 0
                     ? t(
-                          activeDownloadMode === "range"
+                          activeDownloadMode === "selected"
                               ? "download.status.runningRangeProtected"
                               : "download.status.runningProtected",
                           { ready: count, total, pending }
                       )
-                    : t(activeDownloadMode === "range" ? "download.status.runningRange" : "download.status.running", {
-                          ready: count,
-                          total
-                      });
+                    : t(
+                          activeDownloadMode === "selected"
+                              ? "download.status.runningRange"
+                              : "download.status.running",
+                          {
+                              ready: count,
+                              total
+                          }
+                      );
             const progressEl = document.querySelector("#esj-progress") as HTMLElement | null;
             updateDownloadStatus(downloadStatus, originalTitle);
             document.title = `[${count}/${total}${pending > 0 ? t("download.status.protectedTitle", { pending }) : ""}] ${originalTitle}`;

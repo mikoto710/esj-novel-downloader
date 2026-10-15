@@ -50,7 +50,7 @@ describe("unified download selection UI", () => {
         document.querySelector<HTMLButtonElement>("#esj-range-download")?.click();
         await expect(popup.decision).resolves.toEqual({
             action: "download",
-            selection: { mode: "range", sourceTotalChapters: 5, startIndex: 1, endIndex: 3 }
+            selection: { mode: "selected", sourceTotalChapters: 5, indexes: [1, 2, 3] }
         });
     });
 
@@ -81,7 +81,7 @@ describe("unified download selection UI", () => {
         document.querySelector<HTMLButtonElement>("#esj-range-download")?.click();
         await expect(decision).resolves.toEqual({
             action: "download",
-            selection: { mode: "range", sourceTotalChapters: 5, startIndex: 1, endIndex: 3 }
+            selection: { mode: "selected", sourceTotalChapters: 5, indexes: [1, 2, 3] }
         });
     });
 
@@ -104,7 +104,7 @@ describe("unified download selection UI", () => {
         document.querySelector<HTMLButtonElement>("#esj-range-download")?.click();
         await expect(decision).resolves.toEqual({
             action: "download",
-            selection: { mode: "range", sourceTotalChapters: 5, startIndex: 1, endIndex: 3 }
+            selection: { mode: "selected", sourceTotalChapters: 5, indexes: [1, 2, 3] }
         });
         expect(document.querySelector<HTMLButtonElement>(".esj-settings-trigger")?.disabled).toBe(false);
     });
@@ -119,7 +119,10 @@ describe("unified download selection UI", () => {
         expect(document.querySelector<HTMLInputElement>("#esj-range-start")?.value).toBe("2");
         expect(document.querySelector<HTMLInputElement>("#esj-range-end")?.value).toBe("4");
         document.querySelector<HTMLButtonElement>("#esj-range-download")?.click();
-        await expect(decision).resolves.toEqual({ action: "download", selection });
+        await expect(decision).resolves.toEqual({
+            action: "download",
+            selection: { mode: "selected", sourceTotalChapters: 5, indexes: [1, 2, 3] }
+        });
     });
 
     it("keeps the previous range export available when cache preparation fails", async () => {

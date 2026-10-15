@@ -95,7 +95,7 @@ export function createMappedChapters(
     }
 
     /**
-     * 校验范围内缓存，失效章节留给抓取流程补齐
+     * 校验本次选择的缓存，失效章节留给抓取流程补齐
      */
     async function normalizeRestoredChapters(): Promise<boolean> {
         const taskByIndex = new Map(plan.tasks.map((task) => [task.index, task]));

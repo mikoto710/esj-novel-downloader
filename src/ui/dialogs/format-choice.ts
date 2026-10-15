@@ -1,3 +1,4 @@
+import { formatSelectionSummary, isPartialSelectionSummary } from "../messages/selection";
 import {
     exportBookTxt,
     exportBookRich,
@@ -15,6 +16,7 @@ import { subscribeInterfaceLocaleChange, t } from "../locale";
 import { createCommonHeader } from "./common";
 import { showMessagePopup } from "./message";
 import { confirmMappingFontExport } from "./mapping-font";
+import { FORMAT_CHOICE_STYLES } from "./format-choice-styles";
 
 function formatMappingFontBytes(bytes: number): string {
     if (bytes < 1024 * 1024) {
@@ -77,20 +79,13 @@ export function showFormatChoice(data: CachedData): void {
           })
         : "";
 
-    // 范围结果显示起止章序，全本结果显示总章数
-    const infoBody = el("div", { style: "padding:20px;font-size:14px;line-height:1.5;" }, [
+    // 自选结果显示实际区间摘要，全本结果显示总章数
+    const infoBody = el("div", { className: "esj-format-info" }, [
         el("div", { id: "esj-format-book-status" }, [t("export.bookReady", { title: data.metadata.title })]),
-        data.exportContext?.selection?.mode === "range"
+        isPartialSelectionSummary(data.exportContext?.selection)
             ? el("div", { id: "esj-format-range", style: "color:#2b6f9f;font-size:12px;margin-top:4px;" }, [
-                  t("export.range", {
-                      start: data.exportContext.selection.startChapter,
-                      end: data.exportContext.selection.endChapter,
-                      count: data.chapters.length
-                  })
+                  formatSelectionSummary(data.exportContext?.selection)
               ])
-            : "",
-        data.exportContext?.selection?.mode === "range"
-            ? ""
             : el("div", { id: "esj-format-chapter-count", style: "color:#666;font-size:12px;margin-top:4px;" }, [
                   t("export.chapterCount", { count: data.chapters.length })
               ]),
@@ -151,32 +146,24 @@ export function showFormatChoice(data: CachedData): void {
     );
 
     // 三种格式并列展示，TXT 不可用的原因另放在按钮下方
-    const footer = el(
-        "div",
-        {
-            style: "display:flex;gap:15px;justify-content:center;padding:0 20px 15px 20px;"
-        },
-        [btnTxt, btnEpub, btnHtml]
-    );
+    const footer = el("div", { className: "esj-format-actions" }, [btnTxt, btnEpub, btnHtml]);
     const txtDisabledReason = hasMappedChapters
         ? el(
               "div",
               {
-                  id: "esj-format-txt-disabled-reason",
-                  style: "padding:0 20px 16px;color:#a45b00;font-size:12px;line-height:1.5;"
+                  id: "esj-format-txt-disabled-reason"
               },
               [t("download.export.txtDisabled")]
           )
         : "";
 
-    const popup = el(
-        "div",
-        {
-            id: "esj-format",
-            style: "position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:420px;background:#fff;border:1px solid #aaa;border-radius:8px;box-shadow:0 0 18px rgba(0,0,0,.28);z-index:999999;padding:0;display:flex;flex-direction:column;"
-        },
-        [header, infoBody, footer, txtDisabledReason]
-    );
+    const popup = el("div", { id: "esj-format" }, [
+        el("style", {}, [FORMAT_CHOICE_STYLES]),
+        header,
+        infoBody,
+        footer,
+        txtDisabledReason
+    ]);
 
     document.body.appendChild(popup);
     acquirePageActionGroupLockForPopup(popup);
@@ -198,12 +185,8 @@ export function showFormatChoice(data: CachedData): void {
         if (chapterCount) {
             chapterCount.textContent = t("export.chapterCount", { count: data.chapters.length });
         }
-        if (rangeStatus && data.exportContext?.selection?.mode === "range") {
-            rangeStatus.textContent = t("export.range", {
-                start: data.exportContext.selection.startChapter,
-                end: data.exportContext.selection.endChapter,
-                count: data.chapters.length
-            });
+        if (rangeStatus) {
+            rangeStatus.textContent = formatSelectionSummary(data.exportContext?.selection);
         }
         if (imageStatus instanceof HTMLElement) {
             imageStatus.textContent =

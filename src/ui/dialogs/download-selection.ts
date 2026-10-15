@@ -1,8 +1,10 @@
-import type { DownloadSelection, DownloadSelectionSummary } from "../../download/plan";
+import { formatSelectionSummary } from "../messages/selection";
+import type { DownloadSelection, DownloadSelectionInput, StoredDownloadSelectionSummary } from "../../download/plan";
 import type { LocaleKey } from "../../locale/catalog";
 import type { DownloadTask } from "../../download/contracts";
 import {
     createDownloadPlan,
+    createChapterSelection,
     createDownloadSelectionSummary,
     createRangeSelection,
     selectDownloadTasks
@@ -13,7 +15,7 @@ import { subscribeInterfaceLocaleChange, t } from "../locale";
 import { acquirePageActionGroupLockForPopup } from "../page-action-lock";
 
 export type DownloadSelectionDecision =
-    | { action: "download"; selection: DownloadSelection }
+    | { action: "download"; selection: DownloadSelectionInput }
     | { action: "open-existing" }
     | { action: "cancel" };
 
@@ -30,7 +32,7 @@ export interface DownloadSelectionPreview {
     cachedIndexes: ReadonlySet<number>;
     cacheWillBeInvalidated: boolean;
     cacheCount: number;
-    initialSelection?: DownloadSelection;
+    initialSelection?: DownloadSelectionInput;
     preparationErrorKey?: LocaleKey;
 }
 
@@ -40,7 +42,7 @@ export interface DownloadSelectionPreview {
 export interface DownloadSelectionPopupOptions extends DownloadSelectionPreview {
     hasExistingExport: boolean;
     imageEnabled: boolean;
-    existingSelection?: DownloadSelectionSummary;
+    existingSelection?: StoredDownloadSelectionSummary;
     preparationStage?: DownloadPreparationStage;
 }
 
@@ -80,6 +82,7 @@ export function createDownloadSelectionPopup(options: DownloadSelectionPopupOpti
     const initialSummary = options.initialSelection
         ? createDownloadSelectionSummary(options.initialSelection)
         : undefined;
+    let retainedSelection = options.initialSelection;
     let settled = false;
     let unsubscribeLocale: () => void = () => undefined;
 
@@ -104,14 +107,14 @@ export function createDownloadSelectionPopup(options: DownloadSelectionPopupOpti
         type: "radio",
         name: "esj-download-mode",
         value: "all",
-        checked: options.initialSelection?.mode !== "range"
+        checked: !options.initialSelection || options.initialSelection.mode === "all"
     });
     const rangeMode = el("input", {
         id: "esj-download-range",
         type: "radio",
         name: "esj-download-mode",
         value: "range",
-        checked: options.initialSelection?.mode === "range"
+        checked: Boolean(options.initialSelection && options.initialSelection.mode !== "all")
     });
     const allModeText = el("span");
     const rangeModeText = el("span");
@@ -149,7 +152,7 @@ export function createDownloadSelectionPopup(options: DownloadSelectionPopupOpti
         min: 1,
         max: total,
         step: 1,
-        value: initialSummary?.startChapter ?? 1,
+        value: initialSummary?.ranges[0]?.startChapter ?? 1,
         style: "width:100%;min-width:0;height:32px;padding:4px 8px;background:#fff;color:#333;border:1px solid #bbb;border-radius:4px;"
     });
     const endInput = el("input", {
@@ -158,7 +161,7 @@ export function createDownloadSelectionPopup(options: DownloadSelectionPopupOpti
         min: 1,
         max: total,
         step: 1,
-        value: initialSummary?.endChapter ?? total,
+        value: initialSummary?.ranges.at(-1)?.endChapter ?? total,
         style: "width:100%;min-width:0;height:32px;padding:4px 8px;background:#fff;color:#333;border:1px solid #bbb;border-radius:4px;"
     });
     startLabel.appendChild(startInput);
@@ -253,6 +256,12 @@ export function createDownloadSelectionPopup(options: DownloadSelectionPopupOpti
         if (allMode.checked) {
             return createRangeSelection(1, total, total);
         }
+        if (retainedSelection) {
+            return createChapterSelection(
+                selectDownloadTasks(preview.tasks, retainedSelection).map((task) => task.index),
+                total
+            );
+        }
         const startText = startInput.value.trim();
         const endText = endInput.value.trim();
         if (!startText || !endText) {
@@ -289,15 +298,7 @@ export function createDownloadSelectionPopup(options: DownloadSelectionPopupOpti
         cancelButton.textContent = t("common.cancel");
         downloadButton.textContent = t(preview.cacheWillBeInvalidated ? "range.clearAndDownload" : "range.download");
         if (openPreviousButton) {
-            const previous = options.existingSelection;
-            const label =
-                previous?.mode === "range"
-                    ? t("export.range", {
-                          start: previous.startChapter,
-                          end: previous.endChapter,
-                          count: previous.endChapter - previous.startChapter + 1
-                      })
-                    : t("range.modeAll");
+            const label = formatSelectionSummary(options.existingSelection);
             openPreviousButton.textContent = t("range.openPrevious");
             openPreviousButton.title = `${t("range.openPrevious")}（${label}）`;
             openPreviousButton.setAttribute("aria-label", openPreviousButton.title);
@@ -346,8 +347,12 @@ export function createDownloadSelectionPopup(options: DownloadSelectionPopupOpti
     });
     allMode.addEventListener("change", refresh);
     rangeMode.addEventListener("change", refresh);
-    startInput.addEventListener("input", refresh);
-    endInput.addEventListener("input", refresh);
+    const rangeEdited = () => {
+        retainedSelection = undefined;
+        refresh();
+    };
+    startInput.addEventListener("input", rangeEdited);
+    endInput.addEventListener("input", rangeEdited);
 
     // 正文排列选择、预览和警告，底部只负责返回本次操作决策
     const popup = el(
@@ -440,10 +445,11 @@ export function createDownloadSelectionPopup(options: DownloadSelectionPopupOpti
             total = next.tasks.length;
             startInput.max = endInput.max = String(total);
             const selection = next.initialSelection ? createDownloadSelectionSummary(next.initialSelection) : undefined;
-            allMode.checked = selection?.mode !== "range";
-            rangeMode.checked = selection?.mode === "range";
-            startInput.value = String(selection?.startChapter ?? 1);
-            endInput.value = String(selection?.endChapter ?? total);
+            retainedSelection = next.initialSelection;
+            allMode.checked = !selection || selection.mode === "all";
+            rangeMode.checked = selection?.mode === "selected";
+            startInput.value = String(selection?.ranges[0]?.startChapter ?? 1);
+            endInput.value = String(selection?.ranges.at(-1)?.endChapter ?? total);
             refresh();
         },
         /**

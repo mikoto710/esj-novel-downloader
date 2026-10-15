@@ -248,6 +248,43 @@ describe("diagnostic session retention", () => {
         });
     });
 
+    it("bounds sparse selection details without losing diagnostic events or logs", () => {
+        const repository = new MemoryDiagnosticRepository();
+        const manager = new DiagnosticManager(repository, () => 1_000);
+        const selection = {
+            version: 2 as const,
+            mode: "selected" as const,
+            sourceTotalChapters: 16_000,
+            selectedCount: 8_000,
+            ranges: Array.from({ length: 8_000 }, (_, index) => ({
+                startChapter: index * 2 + 1,
+                endChapter: index * 2 + 1
+            }))
+        };
+        manager.start(createInput("sparse", { totalChapters: 8_000, selection }));
+        manager.recordLog("sparse", { level: "warning", code: "cache-write-failed", params: { detail: "retry" } });
+
+        const session = manager.list().active[0];
+        expect(new TextEncoder().encode(JSON.stringify(session)).byteLength).toBeLessThanOrEqual(
+            DIAGNOSTIC_SESSION_BYTES_LIMIT
+        );
+        expect(session.events).toContainEqual({ at: 0, type: "session-started" });
+        expect(session.logs).toEqual([
+            { at: 0, level: "warning", code: "cache-write-failed", params: { detail: "retry" } }
+        ]);
+        expect(session).toMatchObject({
+            selectionOverview: {
+                mode: "selected",
+                sourceTotalChapters: 16_000,
+                selectedCount: 8_000,
+                rangeCount: 8_000
+            }
+        });
+        expect(session.selection).toBeUndefined();
+        expect(selection.ranges).toHaveLength(8_000);
+        expect(selection.ranges.at(-1)).toEqual({ startChapter: 15_999, endChapter: 15_999 });
+    });
+
     it("evicts the oldest history first when the total capacity is exceeded", () => {
         const repository = new MemoryDiagnosticRepository();
         const manager = new DiagnosticManager(repository, () => 1_000);
