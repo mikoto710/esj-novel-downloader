@@ -26,7 +26,7 @@
 
 ## 主要调用链
 
-弹窗交互和状态由各自模块维护。局部样式见[章节选择](../src/ui/dialogs/download-selection-styles.ts)和[格式导出](../src/ui/dialogs/format-choice-styles.ts)。
+弹窗交互和状态由各自模块维护。全局样式见 [ui/styles.css](../src/ui/styles.css)，局部样式见[章节选择](../src/ui/dialogs/download-selection.css)和[格式导出](../src/ui/dialogs/format-choice.css)。CSS 通过 `?inline` 导入，由构建工具压缩后内联到脚本，watch 模式保留可读格式。
 
 书籍下载的成功路径：
 

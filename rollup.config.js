@@ -1,10 +1,42 @@
 import resolve from "@rollup/plugin-node-resolve";
 import commonjs from "@rollup/plugin-commonjs";
 import esbuild from "rollup-plugin-esbuild";
+import { transform } from "esbuild";
+import { readFile } from "node:fs/promises";
 import process from "node:process";
 import getMeta from "./script-meta.js";
 
 const isWatchMode = process.env.ROLLUP_WATCH === "true";
+
+function inlineCss() {
+    const suffix = "?inline";
+
+    return {
+        name: "inline-css",
+        async resolveId(source, importer) {
+            if (!source.endsWith(`.css${suffix}`)) {
+                return null;
+            }
+            const resolved = await this.resolve(source.slice(0, -suffix.length), importer, { skipSelf: true });
+            return resolved ? `${resolved.id}${suffix}` : null;
+        },
+        async load(id) {
+            if (!id.endsWith(`.css${suffix}`)) {
+                return null;
+            }
+            const filename = id.slice(0, -suffix.length);
+            this.addWatchFile(filename);
+            const css = await readFile(filename, "utf8");
+            const result = await transform(css, {
+                loader: "css",
+                minifyWhitespace: !isWatchMode,
+                charset: "utf8",
+                legalComments: "none"
+            });
+            return `export default ${JSON.stringify(result.code.trim())};`;
+        }
+    };
+}
 
 function getUserscriptHeader() {
     const meta = getMeta();
@@ -43,6 +75,7 @@ export default {
         sourcemap: false
     },
     plugins: [
+        inlineCss(),
         resolve({
             browser: true,
             preferBuiltins: false
@@ -50,6 +83,7 @@ export default {
         commonjs(),
         esbuild({
             minify: !isWatchMode,
+            charset: "utf8",
             target: "es2020"
         }),
         // 压缩完成后再注入 metadata，避免 userscript header 被移除

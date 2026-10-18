@@ -16,7 +16,7 @@ import { subscribeInterfaceLocaleChange, t } from "../locale";
 import { createCommonHeader } from "./common";
 import { showMessagePopup } from "./message";
 import { confirmMappingFontExport } from "./mapping-font";
-import { FORMAT_CHOICE_STYLES } from "./format-choice-styles";
+import FORMAT_CHOICE_STYLES from "./format-choice.css?inline";
 
 function formatMappingFontBytes(bytes: number): string {
     if (bytes < 1024 * 1024) {

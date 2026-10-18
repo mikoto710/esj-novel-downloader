@@ -15,7 +15,7 @@ import { formatSelectionSummary } from "../messages/selection";
 import { createCommonHeader } from "./common";
 import { createChapterDirectoryView, type ChapterDirectoryView } from "./chapter-directory";
 import { createChapterSearchView } from "./chapter-search";
-import { DOWNLOAD_SELECTION_STYLES } from "./download-selection-styles";
+import DOWNLOAD_SELECTION_STYLES from "./download-selection.css?inline";
 
 export type DownloadSelectionDecision =
     | { action: "download"; selection: DownloadSelectionInput; filename?: string }
