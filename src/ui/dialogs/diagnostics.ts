@@ -139,19 +139,7 @@ export function createDiagnosticPopup(): void {
         {
             id: "esj-diagnostic-download",
             style: `${buttonStyle}background:#2b9bd7;color:#fff;border-color:#2b9bd7;`,
-            onclick: () => {
-                const selected = findSelectedView();
-                if (selected) {
-                    const exported = createDiagnosticExport(selected.session, {
-                        bookTitle: formatDiagnosticBookTitle(selected.session),
-                        formatLog: formatDiagnosticLog
-                    });
-                    triggerDownload(
-                        new Blob([exported.json], { type: "application/json;charset=utf-8" }),
-                        exported.filename
-                    );
-                }
-            }
+            onclick: downloadSelectedDiagnostic
         },
         [t("diagnostics.action.download")]
     ) as HTMLButtonElement;
@@ -160,17 +148,7 @@ export function createDiagnosticPopup(): void {
         {
             id: "esj-diagnostic-copy",
             style: `${buttonStyle}background:#eee;`,
-            onclick: async () => {
-                const selected = findSelectedView();
-                if (!selected) {
-                    return;
-                }
-                try {
-                    await copyText(formatDiagnosticSummary(selected.session, selected.presentation));
-                } catch (error) {
-                    console.error("复制诊断摘要失败", error);
-                }
-            }
+            onclick: copySelectedDiagnostic
         },
         [t("diagnostics.action.copy")]
     ) as HTMLButtonElement;
@@ -215,6 +193,29 @@ export function createDiagnosticPopup(): void {
             null
         );
     };
+
+    function downloadSelectedDiagnostic(): void {
+        const selected = findSelectedView();
+        if (selected) {
+            const exported = createDiagnosticExport(selected.session, {
+                bookTitle: formatDiagnosticBookTitle(selected.session),
+                formatLog: formatDiagnosticLog
+            });
+            triggerDownload(new Blob([exported.json], { type: "application/json;charset=utf-8" }), exported.filename);
+        }
+    }
+
+    async function copySelectedDiagnostic(): Promise<void> {
+        const selected = findSelectedView();
+        if (!selected) {
+            return;
+        }
+        try {
+            await copyText(formatDiagnosticSummary(selected.session, selected.presentation));
+        } catch (error) {
+            console.error("复制诊断摘要失败", error);
+        }
+    }
 
     const renderDetail = (view: DiagnosticSessionView | null) => {
         detail.replaceChildren();

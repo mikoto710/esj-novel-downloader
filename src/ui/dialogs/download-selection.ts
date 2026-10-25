@@ -409,6 +409,36 @@ export function createDownloadSelectionPopup(options: DownloadSelectionPopupOpti
             : allMode
     ).focus();
 
+    /**
+     * 接收准备结果，关闭后忽略更新；仅任务列表引用不变且未传 initialSelection 时保留勾选
+     */
+    function showReady(next: DownloadSelectionPreview): void {
+        if (settled) {
+            return;
+        }
+
+        const changed = preview.tasks !== next.tasks;
+        preview = next;
+        stage = undefined;
+
+        // 准备完成后填入默认书名，用户编辑过的文件名不随刷新被覆盖
+        if (!filenameEdited) {
+            filenameInput.value = next.initialFilename ?? next.bookTitle ?? "";
+        }
+
+        if (next.initialSelection || changed) {
+            restoreSelection(next.initialSelection);
+            allMode.checked = !next.initialSelection || next.initialSelection.mode === "all";
+            rangeMode.checked = !allMode.checked;
+        }
+
+        if (!directoryView || changed) {
+            buildDirectory();
+        }
+
+        refresh();
+    }
+
     return {
         decision,
 
@@ -426,35 +456,7 @@ export function createDownloadSelectionPopup(options: DownloadSelectionPopupOpti
             }
         },
 
-        /**
-         * 接收准备结果，关闭后忽略更新；仅任务列表引用不变且未传 initialSelection 时保留勾选
-         */
-        showReady(next) {
-            if (settled) {
-                return;
-            }
-
-            const changed = preview.tasks !== next.tasks;
-            preview = next;
-            stage = undefined;
-
-            // 准备完成后填入默认书名，用户编辑过的文件名不随刷新被覆盖
-            if (!filenameEdited) {
-                filenameInput.value = next.initialFilename ?? next.bookTitle ?? "";
-            }
-
-            if (next.initialSelection || changed) {
-                restoreSelection(next.initialSelection);
-                allMode.checked = !next.initialSelection || next.initialSelection.mode === "all";
-                rangeMode.checked = !allMode.checked;
-            }
-
-            if (!directoryView || changed) {
-                buildDirectory();
-            }
-
-            refresh();
-        },
+        showReady,
 
         /**
          * 取消本次选择并释放视图，重复调用保持幂等

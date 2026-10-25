@@ -167,6 +167,55 @@ export function createChapterDirectoryView(options: ChapterDirectoryOptions): Ch
 
     setSelection(options.selectedIndexes);
 
+    /**
+     * 返回带绝对索引的匹配项；精确目录序号优先，不重排原目录
+     */
+    function searchChapters(query: string): ChapterDirectoryMatch[] {
+        const term = query.trim().normalize("NFKC").toLocaleLowerCase();
+        if (disposed || !term) {
+            return [];
+        }
+
+        return entries
+            .filter((entry) => String(entry.index + 1) === term || entry.normalized.includes(term))
+            .sort((left, right) => Number(String(right.index + 1) === term) - Number(String(left.index + 1) === term))
+            .map(({ index, title, context }) => ({ index, title, context }));
+    }
+
+    /**
+     * 展开目标的实际祖先并只滚动本目录，导航不修改勾选
+     */
+    function revealChapter(index: number): void {
+        if (disposed) {
+            return;
+        }
+
+        const target = rows.get(index)?.label;
+        if (!target) {
+            return;
+        }
+
+        clearTimeout(highlightTimer);
+        highlighted?.removeAttribute("data-esj-search-current");
+        highlighted = target;
+
+        for (let parent = target.parentElement; parent && parent !== root; parent = parent.parentElement) {
+            if (parent instanceof HTMLDetailsElement) {
+                parent.open = true;
+            }
+        }
+
+        const targetBounds = target.getBoundingClientRect();
+        const bounds = root.getBoundingClientRect();
+        root.scrollTop += targetBounds.top - bounds.top - Math.max(8, (root.clientHeight - targetBounds.height) / 3);
+        target.setAttribute("data-esj-search-current", "");
+
+        highlightTimer = setTimeout(() => {
+            target.removeAttribute("data-esj-search-current");
+            highlighted = undefined;
+        }, 1800);
+    }
+
     return {
         element: root,
 
@@ -175,57 +224,8 @@ export function createChapterDirectoryView(options: ChapterDirectoryOptions): Ch
          */
         setSelection,
 
-        /**
-         * 返回带绝对索引的匹配项；精确目录序号优先，不重排原目录
-         */
-        search(query) {
-            const term = query.trim().normalize("NFKC").toLocaleLowerCase();
-            if (disposed || !term) {
-                return [];
-            }
-
-            return entries
-                .filter((entry) => String(entry.index + 1) === term || entry.normalized.includes(term))
-                .sort(
-                    (left, right) => Number(String(right.index + 1) === term) - Number(String(left.index + 1) === term)
-                )
-                .map(({ index, title, context }) => ({ index, title, context }));
-        },
-
-        /**
-         * 展开目标的实际祖先并只滚动本目录，导航不修改勾选
-         */
-        reveal(index) {
-            if (disposed) {
-                return;
-            }
-
-            const target = rows.get(index)?.label;
-            if (!target) {
-                return;
-            }
-
-            clearTimeout(highlightTimer);
-            highlighted?.removeAttribute("data-esj-search-current");
-            highlighted = target;
-
-            for (let parent = target.parentElement; parent && parent !== root; parent = parent.parentElement) {
-                if (parent instanceof HTMLDetailsElement) {
-                    parent.open = true;
-                }
-            }
-
-            const targetBounds = target.getBoundingClientRect();
-            const bounds = root.getBoundingClientRect();
-            root.scrollTop +=
-                targetBounds.top - bounds.top - Math.max(8, (root.clientHeight - targetBounds.height) / 3);
-            target.setAttribute("data-esj-search-current", "");
-
-            highlightTimer = setTimeout(() => {
-                target.removeAttribute("data-esj-search-current");
-                highlighted = undefined;
-            }, 1800);
-        },
+        search: searchChapters,
+        reveal: revealChapter,
 
         /**
          * 关闭后解除选择行为与高亮计时，旧视图不再接收更新

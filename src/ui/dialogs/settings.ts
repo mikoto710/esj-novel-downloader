@@ -256,44 +256,47 @@ export function createSettingsPanel(): void {
     // 图片下载开关
     let isImageEnabled = getImageDownloadSetting();
 
+    // 读当前设置 → 核对活动任务并确认 → 保存；失败恢复面板最后确认值，finally 解锁控件
+    async function changeImageDownloadSetting(e: Event): Promise<void> {
+        const input = e.target as HTMLInputElement;
+        const checked = (e.target as HTMLInputElement).checked;
+
+        // 读取也可能失败，先保留本面板最后确认的值作为回退
+        let previous = isImageEnabled;
+
+        // 等跨页任务确认后再保存设置；取消时恢复原开关
+        input.disabled = true;
+        try {
+            previous = getImageDownloadSetting();
+            isImageEnabled = previous;
+            const activeTasks = await listActiveBookDownloadLocks();
+            if (activeTasks.length > 0 && !(await confirmImageSettingChange(activeTasks.length))) {
+                input.checked = previous;
+                return;
+            }
+            setImageDownloadSetting(checked);
+            isImageEnabled = checked;
+        } catch (error) {
+            input.checked = previous;
+            reportSettingsStorageFailure(error);
+            return;
+        } finally {
+            input.disabled = false;
+        }
+
+        // 已有章节由后续任务按 imageEnabled 逐书判断，不在设置变更时全局清理
+        log(
+            t("settings.log.image", {
+                state: t(checked ? "diagnostics.summary.enabled" : "diagnostics.summary.disabled")
+            })
+        );
+    }
+
     const checkboxInput = el("input", {
         id: "esj-settings-images",
         type: "checkbox",
         checked: isImageEnabled,
-        onchange: async (e: Event) => {
-            const input = e.target as HTMLInputElement;
-            const checked = (e.target as HTMLInputElement).checked;
-
-            // 读取也可能失败，先保留本面板最后确认的值作为回退
-            let previous = isImageEnabled;
-
-            // 等跨页任务确认后再保存设置；取消时恢复原开关
-            input.disabled = true;
-            try {
-                previous = getImageDownloadSetting();
-                isImageEnabled = previous;
-                const activeTasks = await listActiveBookDownloadLocks();
-                if (activeTasks.length > 0 && !(await confirmImageSettingChange(activeTasks.length))) {
-                    input.checked = previous;
-                    return;
-                }
-                setImageDownloadSetting(checked);
-                isImageEnabled = checked;
-            } catch (error) {
-                input.checked = previous;
-                reportSettingsStorageFailure(error);
-                return;
-            } finally {
-                input.disabled = false;
-            }
-
-            // 已有章节由后续任务按 imageEnabled 逐书判断，不在设置变更时全局清理
-            log(
-                t("settings.log.image", {
-                    state: t(checked ? "diagnostics.summary.enabled" : "diagnostics.summary.disabled")
-                })
-            );
-        }
+        onchange: changeImageDownloadSetting
     });
 
     const switchToggleImage = el("label", { className: "esj-switch" }, [

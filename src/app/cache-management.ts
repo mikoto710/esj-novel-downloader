@@ -120,11 +120,6 @@ export async function listManagedCaches(): Promise<CacheListItem[]> {
             (!activeTaskId || activeTaskId === runtime.taskId);
 
         if (isCurrentRuntime) {
-            const mergedSources = existing ? [...existing.sources] : [];
-            if (!mergedSources.includes("runtime")) {
-                mergedSources.push("runtime");
-            }
-
             const persistentChapterCount = existing?.persistentChapterCount || 0;
             const progressCount = Math.max(runtime.completedCount, runtime.bookChapterCount, persistentChapterCount);
 

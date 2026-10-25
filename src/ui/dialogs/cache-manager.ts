@@ -246,6 +246,30 @@ export function createCacheManagerPopup(): void {
         [header, listBox, footer]
     );
 
+    // 两种清理范围共用确认、失败与保护项反馈；活动任务的实际保护只在应用层
+    async function clearCaches(includeRuntime: boolean): Promise<void> {
+        const confirmed = await showCacheConfirm({
+            title: `🗑️ ${t("cache.action.clear")}${t("common.confirm")}`,
+            message: t(includeRuntime ? "cache.confirm.clearAll" : "cache.confirm.clearPersistent"),
+            danger: true
+        });
+        if (!confirmed) {
+            return;
+        }
+        let result: Awaited<ReturnType<typeof clearAllManagedCaches>>;
+        try {
+            result = await clearAllManagedCaches(includeRuntime);
+        } catch (error) {
+            showCacheClearFailure(error);
+            return;
+        }
+        if (result.protectedBookIds.length > 0) {
+            await showCacheProtectionNotice(t("cache.protectedCount", { count: result.protectedBookIds.length }));
+        }
+        log(t("cache.log.clearCompleted"));
+        await renderList();
+    }
+
     // 重新读取合并后的缓存列表并重建操作区域
     async function renderList() {
         const items = await listManagedCaches();
@@ -268,63 +292,8 @@ export function createCacheManagerPopup(): void {
         );
 
         if (items.length > 0) {
-            rightActions.appendChild(
-                createActionButton(t("cache.action.clearPersistent"), async () => {
-                    const confirmed = await showCacheConfirm({
-                        title: `🗑️ ${t("cache.action.clear")}${t("common.confirm")}`,
-                        message: t("cache.confirm.clearPersistent"),
-                        danger: true
-                    });
-                    if (!confirmed) {
-                        return;
-                    }
-                    let result: Awaited<ReturnType<typeof clearAllManagedCaches>>;
-                    try {
-                        result = await clearAllManagedCaches(false);
-                    } catch (error) {
-                        showCacheClearFailure(error);
-                        return;
-                    }
-                    if (result.protectedBookIds.length > 0) {
-                        await showCacheProtectionNotice(
-                            t("cache.protectedCount", { count: result.protectedBookIds.length })
-                        );
-                    }
-                    log(t("cache.log.clearCompleted"));
-                    await renderList();
-                })
-            );
-
-            rightActions.appendChild(
-                createActionButton(
-                    t("cache.action.clearAll"),
-                    async () => {
-                        const confirmed = await showCacheConfirm({
-                            title: `🗑️ ${t("cache.action.clear")}${t("common.confirm")}`,
-                            message: t("cache.confirm.clearAll"),
-                            danger: true
-                        });
-                        if (!confirmed) {
-                            return;
-                        }
-                        let result: Awaited<ReturnType<typeof clearAllManagedCaches>>;
-                        try {
-                            result = await clearAllManagedCaches(true);
-                        } catch (error) {
-                            showCacheClearFailure(error);
-                            return;
-                        }
-                        if (result.protectedBookIds.length > 0) {
-                            await showCacheProtectionNotice(
-                                t("cache.protectedCount", { count: result.protectedBookIds.length })
-                            );
-                        }
-                        log(t("cache.log.clearCompleted"));
-                        await renderList();
-                    },
-                    "danger"
-                )
-            );
+            rightActions.appendChild(createActionButton(t("cache.action.clearPersistent"), () => clearCaches(false)));
+            rightActions.appendChild(createActionButton(t("cache.action.clearAll"), () => clearCaches(true), "danger"));
         }
 
         footer.append(leftActions, rightActions);

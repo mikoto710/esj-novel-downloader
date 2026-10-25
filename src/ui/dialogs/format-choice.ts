@@ -53,6 +53,7 @@ export function showFormatChoice(data: CachedData): void {
     const { mappingSummary, txtEnabled } = getExportCapabilities(data.chapters);
     const hasMappedChapters = !txtEnabled;
 
+    // 关闭只释放本窗口和语言订阅，已开始的格式生成继续绑定原结果
     const closeAction = () => {
         removeElement(popup);
     };
@@ -237,6 +238,7 @@ export function showFormatChoice(data: CachedData): void {
     }
 
     // 生成并导出所选格式，各格式独立防重并允许失败后重试
+    // 按格式防重；标题变更先核对原结果资格，旧生成不会覆盖新任务
     async function handleRichDownload(format: "epub" | "html", button: HTMLButtonElement): Promise<void> {
         if (exporting.has(format)) {
             return;

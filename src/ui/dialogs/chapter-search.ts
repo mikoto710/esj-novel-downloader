@@ -193,7 +193,7 @@ export function createChapterSearchView(options: ChapterSearchOptions): ChapterS
         open();
     });
 
-    input.addEventListener("keydown", (event) => {
+    function handleSearchKeydown(event: KeyboardEvent): void {
         // 输入法可能先结束组合再发出确认键，此时仍需忽略 keyCode 229
         if (disposed || composing || event.isComposing || event.keyCode === 229) {
             return;
@@ -229,7 +229,9 @@ export function createChapterSearchView(options: ChapterSearchOptions): ChapterS
                 navigate(matches[position].index);
             }
         }
-    });
+    }
+
+    input.addEventListener("keydown", handleSearchKeydown);
 
     // 鼠标按下结果时保留输入焦点；触屏仍允许原生滑动下拉列表
     list.addEventListener("pointerdown", (event) => {

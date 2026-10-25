@@ -347,6 +347,70 @@ export function createDownloadHistoryPopup(): void {
     const listBox = el("div", { style: "flex:1;min-height:0;overflow:auto;padding:0 16px 16px;" }, [table]);
     let items: DownloadHistoryItem[] = [];
 
+    // 行内删除后重新读取历史，筛选、列宽和表头继续由外层视图保留
+    function createHistoryRow(item: DownloadHistoryItem): HTMLElement {
+        const cell = (text: string, title = text) =>
+            el(
+                "td",
+                {
+                    title,
+                    style: "padding:10px 8px;border-bottom:1px solid #eee;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
+                },
+                [text]
+            );
+        const openButton = el(
+            "button",
+            {
+                title: t("history.action.open"),
+                style: "border:0;background:none;color:#2b9bd7;cursor:pointer;padding:2px 4px;",
+                onclick: () => window.open(item.pageUrl, "_blank", "noopener")
+            },
+            [t("history.column.source")]
+        );
+        const deleteButton = el(
+            "button",
+            {
+                title: t("history.action.delete"),
+                style: "border:0;background:none;color:#d9534f;cursor:pointer;padding:2px 4px;",
+                onclick: async () => {
+                    await removeDownloadHistory(item.id);
+                    items = await listDownloadHistory();
+                    render();
+                }
+            },
+            [t("history.action.deleteShort")]
+        );
+
+        // 单行依次展示书籍、导出信息、时间，操作区只作用于本条记录
+        return el("tr", {}, [
+            cell(item.bookName),
+            cell(item.author || "—"),
+            cell(
+                t(
+                    item.sourcePageType === "single"
+                        ? "history.type.single"
+                        : isPartialSelectionSummary(item.selection)
+                          ? "history.type.range"
+                          : "history.type.book"
+                )
+            ),
+            cell(item.format.toUpperCase()),
+            cell(sourceLabel(item.sourcePageType)),
+            cell(chapterStatusText(item)),
+            cell(imageStatusText(item)),
+            cell(formatTime(item.exportedAt)),
+            el("td", { style: "padding:10px 8px;border-bottom:1px solid #eee;" }, [
+                el(
+                    "div",
+                    {
+                        style: "display:flex;align-items:center;justify-content:center;gap:6px;white-space:nowrap;"
+                    },
+                    [openButton, deleteButton]
+                )
+            ])
+        ]);
+    }
+
     // 按导出范围、格式和来源筛选并重建记录列表
     const render = () => {
         const scope = (scopeSelect as HTMLSelectElement).value;
@@ -379,70 +443,9 @@ export function createDownloadHistoryPopup(): void {
             );
             return;
         }
-        filtered.forEach((item) => {
-            const cell = (text: string, title = text) =>
-                el(
-                    "td",
-                    {
-                        title,
-                        style: "padding:10px 8px;border-bottom:1px solid #eee;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
-                    },
-                    [text]
-                );
-            const openButton = el(
-                "button",
-                {
-                    title: t("history.action.open"),
-                    style: "border:0;background:none;color:#2b9bd7;cursor:pointer;padding:2px 4px;",
-                    onclick: () => window.open(item.pageUrl, "_blank", "noopener")
-                },
-                [t("history.column.source")]
-            );
-            const deleteButton = el(
-                "button",
-                {
-                    title: t("history.action.delete"),
-                    style: "border:0;background:none;color:#d9534f;cursor:pointer;padding:2px 4px;",
-                    onclick: async () => {
-                        await removeDownloadHistory(item.id);
-                        items = await listDownloadHistory();
-                        render();
-                    }
-                },
-                [t("history.action.deleteShort")]
-            );
-
-            // 单行依次展示书籍、导出信息、时间，操作区只作用于本条记录
-            tableBody.appendChild(
-                el("tr", {}, [
-                    cell(item.bookName),
-                    cell(item.author || "—"),
-                    cell(
-                        t(
-                            item.sourcePageType === "single"
-                                ? "history.type.single"
-                                : isPartialSelectionSummary(item.selection)
-                                  ? "history.type.range"
-                                  : "history.type.book"
-                        )
-                    ),
-                    cell(item.format.toUpperCase()),
-                    cell(sourceLabel(item.sourcePageType)),
-                    cell(chapterStatusText(item)),
-                    cell(imageStatusText(item)),
-                    cell(formatTime(item.exportedAt)),
-                    el("td", { style: "padding:10px 8px;border-bottom:1px solid #eee;" }, [
-                        el(
-                            "div",
-                            {
-                                style: "display:flex;align-items:center;justify-content:center;gap:6px;white-space:nowrap;"
-                            },
-                            [openButton, deleteButton]
-                        )
-                    ])
-                ])
-            );
-        });
+        for (const item of filtered) {
+            tableBody.appendChild(createHistoryRow(item));
+        }
     };
 
     [scopeSelect, formatSelect, sourceSelect].forEach((select) => select.addEventListener("change", render));

@@ -27,6 +27,7 @@ export function createDiagnosticExport(
             {
                 session: {
                     ...session,
+                    // 展示日志写入输出副本，不能修改存储中的中性记录
                     logs: session.logs.map((entry) => ({ ...entry, message: presentation.formatLog(entry) }))
                 }
             },

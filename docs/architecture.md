@@ -28,7 +28,7 @@
 
 弹窗交互和状态由各自模块维护。全局样式见 [ui/styles.css](../src/ui/styles.css)，局部样式见[章节选择](../src/ui/dialogs/download-selection.css)和[格式导出](../src/ui/dialogs/format-choice.css)。CSS 通过 `?inline` 导入，由构建工具压缩后内联到脚本，watch 模式保留可读格式。
 
-书籍下载入口先读 `runBookDownload` 的准备/选择，再读同文件 `executeBookDownload` 的持锁执行及其后 `finalizeBookDownloadTask` 的统一收尾。核心 `runDownload` 直接保留完整性补抓和缺正文决策循环；密码弹窗的布局、`submitPassword`、`refreshPromptText` 与一次决策接线在同一函数内顺序排列。
+书籍下载入口先读 `runBookDownload` 的准备/选择，再读同文件 `executeBookDownload` 的持锁执行及其后 `finalizeBookDownloadTask` 的统一收尾。核心 `runDownload` 直接保留完整性补抓和缺正文决策循环；选择窗口 `showReady` 保留文件名和勾选，目录 `searchChapters/revealChapter` 保留搜索与导航规则，搜索键盘行为在 `handleSearchKeydown`，格式生成在 `handleRichDownload`。密码弹窗的布局、`submitPassword`、`refreshPromptText` 与一次决策接线在同一函数内顺序排列。
 
 书籍下载的成功路径：
 
@@ -62,6 +62,8 @@ ui/pages/detail 或 forum
 - **任务状态**：章节 Map、取消能力和锁归属具体任务。初始库存由 `DownloadOptions.initialChapters` 只读交接，核心复制 Map 容器后由章节流程写入；页面只保留入口、摘要和最近结果。回调按 `taskId` 校验归属，失败或取消保留旧导出。`readyChapterCount` 计本次选择的已有记录，`bookChapterCount` 计整书库存快照，`persistedCount` 计确认保存的唯一所选索引。计数增减只在 `DownloadProgress` 的具名方法，密码模块只提交自己的汇总。
 - **输出与资源**：按固定计划恢复、补抓和组装。未选章节不参与缺章判断或占位，占位只进入导出快照。书籍 HTML 有封面和目录，单章使用独立布局。图片按发起页面地址解析。字体先规范化和校验，映射字体禁用 TXT。
 - **再次导出**：`app/export` 绑定原结果和自定义文件名，不改书籍元数据或历史归属。EPUB 缓存按生成设置和失效版本复用。`recordExportOutcome` 共用成功/取消的原身份保护，未知来源旧结果不写入后来任务诊断。关闭格式弹窗不取消生成，旧生成不能改写新任务标题。插图设置在缓存预览前固定，并发数在装配时读取，EPUB 设置在生成时读取。
+- **设置与诊断规则**：图片设置在 `changeImageDownloadSetting` 连续执行读取、跨页确认、保存和失败恢复。诊断 `recordDownloadEvent` 的 `applyDownloadEvent` 只投影事件，`mutateSession` 统一处理终态搬移与保存；JSON 导出只生成日志展示副本。
+- **管理视图**：缓存弹窗 `clearCaches` 共用确认和反馈，真正清理与活动任务保护在 `app/cache-management`；历史 `createHistoryRow` 维护行操作，诊断 `downloadSelectedDiagnostic/copySelectedDiagnostic` 明确作用于当前选择，刷新保留筛选与滚动。
 - **装配**：`createDownloadDependencies` 直接绑定站点、存储和计时能力。`createChapterProcessor` 保留解析/图片采集与原任务诊断职责，`createCoverFetcher` 保留封面采集事实的本地化；`observeDownloadEvent` 只更新页面摘要和记录诊断。
 - **诊断**：记录原任务的中性消息，已有终态优先。存储失败不阻断主流程，敏感内容不写入记录。过长区间可简化，为事件和日志保留容量。快照和历史仍保留完整选择。
 - **语言**：`LocaleKey` 和 `LOCALE_KEYS` 从简体基础字典派生，繁体字典声明处检查同键；新增文案只改两份字典和使用它的控件。依次采用手动偏好、站点提示和浏览器语言。界面刷新不改小说内容、元数据、URL 或站点协议原文。

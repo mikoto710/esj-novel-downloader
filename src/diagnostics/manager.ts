@@ -678,95 +678,93 @@ export class DiagnosticManager {
             // 逐章恢复和处理只汇总到快照
             return;
         }
-        this.mutateSession(
-            taskId,
-            (session, now) => {
-                const at = now - session.startedAt;
-                // 高频 snapshot 只覆盖汇总，不逐条写入事件数组；阶段、失败和缓存结果才进入时间线
-                if (
-                    event.type === "snapshot-updated" ||
-                    event.type === "phase-changed" ||
-                    event.type === "download-failed"
-                ) {
-                    applySnapshot(session, event.snapshot);
+        // 事件只投影到本会话；mutateSession 仍统一维护终态搬移、脱敏、容量和一次保存
+        const applyDownloadEvent = (session: DiagnosticSession, now: number) => {
+            const at = now - session.startedAt;
+            // 高频 snapshot 只覆盖汇总，不逐条写入事件数组；阶段、失败和缓存结果才进入时间线
+            if (
+                event.type === "snapshot-updated" ||
+                event.type === "phase-changed" ||
+                event.type === "download-failed"
+            ) {
+                applySnapshot(session, event.snapshot);
+            }
+            if (event.type === "phase-changed") {
+                session.events.push({
+                    at,
+                    type: event.type,
+                    phase: event.current,
+                    details: { previous: event.previous }
+                });
+                if (event.current === "export-ready") {
+                    this.finishInStore(session, "success", now);
                 }
-                if (event.type === "phase-changed") {
-                    session.events.push({
-                        at,
-                        type: event.type,
-                        phase: event.current,
-                        details: { previous: event.previous }
-                    });
-                    if (event.current === "export-ready") {
-                        this.finishInStore(session, "success", now);
-                    }
-                    if (event.current === "cancelled") {
-                        this.finishInStore(session, "cancelled", now);
-                    }
-                    if (event.current === "failed") {
-                        this.finishInStore(session, "failed", now);
-                    }
-                } else if (event.type === "cache-write-finished") {
-                    session.task.cacheWriteCount++;
-                    if (!event.saved) {
-                        session.task.cacheWriteFailureCount++;
-                    }
-                    session.events.push({
-                        at,
-                        type: event.type,
-                        details: {
-                            chapterCount: event.chapterCount,
-                            saved: event.saved,
-                            code: event.failure?.reason || ""
-                        }
-                    });
-                } else if (event.type === "chapter-failed") {
-                    session.failures.push({
-                        at,
-                        scope: "chapter",
-                        stage: event.stage,
-                        code: event.code,
-                        message: limitText(getDomainMessageDetail(event.code, event.params)),
-                        chapter: {
-                            index: event.task.index + 1,
-                            title: event.task.title,
-                            url: sanitizeDiagnosticUrl(event.task.url)
-                        }
-                    });
-                } else if (event.type === "protected-chapter-password-rejected") {
-                    session.events.push({
-                        at,
-                        type: event.type,
-                        details: {
-                            chapterIndex: event.task.index + 1,
-                            chapterTitle: event.task.title,
-                            result: "password-rejected"
-                        }
-                    });
-                } else if (event.type === "mapping-font-updated") {
-                    session.task.mappingFontChapterCount = event.summary.chapterCount;
-                    session.task.mappingFontBytes = event.summary.fontBytes;
-                } else if (event.type === "incomplete-chapters-decided") {
-                    session.events.push({
-                        at,
-                        type: event.type,
-                        details: { missingCount: event.missingCount, decision: event.decision }
-                    });
-                } else if (event.type === "download-failed") {
-                    session.failures.push({
-                        at,
-                        scope: event.snapshot.storageFailure ? "storage" : "download",
-                        stage: event.snapshot.phase,
-                        code: event.snapshot.storageFailure?.reason || event.code || "download-failed",
-                        message: limitText(getDomainMessageDetail(event.code, event.params))
-                    });
+                if (event.current === "cancelled") {
+                    this.finishInStore(session, "cancelled", now);
                 }
-                if (session.events.length > DIAGNOSTIC_EVENT_LIMIT) {
-                    session.events.shift();
+                if (event.current === "failed") {
+                    this.finishInStore(session, "failed", now);
                 }
-            },
-            true
-        );
+            } else if (event.type === "cache-write-finished") {
+                session.task.cacheWriteCount++;
+                if (!event.saved) {
+                    session.task.cacheWriteFailureCount++;
+                }
+                session.events.push({
+                    at,
+                    type: event.type,
+                    details: {
+                        chapterCount: event.chapterCount,
+                        saved: event.saved,
+                        code: event.failure?.reason || ""
+                    }
+                });
+            } else if (event.type === "chapter-failed") {
+                session.failures.push({
+                    at,
+                    scope: "chapter",
+                    stage: event.stage,
+                    code: event.code,
+                    message: limitText(getDomainMessageDetail(event.code, event.params)),
+                    chapter: {
+                        index: event.task.index + 1,
+                        title: event.task.title,
+                        url: sanitizeDiagnosticUrl(event.task.url)
+                    }
+                });
+            } else if (event.type === "protected-chapter-password-rejected") {
+                session.events.push({
+                    at,
+                    type: event.type,
+                    details: {
+                        chapterIndex: event.task.index + 1,
+                        chapterTitle: event.task.title,
+                        result: "password-rejected"
+                    }
+                });
+            } else if (event.type === "mapping-font-updated") {
+                session.task.mappingFontChapterCount = event.summary.chapterCount;
+                session.task.mappingFontBytes = event.summary.fontBytes;
+            } else if (event.type === "incomplete-chapters-decided") {
+                session.events.push({
+                    at,
+                    type: event.type,
+                    details: { missingCount: event.missingCount, decision: event.decision }
+                });
+            } else if (event.type === "download-failed") {
+                session.failures.push({
+                    at,
+                    scope: event.snapshot.storageFailure ? "storage" : "download",
+                    stage: event.snapshot.phase,
+                    code: event.snapshot.storageFailure?.reason || event.code || "download-failed",
+                    message: limitText(getDomainMessageDetail(event.code, event.params))
+                });
+            }
+            if (session.events.length > DIAGNOSTIC_EVENT_LIMIT) {
+                session.events.shift();
+            }
+        };
+        this.mutateSession(taskId, applyDownloadEvent, true);
     }
 
     /**
