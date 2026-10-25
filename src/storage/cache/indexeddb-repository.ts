@@ -131,6 +131,8 @@ function runWriteTransaction<T>(
             new Promise<T>((resolve, reject) => {
                 let result: T;
                 let hasResult = false;
+                let operationFailed = false;
+                let operationError: unknown;
                 const transaction = store.transaction;
                 const cleanupAbortListener = () => signal?.removeEventListener("abort", onSignalAbort);
                 const onSignalAbort = () => {
@@ -138,9 +140,10 @@ function runWriteTransaction<T>(
                         transaction.abort();
                     } catch {
                         // 事务已经完成时无需重复中止
+                        cleanupAbortListener();
+                        reject(createCacheAbortError());
                     }
-                    cleanupAbortListener();
-                    reject(createCacheAbortError());
+                    // abort() 只发起中止，等待 onabort 后才能向调用方交还 writer
                 };
 
                 // 请求回调只登记结果，事务提交后才向上层确认；回调中不插入非 IDB 异步等待
@@ -155,13 +158,14 @@ function runWriteTransaction<T>(
                 transaction.onabort = () => {
                     cleanupAbortListener();
                     reject(
-                        signal?.aborted ? createCacheAbortError() : transaction.error || new Error("缓存事务已中止")
+                        operationFailed
+                            ? operationError
+                            : signal?.aborted
+                              ? createCacheAbortError()
+                              : transaction.error || new Error("缓存事务已中止")
                     );
                 };
-                transaction.onerror = () => {
-                    cleanupAbortListener();
-                    reject(signal?.aborted ? createCacheAbortError() : transaction.error || new Error("缓存事务失败"));
-                };
+                // 请求错误默认中止事务，统一在 onabort 结束等待，避免错误事件先于回滚完成
 
                 if (signal?.aborted) {
                     onSignalAbort();
@@ -175,13 +179,15 @@ function runWriteTransaction<T>(
                         hasResult = true;
                     });
                 } catch (error) {
+                    operationFailed = true;
+                    operationError = error;
                     try {
                         transaction.abort();
                     } catch {
                         // 同步异常发生在事务完成边界时无需重复中止
+                        cleanupAbortListener();
+                        reject(error);
                     }
-                    cleanupAbortListener();
-                    reject(error);
                 }
             })
     );

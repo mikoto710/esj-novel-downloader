@@ -212,6 +212,51 @@ describe("book lock contracts", () => {
         await locks.releaseBookDownloadLock(acquired.lock);
     });
 
+    it("waits for the transaction abort event before returning signal cancellation", async () => {
+        vi.stubGlobal("BroadcastChannel", undefined);
+        const storage = await import("../../src/storage/cache/book-cache");
+        const repository = await import("../../src/storage/cache/indexeddb-repository");
+        const original = createChapter(0, { content: "persisted" });
+        await storage.claimBookCache("108", "task-108", false);
+        await storage.putBookCacheBatchForTask("108", "task-108", new Map([[0, original]]));
+        const controller = new AbortController();
+        let aborted = false;
+        const put = IDBObjectStore.prototype.put;
+        const injected = vi.spyOn(IDBObjectStore.prototype, "put").mockImplementation(function (
+            this: IDBObjectStore,
+            value,
+            key
+        ) {
+            const request = put.call(this, value, key);
+            if (Array.isArray(key) && key[0] === "chapter" && key[1] === "108") {
+                this.transaction.addEventListener(
+                    "abort",
+                    () => {
+                        aborted = true;
+                    },
+                    { once: true }
+                );
+                request.addEventListener("success", () => controller.abort(), { once: true });
+            }
+            return request;
+        });
+        try {
+            await expect(
+                storage.putBookCacheBatchForTask(
+                    "108",
+                    "task-108",
+                    new Map([[0, createChapter(0, { content: "replacement" })]]),
+                    undefined,
+                    controller.signal
+                )
+            ).resolves.toBe(false);
+            expect(aborted).toBe(true);
+        } finally {
+            injected.mockRestore();
+        }
+        expect(await repository.readCacheChaptersV3("108")).toEqual(new Map([[0, original]]));
+    });
+
     it("rolls back chapters and manifest when a transaction aborts after their requests succeed", async () => {
         vi.stubGlobal("BroadcastChannel", undefined);
         const storage = await import("../../src/storage/cache/book-cache");
