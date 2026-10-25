@@ -188,22 +188,29 @@ export function recordBrowserDiagnosticExport(input: RecordDiagnosticExportInput
  * 按 display 决定界面与控制台输出，并向 taskId 对应的活动会话追加诊断日志
  */
 export function browserDiagnosticLog(message: string | DownloadLog, taskId = currentTaskId, display = true): void {
-    // 先保持原有 UI/控制台日志，再以最佳努力写入诊断；诊断异常不得改变下载行为
-    const displayMessage = typeof message === "string" ? message : formatDownloadLog(message);
+    // 界面格式化/日志和原任务诊断分别观察；任一故障都不能阻止另一方或主流程
     if (display) {
-        log(displayMessage);
+        try {
+            log(typeof message === "string" ? message : formatDownloadLog(message));
+        } catch {
+            /* 保留下面的中性诊断写入 */
+        }
     }
     if (taskId) {
-        manager.recordLog(
-            taskId,
-            typeof message === "string"
-                ? { level: "info", message }
-                : {
-                      level: classifyDownloadLogLevel(message.code),
-                      code: message.code,
-                      ...(message.params === undefined ? {} : { params: message.params })
-                  }
-        );
+        try {
+            manager.recordLog(
+                taskId,
+                typeof message === "string"
+                    ? { level: "info", message }
+                    : {
+                          level: classifyDownloadLogLevel(message.code),
+                          code: message.code,
+                          ...(message.params === undefined ? {} : { params: message.params })
+                      }
+            );
+        } catch {
+            /* 诊断观察失败不影响调用方 */
+        }
     }
 }
 

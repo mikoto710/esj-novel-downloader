@@ -29,6 +29,7 @@ import type {
     CoverFetcherPort,
     DownloadCancellationPort,
     DownloadDependencies,
+    DownloadEvent,
     DownloadLog,
     DownloadResult,
     DownloadUiPort
@@ -618,39 +619,37 @@ function createChapterProcessor(taskId: string): ChapterProcessorPort {
             log(message);
         }
     };
-    return {
-        normalizeCached: normalizeChapterMappingFont,
-        async process(html, task, imageEnabled, signal) {
-            const processed = await processParsedChapter(
-                parseChapterHtml(html, task.title),
-                task.index,
-                imageEnabled,
-                signal
+    const processChapterHtml: ChapterProcessorPort["process"] = async (html, task, imageEnabled, signal) => {
+        const processed = await processParsedChapter(
+            parseChapterHtml(html, task.title),
+            task.index,
+            imageEnabled,
+            signal
+        );
+        if (!signal?.aborted) {
+            recordInlineImageFailures(
+                task,
+                processed.imageFailures.map((failure) =>
+                    "imageProcessingError" in processed
+                        ? { ...failure, message: t("image.processingFailure") }
+                        : failure
+                ),
+                taskId
             );
-            if (!signal?.aborted) {
-                recordInlineImageFailures(
-                    task,
-                    processed.imageFailures.map((failure) =>
-                        "imageProcessingError" in processed
-                            ? { ...failure, message: t("image.processingFailure") }
-                            : failure
-                    ),
-                    taskId
-                );
-            }
-            if ("imageProcessingError" in processed) {
-                taskLog(
-                    t("image.processingLog", {
-                        count: processed.chapter.imageErrors || 0,
-                        chapter: task.index + 1,
-                        title: task.title,
-                        detail: getErrorMessage(processed.imageProcessingError)
-                    })
-                );
-            }
-            return processed.chapter;
         }
+        if ("imageProcessingError" in processed) {
+            taskLog(
+                t("image.processingLog", {
+                    count: processed.chapter.imageErrors || 0,
+                    chapter: task.index + 1,
+                    title: task.title,
+                    detail: getErrorMessage(processed.imageProcessingError)
+                })
+            );
+        }
+        return processed.chapter;
     };
+    return { normalizeCached: normalizeChapterMappingFont, process: processChapterHtml };
 }
 
 // 创建绑定本任务身份的封面端口，获取异常降级为无封面
@@ -717,6 +716,43 @@ function createDownloadDependencies(task: BrowserDownloadTask): DownloadDependen
     const chapterFetcher = createChapterFetcher(requestGate);
     const protectedChapterAuth = createProtectedChapterAuth(fetchWithTimeout, requestGate);
 
+    function observeDownloadEvent(event: DownloadEvent): void {
+        try {
+            // 页面会话只是核心快照的显示副本，不反向驱动下载状态
+            if (isCurrentDownload(activeLock.taskId) && event.type === "task-started") {
+                taskStarted = true;
+                startRuntimeCacheSession(event.meta, event.taskId, event.bookChapterCount);
+            } else if (
+                taskStarted &&
+                isCurrentDownload(activeLock.taskId) &&
+                (event.type === "snapshot-updated" || event.type === "phase-changed")
+            ) {
+                const snapshot = event.snapshot;
+                updateRuntimeCacheSession(
+                    {
+                        completedCount: snapshot.completedCount,
+                        bookChapterCount: snapshot.bookChapterCount,
+                        status:
+                            snapshot.phase === "cancelled"
+                                ? "cancelled"
+                                : snapshot.phase === "export-ready"
+                                  ? "export-ready"
+                                  : "downloading",
+                        hasExportData: snapshot.hasExportData
+                    },
+                    activeLock.taskId
+                );
+            }
+        } catch {
+            /* 摘要观察失败不阻断诊断 */
+        }
+        try {
+            recordBrowserDownloadEvent(activeLock.taskId, event);
+        } catch {
+            /* 诊断观察失败不反向影响下载 */
+        }
+    }
+
     return {
         cancellation,
         ui,
@@ -728,36 +764,7 @@ function createDownloadDependencies(task: BrowserDownloadTask): DownloadDependen
         coverCache,
         cache,
         lock,
-        events: {
-            emit(event) {
-                // 页面会话只是核心快照的显示副本，不反向驱动下载状态
-                if (isCurrentDownload(activeLock.taskId) && event.type === "task-started") {
-                    taskStarted = true;
-                    startRuntimeCacheSession(event.meta, event.taskId, event.bookChapterCount);
-                } else if (
-                    taskStarted &&
-                    isCurrentDownload(activeLock.taskId) &&
-                    (event.type === "snapshot-updated" || event.type === "phase-changed")
-                ) {
-                    const snapshot = event.snapshot;
-                    updateRuntimeCacheSession(
-                        {
-                            completedCount: snapshot.completedCount,
-                            bookChapterCount: snapshot.bookChapterCount,
-                            status:
-                                snapshot.phase === "cancelled"
-                                    ? "cancelled"
-                                    : snapshot.phase === "export-ready"
-                                      ? "export-ready"
-                                      : "downloading",
-                            hasExportData: snapshot.hasExportData
-                        },
-                        activeLock.taskId
-                    );
-                }
-                recordBrowserDownloadEvent(activeLock.taskId, event);
-            }
-        },
+        events: { emit: observeDownloadEvent },
         scheduler: {
             sleep,
             sleepWithAbort,

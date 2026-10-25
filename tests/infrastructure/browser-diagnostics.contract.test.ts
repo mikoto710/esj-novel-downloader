@@ -13,6 +13,7 @@ import {
     startBrowserDiagnosticSession,
     updateBrowserDiagnosticSession
 } from "../../src/diagnostics/runtime";
+import * as logView from "../../src/ui/log-view";
 import { createDiagnosticExport } from "../../src/diagnostics/export";
 import { formatDiagnosticBookTitle, formatDiagnosticLog } from "../../src/ui/messages/diagnostics";
 import { createInitialDownloadSnapshot } from "../../src/download/progress";
@@ -80,6 +81,26 @@ describe("browser diagnostic persistence", () => {
                 failure: { scope: "storage", stage: "cache-read", code: "database-unavailable", message: "Unavailable" }
             })
         ).toBeUndefined();
+    });
+
+    it("records the original diagnostic log even when its view cannot render", () => {
+        startBrowserDiagnosticSession({
+            taskId: "task-log-failure",
+            bookId: "100",
+            bookTitle: "Book",
+            pageUrl: location.href,
+            sourcePageType: "detail",
+            imageEnabled: false
+        });
+        vi.spyOn(logView, "log").mockImplementation(() => {
+            throw new Error("view unavailable");
+        });
+        expect(() =>
+            browserDiagnosticLog({ code: "download-started", params: { concurrency: 1 } }, "task-log-failure")
+        ).not.toThrow();
+        expect(listBrowserDiagnosticSessions().active[0].logs).toContainEqual(
+            expect.objectContaining({ code: "download-started", params: { concurrency: 1 } })
+        );
     });
 
     it("persists a completed session with logs, exports and controlled book details", () => {

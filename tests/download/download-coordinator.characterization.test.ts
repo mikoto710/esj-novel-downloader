@@ -126,6 +126,43 @@ describe("runDownload characterization", () => {
         expect(harness.exportData?.chapters).toEqual([createChapter(0)]);
     });
 
+    it("keeps observer failures from changing chapter success", async () => {
+        const tasks = [createDownloadTask()];
+        const harness = createHarness(tasks);
+        const observerFailure = () => {
+            throw new Error("observer failed");
+        };
+        harness.dependencies.events.emit = observerFailure;
+        harness.dependencies.log = observerFailure;
+        harness.dependencies.ui.update = observerFailure;
+        harness.dependencies.ui.updateMappingFontWarning = observerFailure;
+        harness.dependencies.chapterProcessor.process = async () => createMappedChapter(0, "1");
+        await expect(harness.run(createOptions(tasks))).resolves.toMatchObject({
+            status: "ready",
+            data: { chapters: [expect.objectContaining({ title: tasks[0].title })] }
+        });
+        expect(harness.ui.confirmMappingFontDownload).toHaveBeenCalledOnce();
+        expect(harness.dependencies.cancellation.isCancellationRequested()).toBe(false);
+    });
+
+    it("returns a real decision error even when failure observers throw", async () => {
+        const tasks = [createDownloadTask()];
+        const harness = createHarness(tasks);
+        harness.dependencies.chapterFetcher.fetch = async () => {
+            throw new Error("offline");
+        };
+        harness.ui.confirmIncompleteChapters.mockRejectedValue(new Error("decision failed"));
+        harness.dependencies.events.emit = () => {
+            throw new Error("observer failed");
+        };
+        await expect(harness.run(createOptions(tasks))).resolves.toMatchObject({
+            status: "failed",
+            failure: { kind: "download", params: { detail: "decision failed" } }
+        });
+        expect(harness.exportData).toBeNull();
+        expect(harness.dependencies.cancellation.isCancellationRequested()).toBe(false);
+    });
+
     it("returns the export snapshot only after the cache writer finishes", async () => {
         const tasks = [createDownloadTask()];
         const harness = createHarness(tasks);

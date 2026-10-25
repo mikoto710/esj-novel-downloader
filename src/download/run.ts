@@ -21,7 +21,41 @@ export async function runDownload(
     options: DownloadOptions,
     dependencies: DownloadDependencies
 ): Promise<DownloadResult> {
-    const { cancellation, ui, events, log } = dependencies;
+    const { cancellation } = dependencies;
+    // 只隔离单向观察；确认/密码等业务决策仍直接 await，真实异常进入失败分支
+    const log: DownloadDependencies["log"] = (message) => {
+        try {
+            dependencies.log(message);
+        } catch {
+            /* 日志故障不能改写业务结果 */
+        }
+    };
+    const events: DownloadDependencies["events"] = {
+        emit(event) {
+            try {
+                dependencies.events.emit(event);
+            } catch {
+                /* 诊断与页面摘要均为观察 */
+            }
+        }
+    };
+    const ui: DownloadDependencies["ui"] = {
+        ...dependencies.ui,
+        update(snapshot) {
+            try {
+                dependencies.ui.update(snapshot);
+            } catch {
+                /* 进度呈现失败不阻断正文 */
+            }
+        },
+        updateMappingFontWarning(summary) {
+            try {
+                dependencies.ui.updateMappingFontWarning(summary);
+            } catch {
+                /* 摘要不替代字体确认 */
+            }
+        }
+    };
     const chapters = new Map(options.initialChapters);
     const plan = createDownloadPlan(options);
     const meta: CacheMeta = {
@@ -57,6 +91,9 @@ export async function runDownload(
 
     const ports = {
         ...dependencies,
+        events,
+        log,
+        ui,
         workSignal: work.signal,
         stopOnFailure,
         concurrency: Math.max(1, Math.floor(dependencies.concurrency) || 1)
@@ -224,13 +261,13 @@ export async function runDownload(
                 (cancellation.isCancellationRequested() && isCancellationError(error)))
         ) {
             try {
-                result = await finishCancellation(dependencies, progress, cache);
+                result = await finishCancellation(ports, progress, cache);
             } catch (cancellationError) {
-                result = reportFailure(cancellationError, dependencies, progress, cache, pipeline);
+                result = reportFailure(cancellationError, ports, progress, cache, pipeline);
             }
         } else {
             stopOnFailure(error);
-            result = reportFailure(firstFailure, dependencies, progress, cache, pipeline);
+            result = reportFailure(firstFailure, ports, progress, cache, pipeline);
         }
     } finally {
         // 所有终态都等待封面与活动事务，不遗弃仍可能回写状态的 Promise
@@ -243,7 +280,7 @@ export async function runDownload(
         } catch (error) {
             // 资源结束失败也交接给应用，已确定的原失败保留优先权
             if (!result || result.status !== "failed") {
-                result = reportFailure(error, dependencies, progress, cache, pipeline);
+                result = reportFailure(error, ports, progress, cache, pipeline);
             }
         } finally {
             cache.dispose();

@@ -77,7 +77,8 @@ function recordFailedExport(
 ): void {
     const details = getExportErrorDetails(error);
     // 旧快照没有来源身份时，不把导出归到后来任务
-    if (data.exportContext?.taskId) {
+    const taskId = data.exportContext?.taskId;
+    if (taskId) {
         recordBrowserDiagnosticExport(
             {
                 scope: "full",
@@ -87,7 +88,7 @@ function recordFailedExport(
                 downloadTriggered: false,
                 failureStage: stage
             },
-            data.exportContext?.taskId
+            taskId
         );
         recordBrowserDiagnosticFailure(
             {
@@ -96,7 +97,7 @@ function recordFailedExport(
                 code: error instanceof Error ? error.name || "export-failed" : "export-failed",
                 message: details
             },
-            data.exportContext?.taskId
+            taskId
         );
     }
     view.failed(format, stage, details);
@@ -119,7 +120,7 @@ export function exportBookTxt(data: CachedData, view: ExportView): void {
     }
     try {
         triggerDownload(blob, filename);
-        recordSuccessfulExport(data, "txt");
+        recordExportOutcome(data, "txt", "success");
         void recordBookExport(data, "txt");
     } catch (error) {
         console.error(error);
@@ -135,7 +136,7 @@ export async function exportBookRich(data: CachedData, format: "epub" | "html", 
     try {
         const { mappingSummary } = getExportCapabilities(data.chapters);
         if (mappingSummary.chapterCount > 0 && !(await view.confirm(format, mappingSummary))) {
-            recordCancelledExport(data, format);
+            recordExportOutcome(data, format, "cancelled");
             return;
         }
         const epubTagPageEnabled = format === "epub" && getEpubTagPageSetting();
@@ -162,7 +163,7 @@ export async function exportBookRich(data: CachedData, format: "epub" | "html", 
         }
         stage = "download";
         triggerDownload(blob, createBookExportFilename(data.metadata.title, format, data.exportFilename));
-        recordSuccessfulExport(data, format);
+        recordExportOutcome(data, format, "success");
         void recordBookExport(data, format);
     } catch (error) {
         console.error(error);
@@ -170,37 +171,16 @@ export async function exportBookRich(data: CachedData, format: "epub" | "html", 
     }
 }
 
-function recordSuccessfulExport(data: CachedData, format: "txt" | "epub" | "html"): void {
-    if (!data.exportContext?.taskId) {
+// 成功/取消共用原任务身份检查；缺少身份的旧结果只导出，不借用当前任务诊断
+function recordExportOutcome(data: CachedData, format: ExportFormat, outcome: "success" | "cancelled"): void {
+    const taskId = data.exportContext?.taskId;
+    if (!taskId) {
         return;
     }
+    const triggered = outcome === "success";
     recordBrowserDiagnosticExport(
-        {
-            scope: "full",
-            format,
-            outcome: "success",
-            generated: true,
-            downloadTriggered: true,
-            failureStage: null
-        },
-        data.exportContext?.taskId
-    );
-}
-
-function recordCancelledExport(data: CachedData, format: "epub" | "html"): void {
-    if (!data.exportContext?.taskId) {
-        return;
-    }
-    recordBrowserDiagnosticExport(
-        {
-            scope: "full",
-            format,
-            outcome: "cancelled",
-            generated: false,
-            downloadTriggered: false,
-            failureStage: null
-        },
-        data.exportContext?.taskId
+        { scope: "full", format, outcome, generated: triggered, downloadTriggered: triggered, failureStage: null },
+        taskId
     );
 }
 
