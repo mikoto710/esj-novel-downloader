@@ -6,6 +6,7 @@ export interface WorkerPoolOptions<T> {
     concurrency: number;
     isCancellationRequested(): boolean;
     beforeClaim?(): Promise<boolean>;
+    onFailure?(error: unknown): void;
     process(item: T, index: number): Promise<void>;
 }
 
@@ -26,13 +27,15 @@ export async function runWorkerPool<T>(options: WorkerPoolOptions<T>): Promise<W
     const workerCount = Math.min(items.length, Math.max(1, Math.floor(options.concurrency) || 1));
     let cursor = 0;
     let completedCount = 0;
+    let failed = false;
+    let firstFailure: unknown;
 
     const worker = async () => {
-        while (!isCancellationRequested()) {
+        while (!failed && !isCancellationRequested()) {
             if (options.beforeClaim && !(await options.beforeClaim())) {
                 return;
             }
-            if (isCancellationRequested()) {
+            if (failed || isCancellationRequested()) {
                 return;
             }
             const index = cursor;
@@ -45,8 +48,21 @@ export async function runWorkerPool<T>(options: WorkerPoolOptions<T>): Promise<W
         }
     };
 
-    // 单个 worker 拒绝不会自动停止其他 worker，调用方仍须通过取消状态终止它们
-    await Promise.all(Array.from({ length: workerCount }, () => worker()));
+    // 固定首错并通知调用方中止在途 I/O；等待所有已领取工作真实结束后再抛出
+    await Promise.all(
+        Array.from({ length: workerCount }, () =>
+            worker().catch((error: unknown) => {
+                if (!failed) {
+                    failed = true;
+                    firstFailure = error;
+                    options.onFailure?.(error);
+                }
+            })
+        )
+    );
+    if (failed) {
+        throw firstFailure;
+    }
     return {
         claimedCount: cursor,
         completedCount,

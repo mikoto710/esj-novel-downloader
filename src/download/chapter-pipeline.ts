@@ -23,6 +23,8 @@ type ChapterPorts = Pick<
     | "log"
     | "events"
 > & {
+    workSignal: AbortSignal;
+    stopOnFailure(error: unknown): void;
     ui: Pick<
         DownloadDependencies["ui"],
         | "confirmMappingFontDownload"
@@ -84,13 +86,14 @@ export function createChapterPipeline(
                 () =>
                     ports.ui.confirmMappingFontDownload(
                         { task, ...getMappingFontSummary(), inFlightLimit },
-                        ports.cancellation.signal
+                        ports.workSignal
                     ),
-                false
+                false,
+                ports.workSignal
             ).then((confirmed) => {
                 if (confirmed) {
                     mappingConsentGranted = true;
-                } else {
+                } else if (!ports.workSignal.aborted) {
                     ports.cancellation.requestCancellation();
                 }
                 return confirmed;
@@ -113,7 +116,7 @@ export function createChapterPipeline(
         if (mappingConsentPromise && !mappingConsentGranted) {
             return mappingConsentPromise;
         }
-        return !ports.cancellation.isCancellationRequested();
+        return !ports.workSignal.aborted;
     }
 
     /**
@@ -130,15 +133,15 @@ export function createChapterPipeline(
 
         if (entries.length > 0) {
             // 分片让出执行权，避免大量缓存校验阻塞界面
-            await ports.scheduler.sleepWithAbort(0);
+            await ports.scheduler.sleepWithAbort(0, ports.workSignal);
         }
 
         for (const [entryIndex, [index, chapter]] of entries.entries()) {
-            if (ports.cancellation.isCancellationRequested()) {
+            if (ports.workSignal.aborted) {
                 return false;
             }
             try {
-                const normalized = await ports.chapterProcessor.normalizeCached(chapter, ports.cancellation.signal);
+                const normalized = await ports.chapterProcessor.normalizeCached(chapter, ports.workSignal);
                 if (normalized.kind === "mapped") {
                     const task = taskByIndex.get(index) || {
                         index,
@@ -169,8 +172,8 @@ export function createChapterPipeline(
             }
 
             if ((entryIndex + 1) % CACHE_RESTORE_YIELD_INTERVAL === 0 && entryIndex + 1 < entries.length) {
-                await ports.scheduler.sleepWithAbort(0);
-                if (ports.cancellation.isCancellationRequested()) {
+                await ports.scheduler.sleepWithAbort(0, ports.workSignal);
+                if (ports.workSignal.aborted) {
                     return false;
                 }
             }
@@ -205,7 +208,7 @@ export function createChapterPipeline(
                 return false;
             }
         }
-        return !ports.cancellation.isCancellationRequested();
+        return !ports.workSignal.aborted;
     }
 
     function throwIfMappingFontFailed(): void {
@@ -216,15 +219,15 @@ export function createChapterPipeline(
         throw new MappingFontError("font-source-invalid", "chapter-structure-invalid", { count: failures.length });
     }
 
-    const shouldStop = () => ports.cancellation.isCancellationRequested() || Boolean(cache.failure);
+    const shouldStop = () => ports.workSignal.aborted || Boolean(cache.failure);
 
     // 按既有重试策略获取正文，普通失败交给后续完整性检查
     async function downloadChapterHtml(task: DownloadTask, isRetry: boolean): Promise<string | null> {
         const result = await runWithRetry({
             policy: DEFAULT_CHAPTER_RETRY_POLICY,
-            operation: () => ports.chapterFetcher.fetch(task, ports.cancellation.signal),
-            sleep: ports.scheduler.sleepWithAbort,
-            isCancellationRequested: ports.cancellation.isCancellationRequested,
+            operation: () => ports.chapterFetcher.fetch(task, ports.workSignal),
+            sleep: (ms) => ports.scheduler.sleepWithAbort(ms, ports.workSignal),
+            isCancellationRequested: () => ports.workSignal.aborted,
             isCancellationError: (error) => getErrorDetails(error).name === "AbortError"
         });
         if (result.status === "success") {
@@ -267,9 +270,15 @@ export function createChapterPipeline(
     ): Promise<ChapterTaskResult> {
         let chapter: Chapter;
         try {
-            chapter = await ports.chapterProcessor.process(html, task, imageEnabled, ports.cancellation.signal);
+            chapter = await ports.chapterProcessor.process(html, task, imageEnabled, ports.workSignal);
+            if (ports.workSignal.aborted) {
+                return "cancelled";
+            }
             mappingFailures.delete(task.index);
         } catch (error) {
+            if (ports.workSignal.aborted) {
+                return "cancelled";
+            }
             if (!(error instanceof MappingFontError)) {
                 throw error;
             }
@@ -302,7 +311,7 @@ export function createChapterPipeline(
             }
             return "failed";
         }
-        if (ports.cancellation.isCancellationRequested()) {
+        if (ports.workSignal.aborted) {
             return "cancelled";
         }
 
@@ -315,7 +324,7 @@ export function createChapterPipeline(
 
         const accepted = await cache.enqueue(task.index, chapter);
         if (!accepted) {
-            return ports.cancellation.isCancellationRequested() ? "cancelled" : "failed";
+            return ports.workSignal.aborted ? "cancelled" : "failed";
         }
         if (!(await mappingConsent)) {
             return "cancelled";
@@ -341,15 +350,15 @@ export function createChapterPipeline(
             }
         });
 
-        if (!ports.cancellation.isCancellationRequested()) {
-            await ports.scheduler.sleepWithAbort(ports.scheduler.randomDelay(100, 199));
+        if (!ports.workSignal.aborted) {
+            await ports.scheduler.sleepWithAbort(ports.scheduler.randomDelay(100, 199), ports.workSignal);
         }
-        return ports.cancellation.isCancellationRequested() ? "cancelled" : "completed";
+        return ports.workSignal.aborted ? "cancelled" : "completed";
     }
 
     // 处理外部链接、密码章节和普通正文
     async function processChapterTask(task: DownloadTask, isRetry = false): Promise<ChapterTaskResult> {
-        if (ports.cancellation.isCancellationRequested()) {
+        if (ports.workSignal.aborted) {
             return "cancelled";
         }
 
@@ -365,7 +374,7 @@ export function createChapterPipeline(
             progress.recordProcessed();
             const accepted = await cache.enqueue(task.index, chapters.get(task.index)!);
             if (!accepted) {
-                return ports.cancellation.isCancellationRequested() ? "cancelled" : "failed";
+                return ports.workSignal.aborted ? "cancelled" : "failed";
             }
             ports.log({
                 code: "chapter-skipped-non-site",
@@ -375,16 +384,16 @@ export function createChapterPipeline(
                     title: task.title
                 }
             });
-            await ports.scheduler.sleepWithAbort(100);
-            return ports.cancellation.isCancellationRequested() ? "cancelled" : "completed";
+            await ports.scheduler.sleepWithAbort(100, ports.workSignal);
+            return ports.workSignal.aborted ? "cancelled" : "completed";
         }
 
         const html = await downloadChapterHtml(task, isRetry);
-        if (!html || ports.cancellation.isCancellationRequested()) {
-            if (!isRetry && !ports.cancellation.isCancellationRequested()) {
+        if (!html || ports.workSignal.aborted) {
+            if (!isRetry && !ports.workSignal.aborted) {
                 progress.recordInitialFailure();
             }
-            return ports.cancellation.isCancellationRequested() ? "cancelled" : "failed";
+            return ports.workSignal.aborted ? "cancelled" : "failed";
         }
         progress.recordFetched();
         if (ports.protectedChapterDetector.isProtected(html)) {
@@ -416,7 +425,7 @@ export function createChapterPipeline(
     }
 
     async function consumeProtectedChapters(): Promise<void> {
-        while (!ports.cancellation.isCancellationRequested()) {
+        while (!ports.workSignal.aborted) {
             const item = await protectedChapters.take();
             if (!item) {
                 return;
@@ -431,25 +440,37 @@ export function createChapterPipeline(
      */
     async function download(): Promise<void> {
         ports.log({ code: "download-started", params: { concurrency } });
-        const consumer = consumeProtectedChapters();
+        let consumerFailed = false;
+        let consumerFailure: unknown;
+        const consumer = consumeProtectedChapters().catch((error: unknown) => {
+            consumerFailed = true;
+            consumerFailure = error;
+            ports.stopOnFailure(error);
+        });
+        let workerFailed = false;
         let workerFailure: unknown;
         try {
             await runWorkerPool({
                 items: plan.tasks.filter((task) => !chapters.has(task.index)),
                 concurrency,
                 isCancellationRequested: shouldStop,
+                onFailure: ports.stopOnFailure,
                 beforeClaim: waitForMappingConsentBeforeClaim,
                 process: (task) => processChapterTask(task).then(() => undefined)
             });
         } catch (error) {
+            workerFailed = true;
             workerFailure = error;
         } finally {
             // 普通抓取结束后仍要处理完密码队列，才能检查缺章
             protectedChapters.closeProducer();
         }
         await consumer;
-        if (workerFailure) {
+        if (workerFailed) {
             throw workerFailure;
+        }
+        if (consumerFailed) {
+            throw consumerFailure;
         }
     }
 
@@ -464,6 +485,7 @@ export function createChapterPipeline(
             items: issues,
             concurrency: 1,
             isCancellationRequested: shouldStop,
+            onFailure: ports.stopOnFailure,
             beforeClaim: waitForMappingConsentBeforeClaim,
             process: async ({ task, reason }) => {
                 ports.log({
@@ -482,12 +504,12 @@ export function createChapterPipeline(
                     return;
                 }
                 progress.recordRetryFinished(result === "completed");
-                if (!ports.cancellation.isCancellationRequested()) {
-                    await ports.scheduler.sleepWithAbort(300);
+                if (!ports.workSignal.aborted) {
+                    await ports.scheduler.sleepWithAbort(300, ports.workSignal);
                 }
             }
         });
-        if (!ports.cancellation.isCancellationRequested()) {
+        if (!ports.workSignal.aborted) {
             cache.assertHealthy();
             throwIfMappingFontFailed();
         }

@@ -20,6 +20,7 @@ export type ProtectedChapterResolution =
     | { kind: "cancelled" };
 
 type ProtectedPorts = Pick<DownloadDependencies, "cancellation" | "protectedChapterAuth" | "events" | "log"> & {
+    workSignal: AbortSignal;
     ui: Pick<DownloadDependencies["ui"], "promptProtectedChapterPassword">;
 };
 
@@ -102,8 +103,9 @@ export function createProtectedChapters(
         return runUserDecision(
             decisions,
             ports.cancellation,
-            () => ports.ui.promptProtectedChapterPassword(prompt, ports.cancellation.signal),
-            { action: "cancel" }
+            () => ports.ui.promptProtectedChapterPassword(prompt, ports.workSignal),
+            { action: "cancel" },
+            ports.workSignal
         );
     }
 
@@ -118,7 +120,7 @@ export function createProtectedChapters(
         let useRememberedPassword = Boolean(rememberedPassword);
         let retryConnection = false;
 
-        while (!ports.cancellation.isCancellationRequested()) {
+        while (!ports.workSignal.aborted) {
             // 记住的密码只自动尝试一次，失败后交回用户处理
             const decision: ProtectedChapterDecision =
                 useRememberedPassword && rememberedPassword
@@ -127,7 +129,9 @@ export function createProtectedChapters(
             useRememberedPassword = false;
 
             if (decision.action === "cancel") {
-                ports.cancellation.requestCancellation("flush");
+                if (!ports.workSignal.aborted) {
+                    ports.cancellation.requestCancellation("flush");
+                }
                 return { kind: "cancelled" };
             }
             if (decision.action === "skip-current" || decision.action === "skip-all") {
@@ -162,11 +166,11 @@ export function createProtectedChapters(
                         item.task,
                         item.pageHtml,
                         decision.password,
-                        ports.cancellation.signal
+                        ports.workSignal
                     );
                     break;
                 } catch (error) {
-                    if (ports.cancellation.isCancellationRequested() || isCancellationError(error)) {
+                    if (ports.workSignal.aborted || isCancellationError(error)) {
                         return { kind: "cancelled" };
                     }
                     if (attempt === 0) {
@@ -178,6 +182,9 @@ export function createProtectedChapters(
                     }
                     technicalFailure = true;
                 }
+            }
+            if (ports.workSignal.aborted) {
+                return { kind: "cancelled" };
             }
             if (technicalFailure || !result) {
                 ports.events.emit({
@@ -252,7 +259,7 @@ export function createProtectedChapters(
 
     return {
         beginRetryRound: beginProtectedRetryRound,
-        take: () => protectedQueue.take(ports.cancellation.signal),
+        take: () => protectedQueue.take(ports.workSignal),
         resolveProtectedChapter,
         closeProducer: () => protectedQueue.closeProducer(),
         async handle(

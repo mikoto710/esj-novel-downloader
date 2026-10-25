@@ -49,6 +49,83 @@ describe("runDownload characterization", () => {
         expect(unsubscribe).toHaveBeenCalledOnce();
     });
 
+    it("stops and joins chapter, password, and cover work after the first worker failure", async () => {
+        const tasks = [createDownloadTask(0), createDownloadTask(1), createDownloadTask(2)];
+        const harness = createHarness(tasks);
+        harness.dependencies.concurrency = 3;
+        const promptStarted = createDeferred<void>();
+        const fetchStarted = createDeferred<void>();
+        const coverStarted = createDeferred<void>();
+        const releaseCleanup = createDeferred<void>();
+        const signals: AbortSignal[] = [];
+        const ended: string[] = [];
+        const pendingWork = async (name: string, signal?: AbortSignal): Promise<never> => {
+            signals.push(signal!);
+            await new Promise<void>((resolve) => signal?.addEventListener("abort", () => resolve(), { once: true }));
+            await releaseCleanup.promise;
+            ended.push(name);
+            throw new DOMException("stopped", "AbortError");
+        };
+        harness.dependencies.chapterFetcher.fetch = async (task, signal) => {
+            if (task.index === 2) {
+                fetchStarted.resolve();
+                return pendingWork("chapter", signal);
+            }
+            return task.index === 0 ? "protected" : "ordinary";
+        };
+        harness.dependencies.protectedChapterDetector.isProtected = (html) => html === "protected";
+        harness.ui.promptProtectedChapterPassword.mockImplementation(async (_prompt, signal) => {
+            promptStarted.resolve();
+            return pendingWork("password", signal);
+        });
+        harness.dependencies.coverFetcher.fetch = async (_url, signal) => {
+            coverStarted.resolve();
+            return pendingWork("cover", signal);
+        };
+        harness.dependencies.chapterProcessor.process = async () => {
+            await Promise.all([promptStarted.promise, fetchStarted.promise, coverStarted.promise]);
+            throw new Error("first worker failure");
+        };
+        let settled = false;
+        const download = harness
+            .run(createOptions(tasks, { coverUrl: "https://example.test/cover.jpg" }))
+            .then((result) => {
+                settled = true;
+                return result;
+            });
+        try {
+            await Promise.all([promptStarted.promise, fetchStarted.promise, coverStarted.promise]);
+            await vi.waitFor(() => expect(signals.every((signal) => signal.aborted)).toBe(true), { timeout: 100 });
+            expect(settled).toBe(false);
+            expect(ended).toEqual([]);
+            expect(harness.dependencies.cancellation.requestCancellation).not.toHaveBeenCalled();
+            releaseCleanup.resolve();
+            await expect(download).resolves.toMatchObject({
+                status: "failed",
+                failure: { kind: "download", params: { detail: "first worker failure" } }
+            });
+            expect(ended.sort()).toEqual(["chapter", "cover", "password"]);
+            expect(harness.dependencies.cancellation.isCancellationRequested()).toBe(false);
+            expect(harness.cacheClears).toEqual([]);
+        } finally {
+            releaseCleanup.resolve();
+            if (!settled) harness.dependencies.cancellation.requestCancellation();
+            await download;
+        }
+    });
+
+    it("exports chapter content when the optional cover fetch rejects", async () => {
+        const tasks = [createDownloadTask()];
+        const harness = createHarness(tasks);
+        harness.dependencies.coverFetcher.fetch = async () => {
+            throw new Error("cover unavailable");
+        };
+        await expect(
+            harness.run(createOptions(tasks, { coverUrl: "https://example.test/cover.jpg" }))
+        ).resolves.toMatchObject({ status: "ready", data: { metadata: { coverBlob: null } } });
+        expect(harness.exportData?.chapters).toEqual([createChapter(0)]);
+    });
+
     it("returns the export snapshot only after the cache writer finishes", async () => {
         const tasks = [createDownloadTask()];
         const harness = createHarness(tasks);

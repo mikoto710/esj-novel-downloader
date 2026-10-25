@@ -129,7 +129,9 @@ describe("ChapterCacheWriteBuffer", () => {
             write: async (_entries, signal) => {
                 writeSignal = signal;
                 writeStarted.resolve();
-                return new Promise<boolean>(() => undefined);
+                return new Promise<boolean>((resolve) =>
+                    signal.addEventListener("abort", () => resolve(false), { once: true })
+                );
             },
             schedule: (delayMs, callback) => {
                 const timer = setTimeout(callback, delayMs);
@@ -215,7 +217,9 @@ describe("ChapterCacheWriteBuffer", () => {
             write: async (_entries, signal) => {
                 writeSignal = signal;
                 writeStarted.resolve();
-                return new Promise<boolean>(() => undefined);
+                return new Promise<boolean>((resolve) =>
+                    signal.addEventListener("abort", () => resolve(false), { once: true })
+                );
             },
             schedule: () => () => undefined,
             subscribeCancellation: (listener) => {
@@ -232,6 +236,44 @@ describe("ChapterCacheWriteBuffer", () => {
         await expect(addPromise).resolves.toBe(false);
         await expect(buffer.flushForCancellation()).resolves.toBe("discarded");
         buffer.dispose();
+    });
+
+    it("waits for an aborted write to finish before returning from flush", async () => {
+        const started = createDeferred<void>();
+        const stopped = createDeferred<void>();
+        const release = createDeferred<void>();
+        const buffer = new ChapterCacheWriteBuffer({
+            policy: { maxChapterCount: 1, maxBytes: 1_000_000, maxDelayMs: 60_000 },
+            schedule: () => () => undefined,
+            write: async (_entries, signal) => {
+                started.resolve();
+                await new Promise<void>((resolve) => signal.addEventListener("abort", () => resolve(), { once: true }));
+                await release.promise;
+                stopped.resolve();
+                return false;
+            }
+        });
+        let settled = false;
+        const writing = buffer.add(0, createChapter()).then((result) => {
+            settled = true;
+            return result;
+        });
+        await started.promise;
+        buffer.discard();
+        try {
+            await vi.waitFor(() => expect(settled).toBe(false), { timeout: 50 });
+            // 消耗取消之后的微任务，Promise.race 提前返回会在此暴露
+            for (let i = 0; i < 10; i++) await Promise.resolve();
+            expect(settled).toBe(false);
+            release.resolve();
+            await expect(writing).resolves.toBe(false);
+            await stopped.promise;
+            await expect(buffer.flush()).resolves.toBe(false);
+        } finally {
+            release.resolve();
+            await writing;
+            buffer.dispose();
+        }
     });
 
     it("preserves the classified reason after a write rejects", async () => {

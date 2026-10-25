@@ -760,7 +760,7 @@ function createDownloadDependencies(task: BrowserDownloadTask): DownloadDependen
         },
         scheduler: {
             sleep,
-            sleepWithAbort: (ms) => sleepWithAbort(ms, cancellation.signal),
+            sleepWithAbort,
             randomDelay: (minInclusive, maxInclusive) =>
                 Math.floor(Math.random() * (maxInclusive - minInclusive + 1)) + minInclusive,
             schedule: (delayMs, callback) => {

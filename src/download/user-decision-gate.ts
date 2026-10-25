@@ -81,12 +81,13 @@ export async function runUserDecision<T>(
     gate: UserDecisionGate,
     cancellation: DownloadCancellationPort,
     operation: () => Promise<T>,
-    cancelled: T
+    cancelled: T,
+    signal = cancellation.signal
 ): Promise<T> {
     try {
-        return await gate.run(operation, cancellation.signal);
+        return await gate.run(operation, signal);
     } catch (error) {
-        if (cancellation.isCancellationRequested() || isCancellationError(error)) {
+        if (isCancellationError(error)) {
             return cancelled;
         }
         throw error;

@@ -110,7 +110,7 @@ describe("browser download flow contracts", () => {
         expect(runtime.state.runtimeCacheSession).toMatchObject({ taskId: "task-200", bookChapterCount: 9 });
         expect(mocks.fullCleanup).not.toHaveBeenCalled();
         expect(mocks.showTerminalFailure).not.toHaveBeenCalled();
-        await dependencies.scheduler.sleepWithAbort(10);
+        await dependencies.scheduler.sleepWithAbort(10, oldCancellation.signal);
         expect(mocks.sleepWithAbort).toHaveBeenCalledWith(10, oldCancellation.signal);
         await dependencies.lock.owns();
         expect(mocks.ownsLock).toHaveBeenCalledWith(runtime.task.lock);

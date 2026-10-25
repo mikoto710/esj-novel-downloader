@@ -390,7 +390,7 @@ export interface DownloadEventSink {
  */
 export interface DownloadSchedulerPort {
     sleep(ms: number): Promise<void>;
-    sleepWithAbort(ms: number): Promise<void>;
+    sleepWithAbort(ms: number, signal?: AbortSignal): Promise<void>;
     randomDelay(minInclusive: number, maxInclusive: number): number;
     schedule(delayMs: number, callback: () => void): () => void;
 }

@@ -134,6 +134,7 @@ export class ChapterCacheWriteBuffer {
      */
     async flush(): Promise<boolean> {
         if (this.discarded || this.cancellationTimedOut) {
+            await this.writeChain;
             return false;
         }
         if (this.pending.size === 0) {
@@ -152,26 +153,15 @@ export class ChapterCacheWriteBuffer {
             }
 
             const controller = new AbortController();
-            let resolveAborted: (saved: boolean) => void = () => undefined;
-            const aborted = new Promise<boolean>((resolve) => {
-                resolveAborted = resolve;
-            });
-            let writeSettled = false;
-            const activeWrite: ActiveCacheWrite = {
-                controller,
-                abort: () => {
-                    if (writeSettled) {
-                        return;
-                    }
-                    controller.abort();
-                    resolveAborted(false);
-                }
-            };
+            const activeWrite: ActiveCacheWrite = { controller, abort: () => controller.abort() };
             this.activeWrite = activeWrite;
 
             let saved = false;
             try {
-                saved = await Promise.race([this.write(batch, controller.signal), aborted]);
+                saved = await this.write(batch, controller.signal);
+                if (controller.signal.aborted) {
+                    saved = false;
+                }
             } catch (error) {
                 if (!this.discarded && !this.cancellationTimedOut) {
                     const normalized = normalizeStorageError(error, "write");
@@ -179,7 +169,6 @@ export class ChapterCacheWriteBuffer {
                 }
                 saved = false;
             } finally {
-                writeSettled = true;
                 if (this.activeWrite === activeWrite) {
                     this.activeWrite = null;
                 }
@@ -204,9 +193,11 @@ export class ChapterCacheWriteBuffer {
         // 入口复核当前事实，订阅未到或 writer 晚建立都不能延长首次取消期限
         this.requestCancellation(this.cancellation?.mode ?? "flush");
         if (this.discarded) {
+            await this.writeChain;
             return "discarded";
         }
         if (this.cancellationTimedOut) {
+            await this.writeChain;
             return "timed-out";
         }
 

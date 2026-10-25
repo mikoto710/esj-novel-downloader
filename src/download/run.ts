@@ -35,7 +35,32 @@ export async function runDownload(
         imageEnabled: options.imageEnabled,
         updatedAt: dependencies.startedAt
     };
-    const ports = { ...dependencies, concurrency: Math.max(1, Math.floor(dependencies.concurrency) || 1) };
+    // 用户取消与致命失败分开：失败只停止工作，不伪造用户取消或启动保存
+    const work = new AbortController();
+    let failed = false;
+    let firstFailure: unknown;
+    const abortWork = () => work.abort();
+    cancellation.signal?.addEventListener("abort", abortWork, { once: true });
+    if (cancellation.isCancellationRequested()) {
+        work.abort();
+    }
+    let cover: Promise<BookCover | null> = Promise.resolve(null);
+
+    function stopOnFailure(error: unknown): void {
+        if (!failed) {
+            failed = true;
+            firstFailure = error;
+            cache.discard();
+            work.abort();
+        }
+    }
+
+    const ports = {
+        ...dependencies,
+        workSignal: work.signal,
+        stopOnFailure,
+        concurrency: Math.max(1, Math.floor(dependencies.concurrency) || 1)
+    };
     const progress = new DownloadProgress(plan, chapters, events, ui);
     const cache = createTaskCacheWriter(ports, options, plan, meta, progress);
 
@@ -53,6 +78,9 @@ export async function runDownload(
     );
 
     function checkActive(): void {
+        if (failed) {
+            throw firstFailure;
+        }
         if (cancellation.isCancellationRequested()) {
             throw new DownloadCancelled();
         }
@@ -92,7 +120,7 @@ export async function runDownload(
             throw createStorageError("ownership-lost", "write");
         }
         // 封面与正文并行；正文完成和缺章决策结束后再等待封面
-        const cover = prepareCover(options, dependencies);
+        cover = prepareCover(options, ports, work.signal).catch(() => null);
 
         progress.transition("downloading");
         await pipeline.download();
@@ -147,10 +175,12 @@ export async function runDownload(
                                   }
                                 : {})
                         },
-                        cancellation.signal
+                        work.signal
                     ),
-                "cancel"
+                "cancel",
+                work.signal
             );
+            checkActive();
             events.emit({ type: "incomplete-chapters-decided", missingCount: missingTasks.length, decision });
             if (cancellation.isCancellationRequested() || decision === "cancel") {
                 if (!cancellation.isCancellationRequested()) {
@@ -189,8 +219,9 @@ export async function runDownload(
         result = { status: "ready", data };
     } catch (error) {
         if (
-            error instanceof DownloadCancelled ||
-            (cancellation.isCancellationRequested() && isCancellationError(error))
+            !failed &&
+            (error instanceof DownloadCancelled ||
+                (cancellation.isCancellationRequested() && isCancellationError(error)))
         ) {
             try {
                 result = await finishCancellation(dependencies, progress, cache);
@@ -198,9 +229,15 @@ export async function runDownload(
                 result = reportFailure(cancellationError, dependencies, progress, cache, pipeline);
             }
         } else {
-            result = reportFailure(error, dependencies, progress, cache, pipeline);
+            stopOnFailure(error);
+            result = reportFailure(firstFailure, dependencies, progress, cache, pipeline);
         }
     } finally {
+        // 所有终态都等待封面与活动事务，不遗弃仍可能回写状态的 Promise
+        work.abort();
+        await cover;
+        await cache.flush();
+        cancellation.signal?.removeEventListener("abort", abortWork);
         try {
             pipeline.dispose();
         } catch (error) {
@@ -254,12 +291,7 @@ function reportFailure(
     pipeline: ChapterPipeline
 ): DownloadResult {
     const { log, events } = dependencies;
-    const reported =
-        error instanceof StorageError
-            ? error
-            : cache.failure
-              ? new StorageError(cache.failure, { cause: error })
-              : error;
+    const reported = error;
     if (reported instanceof StorageError) {
         const failure = toStorageFailure(reported);
         progress.recordStorageFailure(failure);
@@ -293,7 +325,11 @@ function reportFailure(
 type CoverPorts = Pick<DownloadDependencies, "coverCache" | "coverFetcher" | "cancellation" | "log">;
 
 // 优先复用封面缓存，封面缺失不阻断正文导出
-async function prepareCover(options: DownloadOptions, ports: CoverPorts): Promise<BookCover | null> {
+async function prepareCover(
+    options: DownloadOptions,
+    ports: CoverPorts,
+    signal: AbortSignal
+): Promise<BookCover | null> {
     const coverUrl = options.coverUrl;
     if (!coverUrl) {
         return null;
@@ -301,35 +337,44 @@ async function prepareCover(options: DownloadOptions, ports: CoverPorts): Promis
 
     try {
         const cached = await ports.coverCache.load(options.bookId, coverUrl);
+        if (signal.aborted) {
+            return null;
+        }
         if (cached) {
             ports.log({ code: "cover-cache-hit" });
             return cached;
         }
     } catch (error) {
-        ports.log({ code: "cover-cache-read-failed", params: getErrorDetails(error) });
+        if (!signal.aborted) {
+            ports.log({ code: "cover-cache-read-failed", params: getErrorDetails(error) });
+        }
     }
 
-    if (ports.cancellation.isCancellationRequested()) {
+    if (signal.aborted) {
         return null;
     }
-    const cover = await ports.coverFetcher.fetch(coverUrl, ports.cancellation.signal);
-    if (!cover || ports.cancellation.isCancellationRequested()) {
+    let cover: BookCover | null;
+    try {
+        cover = await ports.coverFetcher.fetch(coverUrl, signal);
+    } catch {
+        return null;
+    }
+    if (!cover || signal.aborted) {
         return null;
     }
 
     try {
-        const saved = await ports.coverCache.put(
-            options.bookId,
-            options.taskId,
-            coverUrl,
-            cover,
-            ports.cancellation.signal
-        );
+        const saved = await ports.coverCache.put(options.bookId, options.taskId, coverUrl, cover, signal);
+        if (signal.aborted) {
+            return null;
+        }
         ports.log({
             code: saved ? "cover-cache-saved" : "cover-cache-write-ownership-lost"
         });
     } catch (error) {
-        ports.log({ code: "cover-cache-write-failed", params: getErrorDetails(error) });
+        if (!signal.aborted) {
+            ports.log({ code: "cover-cache-write-failed", params: getErrorDetails(error) });
+        }
     }
     return cover;
 }

@@ -38,6 +38,9 @@ export function createTaskCacheWriter(
         for (let attempt = 1; attempt <= 2; attempt++) {
             try {
                 const saved = await ports.cache.putBatch(options.bookId, options.taskId, entries, meta, signal);
+                if (signal.aborted) {
+                    return false;
+                }
                 if (!saved) {
                     throw createStorageError("ownership-lost", "write");
                 }
@@ -50,6 +53,9 @@ export function createTaskCacheWriter(
                 progress.recordCommitted(entries.keys());
                 return true;
             } catch (error) {
+                if (signal.aborted) {
+                    return false;
+                }
                 const normalized = normalizeStorageError(error, "write");
                 if (attempt === 1 && normalized.reason !== "ownership-lost" && !signal.aborted) {
                     ports.log({
