@@ -544,7 +544,7 @@ async function finalizeBookDownloadTask(
 }
 
 // 创建任务独立的取消意图和网络信号，discard 只可升级
-function createDownloadCancellation(): DownloadCancellationPort & { readonly mode: DownloadCancellationMode } {
+function createDownloadCancellation(): DownloadCancellationPort {
     const controller = new AbortController();
     const listeners = new Set<(mode: DownloadCancellationMode) => void>();
     let requestedAt: number | null = null;
@@ -606,7 +606,7 @@ function recordInlineImageFailures(
 
 interface BrowserDownloadTask {
     lock: BookDownloadLock;
-    cancellation: DownloadCancellationPort & { readonly mode: DownloadCancellationMode };
+    cancellation: DownloadCancellationPort;
     ui: DownloadUiPort;
 }
 

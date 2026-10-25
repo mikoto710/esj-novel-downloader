@@ -90,14 +90,20 @@ export function createChapterPipeline(
                     ),
                 false,
                 ports.workSignal
-            ).then((confirmed) => {
-                if (confirmed) {
-                    mappingConsentGranted = true;
-                } else if (!ports.workSignal.aborted) {
-                    ports.cancellation.requestCancellation();
-                }
-                return confirmed;
-            });
+            )
+                .then((confirmed) => {
+                    if (confirmed) {
+                        mappingConsentGranted = true;
+                    } else if (!ports.workSignal.aborted) {
+                        ports.cancellation.requestCancellation();
+                    }
+                    return confirmed;
+                })
+                .catch((error: unknown) => {
+                    // 确认与写入背压并行；立即固定首错，不能等写入返回后才接住决策拒绝
+                    ports.stopOnFailure(error);
+                    return false;
+                });
         }
         return mappingConsentPromise;
     }
@@ -160,7 +166,7 @@ export function createChapterPipeline(
                 if (error instanceof MappingFontError) {
                     // 只使当前章节失效，后续重新抓取
                     chapters.delete(index);
-                    cache.invalidate(index);
+                    progress.invalidatePersistedChapter(index);
                     invalidatedCount++;
                     ports.log({
                         code: "restored-mapping-font-invalid",

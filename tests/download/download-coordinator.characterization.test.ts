@@ -145,22 +145,109 @@ describe("runDownload characterization", () => {
         expect(harness.dependencies.cancellation.isCancellationRequested()).toBe(false);
     });
 
-    it("returns a real decision error even when failure observers throw", async () => {
-        const tasks = [createDownloadTask()];
+    it.each(["Error", "AbortError"])(
+        "returns a %s decision error without user intent even when failure observers throw",
+        async (name) => {
+            const tasks = [createDownloadTask()];
+            const harness = createHarness(tasks);
+            harness.dependencies.chapterFetcher.fetch = async () => {
+                throw new Error("offline");
+            };
+            harness.ui.confirmIncompleteChapters.mockRejectedValue(new DOMException("decision failed", name));
+            harness.dependencies.events.emit = () => {
+                throw new Error("observer failed");
+            };
+            await expect(harness.run(createOptions(tasks))).resolves.toMatchObject({
+                status: "failed",
+                failure: { kind: "download", params: { detail: "decision failed" } }
+            });
+            expect(harness.exportData).toBeNull();
+            expect(harness.dependencies.cancellation.isCancellationRequested()).toBe(false);
+        }
+    );
+
+    it("stops a pending password decision when a scheduled cache write fails", async () => {
+        const tasks = [createDownloadTask(0), createDownloadTask(1)];
         const harness = createHarness(tasks);
-        harness.dependencies.chapterFetcher.fetch = async () => {
-            throw new Error("offline");
+        harness.dependencies.concurrency = 2;
+        const promptStarted = createDeferred<void>();
+        let flushPending = () => {};
+        harness.dependencies.scheduler.schedule = (_delay, callback) => {
+            flushPending = callback;
+            return () => {};
         };
-        harness.ui.confirmIncompleteChapters.mockRejectedValue(new Error("decision failed"));
-        harness.dependencies.events.emit = () => {
-            throw new Error("observer failed");
-        };
-        await expect(harness.run(createOptions(tasks))).resolves.toMatchObject({
-            status: "failed",
-            failure: { kind: "download", params: { detail: "decision failed" } }
+        harness.dependencies.chapterFetcher.fetch = async (task) => (task.index === 1 ? "protected" : "ordinary");
+        harness.dependencies.protectedChapterDetector.isProtected = (html) => html === "protected";
+        let promptSignal: AbortSignal | undefined;
+        harness.ui.promptProtectedChapterPassword.mockImplementation(async (_prompt, signal) => {
+            promptSignal = signal;
+            promptStarted.resolve();
+            return new Promise((_resolve, reject) =>
+                signal?.addEventListener("abort", () => reject(new DOMException("stopped", "AbortError")), {
+                    once: true
+                })
+            );
         });
-        expect(harness.exportData).toBeNull();
-        expect(harness.dependencies.cancellation.isCancellationRequested()).toBe(false);
+        harness.dependencies.cache.putBatch = async () => {
+            throw new DOMException("storage full", "QuotaExceededError");
+        };
+        let settled = false;
+        const download = harness.run(createOptions(tasks)).then((result) => {
+            settled = true;
+            return result;
+        });
+        try {
+            await promptStarted.promise;
+            flushPending();
+            await vi.waitFor(() => expect(promptSignal?.aborted).toBe(true), { timeout: 100 });
+            await expect(download).resolves.toMatchObject({
+                status: "failed",
+                failure: { kind: "download", storageFailure: { reason: "quota-exceeded", operation: "write" } }
+            });
+            expect(harness.dependencies.cancellation.isCancellationRequested()).toBe(false);
+            expect(harness.cacheClears).toEqual([]);
+        } finally {
+            if (!settled) harness.dependencies.cancellation.requestCancellation("discard");
+            await download;
+        }
+    });
+
+    it("stops backpressured writes when a font decision rejects", async () => {
+        const tasks = Array.from({ length: 25 }, (_, index) => createDownloadTask(index));
+        const harness = createHarness(tasks);
+        const writeStarted = createDeferred<void>();
+        let writeSignal: AbortSignal | undefined;
+        harness.dependencies.chapterProcessor.process = async (_html, task) =>
+            task.index === 24 ? createMappedChapter(24, "1") : createChapter(task.index);
+        harness.ui.confirmMappingFontDownload.mockImplementation(async () => {
+            await writeStarted.promise;
+            throw new Error("font decision failed");
+        });
+        harness.dependencies.cache.putBatch = async (_bookId, _taskId, _entries, _meta, signal) => {
+            writeSignal = signal;
+            writeStarted.resolve();
+            return new Promise<boolean>((resolve) =>
+                signal?.addEventListener("abort", () => resolve(false), { once: true })
+            );
+        };
+        let settled = false;
+        const download = harness.run(createOptions(tasks)).then((result) => {
+            settled = true;
+            return result;
+        });
+        try {
+            await writeStarted.promise;
+            await vi.waitFor(() => expect(writeSignal?.aborted).toBe(true), { timeout: 100 });
+            await expect(download).resolves.toMatchObject({
+                status: "failed",
+                failure: { kind: "download", params: { detail: "font decision failed" } }
+            });
+            expect(harness.dependencies.cancellation.isCancellationRequested()).toBe(false);
+            expect(harness.cacheClears).toEqual([]);
+        } finally {
+            if (!settled) harness.dependencies.cancellation.requestCancellation("discard");
+            await download;
+        }
     });
 
     it("returns the export snapshot only after the cache writer finishes", async () => {

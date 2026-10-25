@@ -13,6 +13,7 @@ import type { DownloadPlan } from "./plan";
 
 type CachePorts = Pick<DownloadDependencies, "cache" | "cancellation" | "lock" | "events" | "log"> & {
     scheduler: Pick<DownloadDependencies["scheduler"], "schedule">;
+    stopOnFailure(error: unknown): void;
 };
 
 /**
@@ -74,6 +75,10 @@ export function createTaskCacheWriter(
                     saved: false,
                     failure: toStorageFailure(normalized)
                 });
+                // 定时写入也可能在密码/字体决策等待时失败，直接停止同任务的在途工作
+                if (!ports.cancellation.isCancellationRequested()) {
+                    ports.stopOnFailure(normalized);
+                }
                 throw normalized;
             }
         }
@@ -116,7 +121,6 @@ export function createTaskCacheWriter(
         },
         /** true 仅表示接收并完成必要背压；false 表示已停止接收、丢弃、超时或写入失败，原因见 failure 和取消意图。 */
         enqueue: (index: number, chapter: Chapter) => buffer.add(index, chapter),
-        invalidate: (index: number) => progress.invalidatePersistedChapter(index),
         /** true 表示当前写入链已确认提交；false 保留取消/丢弃/超时或 failure，调用方先复核用户取消。 */
         flush: () => buffer.flush(),
         assertHealthy,

@@ -87,7 +87,7 @@ export async function runUserDecision<T>(
     try {
         return await gate.run(operation, signal);
     } catch (error) {
-        if (isCancellationError(error)) {
+        if (isCancellationError(error) && signal?.aborted) {
             return cancelled;
         }
         throw error;

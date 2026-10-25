@@ -45,11 +45,6 @@ interface CacheWriteBufferOptions {
     estimateBytes?(chapter: Chapter): number;
 }
 
-interface ActiveCacheWrite {
-    controller: AbortController;
-    abort(): void;
-}
-
 /**
  * 合并并串行写入下载过程中发生变化的章节
  */
@@ -66,7 +61,7 @@ export class ChapterCacheWriteBuffer {
     private cancelScheduledFlush: (() => void) | null = null;
     private cancelCancellationDeadline: (() => void) | null = null;
     private unsubscribeCancellation: (() => void) | null = null;
-    private activeWrite: ActiveCacheWrite | null = null;
+    private activeWrite: AbortController | null = null;
     private writeChain = Promise.resolve(true);
     private rejected = false;
     private sealed = false;
@@ -153,8 +148,7 @@ export class ChapterCacheWriteBuffer {
             }
 
             const controller = new AbortController();
-            const activeWrite: ActiveCacheWrite = { controller, abort: () => controller.abort() };
-            this.activeWrite = activeWrite;
+            this.activeWrite = controller;
 
             let saved = false;
             try {
@@ -169,7 +163,7 @@ export class ChapterCacheWriteBuffer {
                 }
                 saved = false;
             } finally {
-                if (this.activeWrite === activeWrite) {
+                if (this.activeWrite === controller) {
                     this.activeWrite = null;
                 }
             }
@@ -222,7 +216,7 @@ export class ChapterCacheWriteBuffer {
         this.cancelTimer();
         this.cancelCancellationTimer();
         this.clearPending();
-        this.abortActiveWrite();
+        this.activeWrite?.abort();
     }
 
     /**
@@ -268,7 +262,7 @@ export class ChapterCacheWriteBuffer {
             this.storageFailure = toStorageFailure(createStorageError("flush-timeout", "flush"));
             this.cancelTimer();
             this.clearPending();
-            this.abortActiveWrite();
+            this.activeWrite?.abort();
         };
         if (remaining === 0) {
             expire();
@@ -280,10 +274,6 @@ export class ChapterCacheWriteBuffer {
     private cancelCancellationTimer(): void {
         this.cancelCancellationDeadline?.();
         this.cancelCancellationDeadline = null;
-    }
-
-    private abortActiveWrite(): void {
-        this.activeWrite?.abort();
     }
 
     private clearPending(): void {

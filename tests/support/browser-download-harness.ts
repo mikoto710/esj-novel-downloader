@@ -130,9 +130,7 @@ export interface BrowserDownloadRuntime {
     task: {
         lock: import("../../src/storage/book-lock").BookDownloadLock;
         chapters: Map<number, import("../../src/content/model").Chapter>;
-        readonly cancellation: import("../../src/download/contracts").DownloadCancellationPort & {
-            readonly mode: import("../../src/download/contracts").DownloadCancellationMode;
-        };
+        readonly cancellation: import("../../src/download/contracts").DownloadCancellationPort;
     };
     start(options: import("../../src/download/contracts").DownloadOptions): Promise<void>;
     readonly dependencies: import("../../src/download/contracts").DownloadDependencies;

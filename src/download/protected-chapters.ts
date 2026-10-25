@@ -10,7 +10,6 @@ import type { DownloadProgress } from "./progress";
 import type { DownloadPlan } from "./plan";
 import { ProtectedChapterQueue, type ProtectedChapterWorkItem } from "./protected-chapter-queue";
 import { runUserDecision, UserDecisionGate } from "./user-decision-gate";
-import { isCancellationError } from "./errors";
 
 export type ChapterTaskResult = "completed" | "failed" | "cancelled" | "deferred";
 
@@ -169,8 +168,8 @@ export function createProtectedChapters(
                         ports.workSignal
                     );
                     break;
-                } catch (error) {
-                    if (ports.workSignal.aborted || isCancellationError(error)) {
+                } catch {
+                    if (ports.workSignal.aborted) {
                         return { kind: "cancelled" };
                     }
                     if (attempt === 0) {

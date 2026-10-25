@@ -1,6 +1,5 @@
 import type { DownloadCancellationPort, DownloadSnapshot, DownloadUiPort } from "../download/contracts";
 import type { DownloadSelection } from "../download/plan";
-import type { DownloadCancellationMode } from "../download/contracts";
 import { isCurrentDownload } from "../app/page-session";
 import {
     closeProtectedChapterPrompt,
@@ -35,7 +34,7 @@ export interface DownloadView extends DownloadUiPort {
 export function createDownloadView(task: {
     taskId: string;
     originalTitle: string;
-    cancellation: DownloadCancellationPort & { readonly mode: DownloadCancellationMode };
+    cancellation: DownloadCancellationPort;
 }): DownloadView {
     const { originalTitle, cancellation } = task;
     const isCurrent = () => isCurrentDownload(task.taskId);
