@@ -21,7 +21,8 @@ export async function runDownload(
     options: DownloadOptions,
     dependencies: DownloadDependencies
 ): Promise<DownloadResult> {
-    const { chapters, cancellation, ui, events, log } = dependencies;
+    const { cancellation, ui, events, log } = dependencies;
+    const chapters = new Map(options.initialChapters);
     const plan = createDownloadPlan(options);
     const meta: CacheMeta = {
         bookId: options.bookId,
@@ -36,11 +37,20 @@ export async function runDownload(
     };
     const ports = { ...dependencies, concurrency: Math.max(1, Math.floor(dependencies.concurrency) || 1) };
     const progress = new DownloadProgress(plan, chapters, events, ui);
-    const cache = createTaskCacheWriter(ports, options, plan, meta, chapters, progress);
+    const cache = createTaskCacheWriter(ports, options, plan, meta, progress);
 
     // 字体、密码和缺章选择共享任务内唯一的决策队列
     const decisions = new UserDecisionGate();
-    const pipeline = createChapterPipeline(ports, plan, options.imageEnabled, meta.pageUrl, progress, cache, decisions);
+    const pipeline = createChapterPipeline(
+        ports,
+        chapters,
+        plan,
+        options.imageEnabled,
+        meta.pageUrl,
+        progress,
+        cache,
+        decisions
+    );
 
     function checkActive(): void {
         if (cancellation.isCancellationRequested()) {
@@ -81,6 +91,7 @@ export async function runDownload(
         if (!restored) {
             throw createStorageError("ownership-lost", "write");
         }
+        // 封面与正文并行；正文完成和缺章决策结束后再等待封面
         const cover = prepareCover(options, dependencies);
 
         progress.transition("downloading");
@@ -92,7 +103,7 @@ export async function runDownload(
         progress.transition("checking-integrity");
         log({ code: "integrity-check-started" });
         const issues = scanChapterIntegrity(plan.tasks, chapters, options.imageEnabled);
-        progress.update({ retryPendingCount: issues.length, failedCount: issues.length });
+        progress.recordIntegrityScan(issues.length, issues.length);
         log(
             issues.length
                 ? { code: "integrity-check-failed", params: { count: issues.length } }
@@ -104,16 +115,14 @@ export async function runDownload(
         }
         await flush("download-integrity-flush-started");
         if (issues.length) {
-            progress.update({
-                retryPendingCount: 0,
-                failedCount: scanChapterIntegrity(plan.tasks, chapters, options.imageEnabled).length
-            });
+            progress.recordIntegrityScan(scanChapterIntegrity(plan.tasks, chapters, options.imageEnabled).length);
         }
 
+        // 缺正文决策循环保持在主流程：询问 → 补抓或占位 → 落盘 → 再检查
         while (true) {
             checkActive();
             const missingTasks = scanMissingChapterTasks(plan.tasks, chapters);
-            progress.update({ retryPendingCount: 0, failedCount: missingTasks.length });
+            progress.recordIntegrityScan(missingTasks.length);
             if (!missingTasks.length) {
                 break;
             }
@@ -174,10 +183,7 @@ export async function runDownload(
         const data = createExportData(options, plan, meta.pageUrl, chapters, bookCover, progress.snapshot.failedCount);
         await cache.finish();
         checkActive();
-        progress.update({
-            completedCount: plan.tasks.length,
-            hasExportData: true
-        });
+        progress.recordExportReady();
         progress.transition("export-ready");
         log({ code: "download-completed" });
         ui.cleanup();
@@ -210,11 +216,11 @@ async function finishCancellation(
     cache: TaskCacheWriter
 ): Promise<DownloadResult> {
     const { ui, log } = dependencies;
-    progress.update({ cancellationRequested: true, hasExportData: false, protectedPendingCount: 0 });
+    progress.recordCancellationRequested();
     progress.transition("cancelling");
     const outcome = await cache.cancel();
     const storageFailure = cache.failure;
-    progress.update({ cancellationOutcome: outcome, storageFailure });
+    progress.recordCancellationFinished(outcome, storageFailure);
     progress.transition("cancelled");
     log({
         code: "cancellation-finished",
@@ -254,7 +260,7 @@ function reportFailure(
               : error;
     if (reported instanceof StorageError) {
         const failure = toStorageFailure(reported);
-        progress.update({ storageFailure: failure });
+        progress.recordStorageFailure(failure);
         log({
             code: "download-storage-failed",
             params: {

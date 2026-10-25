@@ -1,6 +1,13 @@
+import type { StorageFailure } from "../storage/cache/storage-error";
 import type { Chapter } from "../content/model";
 import type { DownloadPlan } from "./plan";
-import type { DownloadEventSink, DownloadPhase, DownloadSnapshot, DownloadUiPort } from "./contracts";
+import type {
+    DownloadEventSink,
+    DownloadPhase,
+    DownloadSnapshot,
+    DownloadUiPort,
+    DownloadCancellationOutcome
+} from "./contracts";
 
 // 取消和失败可以从多个运行阶段进入，因此与单向主流程分开描述
 const CANCELLABLE_PHASES = new Set<DownloadPhase>([
@@ -67,6 +74,7 @@ export function createInitialDownloadSnapshot(scheduledCount: number, restoredCo
         failedCount: 0,
         completedCount: 0,
         readyChapterCount: restoredCount,
+        bookChapterCount: restoredCount,
         protectedDetectedCount: 0,
         protectedPendingCount: 0,
         protectedResolvedCount: 0,
@@ -83,13 +91,18 @@ export function createInitialDownloadSnapshot(scheduledCount: number, restoredCo
  */
 export class DownloadProgress {
     private current: DownloadSnapshot;
+    private readonly persistedIndexes: Set<number>;
     constructor(
         private readonly plan: DownloadPlan,
-        private readonly chapters: Map<number, Chapter>,
+        private readonly chapters: ReadonlyMap<number, Chapter>,
         private readonly events: DownloadEventSink,
         private readonly ui: Pick<DownloadUiPort, "update">
     ) {
         this.current = createInitialDownloadSnapshot(plan.tasks.length, plan.readyCount(chapters));
+        this.current.bookChapterCount = chapters.size;
+        this.persistedIndexes = new Set(
+            plan.tasks.filter((task) => chapters.has(task.index)).map((task) => task.index)
+        );
     }
 
     /**
@@ -114,11 +127,92 @@ export class DownloadProgress {
         this.ui.update(this.snapshot);
     }
 
-    /**
-     * 更新业务计数并重新统计选中索引的已有章节记录数，不检查正文或图片完整性
-     */
-    update(values: Partial<Omit<DownloadSnapshot, "phase" | "readyChapterCount">>): void {
-        this.current = { ...this.current, ...values, readyChapterCount: this.plan.readyCount(this.chapters) };
+    /** 有效恢复数同时成为初轮完成数和已持久化数。 */
+    recordCacheRestored(): void {
+        const restoredCount = this.plan.readyCount(this.chapters);
+        this.update({ restoredCount, completedCount: restoredCount, persistedCount: restoredCount });
+    }
+
+    /** 抓取累计包括补抓，密码授权请求不计入普通抓取。 */
+    recordFetched(): void {
+        this.update({ fetchedCount: this.current.fetchedCount + 1 });
+    }
+
+    /** 初轮处理推进完成数；补抓只增加实际处理数。 */
+    recordProcessed(isRetry = false): void {
+        this.update({
+            completedCount: this.current.completedCount + (isRetry ? 0 : 1),
+            processedCount: this.current.processedCount + 1
+        });
+    }
+
+    recordInitialFailure(): void {
+        this.update({ completedCount: this.current.completedCount + 1, failedCount: this.current.failedCount + 1 });
+    }
+
+    /** 仅确认提交的所选索引进入集合，重复写入不重复累计。 */
+    recordCommitted(indexes: Iterable<number>): void {
+        for (const index of indexes) {
+            if (this.plan.indexes.has(index)) {
+                this.persistedIndexes.add(index);
+            }
+        }
+        this.update({ persistedCount: this.persistedIndexes.size });
+    }
+
+    invalidatePersistedChapter(index: number): void {
+        this.persistedIndexes.delete(index);
+    }
+
+    /** 完整性扫描可含图片问题；缺正文扫描由调用方明确传入自己的结果。 */
+    recordIntegrityScan(failedCount: number, retryPendingCount = 0): void {
+        this.update({ failedCount, retryPendingCount });
+    }
+
+    recordRetryFinished(completed: boolean): void {
+        this.update({
+            retryPendingCount: Math.max(0, this.current.retryPendingCount - 1),
+            failedCount: Math.max(0, this.current.failedCount - (completed ? 1 : 0))
+        });
+    }
+
+    /** 密码模块持有集合和轮次规则，此处只接收它汇总的计数。 */
+    recordProtectedSummary(
+        summary: Pick<
+            DownloadSnapshot,
+            "protectedDetectedCount" | "protectedPendingCount" | "protectedResolvedCount" | "protectedSkippedCount"
+        >
+    ): void {
+        this.update(summary);
+    }
+
+    recordExportReady(): void {
+        this.update({ completedCount: this.plan.tasks.length, hasExportData: true });
+    }
+
+    recordCancellationRequested(): void {
+        this.update({ cancellationRequested: true, hasExportData: false, protectedPendingCount: 0 });
+    }
+
+    recordCancellationFinished(
+        cancellationOutcome: DownloadCancellationOutcome,
+        storageFailure: StorageFailure | null
+    ): void {
+        this.update({ cancellationOutcome, storageFailure });
+    }
+
+    recordStorageFailure(storageFailure: StorageFailure): void {
+        this.update({ storageFailure });
+    }
+
+    // 共用合并和发布留在内部，调用者不能任意改写快照
+    private update(values: Partial<Omit<DownloadSnapshot, "phase" | "readyChapterCount" | "bookChapterCount">>): void {
+        this.current = {
+            ...this.current,
+            ...values,
+            readyChapterCount: this.plan.readyCount(this.chapters),
+            bookChapterCount: this.chapters.size
+        };
         this.events.emit({ type: "snapshot-updated", snapshot: this.snapshot });
         this.ui.update(this.snapshot);
     }

@@ -1,20 +1,18 @@
 import type { Chapter } from "../content/model";
-import type { DownloadDependencies, DownloadTask } from "./contracts";
+import type { DownloadDependencies, DownloadTask, MappingFontFailure } from "./contracts";
 import type { DownloadPlan } from "./plan";
 import type { DownloadProgress } from "./progress";
 import type { TaskCacheWriter } from "./cache-writer";
-import { createMappedChapters } from "./mapped-chapters";
 import { createProtectedChapters, type ChapterTaskResult } from "./protected-chapters";
 import type { ChapterIntegrityIssue } from "./integrity";
 import { DEFAULT_CHAPTER_RETRY_POLICY, runWithRetry } from "./retry-policy";
 import { runWorkerPool } from "./worker-pool";
-import type { UserDecisionGate } from "./user-decision-gate";
+import { runUserDecision, type UserDecisionGate } from "./user-decision-gate";
 import { MappingFontError } from "../content/mapping-font";
 import { getErrorDetails } from "./errors";
 
 type ChapterPorts = Pick<
     DownloadDependencies,
-    | "chapters"
     | "concurrency"
     | "cancellation"
     | "chapterFetcher"
@@ -39,6 +37,7 @@ type ChapterPorts = Pick<
  */
 export function createChapterPipeline(
     ports: ChapterPorts,
+    chapters: Map<number, Chapter>,
     plan: DownloadPlan,
     imageEnabled: boolean,
     pageUrl: string,
@@ -46,9 +45,177 @@ export function createChapterPipeline(
     cache: TaskCacheWriter,
     decisions: UserDecisionGate
 ) {
-    const { chapters, concurrency } = ports;
-    const mapping = createMappedChapters(ports, plan, pageUrl, progress, cache, decisions);
+    const { concurrency } = ports;
     const protectedChapters = createProtectedChapters(ports, plan, progress, decisions);
+    const CACHE_RESTORE_YIELD_INTERVAL = 25;
+    let mappingConsentGranted = false;
+    let mappingConsentPromise: Promise<boolean> | null = null;
+    const mappedChapterIndexes = new Set<number>();
+    let mappedFontBytes = 0;
+    const mappingFailures = new Map<number, MappingFontFailure>();
+
+    function getMappingFontSummary() {
+        return {
+            chapterCount: mappedChapterIndexes.size,
+            fontBytes: mappedFontBytes
+        };
+    }
+
+    function recordMappedChapter(task: DownloadTask, chapter: Chapter): boolean {
+        const font = chapter.mappingFont;
+        if (!font || mappedChapterIndexes.has(task.index)) {
+            return false;
+        }
+        mappedChapterIndexes.add(task.index);
+        mappedFontBytes += font.blob.size;
+        ports.events.emit({ type: "mapping-font-updated", summary: getMappingFontSummary() });
+        return true;
+    }
+
+    // 并发 worker 共用首次字体确认，拒绝时取消下载
+    function ensureMappingConsent(task: DownloadTask, inFlightLimit: number): Promise<boolean> {
+        if (mappingConsentGranted) {
+            return Promise.resolve(true);
+        }
+        if (!mappingConsentPromise) {
+            mappingConsentPromise = runUserDecision(
+                decisions,
+                ports.cancellation,
+                () =>
+                    ports.ui.confirmMappingFontDownload(
+                        { task, ...getMappingFontSummary(), inFlightLimit },
+                        ports.cancellation.signal
+                    ),
+                false
+            ).then((confirmed) => {
+                if (confirmed) {
+                    mappingConsentGranted = true;
+                } else {
+                    ports.cancellation.requestCancellation();
+                }
+                return confirmed;
+            });
+        }
+        return mappingConsentPromise;
+    }
+
+    function registerMappedChapter(task: DownloadTask, chapter: Chapter): Promise<boolean> {
+        if (!chapter.mappingFont) {
+            return Promise.resolve(true);
+        }
+        if (recordMappedChapter(task, chapter)) {
+            ports.ui.updateMappingFontWarning(getMappingFontSummary());
+        }
+        return ensureMappingConsent(task, concurrency);
+    }
+
+    async function waitForMappingConsentBeforeClaim(): Promise<boolean> {
+        if (mappingConsentPromise && !mappingConsentGranted) {
+            return mappingConsentPromise;
+        }
+        return !ports.cancellation.isCancellationRequested();
+    }
+
+    /**
+     * 校验本次选择的缓存，失效章节留给抓取流程补齐
+     */
+    async function restoreCachedChapters(): Promise<boolean> {
+        const taskByIndex = new Map(plan.tasks.map((task) => [task.index, task]));
+        const entries = Array.from(chapters.entries())
+            .filter(([index]) => plan.indexes.has(index))
+            .sort(([left], [right]) => left - right);
+        const changedEntries = new Map<number, Chapter>();
+        let firstMappedTask: DownloadTask | null = null;
+        let invalidatedCount = 0;
+
+        if (entries.length > 0) {
+            // 分片让出执行权，避免大量缓存校验阻塞界面
+            await ports.scheduler.sleepWithAbort(0);
+        }
+
+        for (const [entryIndex, [index, chapter]] of entries.entries()) {
+            if (ports.cancellation.isCancellationRequested()) {
+                return false;
+            }
+            try {
+                const normalized = await ports.chapterProcessor.normalizeCached(chapter, ports.cancellation.signal);
+                if (normalized.kind === "mapped") {
+                    const task = taskByIndex.get(index) || {
+                        index,
+                        url: pageUrl,
+                        title: chapter.title
+                    };
+                    if (recordMappedChapter(task, normalized.chapter) && !firstMappedTask) {
+                        firstMappedTask = task;
+                    }
+                }
+                if (normalized.changed) {
+                    chapters.set(index, normalized.chapter);
+                    changedEntries.set(index, normalized.chapter);
+                }
+            } catch (error) {
+                if (error instanceof MappingFontError) {
+                    // 只使当前章节失效，后续重新抓取
+                    chapters.delete(index);
+                    cache.invalidate(index);
+                    invalidatedCount++;
+                    ports.log({
+                        code: "restored-mapping-font-invalid",
+                        params: { title: chapter.title, detail: error.message }
+                    });
+                } else {
+                    throw error;
+                }
+            }
+
+            if ((entryIndex + 1) % CACHE_RESTORE_YIELD_INTERVAL === 0 && entryIndex + 1 < entries.length) {
+                await ports.scheduler.sleepWithAbort(0);
+                if (ports.cancellation.isCancellationRequested()) {
+                    return false;
+                }
+            }
+        }
+
+        const restoredTasks = plan.tasks.filter((task) => chapters.has(task.index));
+        if (entries.length > 0) {
+            ports.log({
+                code: invalidatedCount > 0 ? "cache-restored-with-invalidated" : "cache-restored",
+                params: {
+                    count: restoredTasks.length,
+                    ...(invalidatedCount > 0 ? { invalidatedCount } : {})
+                }
+            });
+        }
+        progress.recordCacheRestored();
+        for (const task of restoredTasks) {
+            ports.events.emit({ type: "chapter-restored", task });
+        }
+
+        // 先汇总所有缓存字体，再统一确认一次
+        if (firstMappedTask) {
+            ports.ui.updateMappingFontWarning(getMappingFontSummary());
+            if (!(await ensureMappingConsent(firstMappedTask, 0))) {
+                return false;
+            }
+        }
+
+        // 仅回写发生规范化变化的章节
+        for (const [index, chapter] of changedEntries) {
+            if (!(await cache.add(index, chapter))) {
+                return false;
+            }
+        }
+        return !ports.cancellation.isCancellationRequested();
+    }
+
+    function throwIfMappingFontFailed(): void {
+        if (mappingFailures.size === 0) {
+            return;
+        }
+        const failures = Array.from(mappingFailures.values());
+        throw new MappingFontError("font-source-invalid", "chapter-structure-invalid", { count: failures.length });
+    }
+
     const shouldStop = () => ports.cancellation.isCancellationRequested() || Boolean(cache.failure);
 
     // 按既有重试策略获取正文，普通失败交给后续完整性检查
@@ -101,12 +268,12 @@ export function createChapterPipeline(
         let chapter: Chapter;
         try {
             chapter = await ports.chapterProcessor.process(html, task, imageEnabled, ports.cancellation.signal);
-            mapping.clearFailure(task.index);
+            mappingFailures.delete(task.index);
         } catch (error) {
             if (!(error instanceof MappingFontError)) {
                 throw error;
             }
-            mapping.recordFailure(task, error);
+            mappingFailures.set(task.index, { task, code: error.code, reason: error.reason, params: error.params });
             ports.log({
                 code: "chapter-mapping-font-failed",
                 params: {
@@ -131,10 +298,7 @@ export function createChapterPipeline(
                 retry: isRetry
             });
             if (!isRetry) {
-                progress.update({
-                    completedCount: progress.snapshot.completedCount + 1,
-                    failedCount: progress.snapshot.failedCount + 1
-                });
+                progress.recordInitialFailure();
             }
             return "failed";
         }
@@ -143,14 +307,11 @@ export function createChapterPipeline(
         }
 
         // 确认期间允许已完成的章节落盘，但暂停领取新任务
-        const mappingConsent = mapping.register(task, chapter);
+        const mappingConsent = registerMappedChapter(task, chapter);
         chapters.set(task.index, chapter);
         ports.events.emit({ type: "chapter-processed", task, retry: isRetry });
 
-        progress.update({
-            completedCount: progress.snapshot.completedCount + (isRetry ? 0 : 1),
-            processedCount: progress.snapshot.processedCount + 1
-        });
+        progress.recordProcessed(isRetry);
 
         const saved = await cache.add(task.index, chapter);
         if (!saved) {
@@ -186,19 +347,10 @@ export function createChapterPipeline(
         return ports.cancellation.isCancellationRequested() ? "cancelled" : "completed";
     }
 
-    // 处理缓存命中、外部链接、密码章节和普通正文
+    // 处理外部链接、密码章节和普通正文
     async function processChapterTask(task: DownloadTask, isRetry = false): Promise<ChapterTaskResult> {
         if (ports.cancellation.isCancellationRequested()) {
             return "cancelled";
-        }
-
-        // 已恢复章节只推进现有 UI 完成数，不重复网络请求和解析
-        if (!isRetry && chapters.has(task.index)) {
-            progress.update({
-                completedCount: progress.snapshot.completedCount + 1
-            });
-            ports.events.emit({ type: "chapter-restored", task });
-            return "completed";
         }
 
         // 非站内章节保留占位内容，维持原有章节顺序和导出数量
@@ -210,10 +362,7 @@ export function createChapterPipeline(
                 content: message,
                 txtSegment: `${task.title}\n${message}\n\n`
             });
-            progress.update({
-                completedCount: progress.snapshot.completedCount + 1,
-                processedCount: progress.snapshot.processedCount + 1
-            });
+            progress.recordProcessed();
             const saved = await cache.add(task.index, chapters.get(task.index)!);
             if (!saved) {
                 return ports.cancellation.isCancellationRequested() ? "cancelled" : "failed";
@@ -233,14 +382,11 @@ export function createChapterPipeline(
         const html = await downloadChapterHtml(task, isRetry);
         if (!html || ports.cancellation.isCancellationRequested()) {
             if (!isRetry && !ports.cancellation.isCancellationRequested()) {
-                progress.update({
-                    completedCount: progress.snapshot.completedCount + 1,
-                    failedCount: progress.snapshot.failedCount + 1
-                });
+                progress.recordInitialFailure();
             }
             return ports.cancellation.isCancellationRequested() ? "cancelled" : "failed";
         }
-        progress.update({ fetchedCount: progress.snapshot.fetchedCount + 1 });
+        progress.recordFetched();
         if (ports.protectedChapterDetector.isProtected(html)) {
             return protectedChapters.handle(task, html, isRetry, processFetchedChapterHtml);
         }
@@ -260,7 +406,7 @@ export function createChapterPipeline(
                 items: plan.tasks.filter((task) => !chapters.has(task.index)),
                 concurrency,
                 isCancellationRequested: shouldStop,
-                beforeClaim: mapping.beforeClaim,
+                beforeClaim: waitForMappingConsentBeforeClaim,
                 process: (task) => processChapterTask(task).then(() => undefined)
             });
         } catch (error) {
@@ -281,12 +427,12 @@ export function createChapterPipeline(
     async function retry(issues: readonly ChapterIntegrityIssue[], missingOnly = false): Promise<void> {
         // missingOnly 只区分缺章轮次日志，不筛选重试对象或改变输出范围
         protectedChapters.beginRetryRound();
-        progress.update({ retryPendingCount: issues.length, failedCount: issues.length });
+        progress.recordIntegrityScan(issues.length, issues.length);
         await runWorkerPool({
             items: issues,
             concurrency: 1,
             isCancellationRequested: shouldStop,
-            beforeClaim: mapping.beforeClaim,
+            beforeClaim: waitForMappingConsentBeforeClaim,
             process: async ({ task, reason }) => {
                 ports.log({
                     code: missingOnly ? "missing-chapter-retry" : "chapter-integrity-retry",
@@ -303,10 +449,7 @@ export function createChapterPipeline(
                 if (result === "cancelled") {
                     return;
                 }
-                progress.update({
-                    retryPendingCount: Math.max(0, progress.snapshot.retryPendingCount - 1),
-                    failedCount: Math.max(0, progress.snapshot.failedCount - (result === "completed" ? 1 : 0))
-                });
+                progress.recordRetryFinished(result === "completed");
                 if (!ports.cancellation.isCancellationRequested()) {
                     await ports.scheduler.sleepWithAbort(300);
                 }
@@ -314,16 +457,16 @@ export function createChapterPipeline(
         });
         if (!ports.cancellation.isCancellationRequested()) {
             cache.assertHealthy();
-            mapping.assertHealthy();
+            throwIfMappingFontFailed();
         }
     }
 
     return {
-        restore: mapping.restore,
+        restore: restoreCachedChapters,
         download,
         retry,
         get mappingFailures() {
-            return mapping.failures;
+            return Array.from(mappingFailures.values());
         },
         dispose: () => protectedChapters.dispose()
     };

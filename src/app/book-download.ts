@@ -10,7 +10,6 @@ import {
 import { fetchWithTimeout } from "../browser/request";
 import { sleep, sleepWithAbort } from "../browser/timing";
 import { normalizeChapterMappingFont } from "../content/mapping-font";
-import type { Chapter } from "../content/model";
 import type { LocaleKey } from "../locale/catalog";
 import {
     activateDownload,
@@ -253,7 +252,7 @@ export async function runBookDownload(options: RunBookDownloadOptions): Promise<
     }
 }
 
-// 持锁执行下载，所有退出路径统一释放资源
+// 固定选择后取得锁：启动视图和心跳 → 原子认领 → 装配执行 → 发布结果；finally 负责全部出口
 async function executeBookDownload(
     options: RunBookDownloadOptions,
     plan: PreparedBook,
@@ -360,6 +359,7 @@ async function executeBookDownload(
             return;
         }
 
+        // 缓存已认领且锁已进入运行态，才固定核心输入并读取装配设置
         const downloadOptions = {
             bookId,
             taskId: lock.taskId,
@@ -374,11 +374,12 @@ async function executeBookDownload(
             sourcePageType,
             imageEnabled,
             tasks: selectedTasks,
+            initialChapters: chapters,
             selection
         } as const;
         updateBrowserDiagnosticSession(downloadOptions);
         downloadStarted = true;
-        const dependencies = createDownloadDependencies({ lock, chapters, cancellation, ui });
+        const dependencies = createDownloadDependencies({ lock, cancellation, ui });
         let result: DownloadResult;
         try {
             result = await runDownload(downloadOptions, dependencies);
@@ -466,6 +467,69 @@ async function executeBookDownload(
     }
 }
 
+// 书籍下载收尾时的缓存清理结果
+interface BookDownloadFinalizationResult {
+    cacheDiscarded: boolean;
+    cacheClearFailure: StorageFailure | null;
+}
+
+// 处理缓存清除请求，并在所有退出路径停止心跳、释放锁
+async function finalizeBookDownloadTask(
+    lock: BookDownloadLock,
+    stopHeartbeat: () => void,
+    logMessage?: (message: DownloadLog) => void
+): Promise<BookDownloadFinalizationResult> {
+    let cacheDiscarded = false;
+    let cacheClearFailure: StorageFailure | null = null;
+    try {
+        // 远程“停止并清除”由锁携带意图，只有当前 writer 可以清除对应缓存
+        if (await shouldDiscardBookDownloadCache(lock)) {
+            try {
+                cacheDiscarded = await clearBookCacheForTask(lock.bookId, lock.taskId);
+                if (!cacheDiscarded) {
+                    cacheClearFailure = toStorageFailure(createStorageError("ownership-lost", "clear"));
+                    logMessage?.({
+                        code: "cache-discard-failed",
+                        params: {
+                            reason: cacheClearFailure.reason,
+                            operation: cacheClearFailure.operation,
+                            detail: cacheClearFailure.params?.detail || cacheClearFailure.message
+                        }
+                    });
+                }
+            } catch (error) {
+                const failure = normalizeStorageError(error, "clear");
+                cacheClearFailure = toStorageFailure(failure);
+                console.error("停止任务时清理缓存失败", failure);
+                logMessage?.({
+                    code: "cache-discard-failed",
+                    params: {
+                        reason: failure.reason,
+                        operation: failure.operation,
+                        detail: failure.params?.detail || failure.message
+                    }
+                });
+            }
+            if (cacheDiscarded) {
+                clearRuntimeCacheSession(lock.bookId, lock.taskId);
+            }
+        }
+    } finally {
+        // 即使缓存清理失败也要停止心跳，否则其他页面会持续认为任务存活
+        try {
+            try {
+                stopHeartbeat();
+            } finally {
+                await releaseBookDownloadLock(lock, { cacheDiscarded });
+            }
+        } finally {
+            // 锁释放异常时仍清理当前页引用，避免后续流程误用旧锁
+            releaseActiveDownload(lock.taskId);
+        }
+    }
+    return { cacheDiscarded, cacheClearFailure };
+}
+
 // 创建任务独立的取消意图和网络信号，discard 只可升级
 function createDownloadCancellation(): DownloadCancellationPort & { readonly mode: DownloadCancellationMode } {
     const controller = new AbortController();
@@ -523,7 +587,6 @@ function recordInlineImageFailures(
 
 interface BrowserDownloadTask {
     lock: BookDownloadLock;
-    chapters: Map<number, Chapter>;
     cancellation: DownloadCancellationPort & { readonly mode: DownloadCancellationMode };
     ui: DownloadUiPort;
 }
@@ -627,7 +690,7 @@ function createDownloadDependencies(task: BrowserDownloadTask): DownloadDependen
     const startedAt = Date.now();
     const requestGate = new RequestGate();
     let taskStarted = false;
-    const { lock: activeLock, chapters, cancellation } = task;
+    const { lock: activeLock, cancellation } = task;
     const { ui } = task;
     const lock: BookLockService = {
         owns: () => ownsActiveBookDownloadLock(activeLock),
@@ -637,7 +700,6 @@ function createDownloadDependencies(task: BrowserDownloadTask): DownloadDependen
     const protectedChapterAuth = createProtectedChapterAuth(fetchWithTimeout, requestGate);
 
     return {
-        chapters,
         cancellation,
         ui,
         chapterFetcher,
@@ -663,7 +725,7 @@ function createDownloadDependencies(task: BrowserDownloadTask): DownloadDependen
                     updateRuntimeCacheSession(
                         {
                             completedCount: snapshot.completedCount,
-                            bookChapterCount: chapters.size,
+                            bookChapterCount: snapshot.bookChapterCount,
                             status:
                                 snapshot.phase === "cancelled"
                                     ? "cancelled"
@@ -693,67 +755,4 @@ function createDownloadDependencies(task: BrowserDownloadTask): DownloadDependen
         startedAt,
         log: (message) => browserDiagnosticLog(message, activeLock.taskId, isCurrentDownload(activeLock.taskId))
     };
-}
-
-// 书籍下载收尾时的缓存清理结果
-interface BookDownloadFinalizationResult {
-    cacheDiscarded: boolean;
-    cacheClearFailure: StorageFailure | null;
-}
-
-// 处理缓存清除请求，并在所有退出路径停止心跳、释放锁
-async function finalizeBookDownloadTask(
-    lock: BookDownloadLock,
-    stopHeartbeat: () => void,
-    logMessage?: (message: DownloadLog) => void
-): Promise<BookDownloadFinalizationResult> {
-    let cacheDiscarded = false;
-    let cacheClearFailure: StorageFailure | null = null;
-    try {
-        // 远程“停止并清除”由锁携带意图，只有当前 writer 可以清除对应缓存
-        if (await shouldDiscardBookDownloadCache(lock)) {
-            try {
-                cacheDiscarded = await clearBookCacheForTask(lock.bookId, lock.taskId);
-                if (!cacheDiscarded) {
-                    cacheClearFailure = toStorageFailure(createStorageError("ownership-lost", "clear"));
-                    logMessage?.({
-                        code: "cache-discard-failed",
-                        params: {
-                            reason: cacheClearFailure.reason,
-                            operation: cacheClearFailure.operation,
-                            detail: cacheClearFailure.params?.detail || cacheClearFailure.message
-                        }
-                    });
-                }
-            } catch (error) {
-                const failure = normalizeStorageError(error, "clear");
-                cacheClearFailure = toStorageFailure(failure);
-                console.error("停止任务时清理缓存失败", failure);
-                logMessage?.({
-                    code: "cache-discard-failed",
-                    params: {
-                        reason: failure.reason,
-                        operation: failure.operation,
-                        detail: failure.params?.detail || failure.message
-                    }
-                });
-            }
-            if (cacheDiscarded) {
-                clearRuntimeCacheSession(lock.bookId, lock.taskId);
-            }
-        }
-    } finally {
-        // 即使缓存清理失败也要停止心跳，否则其他页面会持续认为任务存活
-        try {
-            try {
-                stopHeartbeat();
-            } finally {
-                await releaseBookDownloadLock(lock, { cacheDiscarded });
-            }
-        } finally {
-            // 锁释放异常时仍清理当前页引用，避免后续流程误用旧锁
-            releaseActiveDownload(lock.taskId);
-        }
-    }
-    return { cacheDiscarded, cacheClearFailure };
 }

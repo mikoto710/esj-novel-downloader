@@ -23,10 +23,8 @@ export function createTaskCacheWriter(
     options: Pick<DownloadOptions, "bookId" | "taskId">,
     plan: DownloadPlan,
     meta: CacheMeta,
-    chapters: Map<number, Chapter>,
     progress: DownloadProgress
 ) {
-    const persistedIndexes = new Set(plan.tasks.filter((task) => chapters.has(task.index)).map((task) => task.index));
     const buffer = new ChapterCacheWriteBuffer({
         write: persistTaskCacheBatch,
         schedule: ports.scheduler.schedule,
@@ -48,14 +46,7 @@ export function createTaskCacheWriter(
                     saved: true,
                     failure: null
                 });
-                for (const index of entries.keys()) {
-                    if (plan.indexes.has(index)) {
-                        persistedIndexes.add(index);
-                    }
-                }
-                progress.update({
-                    persistedCount: persistedIndexes.size
-                });
+                progress.recordCommitted(entries.keys());
                 return true;
             } catch (error) {
                 const normalized = normalizeStorageError(error, "write");
@@ -117,7 +108,7 @@ export function createTaskCacheWriter(
             return buffer.failure;
         },
         add: (index: number, chapter: Chapter) => buffer.add(index, chapter),
-        invalidate: (index: number) => persistedIndexes.delete(index),
+        invalidate: (index: number) => progress.invalidatePersistedChapter(index),
         flush: () => buffer.flush(),
         assertHealthy,
         async finish(): Promise<void> {

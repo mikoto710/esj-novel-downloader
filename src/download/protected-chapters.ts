@@ -33,36 +33,37 @@ export function createProtectedChapters(
     const protectedDetectedIndexes = new Set<number>();
     const protectedResolvedIndexes = new Set<number>();
     const protectedSkippedIndexes = new Set<number>();
+    let protectedPendingCount = 0;
+
+    function publishProtectedSummary(): void {
+        progress.recordProtectedSummary({
+            protectedDetectedCount: protectedDetectedIndexes.size,
+            protectedPendingCount,
+            protectedResolvedCount: protectedResolvedIndexes.size,
+            protectedSkippedCount: protectedSkippedIndexes.size
+        });
+    }
+
     let rememberedPassword: string | null = null;
     let rememberPassword = false;
     let skipRemainingProtectedRetries = false;
 
     function registerProtectedDetection(task: DownloadTask, skipped: boolean): void {
-        const snapshot = progress.snapshot;
-        const firstDetection = !protectedDetectedIndexes.has(task.index);
         protectedDetectedIndexes.add(task.index);
         if (skipped) {
             protectedSkippedIndexes.add(task.index);
+        } else {
+            protectedPendingCount++;
         }
-        progress.update({
-            protectedDetectedCount: snapshot.protectedDetectedCount + (firstDetection ? 1 : 0),
-            protectedPendingCount: snapshot.protectedPendingCount + (skipped ? 0 : 1),
-            protectedSkippedCount: snapshot.protectedSkippedCount + (skipped ? 1 : 0)
-        });
+        publishProtectedSummary();
     }
 
     function reopenProtectedChapterForRetry(task: DownloadTask): void {
-        const snapshot = progress.snapshot;
-        const firstDetection = !protectedDetectedIndexes.has(task.index);
-        const wasResolved = protectedResolvedIndexes.delete(task.index);
-        const wasSkipped = protectedSkippedIndexes.delete(task.index);
+        protectedResolvedIndexes.delete(task.index);
+        protectedSkippedIndexes.delete(task.index);
         protectedDetectedIndexes.add(task.index);
-        progress.update({
-            protectedDetectedCount: snapshot.protectedDetectedCount + (firstDetection ? 1 : 0),
-            protectedPendingCount: snapshot.protectedPendingCount + 1,
-            protectedResolvedCount: Math.max(0, snapshot.protectedResolvedCount - (wasResolved ? 1 : 0)),
-            protectedSkippedCount: Math.max(0, snapshot.protectedSkippedCount - (wasSkipped ? 1 : 0))
-        });
+        protectedPendingCount++;
+        publishProtectedSummary();
     }
 
     function beginProtectedRetryRound(): void {
@@ -87,7 +88,7 @@ export function createProtectedChapters(
                       selectionMode: plan.selection.mode
                   }
                 : {}),
-            pendingCount: progress.snapshot.protectedPendingCount,
+            pendingCount: protectedPendingCount,
             rememberPassword: rememberPassword,
             retryConnection,
             ...(rememberedPassword ? { initialPassword: rememberedPassword } : {}),
@@ -148,13 +149,8 @@ export function createProtectedChapters(
                         params: { ...plan.position(skipped.task), title: skipped.task.title }
                     });
                 }
-                progress.update({
-                    protectedPendingCount: Math.max(
-                        0,
-                        progress.snapshot.protectedPendingCount - skippedItems.length - 1
-                    ),
-                    protectedSkippedCount: progress.snapshot.protectedSkippedCount + skippedItems.length + 1
-                });
+                protectedPendingCount = Math.max(0, protectedPendingCount - skippedItems.length - 1);
+                publishProtectedSummary();
                 return "failed";
             }
 
@@ -252,10 +248,8 @@ export function createProtectedChapters(
             // 授权成功后回到普通正文处理路径，复用解析与落盘
             ports.ui.closeProtectedChapterPrompt();
             protectedResolvedIndexes.add(item.task.index);
-            progress.update({
-                protectedPendingCount: Math.max(0, progress.snapshot.protectedPendingCount - 1),
-                protectedResolvedCount: progress.snapshot.protectedResolvedCount + 1
-            });
+            protectedPendingCount = Math.max(0, protectedPendingCount - 1);
+            publishProtectedSummary();
             const processed = await processChapter(item.task, result.html, isRetry);
             if (processed === "completed") {
                 ports.log({

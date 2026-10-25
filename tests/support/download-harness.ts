@@ -67,7 +67,6 @@ export function createDownloadHarness(tasks: DownloadTask[], chapters = new Map<
 
     const log = vi.fn();
     const dependencies: DownloadDependencies = {
-        chapters,
         cancellation: {
             signal: abortController.signal,
             isCancellationRequested: () => cancellationRequested,
@@ -120,6 +119,7 @@ export function createDownloadHarness(tasks: DownloadTask[], chapters = new Map<
 
     return {
         dependencies,
+        initialChapters: chapters,
         events,
         fetcher,
         processedIndexes,
@@ -128,6 +128,7 @@ export function createDownloadHarness(tasks: DownloadTask[], chapters = new Map<
         ui,
         log,
         async run(options: DownloadOptions) {
+            options.initialChapters ??= chapters;
             result = await runDownload(options, dependencies);
             return result;
         },

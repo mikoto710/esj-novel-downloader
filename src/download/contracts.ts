@@ -149,6 +149,8 @@ export interface DownloadOptions {
     imageEnabled: boolean;
     tasks: DownloadTask[];
     selection?: DownloadSelectionInput;
+    // 核心只复制索引容器，正文和 Blob 继续复用；应用不再持有活库存
+    initialChapters?: ReadonlyMap<number, Chapter>;
 }
 
 /**
@@ -200,6 +202,7 @@ export interface DownloadSnapshot {
     failedCount: number;
     completedCount: number;
     readyChapterCount: number;
+    bookChapterCount: number;
     protectedDetectedCount: number;
     protectedPendingCount: number;
     protectedResolvedCount: number;
@@ -399,7 +402,6 @@ export interface DownloadSchedulerPort {
  * 下载任务使用的章节表、取消状态与外部能力
  */
 export interface DownloadPorts {
-    chapters: Map<number, Chapter>;
     cancellation: DownloadCancellationPort;
     ui: DownloadUiPort;
     chapterFetcher: ChapterFetcherPort;

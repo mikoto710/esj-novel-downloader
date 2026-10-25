@@ -170,7 +170,7 @@ describe("browser download cancellation contracts", () => {
         const saveStarted = createDeferred<void>();
         const writeAborted = createDeferred<void>();
         mocks.sleepWithAbort.mockImplementation(async () => {
-            if (runtime.task.chapters.size > 0) runtime.abortActiveDownload("flush");
+            if (runtime.state.runtimeCacheSession?.completedCount) runtime.abortActiveDownload("flush");
         });
         mocks.saveCache.mockImplementationOnce((_bookId, _taskId, _entries, _meta, signal?: AbortSignal) => {
             saveStarted.resolve();
@@ -200,7 +200,7 @@ describe("browser download cancellation contracts", () => {
 
     it("reports failed cancellation saving without claiming progress was saved or clearing old cache", async () => {
         mocks.sleepWithAbort.mockImplementation(async () => {
-            if (runtime.task.chapters.size > 0) runtime.abortActiveDownload("flush");
+            if (runtime.state.runtimeCacheSession?.completedCount) runtime.abortActiveDownload("flush");
         });
         mocks.saveCache.mockRejectedValue(new DOMException("storage full", "QuotaExceededError"));
 

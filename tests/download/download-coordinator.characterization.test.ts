@@ -28,8 +28,8 @@ describe("runDownload characterization", () => {
         expect(harness.exportData?.chapters).toEqual([createChapter(0), createChapter(2), createChapter(4)]);
         expect(harness.cacheClears).toEqual([]);
         expect(harness.cacheFinishes).toHaveLength(1);
-        expect(harness.dependencies.chapters.has(1)).toBe(true);
-        expect(harness.dependencies.chapters.has(3)).toBe(true);
+        expect(harness.initialChapters.has(1)).toBe(true);
+        expect(harness.initialChapters.has(3)).toBe(true);
         expect(harness.ui.snapshots.at(-1)).toMatchObject({ scheduledCount: 3, readyChapterCount: 3, failedCount: 0 });
     });
 
@@ -78,7 +78,7 @@ describe("runDownload characterization", () => {
         await expect(harness.run(options)).rejects.toThrow("export-metadata-invalid");
         expect(harness.cacheClears).toEqual([]);
         expect(harness.result).toBeNull();
-        expect(harness.dependencies.chapters.has(tasks[0].index)).toBe(true);
+        expect(harness.ui.snapshots.at(-1)?.readyChapterCount).toBe(1);
     });
 
     it("returns cancellation explicitly without an export snapshot", async () => {
@@ -278,7 +278,7 @@ describe("runDownload characterization", () => {
         });
         expect(harness.dependencies.protectedChapterAuth.unlock).toHaveBeenCalledOnce();
         expect(harness.ui.confirmIncompleteChapters).not.toHaveBeenCalled();
-        expect(harness.dependencies.chapters.has(0)).toBe(true);
+        expect(harness.ui.snapshots.at(-1)?.readyChapterCount).toBe(1);
         expect(harness.exportData?.chapters).toHaveLength(1);
         expect(harness.ui.snapshots.at(-1)).toMatchObject({
             readyChapterCount: 1,
@@ -575,7 +575,7 @@ describe("runDownload characterization", () => {
         expect(harness.exportData?.chapters[0].content).toContain("第 &lt;script&gt; 章");
         expect(harness.exportData?.chapters[0].content).not.toContain("<script>");
         expect(harness.exportData?.exportContext?.chapterSummary).toEqual({ totalCount: 1, missingCount: 1 });
-        expect(harness.dependencies.chapters.size).toBe(0);
+        expect(harness.initialChapters.size).toBe(0);
         expect(harness.ui.snapshots.at(-1)).toMatchObject({
             phase: "export-ready",
             readyChapterCount: 0,

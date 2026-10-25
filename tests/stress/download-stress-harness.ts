@@ -49,7 +49,6 @@ export function createStressDownloadHarness(options: StressDownloadHarnessOption
     });
 
     const dependencies: DownloadDependencies = {
-        chapters,
         cancellation: {
             signal: controller.signal,
             isCancellationRequested: () => cancellationMode !== null,
@@ -125,6 +124,7 @@ export function createStressDownloadHarness(options: StressDownloadHarnessOption
 
     return {
         dependencies,
+        initialChapters: chapters,
         events,
         fetchedIndexes,
         processedIndexes,
@@ -133,6 +133,7 @@ export function createStressDownloadHarness(options: StressDownloadHarnessOption
         snapshots,
         requestCancellation,
         async run(options: DownloadOptions) {
+            options.initialChapters ??= chapters;
             result = await runDownload(options, dependencies);
             return result;
         },

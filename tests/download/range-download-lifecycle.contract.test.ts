@@ -187,10 +187,11 @@ describe("range download lifecycle", () => {
         });
         expect(mocks.runDownload).toHaveBeenCalledWith(
             expect.objectContaining({
+                initialChapters: expect.any(Map),
                 tasks: [tasks[1], tasks[2]],
                 selection: { mode: "selected", sourceTotalChapters: 3, indexes: [1, 2] }
             }),
-            expect.objectContaining({ chapters: expect.any(Map), cancellation: expect.any(Object) })
+            expect.objectContaining({ cancellation: expect.any(Object) })
         );
         expect(readImages).toHaveBeenCalledOnce();
         expect(readConcurrency).toHaveBeenCalledOnce();

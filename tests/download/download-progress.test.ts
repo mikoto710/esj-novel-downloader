@@ -29,11 +29,11 @@ describe("DownloadProgress", () => {
 
         chapters.set(11, createChapter(11));
         chapters.set(19, createChapter(19));
-        progress.update({ processedCount: 1 });
+        progress.recordProcessed();
         expect(ui.update).toHaveBeenLastCalledWith(expect.objectContaining({ readyChapterCount: 2 }));
 
         chapters.delete(10);
-        progress.update({ failedCount: 1 });
+        progress.recordIntegrityScan(1);
         expect(ui.update).toHaveBeenLastCalledWith(expect.objectContaining({ readyChapterCount: 1 }));
         expect(chapters.size).toBe(3);
     });
@@ -64,7 +64,8 @@ describe("DownloadProgress", () => {
         machine.transition("preparing");
         machine.transition("restoring-cache");
         machine.transition("downloading");
-        machine.update({ cancellationRequested: true, cancellationOutcome: "save-timed-out" });
+        machine.recordCancellationRequested();
+        machine.recordCancellationFinished("save-timed-out", null);
         machine.transition("cancelling");
         machine.transition("cancelled");
 

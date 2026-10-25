@@ -195,7 +195,7 @@ describe("runtime cache ownership", () => {
         await send({ type: "cache-claimed", bookId: "100", taskId: "remote-task" });
         response.resolve("<p>late chapter</p>");
         expect(await download).toEqual({ status: "cancelled", outcome: "ownership-lost" });
-        expect(harness.dependencies.chapters).toBe(chapters);
+        expect(harness.initialChapters).toBe(chapters);
         expect(chapters.size).toBe(1);
         expect(harness.cacheClears).toEqual([]);
         expect(runtime.state.cachedData).toBe(previous);
