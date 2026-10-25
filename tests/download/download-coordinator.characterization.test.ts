@@ -42,7 +42,10 @@ describe("runDownload characterization", () => {
             throw new Error("prompt teardown");
         });
 
-        await expect(harness.run(createOptions(tasks))).rejects.toThrow("prompt teardown");
+        await expect(harness.run(createOptions(tasks))).resolves.toMatchObject({
+            status: "failed",
+            failure: { kind: "download", params: { detail: "prompt teardown" } }
+        });
         expect(unsubscribe).toHaveBeenCalledOnce();
     });
 
@@ -75,9 +78,12 @@ describe("runDownload characterization", () => {
                 throw new Error("export-metadata-invalid");
             }
         });
-        await expect(harness.run(options)).rejects.toThrow("export-metadata-invalid");
+        await expect(harness.run(options)).resolves.toMatchObject({
+            status: "failed",
+            failure: { kind: "download", params: { detail: "export-metadata-invalid" } }
+        });
         expect(harness.cacheClears).toEqual([]);
-        expect(harness.result).toBeNull();
+        expect(harness.result?.status).toBe("failed");
         expect(harness.ui.snapshots.at(-1)?.readyChapterCount).toBe(1);
     });
 
@@ -85,7 +91,7 @@ describe("runDownload characterization", () => {
         const tasks = [createDownloadTask()];
         const harness = createHarness(tasks);
         harness.dependencies.cancellation.requestCancellation("flush");
-        expect(await harness.run(createOptions(tasks))).toEqual({ status: "cancelled", outcome: "saved" });
+        expect(await harness.run(createOptions(tasks))).toMatchObject({ status: "cancelled", outcome: "saved" });
         expect(harness.cacheClears).toEqual([]);
     });
 
@@ -374,14 +380,14 @@ describe("runDownload characterization", () => {
         });
     });
 
-    it("keeps popup cancellation connected while protected authorization is pending", async () => {
+    it("aborts protected authorization when its task is cancelled", async () => {
         const tasks = [createDownloadTask(0)];
         const harness = createHarness(tasks);
         harness.dependencies.chapterFetcher.fetch = vi.fn(async () => "<protected>password form</protected>");
         harness.dependencies.protectedChapterDetector.isProtected = () => true;
         let cancelPendingAuthorization: (() => void) | undefined;
-        harness.ui.promptProtectedChapterPassword.mockImplementationOnce(async (_prompt, _signal, onPending) => {
-            cancelPendingAuthorization = () => onPending?.({ action: "cancel" });
+        harness.ui.promptProtectedChapterPassword.mockImplementationOnce(async () => {
+            cancelPendingAuthorization = () => harness.dependencies.cancellation.requestCancellation("flush");
             return { action: "submit", password: "fictional-password", rememberPassword: false };
         });
         harness.dependencies.protectedChapterAuth.unlock = vi.fn(
@@ -472,7 +478,7 @@ describe("runDownload characterization", () => {
 
         expect(harness.fetcher.calls.map((task) => task.index)).toEqual([0]);
         expect(harness.exportData).toBeNull();
-        expect(harness.ui.cleanup).toHaveBeenCalledOnce();
+        expect(harness.ui.cleanup).not.toHaveBeenCalled();
     });
 
     it("blocks export and reports chapters whose mapped font remains invalid after retry", async () => {
@@ -482,24 +488,26 @@ describe("runDownload characterization", () => {
             throw new MappingFontError("woff2-invalid", "woff2-signature-invalid");
         };
 
-        await expect(harness.run(createOptions(tasks))).rejects.toMatchObject({
-            code: "font-source-invalid",
-            reason: "chapter-structure-invalid",
-            params: { count: 1 }
+        await expect(harness.run(createOptions(tasks))).resolves.toMatchObject({
+            status: "failed",
+            failure: { kind: "mapping-font" }
         });
 
-        expect(harness.ui.showMappingFontFailure).toHaveBeenCalledOnce();
-        expect(harness.ui.showMappingFontFailure).toHaveBeenCalledWith([
-            expect.objectContaining({
-                task: tasks[0],
-                code: "woff2-invalid",
-                reason: "woff2-signature-invalid",
-                params: {}
-            })
-        ]);
-        expect(harness.ui.cleanup.mock.invocationCallOrder[0]).toBeLessThan(
-            harness.ui.showMappingFontFailure.mock.invocationCallOrder[0]
-        );
+        expect(harness.ui.showMappingFontFailure).not.toHaveBeenCalled();
+        expect(harness.result).toMatchObject({
+            status: "failed",
+            failure: {
+                kind: "mapping-font",
+                failures: [
+                    expect.objectContaining({
+                        task: tasks[0],
+                        code: "woff2-invalid",
+                        reason: "woff2-signature-invalid",
+                        params: {}
+                    })
+                ]
+            }
+        });
         expect(harness.ui.showTerminalFailure).not.toHaveBeenCalled();
         expect(harness.exportData).toBeNull();
     });
@@ -525,9 +533,9 @@ describe("runDownload characterization", () => {
         const harness = createHarness(tasks);
         harness.dependencies.cache.putBatch = vi.fn(async () => false);
 
-        await expect(harness.run(createOptions(tasks))).rejects.toMatchObject({
-            reason: "ownership-lost",
-            operation: "write"
+        await expect(harness.run(createOptions(tasks))).resolves.toMatchObject({
+            status: "failed",
+            failure: { kind: "download", storageFailure: { reason: "ownership-lost", operation: "write" } }
         });
 
         expect(harness.dependencies.cancellation.requestCancellation).not.toHaveBeenCalled();
@@ -540,15 +548,15 @@ describe("runDownload characterization", () => {
             saved: false,
             failure: { reason: "ownership-lost", operation: "write" }
         });
-        expect(harness.ui.showTerminalFailure).toHaveBeenCalledWith({
-            kind: "download",
-            code: "ownership-lost",
-            params: { operation: "write" },
-            storageFailure: expect.objectContaining({ reason: "ownership-lost", operation: "write" })
+        expect(harness.result).toMatchObject({
+            status: "failed",
+            failure: {
+                kind: "download",
+                code: "ownership-lost",
+                params: { operation: "write" },
+                storageFailure: expect.objectContaining({ reason: "ownership-lost", operation: "write" })
+            }
         });
-        expect(harness.ui.cleanup.mock.invocationCallOrder[0]).toBeLessThan(
-            harness.ui.showTerminalFailure.mock.invocationCallOrder[0]
-        );
     });
 
     it("requires an explicit decision and exports safe placeholders without caching them", async () => {
@@ -647,21 +655,26 @@ describe("runDownload characterization", () => {
         };
         harness.ui.confirmIncompleteChapters.mockResolvedValue("retry");
 
-        await expect(harness.run(createOptions(tasks))).rejects.toMatchObject({
-            code: "font-source-invalid",
-            reason: "chapter-structure-invalid",
-            params: { count: 1 }
+        await expect(harness.run(createOptions(tasks))).resolves.toMatchObject({
+            status: "failed",
+            failure: { kind: "mapping-font" }
         });
 
         expect(harness.ui.confirmIncompleteChapters).toHaveBeenCalledOnce();
-        expect(harness.ui.showMappingFontFailure).toHaveBeenCalledWith([
-            expect.objectContaining({
-                task: tasks[0],
-                code: "woff2-invalid",
-                reason: "woff2-signature-invalid",
-                params: {}
-            })
-        ]);
+        expect(harness.result).toMatchObject({
+            status: "failed",
+            failure: {
+                kind: "mapping-font",
+                failures: [
+                    expect.objectContaining({
+                        task: tasks[0],
+                        code: "woff2-invalid",
+                        reason: "woff2-signature-invalid",
+                        params: {}
+                    })
+                ]
+            }
+        });
         expect(harness.exportData).toBeNull();
     });
 

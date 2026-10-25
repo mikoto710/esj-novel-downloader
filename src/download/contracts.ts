@@ -175,6 +175,7 @@ export type DownloadPhase =
 export type DownloadCancellationOutcome = "saved" | "save-failed" | "save-timed-out" | "discarded" | "ownership-lost";
 
 export type DownloadTerminalFailure =
+    | { kind: "mapping-font"; failures: readonly MappingFontFailure[] }
     | {
           kind: "download";
           code: DownloadChapterFailureCode;
@@ -301,13 +302,13 @@ export interface DownloadCancellationPort {
  */
 export type DownloadResult =
     | { status: "ready"; data: ExportSnapshot }
-    | { status: "cancelled"; outcome: DownloadCancellationOutcome };
+    | { status: "cancelled"; outcome: DownloadCancellationOutcome; storageFailure: StorageFailure | null }
+    | { status: "failed"; failure: DownloadTerminalFailure };
 
 /**
  * DOM、标题、进度条和弹窗更新接口
  */
 export interface DownloadUiPort {
-    prepare(selection: DownloadSelection): void;
     update(snapshot: DownloadSnapshot): void;
     confirmMappingFontDownload(detection: MappingFontDetection, signal?: AbortSignal): Promise<boolean>;
     confirmIncompleteChapters(
@@ -316,16 +317,10 @@ export interface DownloadUiPort {
     ): Promise<IncompleteChapterDecision>;
     promptProtectedChapterPassword(
         prompt: ProtectedChapterPrompt,
-        signal?: AbortSignal,
-        onPendingDecision?: (
-            decision: Extract<ProtectedChapterDecision, { action: "skip-current" | "skip-all" | "cancel" }>
-        ) => void
+        signal?: AbortSignal
     ): Promise<ProtectedChapterDecision>;
     closeProtectedChapterPrompt(): void;
     updateMappingFontWarning(summary: MappingFontSummary): void;
-    showMappingFontFailure(failures: readonly MappingFontFailure[]): void;
-    showTerminalFailure(failure: DownloadTerminalFailure): void;
-    cleanup(): void;
 }
 
 /**

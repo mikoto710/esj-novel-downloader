@@ -15,7 +15,7 @@ import { runUserDecision, UserDecisionGate } from "./user-decision-gate";
 class DownloadCancelled extends Error {}
 
 /**
- * 下载并准备导出快照；取消返回明确结果，失败抛出，页面负责展示导出入口
+ * 下载并准备导出快照；返回 ready/cancelled/failed，应用负责整次任务窗口与终态呈现
  */
 export async function runDownload(
     options: DownloadOptions,
@@ -64,16 +64,16 @@ export async function runDownload(
     ): Promise<void> {
         progress.transition("flushing-cache");
         log({ code });
-        const saved = await cache.flush();
+        const committed = await cache.flush();
         checkActive();
-        if (!saved) {
+        if (!committed) {
             throw createStorageError("ownership-lost", "write");
         }
     }
 
+    let result: DownloadResult | undefined;
     try {
         progress.transition("preparing");
-        ui.prepare(plan.selection);
         events.emit({
             type: "task-started",
             meta: meta,
@@ -186,36 +186,42 @@ export async function runDownload(
         progress.recordExportReady();
         progress.transition("export-ready");
         log({ code: "download-completed" });
-        ui.cleanup();
-        return { status: "ready", data };
+        result = { status: "ready", data };
     } catch (error) {
         if (
             error instanceof DownloadCancelled ||
             (cancellation.isCancellationRequested() && isCancellationError(error))
         ) {
             try {
-                return await finishCancellation(dependencies, progress, cache);
+                result = await finishCancellation(dependencies, progress, cache);
             } catch (cancellationError) {
-                return reportFailure(cancellationError, dependencies, progress, cache, pipeline);
+                result = reportFailure(cancellationError, dependencies, progress, cache, pipeline);
             }
+        } else {
+            result = reportFailure(error, dependencies, progress, cache, pipeline);
         }
-        return reportFailure(error, dependencies, progress, cache, pipeline);
     } finally {
         try {
             pipeline.dispose();
+        } catch (error) {
+            // 资源结束失败也交接给应用，已确定的原失败保留优先权
+            if (!result || result.status !== "failed") {
+                result = reportFailure(error, dependencies, progress, cache, pipeline);
+            }
         } finally {
             cache.dispose();
         }
     }
+    return result!;
 }
 
 // 取消只在此收尾一次，缓存处理结果决定最终提示
 async function finishCancellation(
-    dependencies: Pick<DownloadDependencies, "ui" | "log" | "scheduler">,
+    dependencies: Pick<DownloadDependencies, "log" | "scheduler">,
     progress: DownloadProgress,
     cache: TaskCacheWriter
 ): Promise<DownloadResult> {
-    const { ui, log } = dependencies;
+    const { log } = dependencies;
     progress.recordCancellationRequested();
     progress.transition("cancelling");
     const outcome = await cache.cancel();
@@ -236,22 +242,18 @@ async function finishCancellation(
         }
     });
     await dependencies.scheduler.sleep(800);
-    ui.cleanup();
-    if (outcome !== "saved" && outcome !== "discarded") {
-        ui.showTerminalFailure({ kind: "cancellation", outcome, storageFailure });
-    }
-    return { status: "cancelled", outcome };
+    return { status: "cancelled", outcome, storageFailure };
 }
 
-// 统一记录失败并关闭进度界面，不覆盖之前的导出结果
+// 记录并返回完整失败原因；任务窗口与旧导出仍由应用持有
 function reportFailure(
     error: unknown,
-    dependencies: Pick<DownloadDependencies, "ui" | "log" | "events">,
+    dependencies: Pick<DownloadDependencies, "log" | "events">,
     progress: DownloadProgress,
     cache: TaskCacheWriter,
     pipeline: ChapterPipeline
-): never {
-    const { ui, log, events } = dependencies;
+): DownloadResult {
+    const { log, events } = dependencies;
     const reported =
         error instanceof StorageError
             ? error
@@ -281,13 +283,11 @@ function reportFailure(
         ? { operation: storageFailure.operation, ...(storageFailure.params || {}) }
         : { errorName: details.name, detail: details.message };
     events.emit({ type: "download-failed", code, params, snapshot: progress.snapshot });
-    ui.cleanup();
-    if (reported instanceof MappingFontError && pipeline.mappingFailures.length) {
-        ui.showMappingFontFailure(pipeline.mappingFailures);
-    } else {
-        ui.showTerminalFailure({ kind: "download", code, params, storageFailure });
-    }
-    throw reported;
+    const failure =
+        reported instanceof MappingFontError && pipeline.mappingFailures.length
+            ? { kind: "mapping-font" as const, failures: pipeline.mappingFailures }
+            : { kind: "download" as const, code, params, storageFailure };
+    return { status: "failed", failure };
 }
 
 type CoverPorts = Pick<DownloadDependencies, "coverCache" | "coverFetcher" | "cancellation" | "log">;

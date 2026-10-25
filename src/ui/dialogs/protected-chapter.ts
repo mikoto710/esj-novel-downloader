@@ -81,14 +81,12 @@ function formatProtectedPromptMessage(prompt: ProtectedChapterPrompt): string {
 }
 
 /**
- * 提交结束本次等待但保留窗口，授权中的取消经回调通知任务
+ * 提交只结束一次决策；取消始终直接通知所属任务，并释放自己的节点与订阅
  */
 export function promptProtectedChapterPassword(
     prompt: ProtectedChapterPrompt,
     signal?: AbortSignal,
-    onPendingDecision?: (
-        decision: Extract<ProtectedChapterDecision, { action: "skip-current" | "skip-all" | "cancel" }>
-    ) => void
+    cancelTask?: () => void
 ): Promise<ProtectedChapterDecision> {
     disposeActiveProtectedPromptLocaleRefresh?.();
     const existingPopup = document.querySelector("#esj-protected-chapter") as HTMLElement | null;
@@ -111,21 +109,25 @@ export function promptProtectedChapterPassword(
             return;
         }
         settled = true;
-        signal?.removeEventListener("abort", onAbort);
         if (!keepOpen) {
+            signal?.removeEventListener("abort", onAbort);
             disposeLocaleRefresh();
             mountedPopup.remove();
         }
         resolveDecision(decision);
     }
 
-    const onAbort = () => finish({ action: "cancel" });
+    const onAbort = () => {
+        finish({ action: "cancel" });
+        disposeLocaleRefresh();
+        mountedPopup.remove();
+    };
     const finishOrNotify = (
         decision: Extract<ProtectedChapterDecision, { action: "skip-current" | "skip-all" | "cancel" }>
     ) => {
-        // 提交已结束本次等待，授权中的取消改为通知任务
-        if (settled) {
-            onPendingDecision?.(decision);
+        if (decision.action === "cancel") {
+            cancelTask?.();
+            onAbort();
             return;
         }
         finish(decision);
@@ -339,6 +341,7 @@ export function promptProtectedChapterPassword(
     });
     disposeLocaleRefresh = () => {
         unsubscribeLocale();
+        signal?.removeEventListener("abort", onAbort);
         if (disposeActiveProtectedPromptLocaleRefresh === disposeLocaleRefresh) {
             disposeActiveProtectedPromptLocaleRefresh = null;
         }

@@ -21,7 +21,7 @@ function showStorageFailure(title: string, message: string, failure: StorageFail
 /**
  * 下载弹窗清理完成后显示唯一的终态失败提示，避免页面层重复清理或覆盖消息
  */
-export function showDownloadTerminalFailure(failure: DownloadTerminalFailure): void {
+export function showDownloadTerminalFailure(failure: Exclude<DownloadTerminalFailure, { kind: "mapping-font" }>): void {
     if (failure.kind === "download") {
         if (failure.storageFailure) {
             showStorageFailure(

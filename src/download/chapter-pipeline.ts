@@ -3,7 +3,7 @@ import type { DownloadDependencies, DownloadTask, MappingFontFailure } from "./c
 import type { DownloadPlan } from "./plan";
 import type { DownloadProgress } from "./progress";
 import type { TaskCacheWriter } from "./cache-writer";
-import { createProtectedChapters, type ChapterTaskResult } from "./protected-chapters";
+import { createProtectedChapters, type ChapterTaskResult, type ProtectedChapterResolution } from "./protected-chapters";
 import type { ChapterIntegrityIssue } from "./integrity";
 import { DEFAULT_CHAPTER_RETRY_POLICY, runWithRetry } from "./retry-policy";
 import { runWorkerPool } from "./worker-pool";
@@ -201,7 +201,7 @@ export function createChapterPipeline(
 
         // 仅回写发生规范化变化的章节
         for (const [index, chapter] of changedEntries) {
-            if (!(await cache.add(index, chapter))) {
+            if (!(await cache.enqueue(index, chapter))) {
                 return false;
             }
         }
@@ -313,8 +313,8 @@ export function createChapterPipeline(
 
         progress.recordProcessed(isRetry);
 
-        const saved = await cache.add(task.index, chapter);
-        if (!saved) {
+        const accepted = await cache.enqueue(task.index, chapter);
+        if (!accepted) {
             return ports.cancellation.isCancellationRequested() ? "cancelled" : "failed";
         }
         if (!(await mappingConsent)) {
@@ -363,8 +363,8 @@ export function createChapterPipeline(
                 txtSegment: `${task.title}\n${message}\n\n`
             });
             progress.recordProcessed();
-            const saved = await cache.add(task.index, chapters.get(task.index)!);
-            if (!saved) {
+            const accepted = await cache.enqueue(task.index, chapters.get(task.index)!);
+            if (!accepted) {
                 return ports.cancellation.isCancellationRequested() ? "cancelled" : "failed";
             }
             ports.log({
@@ -388,10 +388,42 @@ export function createChapterPipeline(
         }
         progress.recordFetched();
         if (ports.protectedChapterDetector.isProtected(html)) {
-            return protectedChapters.handle(task, html, isRetry, processFetchedChapterHtml);
+            const resolution = await protectedChapters.handle(task, html, isRetry);
+            if (resolution.kind === "deferred") {
+                return "deferred";
+            }
+            return processProtectedChapterResult(task, resolution, isRetry);
         }
 
         return processFetchedChapterHtml(task, html, isRetry);
+    }
+
+    // 授权结果在本文件接回普通正文处理，读者无需反查密码模块中的正文回调
+    async function processProtectedChapterResult(
+        task: DownloadTask,
+        resolution: ProtectedChapterResolution,
+        isRetry: boolean
+    ): Promise<ChapterTaskResult> {
+        ports.ui.closeProtectedChapterPrompt();
+        if (resolution.kind !== "unlocked") {
+            return resolution.kind === "cancelled" ? "cancelled" : "failed";
+        }
+        const processed = await processFetchedChapterHtml(task, resolution.html, isRetry);
+        if (processed === "completed") {
+            ports.log({ code: "protected-chapter-unlocked", params: { ...plan.position(task), title: task.title } });
+        }
+        return processed;
+    }
+
+    async function consumeProtectedChapters(): Promise<void> {
+        while (!ports.cancellation.isCancellationRequested()) {
+            const item = await protectedChapters.take();
+            if (!item) {
+                return;
+            }
+            const resolution = await protectedChapters.resolveProtectedChapter(item);
+            await processProtectedChapterResult(item.task, resolution, false);
+        }
     }
 
     /**
@@ -399,7 +431,7 @@ export function createChapterPipeline(
      */
     async function download(): Promise<void> {
         ports.log({ code: "download-started", params: { concurrency } });
-        const consumer = protectedChapters.consume(processFetchedChapterHtml);
+        const consumer = consumeProtectedChapters();
         let workerFailure: unknown;
         try {
             await runWorkerPool({
@@ -468,7 +500,10 @@ export function createChapterPipeline(
         get mappingFailures() {
             return Array.from(mappingFailures.values());
         },
-        dispose: () => protectedChapters.dispose()
+        dispose() {
+            protectedChapters.dispose();
+            ports.ui.closeProtectedChapterPrompt();
+        }
     };
 }
 

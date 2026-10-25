@@ -196,8 +196,8 @@ describe("range download lifecycle", () => {
         expect(readImages).toHaveBeenCalledOnce();
         expect(readConcurrency).toHaveBeenCalledOnce();
         expect(mocks.markRunning.mock.invocationCallOrder[0]).toBeLessThan(readConcurrency.mock.invocationCallOrder[0]);
-        expect(mocks.showFormatChoice.mock.invocationCallOrder[0]).toBeLessThan(
-            mocks.release.mock.invocationCallOrder[0]
+        expect(mocks.release.mock.invocationCallOrder[0]).toBeLessThan(
+            mocks.showFormatChoice.mock.invocationCallOrder[0]
         );
         expect(mocks.acquire.mock.invocationCallOrder[0]).toBeLessThan(mocks.claimCache.mock.invocationCallOrder[0]);
         expect(mocks.release.mock.invocationCallOrder[0]).toBeLessThan(

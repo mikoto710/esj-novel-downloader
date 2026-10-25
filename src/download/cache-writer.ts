@@ -107,10 +107,13 @@ export function createTaskCacheWriter(
         get failure() {
             return buffer.failure;
         },
-        add: (index: number, chapter: Chapter) => buffer.add(index, chapter),
+        /** true 仅表示接收并完成必要背压；false 表示已停止接收、丢弃、超时或写入失败，原因见 failure 和取消意图。 */
+        enqueue: (index: number, chapter: Chapter) => buffer.add(index, chapter),
         invalidate: (index: number) => progress.invalidatePersistedChapter(index),
+        /** true 表示当前写入链已确认提交；false 保留取消/丢弃/超时或 failure，调用方先复核用户取消。 */
         flush: () => buffer.flush(),
         assertHealthy,
+        /** 确认提交后关闭所选 writer 或清除全本缓存；非取消失败抛出原存储分类。 */
         async finish(): Promise<void> {
             if (!(await buffer.seal())) {
                 assertHealthy();

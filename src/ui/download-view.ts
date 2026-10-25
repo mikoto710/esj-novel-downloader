@@ -1,4 +1,5 @@
 import type { DownloadCancellationPort, DownloadSnapshot, DownloadUiPort } from "../download/contracts";
+import type { DownloadSelection } from "../download/plan";
 import type { DownloadCancellationMode } from "../download/contracts";
 import { isCurrentDownload } from "../app/page-session";
 import {
@@ -7,12 +8,10 @@ import {
     confirmIncompleteChapters,
     createDownloadPopup,
     promptProtectedChapterPassword,
-    showMappingFontFailure,
     updateMappingFontWarning
 } from "./popups";
 import { updateTrayText } from "./tray";
 import { fullCleanup } from "./dom";
-import { showDownloadTerminalFailure } from "./messages/download-terminal";
 import { subscribeInterfaceLocaleChange, t } from "./locale";
 
 function updateDownloadStatus(status: string, originalTitle: string): void {
@@ -24,6 +23,12 @@ function updateDownloadStatus(status: string, originalTitle: string): void {
     updateTrayText(status);
 }
 
+/** 应用持有任务窗口生命周期，核心只接收 DownloadUiPort 中的业务交互。 */
+export interface DownloadView extends DownloadUiPort {
+    prepare(selection: DownloadSelection): void;
+    cleanup(): void;
+}
+
 /**
  * 进度显示和语言订阅只跟随本次任务
  */
@@ -31,7 +36,7 @@ export function createDownloadView(task: {
     taskId: string;
     originalTitle: string;
     cancellation: DownloadCancellationPort & { readonly mode: DownloadCancellationMode };
-}): DownloadUiPort {
+}): DownloadView {
     const { originalTitle, cancellation } = task;
     const isCurrent = () => isCurrentDownload(task.taskId);
     let lastDownloadSnapshot: DownloadSnapshot | null = null;
@@ -40,7 +45,7 @@ export function createDownloadView(task: {
     let prepared = false;
 
     // 将任务快照转换为标题、进度与托盘文本，并调用相应弹窗；具体布局由视图模块维护
-    const ui: DownloadUiPort = {
+    const ui: DownloadView = {
         prepare(selection) {
             if (!isCurrent()) {
                 return;
@@ -140,7 +145,9 @@ export function createDownloadView(task: {
         },
         confirmMappingFontDownload,
         confirmIncompleteChapters,
-        promptProtectedChapterPassword,
+        promptProtectedChapterPassword(prompt, signal) {
+            return promptProtectedChapterPassword(prompt, signal, () => cancellation.requestCancellation("flush"));
+        },
         closeProtectedChapterPrompt: () => {
             if (isCurrent()) {
                 closeProtectedChapterPrompt();
@@ -149,16 +156,6 @@ export function createDownloadView(task: {
         updateMappingFontWarning(summary) {
             if (isCurrent()) {
                 updateMappingFontWarning(summary);
-            }
-        },
-        showMappingFontFailure(failures) {
-            if (isCurrent()) {
-                showMappingFontFailure(failures);
-            }
-        },
-        showTerminalFailure(failure) {
-            if (isCurrent()) {
-                showDownloadTerminalFailure(failure);
             }
         },
         cleanup() {

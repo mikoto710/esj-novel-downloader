@@ -98,6 +98,6 @@ describe("browser inline image diagnostic contracts", () => {
         const session = listBrowserDiagnosticSessions().history[0];
         expect(session).toMatchObject({ result: "cancelled", task: { phase: "cancelled" } });
         expect(session.failures).toEqual([]);
-        expect(result).toEqual({ status: "cancelled", outcome: "saved" });
+        expect(result).toEqual({ status: "cancelled", outcome: "saved", storageFailure: null });
     });
 });

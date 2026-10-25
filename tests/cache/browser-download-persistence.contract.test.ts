@@ -42,7 +42,10 @@ describe("browser download persistence contracts", () => {
 
         await expect(
             runtime.runBookDownload(createBrowserDownloadOptions(createBrowserDownloadTasks(5)))
-        ).rejects.toMatchObject({ reason: "ownership-lost", operation: "write" });
+        ).resolves.toMatchObject({
+            status: "failed",
+            failure: { kind: "download", storageFailure: { reason: "ownership-lost", operation: "write" } }
+        });
 
         expect(mocks.showTerminalFailure).toHaveBeenCalledWith(
             expect.objectContaining({
@@ -59,7 +62,10 @@ describe("browser download persistence contracts", () => {
 
         await expect(
             runtime.runBookDownload(createBrowserDownloadOptions(createBrowserDownloadTasks(5)))
-        ).rejects.toMatchObject({ reason: "quota-exceeded", operation: "write" });
+        ).resolves.toMatchObject({
+            status: "failed",
+            failure: { kind: "download", storageFailure: { reason: "quota-exceeded", operation: "write" } }
+        });
 
         expect(mocks.saveCache).toHaveBeenCalledTimes(2);
         expect(mocks.showTerminalFailure).toHaveBeenCalledWith(
@@ -83,7 +89,10 @@ describe("browser download persistence contracts", () => {
 
         await expect(
             runtime.runBookDownload(createBrowserDownloadOptions(createBrowserDownloadTasks(5)))
-        ).rejects.toMatchObject({ reason, operation: "write" });
+        ).resolves.toMatchObject({
+            status: "failed",
+            failure: { kind: "download", storageFailure: { reason, operation: "write" } }
+        });
 
         expect(mocks.saveCache).toHaveBeenCalledTimes(2);
         expect(mocks.showTerminalFailure).toHaveBeenCalledWith(
@@ -101,7 +110,10 @@ describe("browser download persistence contracts", () => {
 
         await expect(
             runtime.runBookDownload(createBrowserDownloadOptions(createBrowserDownloadTasks(5)))
-        ).rejects.toMatchObject({ reason: "unknown-storage-error", operation: "write" });
+        ).resolves.toMatchObject({
+            status: "failed",
+            failure: { kind: "download", storageFailure: { reason: "unknown-storage-error", operation: "write" } }
+        });
 
         expect(mocks.saveCache).toHaveBeenCalledTimes(2);
         expect(runtime.task.cancellation.isCancellationRequested()).toBe(false);

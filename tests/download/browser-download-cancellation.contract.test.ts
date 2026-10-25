@@ -124,7 +124,7 @@ describe("browser download cancellation contracts", () => {
         await clearAborted.promise;
         const result = await downloadPromise;
 
-        expect(result).toEqual({ status: "cancelled", outcome: "saved" });
+        expect(result).toMatchObject({ status: "cancelled", outcome: "saved" });
     });
 
     it("bounds cancellation while a cache write is pending", async () => {
@@ -195,7 +195,7 @@ describe("browser download cancellation contracts", () => {
 
         expect(mocks.saveCache).toHaveBeenCalledOnce();
         expect(mocks.showTerminalFailure).not.toHaveBeenCalled();
-        expect(result).toEqual({ status: "cancelled", outcome: "discarded" });
+        expect(result).toMatchObject({ status: "cancelled", outcome: "discarded" });
     });
 
     it("reports failed cancellation saving without claiming progress was saved or clearing old cache", async () => {
@@ -206,7 +206,7 @@ describe("browser download cancellation contracts", () => {
 
         const result = await runtime.runBookDownload(createBrowserDownloadOptions(createBrowserDownloadTasks(1)));
 
-        expect(result).toEqual({ status: "cancelled", outcome: "save-failed" });
+        expect(result).toMatchObject({ status: "cancelled", outcome: "save-failed" });
         expect(mocks.showTerminalFailure).toHaveBeenCalledWith(
             expect.objectContaining({
                 kind: "cancellation",
@@ -244,7 +244,7 @@ describe("browser download cancellation contracts", () => {
 
         await writeAborted.promise;
         const result = await downloadPromise;
-        expect(result).toEqual({ status: "cancelled", outcome: "discarded" });
+        expect(result).toMatchObject({ status: "cancelled", outcome: "discarded" });
 
         expect(mocks.saveCache).toHaveBeenCalledOnce();
         expect(document.querySelector<HTMLButtonElement>("#esj-cancel")?.disabled).toBe(true);

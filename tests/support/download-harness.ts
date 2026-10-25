@@ -38,13 +38,9 @@ export function createDownloadHarness(tasks: DownloadTask[], chapters = new Map<
             (detection: IncompleteChapterDetection, signal?: AbortSignal) => Promise<IncompleteChapterDecision>
         >(async () => "export-with-placeholders"),
         promptProtectedChapterPassword: vi.fn(
-            async (
-                _prompt: ProtectedChapterPrompt,
-                _signal?: AbortSignal,
-                _onPendingDecision?: (
-                    decision: Extract<ProtectedChapterDecision, { action: "skip-current" | "skip-all" | "cancel" }>
-                ) => void
-            ): Promise<ProtectedChapterDecision> => ({ action: "skip-current" })
+            async (_prompt: ProtectedChapterPrompt, _signal?: AbortSignal): Promise<ProtectedChapterDecision> => ({
+                action: "skip-current"
+            })
         ),
         closeProtectedChapterPrompt: vi.fn(),
         updateMappingFontWarning: vi.fn(),

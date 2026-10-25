@@ -14,10 +14,13 @@ import { isCancellationError } from "./errors";
 
 export type ChapterTaskResult = "completed" | "failed" | "cancelled" | "deferred";
 
-type ProcessUnlockedChapter = (task: DownloadTask, html: string, retry: boolean) => Promise<ChapterTaskResult>;
+export type ProtectedChapterResolution =
+    | { kind: "unlocked"; html: string }
+    | { kind: "skipped" }
+    | { kind: "cancelled" };
 
 type ProtectedPorts = Pick<DownloadDependencies, "cancellation" | "protectedChapterAuth" | "events" | "log"> & {
-    ui: Pick<DownloadDependencies["ui"], "promptProtectedChapterPassword" | "closeProtectedChapterPrompt">;
+    ui: Pick<DownloadDependencies["ui"], "promptProtectedChapterPassword">;
 };
 
 /**
@@ -99,12 +102,7 @@ export function createProtectedChapters(
         return runUserDecision(
             decisions,
             ports.cancellation,
-            () =>
-                ports.ui.promptProtectedChapterPassword(prompt, ports.cancellation.signal, (decision) => {
-                    if (decision.action === "cancel") {
-                        ports.cancellation.requestCancellation("flush");
-                    }
-                }),
+            () => ports.ui.promptProtectedChapterPassword(prompt, ports.cancellation.signal),
             { action: "cancel" }
         );
     }
@@ -112,9 +110,8 @@ export function createProtectedChapters(
     // 依次处理密码提交、跳过和取消，只重试连接故障
     async function resolveProtectedChapter(
         item: ProtectedChapterWorkItem,
-        processChapter: ProcessUnlockedChapter,
         isRetry = false
-    ): Promise<ChapterTaskResult> {
+    ): Promise<ProtectedChapterResolution> {
         let message: string | undefined;
         let messageCode: ProtectedChapterPromptMessageCode | undefined;
         let messageParams: DomainMessageParams | undefined;
@@ -131,10 +128,9 @@ export function createProtectedChapters(
 
             if (decision.action === "cancel") {
                 ports.cancellation.requestCancellation("flush");
-                return "cancelled";
+                return { kind: "cancelled" };
             }
             if (decision.action === "skip-current" || decision.action === "skip-all") {
-                ports.ui.closeProtectedChapterPrompt();
                 if (isRetry && decision.action === "skip-all") {
                     skipRemainingProtectedRetries = true;
                 }
@@ -151,7 +147,7 @@ export function createProtectedChapters(
                 }
                 protectedPendingCount = Math.max(0, protectedPendingCount - skippedItems.length - 1);
                 publishProtectedSummary();
-                return "failed";
+                return { kind: "skipped" };
             }
 
             rememberPassword = decision.rememberPassword;
@@ -171,7 +167,7 @@ export function createProtectedChapters(
                     break;
                 } catch (error) {
                     if (ports.cancellation.isCancellationRequested() || isCancellationError(error)) {
-                        return "cancelled";
+                        return { kind: "cancelled" };
                     }
                     if (attempt === 0) {
                         ports.log({
@@ -246,45 +242,24 @@ export function createProtectedChapters(
             }
 
             // 授权成功后回到普通正文处理路径，复用解析与落盘
-            ports.ui.closeProtectedChapterPrompt();
             protectedResolvedIndexes.add(item.task.index);
             protectedPendingCount = Math.max(0, protectedPendingCount - 1);
             publishProtectedSummary();
-            const processed = await processChapter(item.task, result.html, isRetry);
-            if (processed === "completed") {
-                ports.log({
-                    code: "protected-chapter-unlocked",
-                    params: { ...plan.position(item.task), title: item.task.title }
-                });
-            }
-            return processed;
+            return { kind: "unlocked", html: result.html };
         }
-        return "cancelled";
-    }
-
-    /**
-     * 串行处理新发现的密码章节，直到生产端关闭
-     */
-    async function consumeProtectedChapters(processChapter: ProcessUnlockedChapter): Promise<void> {
-        while (!ports.cancellation.isCancellationRequested()) {
-            const item = await protectedQueue.take(ports.cancellation.signal);
-            if (!item) {
-                return;
-            }
-            await resolveProtectedChapter(item, processChapter);
-        }
+        return { kind: "cancelled" };
     }
 
     return {
         beginRetryRound: beginProtectedRetryRound,
-        consume: consumeProtectedChapters,
+        take: () => protectedQueue.take(ports.cancellation.signal),
+        resolveProtectedChapter,
         closeProducer: () => protectedQueue.closeProducer(),
         async handle(
             task: DownloadTask,
             html: string,
-            isRetry: boolean,
-            processChapter: ProcessUnlockedChapter
-        ): Promise<ChapterTaskResult> {
+            isRetry: boolean
+        ): Promise<ProtectedChapterResolution | { kind: "deferred" }> {
             if (isRetry) {
                 if (skipRemainingProtectedRetries) {
                     if (!protectedDetectedIndexes.has(task.index)) {
@@ -294,14 +269,14 @@ export function createProtectedChapters(
                         code: "protected-chapter-retry-skipped",
                         params: { ...plan.position(task), title: task.title }
                     });
-                    return "failed";
+                    return { kind: "skipped" };
                 }
                 reopenProtectedChapterForRetry(task);
                 ports.log({
                     code: "protected-chapter-redetected",
                     params: { ...plan.position(task), title: task.title }
                 });
-                return resolveProtectedChapter({ task, pageHtml: html }, processChapter, true);
+                return resolveProtectedChapter({ task, pageHtml: html }, true);
             }
             const queued = protectedQueue.enqueue({ task, pageHtml: html });
             if (queued.kind !== "duplicate") {
@@ -318,12 +293,11 @@ export function createProtectedChapters(
                     params: { ...plan.position(task), title: task.title }
                 });
             }
-            return "deferred";
+            return { kind: "deferred" };
         },
         dispose() {
             protectedQueue.cancel();
             rememberedPassword = null;
-            ports.ui.closeProtectedChapterPrompt();
         }
     };
 }

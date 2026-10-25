@@ -38,15 +38,18 @@ ui/pages/detail 或 forum
                        → 缓存预览 → 窗口就绪 → 确认选择 → 取得锁、认领缓存
   → download/run：恢复 → 抓取 → 落盘 → 完整性检查与补抓
                   → 缺章决策 → 导出快照 → 缓存收尾
-  → app/page-session：发布结果，format-choice 显示格式窗口
   → app/book-download 的 finally：处理清除请求、停心跳、释放锁
+  → app/page-session：检查归属、发布 ready、释放句柄（同步结算）
+  → app：按 ready/cancelled/failed 呈现格式窗口或完整失败原因
 
 用户选择格式 → app/export → export 格式生成 → browser/files 触发下载
 ```
 
 单章流程：`ui/pages/single → app/single-download → site/content → export → browser/files`。它使用当前文档和原站解锁，不取得书籍锁，也不替换书籍下载结果。
 
-`download/contracts.ts` 描述输入、结果和能力；具体实现由应用层传入。下载内核与快照模块不直接读取页面状态、浏览器 API 或持久化实现，ESLint 检查这些边界。审查依赖时区分运行时 import 与仅类型引用。
+`download/contracts.ts` 描述输入、结果和能力；具体实现由应用层传入。`DownloadUiPort` 只提供进度与明确决策，`DownloadView.prepare/cleanup` 由应用统一持有。密码消费者直接等待 `resolveProtectedChapter` 的授权结果，随后结束专用窗口并处理正文；不通过事件或正文反向回调控制流程。核心终态直接返回失败原因，事件只供诊断和摘要观察。
+
+下载内核与快照模块不直接读取页面状态、浏览器 API 或持久化实现，ESLint 检查这些边界。审查依赖时区分运行时 import 与仅类型引用。
 
 ## 修改流程时要保留的边界
 
@@ -54,6 +57,7 @@ ui/pages/detail 或 forum
 - **选择与目录**：`download/plan` 校验选择并生成固定任务，只有选齐目录才按全本处理。`site/book` 同时生成任务和静态目录副本，两者共用绝对索引。UI 保留原目录结构，映射不完整时回退到任务列表。
 - **选择与缓存**：全本和自选共用书籍锁与缓存。全本成功清缓存，部分选择成功关闭写入者并保留缓存。预览只读，正式认领时在事务中复核兼容性和清除许可。重新确认前释放锁，保留选择、目录和文件名。
 - **摘要兼容**：快照、历史和诊断使用新版选择摘要，`normalizeChapterSelectionSummary` 兼容旧格式。无法识别的摘要保留原记录并归入自选。展示时可省略区间，实际选择保持完整。
+- **缓存写入**：`cache-writer.enqueue` 接收和背压不等于提交；`flush` 确认提交后才增加唯一所选索引的落盘数。解释 false 前先复核取消，成功 `finish` 才关闭 writer 或清除全本。
 - **取消与收尾**：普通取消中断请求和等待，再用独立信号限时保存缓存。取消可升级为停止清除，由当前写入者清理。所有退出路径都要停心跳、释放锁。密码、字体和缺章决策在任务内串行，密码只留在内存。
 - **任务状态**：章节 Map、取消能力和锁归属具体任务。初始库存由 `DownloadOptions.initialChapters` 只读交接，核心复制 Map 容器后由章节流程写入；页面只保留入口、摘要和最近结果。回调按 `taskId` 校验归属，失败或取消保留旧导出。`readyChapterCount` 计本次选择的已有记录，`bookChapterCount` 计整书库存快照，`persistedCount` 计确认保存的唯一所选索引。计数增减只在 `DownloadProgress` 的具名方法，密码模块只提交自己的汇总。
 - **输出与资源**：按固定计划恢复、补抓和组装。未选章节不参与缺章判断或占位，占位只进入导出快照。书籍 HTML 有封面和目录，单章使用独立布局。图片按发起页面地址解析。字体先规范化和校验，映射字体禁用 TXT。

@@ -76,7 +76,10 @@ describe("browser download flow contracts", () => {
         mocks.runDownload.mockImplementationOnce(async () => {
             entered.resolve();
             await finish.promise;
-            return { status: "cancelled", outcome: "saved" };
+            return {
+                status: "failed",
+                failure: { kind: "download", code: "old-failure", params: {}, storageFailure: null }
+            };
         });
         const running = runtime.start(createBrowserDownloadOptions(createBrowserDownloadTasks(1)));
         await entered.promise;
@@ -102,8 +105,6 @@ describe("browser download flow contracts", () => {
             bookChapterCount: 0
         });
         dependencies.ui.update(snapshot);
-        dependencies.ui.cleanup();
-        dependencies.ui.showTerminalFailure({ kind: "cancellation", outcome: "ownership-lost", storageFailure: null });
         expect(document.querySelector("#esj-title")?.textContent).toBe("new task");
         expect(document.title).toBe("new task title");
         expect(runtime.state.runtimeCacheSession).toMatchObject({ taskId: "task-200", bookChapterCount: 9 });
@@ -118,6 +119,8 @@ describe("browser download flow contracts", () => {
         expect(newer.requestCancellation).not.toHaveBeenCalled();
         finish.resolve();
         await running;
+        expect(mocks.fullCleanup).not.toHaveBeenCalled();
+        expect(mocks.showTerminalFailure).not.toHaveBeenCalled();
         expect(runtime.state.activeDownload).toBe(newer);
     });
 

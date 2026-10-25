@@ -59,7 +59,6 @@ export function createStressDownloadHarness(options: StressDownloadHarnessOption
             }
         },
         ui: {
-            prepare: vi.fn(),
             update(snapshot) {
                 snapshots.push(snapshot);
             },
@@ -67,10 +66,7 @@ export function createStressDownloadHarness(options: StressDownloadHarnessOption
             confirmIncompleteChapters: vi.fn(async () => "export-with-placeholders" as const),
             promptProtectedChapterPassword: vi.fn(async () => ({ action: "skip-current" }) as const),
             closeProtectedChapterPrompt: vi.fn(),
-            updateMappingFontWarning: vi.fn(),
-            showMappingFontFailure: vi.fn(),
-            showTerminalFailure: vi.fn(),
-            cleanup: vi.fn()
+            updateMappingFontWarning: vi.fn()
         },
         chapterFetcher: {
             async fetch(task) {

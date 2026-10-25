@@ -194,7 +194,7 @@ describe("runtime cache ownership", () => {
         mocks.readManifest.mockResolvedValue({ writerTaskId: "remote-task", cleared: false });
         await send({ type: "cache-claimed", bookId: "100", taskId: "remote-task" });
         response.resolve("<p>late chapter</p>");
-        expect(await download).toEqual({ status: "cancelled", outcome: "ownership-lost" });
+        expect(await download).toMatchObject({ status: "cancelled", outcome: "ownership-lost" });
         expect(harness.initialChapters).toBe(chapters);
         expect(chapters.size).toBe(1);
         expect(harness.cacheClears).toEqual([]);

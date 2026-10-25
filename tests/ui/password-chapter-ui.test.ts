@@ -52,7 +52,7 @@ describe("protected chapter password UI", () => {
     });
 
     it("keeps cancellation active while an authorization request is pending", async () => {
-        const pendingDecision = vi.fn();
+        const cancelTask = vi.fn();
         const decision = promptProtectedChapterPassword(
             {
                 task: createDownloadTask(36),
@@ -60,7 +60,7 @@ describe("protected chapter password UI", () => {
                 pendingCount: 1
             },
             undefined,
-            pendingDecision
+            cancelTask
         );
         const input = document.querySelector("#esj-protected-password") as HTMLInputElement;
         input.value = "fictional-password";
@@ -77,10 +77,10 @@ describe("protected chapter password UI", () => {
         expect((document.querySelector("#esj-protected-skip-all") as HTMLButtonElement).disabled).toBe(true);
         (document.querySelector("#esj-protected-submit") as HTMLButtonElement).click();
         input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
-        expect(pendingDecision).not.toHaveBeenCalled();
+        expect(cancelTask).not.toHaveBeenCalled();
         (document.querySelector("#esj-protected-cancel") as HTMLButtonElement).click();
 
-        expect(pendingDecision).toHaveBeenCalledWith({ action: "cancel" });
+        expect(cancelTask).toHaveBeenCalledOnce();
         closeProtectedChapterPrompt();
     });
 });

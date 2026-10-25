@@ -79,7 +79,7 @@ import { createDownloadView } from "../ui/download-view";
 import { t } from "../ui/locale";
 import { showCacheDiscardFailure, showDownloadTerminalFailure } from "../ui/messages/download-terminal";
 import { formatStorageFailure } from "../ui/messages/storage-failure";
-import { showBookDownloadInProgressPopup, showFormatChoice } from "../ui/popups";
+import { showBookDownloadInProgressPopup, showFormatChoice, showMappingFontFailure } from "../ui/popups";
 import { fullCleanup } from "../ui/dom";
 import { log } from "../ui/log-view";
 import type { CachedData } from "./export";
@@ -279,7 +279,7 @@ async function executeBookDownload(
     const lock = lockResult.lock;
     const log = (message: Parameters<typeof browserDiagnosticLog>[0]) =>
         browserDiagnosticLog(message, lock.taskId, isCurrentDownload(lock.taskId));
-    let ui: DownloadUiPort | undefined;
+    let ui: ReturnType<typeof createDownloadView> | undefined;
     let cleaned = false;
     const cleanup = () => {
         if (ui) {
@@ -293,6 +293,7 @@ async function executeBookDownload(
     let diagnosticStarted = false;
     let downloadStarted = false;
     let exportReady = false;
+    let result: DownloadResult | undefined;
 
     try {
         activateDownload(bookId, lock.taskId, cancellation);
@@ -380,20 +381,7 @@ async function executeBookDownload(
         updateBrowserDiagnosticSession(downloadOptions);
         downloadStarted = true;
         const dependencies = createDownloadDependencies({ lock, cancellation, ui });
-        let result: DownloadResult;
-        try {
-            result = await runDownload(downloadOptions, dependencies);
-        } finally {
-            // 输入拒绝或核心尚未进入 try，也必须结束本任务的界面订阅
-            cleanup();
-        }
-        if (result.status === "ready" && isCurrentDownload(lock.taskId)) {
-            // 文件名属于原结果的导出偏好，不改书籍元数据、正文或持久缓存
-            const data: CachedData = filename ? { ...result.data, exportFilename: filename } : result.data;
-            publishCachedExport(data, lock.taskId);
-            exportReady = true;
-            showFormatChoice(data);
-        }
+        result = await runDownload(downloadOptions, dependencies);
     } catch (error) {
         const details = error instanceof Error ? error : new Error(String(error));
         if (
@@ -438,14 +426,43 @@ async function executeBookDownload(
                 cancellation.isCancellationRequested() ? "cancelled" : "failed"
             );
         }
-        const wasCurrent = isCurrentDownload(lock.taskId);
-
-        // 装配或初始化失败仍结束视图；清理异常不能跳过书籍锁收尾
+        let wasCurrent = false;
+        let data: CachedData | undefined;
         let finalization: BookDownloadFinalizationResult;
+        let finalized = false;
         try {
-            cleanup();
-        } finally {
             finalization = await finalizeBookDownloadTask(lock, stopHeartbeat, log);
+            finalized = true;
+        } finally {
+            // 无 await 的结算区段：先检查/发布，最后释放本任务句柄；旧任务只清自己的视图
+            wasCurrent = isCurrentDownload(lock.taskId);
+            try {
+                cleanup();
+                if (finalized && wasCurrent && result?.status === "ready") {
+                    data = filename ? { ...result.data, exportFilename: filename } : result.data;
+                    publishCachedExport(data, lock.taskId);
+                    exportReady = true;
+                }
+            } finally {
+                releaseActiveDownload(lock.taskId);
+            }
+        }
+        if (wasCurrent && !state.activeDownload) {
+            if (result?.status === "failed") {
+                if (result.failure.kind === "mapping-font") {
+                    showMappingFontFailure(result.failure.failures);
+                } else {
+                    showDownloadTerminalFailure(result.failure);
+                }
+            } else if (result?.status === "cancelled" && result.outcome !== "saved" && result.outcome !== "discarded") {
+                showDownloadTerminalFailure({
+                    kind: "cancellation",
+                    outcome: result.outcome,
+                    storageFailure: result.storageFailure
+                });
+            } else if (data) {
+                showFormatChoice(data);
+            }
         }
         if (finalization.cacheClearFailure) {
             recordBrowserDiagnosticFailure(
@@ -515,16 +532,11 @@ async function finalizeBookDownloadTask(
             }
         }
     } finally {
-        // 即使缓存清理失败也要停止心跳，否则其他页面会持续认为任务存活
+        // 即使清理或心跳结束失败也要释放锁，页面句柄由调用方同步结算
         try {
-            try {
-                stopHeartbeat();
-            } finally {
-                await releaseBookDownloadLock(lock, { cacheDiscarded });
-            }
+            stopHeartbeat();
         } finally {
-            // 锁释放异常时仍清理当前页引用，避免后续流程误用旧锁
-            releaseActiveDownload(lock.taskId);
+            await releaseBookDownloadLock(lock, { cacheDiscarded });
         }
     }
     return { cacheDiscarded, cacheClearFailure };

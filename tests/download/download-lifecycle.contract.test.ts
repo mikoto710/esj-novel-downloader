@@ -150,7 +150,15 @@ describe("download lifecycle contracts", () => {
 
     it.each(["success", "failure", "cancel"] as const)("releases exactly once after %s", async (outcome) => {
         if (outcome === "failure") {
-            mocks.runDownload.mockRejectedValueOnce(new Error("download failed"));
+            mocks.runDownload.mockResolvedValueOnce({
+                status: "failed",
+                failure: {
+                    kind: "download",
+                    code: "Error",
+                    params: { detail: "download failed" },
+                    storageFailure: null
+                }
+            });
         } else if (outcome === "cancel") {
             mocks.runDownload.mockImplementationOnce(async () => {
                 state.activeDownload?.requestCancellation();
@@ -181,11 +189,10 @@ describe("download lifecycle contracts", () => {
         expect(mocks.release).toHaveBeenCalledWith(lock, { cacheDiscarded: false });
     });
 
-    it("does not remove a terminal notice owned by the download coordinator", async () => {
-        mocks.runDownload.mockImplementationOnce(async (_options, dependencies) => {
-            dependencies.ui.cleanup();
-            mocks.showTerminalFailure({ kind: "download" });
-            throw new Error("download failed");
+    it("presents the core failure once after cleaning its task view", async () => {
+        mocks.runDownload.mockResolvedValueOnce({
+            status: "failed",
+            failure: { kind: "download", code: "Error", params: { detail: "download failed" }, storageFailure: null }
         });
         await scrapeDetail();
         expect(mocks.fullCleanup).toHaveBeenCalledOnce();
