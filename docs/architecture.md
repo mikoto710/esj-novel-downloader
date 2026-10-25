@@ -45,7 +45,7 @@ ui/pages/detail 或 forum
 用户选择格式 → app/export → export 格式生成 → browser/files 触发下载
 ```
 
-单章流程：`ui/pages/single → app/single-download → site/content → export → browser/files`。它使用当前文档和原站解锁，不取得书籍锁，也不替换书籍下载结果。
+单章流程：`ui/pages/single → app/single-download → site/content → export → browser/files`。`downloadCurrentPage` 顺序调用 `readCurrentBookMetadata`、正文/字体确认、`prepareCurrentChapterImages`，再生成、触发与等待历史；下载触发标记在触发回调中固定，后续失败不能撤销它。它使用当前文档和原站解锁，不取得书籍锁，也不替换书籍下载结果。
 
 `download/contracts.ts` 描述输入、结果和能力；具体实现由应用层传入。`DownloadUiPort` 只提供进度与明确决策，`DownloadView.prepare/cleanup` 由应用统一持有。密码消费者直接等待 `resolveProtectedChapter` 的授权结果，随后结束专用窗口并处理正文；不通过事件或正文反向回调控制流程。核心终态直接返回失败原因，事件只供诊断和摘要观察。
 

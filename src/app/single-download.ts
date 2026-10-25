@@ -51,35 +51,7 @@ export async function downloadCurrentPage(format: "txt" | "html" = "txt"): Promi
     try {
         log(t("single.log.started", { format: format.toUpperCase() }));
 
-        let txtIntro: string | undefined;
-        let filenameBookName: string | undefined;
-        const htmlMeta = { intro: "", bookName: "", author: "" };
-
-        if (viewAllBtn && viewAllBtn.href) {
-            try {
-                log(t("single.log.metadata"));
-                const resp = await fetch(viewAllBtn.href);
-                const html = await resp.text();
-                const doc = new DOMParser().parseFromString(html, "text/html");
-
-                const meta = parseBookMetadata(doc, viewAllBtn.href);
-
-                updateBrowserDiagnosticSessionMetadata(diagnosticTaskId, {
-                    bookName: meta.rawBookName || meta.bookName,
-                    pageUrl: location.href,
-                    sourcePageType: "single"
-                });
-
-                txtIntro = meta.introTxt;
-                filenameBookName = meta.bookName;
-
-                htmlMeta.intro = meta.baseIntroTxt;
-                htmlMeta.bookName = meta.bookName;
-                htmlMeta.author = meta.author;
-            } catch {
-                console.warn("书籍元数据获取失败，仅下载正文");
-            }
-        }
+        const { txtIntro, filenameBookName, htmlMeta } = await readCurrentBookMetadata(viewAllBtn, diagnosticTaskId);
 
         const html = document.documentElement.outerHTML;
         const defaultTitle = document.title.split(" - ")[0] || "未命名章节";
@@ -166,92 +138,58 @@ export async function downloadCurrentPage(format: "txt" | "html" = "txt"): Promi
                 message: t("single.bodyMissing.message")
             });
             return;
-        } else {
-            if (imageEnabled) {
-                log(t("single.log.images"));
-                try {
-                    const processed = await processHtmlImages(contentHtml, 0);
-
-                    contentHtml = await embedChapterImages(processed.processedHtml, processed.images);
-                    imageSuccessCount = processed.images.length;
-                    imageFailureCount = processed.failCount;
-                    processed.failures.forEach((failure) => {
-                        recordBrowserDiagnosticFailure(
-                            {
-                                scope: "image",
-                                stage: failure.stage,
-                                code: failure.code,
-                                message: failure.message,
-                                imageFailureCount: failure.count,
-                                chapter: { index: 0, title, url: location.href }
-                            },
-                            diagnosticTaskId
-                        );
-                    });
-                    log(t("single.log.imagesEmbedded", { count: processed.images.length }));
-                } catch (imgErr: any) {
-                    imageFailureCount = (contentHtml.match(/<img\s/gi) || []).length;
-                    console.error(imgErr);
-                    if (imageFailureCount > 0) {
-                        recordBrowserDiagnosticFailure(
-                            {
-                                scope: "image",
-                                stage: "processing",
-                                code: "image-processing-failed",
-                                message: "image-processing-failed",
-                                imageFailureCount,
-                                chapter: { index: 0, title, url: location.href }
-                            },
-                            diagnosticTaskId
-                        );
-                    }
-                    log(t("single.log.imagesFailed"));
-                }
-            }
-
-            let blob: Blob;
-            const downloadFilename = createCurrentChapterFilename(filenameBookName, title, format);
-
-            // 图片准备仍先于两种格式生成，TXT 不跳过原有资源工作
-            if (format === "txt") {
-                blob = buildCurrentChapterTxt({ intro: txtIntro, title, author, pageUrl: location.href, contentText });
-            } else {
-                blob = await buildCurrentChapterHtml(
-                    { ...normalized.chapter, content: contentHtml },
-                    { title, author, intro: htmlMeta.intro, pageUrl: location.href }
-                );
-            }
-            generated = true;
-
-            triggerDownload(blob, downloadFilename, {
-                revokeDelayMs: 0,
-                onTriggered: () => {
-                    downloadTriggered = true;
-                }
-            });
-
-            await addDownloadHistory({
-                ...(bookId === "unknown" ? {} : { bookId }),
-                bookName: htmlMeta.bookName || parsed.bookName || "未命名小说",
-                author: htmlMeta.author || author,
-                format,
-                sourcePageType: "single",
-                chapterSummary: { totalCount: 1, missingCount: 0 },
-                ...(format === "html"
-                    ? {
-                          imageInfo: {
-                              enabled: imageEnabled,
-                              successCount: imageSuccessCount,
-                              failureCount: imageFailureCount
-                          }
-                      }
-                    : {}),
-                pageUrl: location.href
-            });
-
-            log(t("single.log.completed", { format: format.toUpperCase() }));
-            diagnosticResult = "success";
         }
+
+        if (imageEnabled) {
+            ({ contentHtml, imageSuccessCount, imageFailureCount } = await prepareCurrentChapterImages(
+                contentHtml,
+                title,
+                diagnosticTaskId
+            ));
+        }
+
+        let blob: Blob;
+        const downloadFilename = createCurrentChapterFilename(filenameBookName, title, format);
+
+        // 图片准备仍先于两种格式生成，TXT 不跳过原有资源工作
+        if (format === "txt") {
+            blob = buildCurrentChapterTxt({ intro: txtIntro, title, author, pageUrl: location.href, contentText });
+        } else {
+            blob = await buildCurrentChapterHtml(
+                { ...normalized.chapter, content: contentHtml },
+                { title, author, intro: htmlMeta.intro, pageUrl: location.href }
+            );
+        }
+        generated = true;
+
+        triggerDownload(blob, downloadFilename, {
+            revokeDelayMs: 0,
+            onTriggered: () => {
+                downloadTriggered = true;
+            }
+        });
+
+        await addDownloadHistory({
+            ...(bookId === "unknown" ? {} : { bookId }),
+            bookName: htmlMeta.bookName || parsed.bookName || "未命名小说",
+            author: htmlMeta.author || author,
+            format,
+            sourcePageType: "single",
+            chapterSummary: { totalCount: 1, missingCount: 0 },
+            ...(format === "html"
+                ? {
+                      imageInfo: {
+                          enabled: imageEnabled,
+                          successCount: imageSuccessCount,
+                          failureCount: imageFailureCount
+                      }
+                  }
+                : {}),
+            pageUrl: location.href
+        });
+
+        log(t("single.log.completed", { format: format.toUpperCase() }));
+        diagnosticResult = "success";
     } catch (e: any) {
         console.error(e);
         recordBrowserDiagnosticFailure(
@@ -290,4 +228,85 @@ export async function downloadCurrentPage(format: "txt" | "html" = "txt"): Promi
         );
         finishBrowserSingleChapterDiagnosticSession(diagnosticTaskId, diagnosticResult);
     }
+}
+
+// 详情元信息可缺省；失败继续使用当前页正文，原任务身份始终由调用方传入
+async function readCurrentBookMetadata(bookLink: HTMLAnchorElement | null, diagnosticTaskId: string) {
+    let txtIntro: string | undefined;
+    let filenameBookName: string | undefined;
+    const htmlMeta = { intro: "", bookName: "", author: "" };
+
+    if (bookLink && bookLink.href) {
+        try {
+            log(t("single.log.metadata"));
+            const resp = await fetch(bookLink.href);
+            const html = await resp.text();
+            const doc = new DOMParser().parseFromString(html, "text/html");
+
+            const meta = parseBookMetadata(doc, bookLink.href);
+
+            updateBrowserDiagnosticSessionMetadata(diagnosticTaskId, {
+                bookName: meta.rawBookName || meta.bookName,
+                pageUrl: location.href,
+                sourcePageType: "single"
+            });
+
+            txtIntro = meta.introTxt;
+            filenameBookName = meta.bookName;
+
+            htmlMeta.intro = meta.baseIntroTxt;
+            htmlMeta.bookName = meta.bookName;
+            htmlMeta.author = meta.author;
+        } catch {
+            console.warn("书籍元数据获取失败，仅下载正文");
+        }
+    }
+
+    return { txtIntro, filenameBookName, htmlMeta };
+}
+
+// 两种格式沿用同一资源准备时机；图片失败降级为原正文，并保留原任务诊断
+async function prepareCurrentChapterImages(contentHtml: string, title: string, diagnosticTaskId: string) {
+    let imageSuccessCount = 0;
+    let imageFailureCount = 0;
+    log(t("single.log.images"));
+    try {
+        const processed = await processHtmlImages(contentHtml, 0);
+
+        contentHtml = await embedChapterImages(processed.processedHtml, processed.images);
+        imageSuccessCount = processed.images.length;
+        imageFailureCount = processed.failCount;
+        processed.failures.forEach((failure) => {
+            recordBrowserDiagnosticFailure(
+                {
+                    scope: "image",
+                    stage: failure.stage,
+                    code: failure.code,
+                    message: failure.message,
+                    imageFailureCount: failure.count,
+                    chapter: { index: 0, title, url: location.href }
+                },
+                diagnosticTaskId
+            );
+        });
+        log(t("single.log.imagesEmbedded", { count: processed.images.length }));
+    } catch (imgErr: any) {
+        imageFailureCount = (contentHtml.match(/<img\s/gi) || []).length;
+        console.error(imgErr);
+        if (imageFailureCount > 0) {
+            recordBrowserDiagnosticFailure(
+                {
+                    scope: "image",
+                    stage: "processing",
+                    code: "image-processing-failed",
+                    message: "image-processing-failed",
+                    imageFailureCount,
+                    chapter: { index: 0, title, url: location.href }
+                },
+                diagnosticTaskId
+            );
+        }
+        log(t("single.log.imagesFailed"));
+    }
+    return { contentHtml, imageSuccessCount, imageFailureCount };
 }
