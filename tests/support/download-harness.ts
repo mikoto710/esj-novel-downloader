@@ -59,18 +59,35 @@ export function createDownloadHarness(tasks: DownloadTask[], chapters = new Map<
     };
     let result: DownloadResult | null = null;
     let cancellationRequested = false;
+    let requestedAt: number | null = null;
+    let cancellationMode: "flush" | "discard" = "flush";
+    const cancellationListeners = new Set<(mode: "flush" | "discard") => void>();
     const abortController = new AbortController();
 
     const log = vi.fn();
     const dependencies: DownloadDependencies = {
         cancellation: {
             signal: abortController.signal,
+            get mode() {
+                return cancellationMode;
+            },
+            get requestedAt() {
+                return requestedAt;
+            },
             isCancellationRequested: () => cancellationRequested,
-            requestCancellation: vi.fn(() => {
+            requestCancellation: vi.fn((mode: "flush" | "discard" = "flush") => {
+                if (cancellationRequested && (cancellationMode === "discard" || mode === "flush")) return;
+                requestedAt ??= Date.now();
+                cancellationMode = mode;
                 cancellationRequested = true;
                 abortController.abort();
+                cancellationListeners.forEach((listener) => listener(cancellationMode));
             }),
-            subscribeCancellation: () => () => undefined
+            subscribeCancellation(listener) {
+                cancellationListeners.add(listener);
+                if (requestedAt !== null) listener(cancellationMode);
+                return () => cancellationListeners.delete(listener);
+            }
         },
         ui,
         chapterFetcher: fetcher,

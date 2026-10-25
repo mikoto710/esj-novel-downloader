@@ -1,4 +1,4 @@
-import type { DownloadCancellationMode } from "./contracts";
+import type { DownloadCancellationMode, DownloadCancellationPort } from "./contracts";
 import type { Chapter } from "../content/model";
 import {
     createStorageError,
@@ -37,6 +37,7 @@ export const DEFAULT_CACHE_WRITE_POLICY: Readonly<CacheWritePolicy> = Object.fre
 
 interface CacheWriteBufferOptions {
     policy?: CacheWritePolicy;
+    cancellation?: Pick<DownloadCancellationPort, "mode" | "requestedAt">;
     write(entries: ReadonlyMap<number, Chapter>, signal: AbortSignal): Promise<boolean>;
     schedule(delayMs: number, callback: () => void): () => void;
     subscribeCancellation?(listener: (mode: DownloadCancellationMode) => void): () => void;
@@ -54,6 +55,8 @@ interface ActiveCacheWrite {
  */
 export class ChapterCacheWriteBuffer {
     private readonly policy: CacheWritePolicy;
+    private readonly cancellation: CacheWriteBufferOptions["cancellation"];
+    private cancellationRequestedAt: number | null = null;
     private readonly write: CacheWriteBufferOptions["write"];
     private readonly schedule: CacheWriteBufferOptions["schedule"];
     private readonly cancellationTimeoutMs: number;
@@ -72,6 +75,7 @@ export class ChapterCacheWriteBuffer {
     private storageFailure: StorageFailure | null = null;
 
     constructor(options: CacheWriteBufferOptions) {
+        this.cancellation = options.cancellation;
         this.policy = options.policy || DEFAULT_CACHE_WRITE_POLICY;
         this.write = options.write;
         this.schedule = options.schedule;
@@ -197,7 +201,8 @@ export class ChapterCacheWriteBuffer {
      * 等待已启动取消期限内的缓存刷新，返回保存、失败、超时或丢弃结果
      */
     async flushForCancellation(): Promise<CancellationCacheFlushResult> {
-        // 调用前须经取消订阅启动期限；此入口不另行计时
+        // 入口复核当前事实，订阅未到或 writer 晚建立都不能延长首次取消期限
+        this.requestCancellation(this.cancellation?.mode ?? "flush");
         if (this.discarded) {
             return "discarded";
         }
@@ -263,7 +268,9 @@ export class ChapterCacheWriteBuffer {
             return;
         }
 
-        this.cancelCancellationDeadline = this.schedule(this.cancellationTimeoutMs, () => {
+        this.cancellationRequestedAt ??= this.cancellation?.requestedAt ?? Date.now();
+        const remaining = Math.max(0, this.cancellationRequestedAt + this.cancellationTimeoutMs - Date.now());
+        const expire = () => {
             this.cancelCancellationDeadline = null;
             this.cancellationTimedOut = true;
             this.rejected = true;
@@ -271,7 +278,12 @@ export class ChapterCacheWriteBuffer {
             this.cancelTimer();
             this.clearPending();
             this.abortActiveWrite();
-        });
+        };
+        if (remaining === 0) {
+            expire();
+        } else {
+            this.cancelCancellationDeadline = this.schedule(remaining, expire);
+        }
     }
 
     private cancelCancellationTimer(): void {

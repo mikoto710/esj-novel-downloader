@@ -161,6 +161,51 @@ describe("ChapterCacheWriteBuffer", () => {
         }
     });
 
+    it.each([4_000, 6_000])(
+        "counts the first cancellation deadline when saving starts after %i ms without a subscription",
+        async (elapsed) => {
+            const clock = useFakeClock();
+            let requestedAt: number | null = null;
+            let writeSignal: AbortSignal | undefined;
+            const buffer = new ChapterCacheWriteBuffer({
+                cancellation: {
+                    mode: "flush" as const,
+                    get requestedAt() {
+                        return requestedAt;
+                    }
+                },
+                write: async (_entries, signal) => {
+                    writeSignal = signal;
+                    return new Promise<boolean>((resolve) =>
+                        signal.addEventListener("abort", () => resolve(false), { once: true })
+                    );
+                },
+                schedule: (delay, callback) => {
+                    const timer = setTimeout(callback, delay);
+                    return () => clearTimeout(timer);
+                }
+            });
+            try {
+                await buffer.add(0, createChapter(0));
+                requestedAt = Date.now();
+                // 取消先发生，实际保存入口稍后才取得执行权；不能从入口重新给满五秒
+                await clock.advanceBy(elapsed);
+                const saving = buffer.flushForCancellation();
+                if (elapsed < 5_000) {
+                    await clock.advanceBy(999);
+                    expect(writeSignal?.aborted).toBe(false);
+                    await clock.advanceBy(1);
+                }
+                expect(writeSignal?.aborted).toBe(true);
+                await expect(saving).resolves.toBe("timed-out");
+            } finally {
+                buffer.discard();
+                buffer.dispose();
+                clock.restore();
+            }
+        }
+    );
+
     it("aborts an active write immediately when cancellation discards progress", async () => {
         const writeStarted = createDeferred<void>();
         let cancellationListener: (mode: DownloadCancellationMode) => void = () => undefined;

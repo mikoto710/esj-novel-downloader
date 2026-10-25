@@ -34,6 +34,7 @@ export function createStressDownloadHarness(options: StressDownloadHarnessOption
     const events = new RecordingDownloadEvents<DownloadEvent>();
     const controller = new AbortController();
     const cancellationListeners = new Set<(mode: DownloadCancellationMode) => void>();
+    let requestedAt: number | null = null;
     let cancellationMode: DownloadCancellationMode | null = null;
     let result: DownloadResult | null = null;
 
@@ -41,6 +42,7 @@ export function createStressDownloadHarness(options: StressDownloadHarnessOption
         if (cancellationMode === "discard" || (cancellationMode === "flush" && mode === "flush")) {
             return;
         }
+        requestedAt ??= Date.now();
         cancellationMode = mode;
         controller.abort();
         for (const listener of cancellationListeners) {
@@ -51,10 +53,17 @@ export function createStressDownloadHarness(options: StressDownloadHarnessOption
     const dependencies: DownloadDependencies = {
         cancellation: {
             signal: controller.signal,
+            get mode() {
+                return cancellationMode ?? "flush";
+            },
+            get requestedAt() {
+                return requestedAt;
+            },
             isCancellationRequested: () => cancellationMode !== null,
             requestCancellation,
             subscribeCancellation(listener) {
                 cancellationListeners.add(listener);
+                if (cancellationMode !== null) listener(cancellationMode);
                 return () => cancellationListeners.delete(listener);
             }
         },

@@ -546,27 +546,33 @@ async function finalizeBookDownloadTask(
 function createDownloadCancellation(): DownloadCancellationPort & { readonly mode: DownloadCancellationMode } {
     const controller = new AbortController();
     const listeners = new Set<(mode: DownloadCancellationMode) => void>();
-    let requested = false;
+    let requestedAt: number | null = null;
     let mode: DownloadCancellationMode = "flush";
     return {
         signal: controller.signal,
         get mode() {
             return mode;
         },
-        isCancellationRequested: () => requested,
+        get requestedAt() {
+            return requestedAt;
+        },
+        isCancellationRequested: () => requestedAt !== null,
         requestCancellation(next = "flush") {
-            if (requested && (mode === "discard" || next !== "discard")) {
+            if (requestedAt !== null && (mode === "discard" || next !== "discard")) {
                 return;
             }
 
             // 先固定意图再中止网络；缓存 writer 使用独立信号完成有界保存
             mode = next;
-            requested = true;
+            requestedAt ??= Date.now();
             controller.abort();
             listeners.forEach((listener) => listener(mode));
         },
         subscribeCancellation(listener) {
             listeners.add(listener);
+            if (requestedAt !== null) {
+                listener(mode);
+            }
             return () => listeners.delete(listener);
         }
     };

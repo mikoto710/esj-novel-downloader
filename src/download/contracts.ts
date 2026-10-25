@@ -292,6 +292,8 @@ export type DownloadEvent =
  */
 export interface DownloadCancellationPort {
     readonly signal: AbortSignal | undefined;
+    readonly mode: DownloadCancellationMode;
+    readonly requestedAt: number | null;
     isCancellationRequested(): boolean;
     requestCancellation(mode?: DownloadCancellationMode): void;
     subscribeCancellation(listener: (mode: DownloadCancellationMode) => void): () => void;

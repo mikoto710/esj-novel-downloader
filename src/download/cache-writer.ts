@@ -27,6 +27,7 @@ export function createTaskCacheWriter(
 ) {
     const buffer = new ChapterCacheWriteBuffer({
         write: persistTaskCacheBatch,
+        cancellation: ports.cancellation,
         schedule: ports.scheduler.schedule,
         subscribeCancellation: ports.cancellation.subscribeCancellation
     });
