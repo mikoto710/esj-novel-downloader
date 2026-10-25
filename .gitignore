@@ -6,3 +6,5 @@ dist/
 .cache/
 .vscode/
 .agents/
+docs/superpowers/
+.superpowers/
