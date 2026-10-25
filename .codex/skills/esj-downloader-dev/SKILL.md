@@ -20,7 +20,9 @@ Inspect the request, current branch/commit, `git status --short`, scoped diff, `
 
 State compatibility, migration, or explicit invalidation before changing cache/schema, persisted selection, configuration, cancellation semantics, or other major behavior. Ask for product decisions that remain unsettled after inspecting the request and evidence.
 
-Commit, push, version changes, tag creation/push, GitHub Releases, and committing `dist/` are distinct authorization scopes; continue operations already authorized. Builds may regenerate ignored `dist/`. Preserve unrelated edits and stage explicit authorized paths. Commit/PR titles follow `type: subject` without scope.
+Commit, push, version changes, tag creation/push, GitHub Releases, and committing `dist/` are distinct authorization scopes; continue operations already authorized. Builds may regenerate ignored `dist/`. Preserve unrelated edits and stage explicit authorized paths.
+
+Commit messages contain exactly one `type: subject` line, with no scope, body, or footer. Describe the final change in that line; keep validation results and consolidation SHA mappings in task/PR records. PR titles use the same format; PR bodies explain the problem, change, validation, and unverified range. Before completing commit work, inspect each affected commit's full message to verify this rule.
 
 New contribution branches start from the latest `dev`; continue an existing branch/checkout when the request specifies it. Target contribution PRs at `dev`, and synchronize stable hotfixes back to `dev` after merging into `main`. Discuss larger behavior/cache-format changes in an Issue before implementation, using existing approved discussion where available. Keep Issue/PR creation and posting within the user's authorized scope; describe the problem, change, validation, and unverified range in the PR.
 

@@ -75,7 +75,7 @@ export class UserDecisionGate {
 }
 
 /**
- * 已请求取消或操作以取消错误结束时返回约定值，其余错误向调用方抛出
+ * 对应 signal 已中止且操作以取消错误结束时返回约定值，其余错误保留原原因
  */
 export async function runUserDecision<T>(
     gate: UserDecisionGate,

@@ -193,7 +193,7 @@ export function browserDiagnosticLog(message: string | DownloadLog, taskId = cur
         try {
             log(typeof message === "string" ? message : formatDownloadLog(message));
         } catch {
-            /* 保留下面的中性诊断写入 */
+            // 保留下面的中性诊断写入
         }
     }
     if (taskId) {
@@ -209,7 +209,7 @@ export function browserDiagnosticLog(message: string | DownloadLog, taskId = cur
                       }
             );
         } catch {
-            /* 诊断观察失败不影响调用方 */
+            // 诊断观察失败不影响调用方
         }
     }
 }

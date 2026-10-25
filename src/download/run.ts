@@ -27,7 +27,7 @@ export async function runDownload(
         try {
             dependencies.log(message);
         } catch {
-            /* 日志故障不能改写业务结果 */
+            // 日志故障不能改写业务结果
         }
     };
     const events: DownloadDependencies["events"] = {
@@ -35,7 +35,7 @@ export async function runDownload(
             try {
                 dependencies.events.emit(event);
             } catch {
-                /* 诊断与页面摘要均为观察 */
+                // 诊断与页面摘要均为观察
             }
         }
     };
@@ -45,14 +45,14 @@ export async function runDownload(
             try {
                 dependencies.ui.update(snapshot);
             } catch {
-                /* 进度呈现失败不阻断正文 */
+                // 进度呈现失败不阻断正文
             }
         },
         updateMappingFontWarning(summary) {
             try {
                 dependencies.ui.updateMappingFontWarning(summary);
             } catch {
-                /* 摘要不替代字体确认 */
+                // 摘要不替代字体确认
             }
         }
     };

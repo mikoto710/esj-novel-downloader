@@ -396,7 +396,7 @@ export interface DownloadSchedulerPort {
 }
 
 /**
- * 下载任务使用的章节表、取消状态与外部能力
+ * 下载任务使用的取消、I/O、观察与决策能力；初始章节由 DownloadOptions 交接
  */
 export interface DownloadPorts {
     cancellation: DownloadCancellationPort;

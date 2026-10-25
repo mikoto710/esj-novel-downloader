@@ -744,12 +744,12 @@ function createDownloadDependencies(task: BrowserDownloadTask): DownloadDependen
                 );
             }
         } catch {
-            /* 摘要观察失败不阻断诊断 */
+            // 摘要观察失败不阻断诊断
         }
         try {
             recordBrowserDownloadEvent(activeLock.taskId, event);
         } catch {
-            /* 诊断观察失败不反向影响下载 */
+            // 诊断观察失败不反向影响下载
         }
     }
 

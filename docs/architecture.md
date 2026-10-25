@@ -24,6 +24,22 @@
 | 界面语言           | [locale/](../src/locale/)、[site/locale.ts](../src/site/locale.ts)、[ui/locale.ts](../src/ui/locale.ts)                                                                                                                                                        | 纯语言目录、站点转换提示、偏好解析与界面刷新                                                      |
 | 浏览器能力         | [browser/](../src/browser/)                                                                                                                                                                                                                                    | 请求、等待、脚本加载、文件触发与剪贴板                                                            |
 
+## 按具体业务定位函数
+
+先在对应文件中找函数；进入实际请求、队列、事务或字体算法时，可以在其契约处停止阅读，只有修改算法时再深入。
+
+| 维护问题                | 主要函数                                                                                                                                    | 主要自动化入口                                                           |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| 网络重试次数/等待       | `download/retry-policy.ts`：`DEFAULT_CHAPTER_RETRY_POLICY`、`runWithRetry`                                                                  | `tests/download/download-retry-policy.test.ts`                           |
+| 标题与正文去重          | `site/chapter.ts`：`parseChapterHtml`                                                                                                       | 真实单章页面的标题重复/不重复正文验收                                    |
+| 缓存恢复/字体确认       | `download/chapter-pipeline.ts`：`restoreCachedChapters`、`ensureMappingConsent`                                                             | `tests/mapping-font/download-mapping-cache.test.ts`                      |
+| 处理/就绪/落盘计数      | `download/progress.ts`：`recordProcessed`、`recordCommitted`、`recordIntegrityScan`                                                         | `tests/download/download-progress.test.ts`、coordinator characterization |
+| 密码拒绝/重连/轮次      | `download/protected-chapters.ts`：`resolveProtectedChapter`、`beginProtectedRetryRound`                                                     | `tests/download/download-coordinator.characterization.test.ts`           |
+| 取消保存/丢弃/首错      | `app/book-download.ts`：`createDownloadCancellation`；`download/run.ts`：`stopOnFailure`、`finishCancellation`；`cache-writer.ts`：`cancel` | browser cancellation、cache-write-buffer、book-lock-cache contracts      |
+| 自选缺章/补抓/占位      | `download/run.ts`：`runDownload` 的显式循环；`export/snapshot.ts`：`createExportData`                                                       | coordinator characterization、range lifecycle                            |
+| EPUB 元信息/文件名/复用 | `export/epub.ts`：`buildEpub`；`export/filename.ts`：`createBookExportFilename`；`app/export.ts`：`exportBookRich`                          | `tests/export/export-isolation.contract.test.ts`、export recovery        |
+| 新增双语文案            | `locale/locales/zh-CN.ts`、`zh-TW.ts` 与实际控件；键从基础字典推导                                                                          | `tests/infrastructure/locale.test.ts`                                    |
+
 ## 主要调用链
 
 弹窗交互和状态由各自模块维护。全局样式见 [ui/styles.css](../src/ui/styles.css)，局部样式见[章节选择](../src/ui/dialogs/download-selection.css)和[格式导出](../src/ui/dialogs/format-choice.css)。CSS 通过 `?inline` 导入，由构建工具压缩后内联到脚本，watch 模式保留可读格式。

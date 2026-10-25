@@ -1,6 +1,6 @@
 # 贡献指南
 
-安装与构建见 [README](README.md#开发与构建)。修改代码时，按[结构文档](docs/architecture.md)定位相关模块；测试选择见[测试指南](docs/testing.md)。
+安装与构建见 [README](README.md#开发与构建)。修改代码时，按[结构文档](docs/architecture.md)的业务问题和函数索引定位主要规则；业务知识应能从普通指南与源码获得，测试选择见[测试指南](docs/testing.md)。
 
 ## 开发与提交
 
@@ -41,12 +41,14 @@ npm run test:stress
 
 ## 提交信息与发布
 
-Commit 与 PR 标题使用历史 `type: subject` 格式，不加 scope，例如：
+Commit message 只保留一行 `type: subject`，不加 scope、body 或 footer。PR 标题沿用同一格式，例如：
 
 ```text
 fix: prevent stale task cache writes
 docs: clarify contribution workflow
 ```
+
+提交说明应概括最终改动；验证结果和提交整理的 SHA 映射记录在任务或 PR 中。PR 正文用于说明问题、改动、验证与未验证范围。
 
 - 普通改动不修改版本，不提交 `dist/`；版本、标签、推送与发布由维护者明确授权。
 - `alpha`、`beta`、`rc` 从 `dev` 发布，稳定版从 `main` 发布。标签必须与 `package.json` 版本一致，并位于对应分支。
