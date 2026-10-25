@@ -1,4 +1,4 @@
 interface:
-  display_name: "ESJ Downloader Development"
-  short_description: "Route ESJ changes by rule ownership and task boundaries."
-  default_prompt: "Use $esj-downloader-dev to implement this ESJ Novel Downloader change safely."
+    display_name: "ESJ Project Workflow"
+    short_description: "Develop, review, validate, and assess ESJ releases."
+    default_prompt: "Use $esj-downloader-dev for this ESJ Novel Downloader task and apply the checks for its scope."

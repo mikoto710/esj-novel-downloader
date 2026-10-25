@@ -51,4 +51,4 @@ docs: clarify contribution workflow
 - 普通改动不修改版本，不提交 `dist/`；版本、标签、推送与发布由维护者明确授权。
 - `alpha`、`beta`、`rc` 从 `dev` 发布，稳定版从 `main` 发布。标签必须与 `package.json` 版本一致，并位于对应分支。
 - 发布资源从标签源码重新构建，完成 `build`、压力测试和适用的真实页面/阅读器验证。当前发布验收使用 Chrome + Tampermonkey，只报告实际验证的组合与限制。
-- 修改 `.codex/skills` 后校验结构，并同步对应的 `agents/openai.yaml`。
+- 项目开发、审查、回归与发布检查统一使用 [`esj-downloader-dev`](.codex/skills/esj-downloader-dev/SKILL.md)。修改该 skill 后校验结构并同步 `agents/openai.yaml`；默认格式检查不含 `.codex/skills`，需显式检查改动的 Markdown / YAML。
