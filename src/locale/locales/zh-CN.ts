@@ -1,5 +1,3 @@
-import type { LocaleKey } from "../catalog";
-
 export const ZH_CN_MESSAGES = Object.freeze({
     "common.confirm": "确认",
     "common.cancel": "取消",
@@ -476,4 +474,4 @@ export const ZH_CN_MESSAGES = Object.freeze({
     "settings.log.epubTag": "EPUB 标签页已{state}",
     "settings.log.concurrency": "下载线程数已更新为：{count}",
     "settings.log.initialized": "初始化参数：下载线程数：{concurrency}；插图下载：{imageEnabled}"
-} satisfies Readonly<Record<LocaleKey, string>>);
+});

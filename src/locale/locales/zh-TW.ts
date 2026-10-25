@@ -1,4 +1,4 @@
-import type { LocaleKey } from "../catalog";
+import type { ZH_CN_MESSAGES } from "./zh-CN";
 
 export const ZH_TW_MESSAGES = Object.freeze({
     "common.confirm": "確認",
@@ -479,4 +479,4 @@ export const ZH_TW_MESSAGES = Object.freeze({
     "settings.log.epubTag": "EPUB 標籤頁已{state}",
     "settings.log.concurrency": "下載執行緒數已更新為：{count}",
     "settings.log.initialized": "初始化參數：下載執行緒數：{concurrency}；插圖下載：{imageEnabled}"
-} satisfies Readonly<Record<LocaleKey, string>>);
+} satisfies Readonly<Record<keyof typeof ZH_CN_MESSAGES, string>>);
