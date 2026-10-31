@@ -36,9 +36,17 @@
 
 ### 2. 安裝使用者腳本
 
+已安裝舊版的使用者請依下方「舊使用者升級」操作，避免重複安裝。
+
 [👉 **按一下這裡直接安裝最新版**](https://github.com/mikoto710/esj-novel-downloader/releases/latest/download/esj-novel-downloader.user.js)
 
 也可以前往 [GreasyFork 發布頁](https://greasyfork.org/zh-CN/scripts/562046-esjzone-%E5%85%A8%E6%9C%AC%E4%B8%8B%E8%BD%BD) 或本 GitHub 儲存庫的 [Releases 頁面](https://github.com/mikoto710/esj-novel-downloader/releases) 手動下載。
+
+### 3. 舊使用者升級
+
+腳本基礎名稱由「ESJZone 全本下载」改為「ESJZone 小说下载器」，繁體中文顯示名稱仍為「ESJZone 小說下載器」。已安裝舊版的使用者，請在 Tampermonkey 管理面板中對原有腳本執行「檢查更新」，沿原更新管道升級。請勿先解除安裝舊腳本，也不要再次按安裝連結或手動匯入更名後的檔案，以免產生重複腳本。
+
+使用其他使用者腳本管理器時，請先備份，並確認更新的是原有項目。若已出現重複腳本，先停用新安裝的副本，保留原有項目再檢查更新。
 
 ## 使用方式
 

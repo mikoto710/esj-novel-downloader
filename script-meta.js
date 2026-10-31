@@ -4,8 +4,8 @@ export default function getMeta() {
     const pkg = JSON.parse(fs.readFileSync("./package.json", "utf-8"));
 
     return {
-        // 保留原始名称与命名空间识别已安装脚本，通过本地化字段更新显示名称
-        name: "ESJZone 全本下载",
+        // 统一基础名称与本地化显示名称，保留命名空间；旧用户通过原条目检查更新升级
+        name: "ESJZone 小说下载器",
         "name:zh-CN": "ESJZone 小说下载器",
         "name:zh-TW": "ESJZone 小說下載器",
         namespace: "https://github.com/mikoto710/esj-novel-downloader",
