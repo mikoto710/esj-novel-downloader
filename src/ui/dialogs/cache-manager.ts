@@ -4,7 +4,7 @@ import {
     listManagedCaches,
     stopAndClearManagedCache
 } from "../../app/cache-management";
-import type { CacheListItem } from "../../app/cache-management";
+import type { CacheClearScope, CacheListItem } from "../../app/cache-management";
 import { subscribeCacheSync } from "../../storage/cache/sync";
 import { el, enableDrag, registerElementCleanup, removeElement } from "../dom";
 import { log } from "../../ui/log-view";
@@ -228,7 +228,7 @@ export function createCacheManagerPopup(): void {
         [header, listBox, footer]
     );
 
-    // 两种清理范围共用确认、失败与保护项反馈；活动任务的实际保护只在应用层
+    // 应用层先筛出活动书籍，存储事务再复核写入任务；界面按清理结果反馈
     async function clearCaches(includeRuntime: boolean): Promise<void> {
         const confirmed = await showCacheConfirm(popup, {
             title: `🗑️ ${t("cache.action.clear")}${t("common.confirm")}`,
@@ -276,10 +276,9 @@ export function createCacheManagerPopup(): void {
             })
         );
 
-        if (items.length > 0) {
-            rightActions.appendChild(createActionButton(t("cache.action.clearPersistent"), () => clearCaches(false)));
-            rightActions.appendChild(createActionButton(t("cache.action.clearAll"), () => clearCaches(true), "danger"));
-        }
+        // 列表为空时也允许重试清理未显示的旧缓存
+        rightActions.appendChild(createActionButton(t("cache.action.clearPersistent"), () => clearCaches(false)));
+        rightActions.appendChild(createActionButton(t("cache.action.clearAll"), () => clearCaches(true), "danger"));
 
         footer.append(leftActions, rightActions);
 
@@ -427,7 +426,7 @@ function createCacheItemProgress(item: CacheListItem): HTMLElement {
 }
 
 function createCacheItemActions(item: CacheListItem, popup: HTMLElement, rerender: () => Promise<void>): HTMLElement {
-    async function clearItem(source: "indexeddb" | "runtime" | "all"): Promise<void> {
+    async function clearItem(scope: CacheClearScope): Promise<void> {
         const messageKeys = {
             indexeddb: "cache.confirm.clearIndexedDb",
             runtime: "cache.confirm.clearRuntime",
@@ -435,13 +434,21 @@ function createCacheItemActions(item: CacheListItem, popup: HTMLElement, rerende
         } as const;
         const confirmed = await showCacheConfirm(popup, {
             title: `🗑️ ${t("cache.action.clear")}${t("common.confirm")}`,
-            message: t(messageKeys[source], { book: item.bookName }),
+            message: t(messageKeys[scope], { book: item.bookName }),
             danger: true
         });
         if (!confirmed) {
             return;
         }
-        const result = await clearManagedCache(item.bookId, source);
+        let result: Awaited<ReturnType<typeof clearManagedCache>>;
+        try {
+            result = await clearManagedCache(item.bookId, scope);
+        } catch (error) {
+            if (popup.isConnected) {
+                showCacheClearFailure(error);
+            }
+            return;
+        }
         if (result.protectedBookIds.length > 0) {
             await showCacheProtectionNotice(popup, t("cache.protected"));
         } else {

@@ -1,4 +1,4 @@
-import { del, get, keys } from "idb-keyval";
+import { delMany, get, keys } from "idb-keyval";
 import type { CacheMeta } from "./model";
 import type { Chapter } from "../../content/model";
 
@@ -75,8 +75,8 @@ export async function listLegacyCacheRecords(): Promise<LegacyCacheRecord[]> {
 }
 
 /**
- * 删除指定书籍的全部旧缓存键
+ * 在同一事务中删除指定书籍的两种旧缓存键
  */
 export async function deleteLegacyCache(bookId: string): Promise<void> {
-    await Promise.all([del(getCacheKey(bookId)), del(getLegacyCacheKey(bookId))]);
+    await delMany([getCacheKey(bookId), getLegacyCacheKey(bookId)]);
 }

@@ -355,13 +355,13 @@ export async function putBookCoverForTask(
 }
 
 /**
- * 仅允许当前缓存写入任务清理 v3 章节
+ * 仅允许当前写入任务清理书籍缓存，旧缓存删除失败时也向任务报告
  */
 export async function clearBookCacheForTask(bookId: string, taskId: string, signal?: AbortSignal): Promise<boolean> {
     try {
         const cleared = await clearCacheV3ForTask(bookId, taskId, signal);
         if (cleared) {
-            await deleteLegacyCacheAfterMigration(bookId);
+            await deleteLegacyCache(bookId);
             publishCacheSyncEvent({ type: "cache-cleared", bookId });
         }
         return cleared;
@@ -403,7 +403,7 @@ export async function listBookCaches(): Promise<PersistentCacheEntry[]> {
 }
 
 /**
- * 清理指定书籍缓存，受到 writer 保护或清理失败时返回 false
+ * 清理指定书籍的新旧缓存，遇到受保护的 writer 返回 false，存储失败抛出异常
  */
 export async function clearBookCache(bookId: string): Promise<boolean> {
     try {
@@ -415,12 +415,11 @@ export async function clearBookCache(bookId: string): Promise<boolean> {
             return false;
         }
 
-        await deleteLegacyCacheAfterMigration(bookId);
+        await deleteLegacyCache(bookId);
         publishCacheSyncEvent({ type: "cache-cleared", bookId });
         return true;
     } catch (error) {
-        console.error("清理缓存失败", error);
-        return false;
+        throw normalizeStorageError(error, "clear");
     }
 }
 
@@ -436,21 +435,18 @@ async function listStoredBookIds(): Promise<string[]> {
 }
 
 /**
- * 跳过受保护书籍并清理其余持久缓存，返回本轮未清理的书籍 ID
+ * 跳过已知保护项，返回清理时发现的受保护书籍 ID；存储失败时等待本轮清理结束后抛出异常
  */
 export async function clearAllPersistentCaches(protectedBookIds: ReadonlySet<string> = new Set()): Promise<string[]> {
-    // 返回值不含入参中已跳过的保护项；枚举或批量准备失败仍抛出存储错误
     try {
         const targetBookIds = (await listStoredBookIds()).filter((bookId) => !protectedBookIds.has(bookId));
-        const results = await Promise.all(
-            targetBookIds.map(async (bookId) => ({ bookId, cleared: await clearBookCache(bookId) }))
-        );
-        const newlyProtected = results.filter((result) => !result.cleared).map((result) => result.bookId);
-        console.log(
-            "已清理持久缓存:",
-            results.filter((result) => result.cleared).map((result) => result.bookId)
-        );
-        return newlyProtected;
+        const results = await Promise.allSettled(targetBookIds.map(clearBookCache));
+        return results.flatMap((result, index) => {
+            if (result.status === "rejected") {
+                throw result.reason;
+            }
+            return result.value ? [] : [targetBookIds[index]];
+        });
     } catch (error) {
         console.error("清理缓存失败", error);
         throw normalizeStorageError(error, "clear");

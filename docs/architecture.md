@@ -44,7 +44,7 @@
 
 弹窗交互和状态由各自模块维护。全局样式见 [ui/styles.css](../src/ui/styles.css)，局部样式见[章节选择](../src/ui/dialogs/download-selection.css)和[格式导出](../src/ui/dialogs/format-choice.css)。CSS 通过 `?inline` 导入，由构建工具压缩后内联到脚本，watch 模式保留可读格式。
 
-设置窗口的语言、并发、插图和 EPUB 设置行各自维护控件、最后保存值与失败恢复，父窗口负责排列和管理入口。缓存卡片的徽标、进度与操作区在同文件内组装；普通清理在 `clearItem` 中按来源确认，停止清理由 `stopAndClearItem` 处理实际结果，任务保护规则仍在 `app/cache-management`。`download-view` 的 `update` 统一检查任务归属并分派阶段显示，快照、取消状态和语言订阅归同一个任务视图。
+设置窗口的语言、并发、插图和 EPUB 设置行各自维护控件、最后保存值与失败恢复，父窗口负责排列和管理入口。缓存卡片的徽标、进度与操作区在同文件内组装。普通清理在 `clearItem` 中按来源确认，停止清理由 `stopAndClearItem` 处理实际结果。`app/cache-management` 检查活动书籍锁并保护对应的页面会话和导出结果，持久缓存另行检查旧记录的 writer，并在 v3 清理事务中复核当前 writer。`download-view` 的 `update` 统一检查任务归属并分派阶段显示，快照、取消状态和语言订阅归同一个任务视图。
 
 历史窗口持有完整记录、筛选和存储操作，[download-history-table](../src/ui/dialogs/download-history-table.ts) 负责列定义、记录行、列宽拖拽及其清理，通过记录 ID 将删除交回窗口；刷新记录只替换表体。诊断窗口持有当前选择、导出操作、可见性轮询和订阅，[diagnostic-session-view](../src/ui/dialogs/diagnostic-session-view.ts) 只根据传入会话生成行与详情节点。章节选择的控件、摘要和动作提示分别刷新，选择集合、准备阶段、文件名编辑状态和最终决策仍由选择会话统一维护，子视图不另存一份业务状态。
 
@@ -83,7 +83,7 @@ ui/pages/detail 或 forum
 - **输出与资源**：按固定计划恢复、补抓和组装。未选章节不参与缺章判断或占位，占位只进入导出快照。书籍 HTML 有封面和目录，单章使用独立布局。图片按发起页面地址解析。字体先规范化和校验，映射字体禁用 TXT。
 - **再次导出**：`app/export` 绑定原结果和自定义文件名，不改书籍元数据或历史归属。EPUB 缓存按生成设置和失效版本复用。`recordExportOutcome` 共用成功/取消的原身份保护，未知来源旧结果不写入后来任务诊断。关闭格式弹窗不取消生成，旧生成不能改写新任务标题。插图设置在缓存预览前固定，并发数在装配时读取，EPUB 设置在生成时读取。
 - **设置与诊断规则**：图片设置在 `changeImageDownloadSetting` 连续执行读取、跨页确认、保存和失败恢复。诊断 `recordDownloadEvent` 的 `applyDownloadEvent` 只投影事件，`mutateSession` 统一处理终态搬移与保存；JSON 导出只生成日志展示副本。
-- **管理视图**：缓存弹窗 `clearCaches` 共用确认和反馈，真正清理与活动任务保护在 `app/cache-management`；历史 `createHistoryRow` 维护行操作，诊断 `downloadSelectedDiagnostic/copySelectedDiagnostic` 明确作用于当前选择，刷新保留筛选与滚动。
+- **管理视图**：缓存弹窗分别展示活动任务保护和存储失败。批量清理等待各书操作结束，重试时重新枚举尚未清除的书籍和残留旧键。v3 清除标记阻止旧章节再次导入。历史 `createHistoryRow` 维护行操作，诊断 `downloadSelectedDiagnostic/copySelectedDiagnostic` 明确作用于当前选择，刷新保留筛选与滚动。
 - **装配**：`createDownloadDependencies` 直接绑定站点、存储和计时能力。`createChapterProcessor` 保留解析/图片采集与原任务诊断职责，`createCoverFetcher` 保留封面采集事实的本地化；`observeDownloadEvent` 只更新页面摘要和记录诊断。
 - **诊断**：记录原任务的中性消息，已有终态优先。存储失败不阻断主流程，敏感内容不写入记录。过长区间可简化，为事件和日志保留容量。快照和历史仍保留完整选择。
 - **语言**：`LocaleKey` 和 `LOCALE_KEYS` 从简体基础字典派生，繁体字典声明处检查同键；新增文案只改两份字典和使用它的控件。依次采用手动偏好、站点提示和浏览器语言。界面刷新不改小说内容、元数据、URL 或站点协议原文。
