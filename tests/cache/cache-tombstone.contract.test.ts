@@ -3,33 +3,33 @@
 import { IDBFactory } from "fake-indexeddb";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createCacheMeta, createChapter } from "../support";
+import { openLegacyCacheFixture } from "../support/legacy-cache";
 
 describe("cache tombstone cleanup contracts", () => {
-    beforeEach(async () => {
+    beforeEach(() => {
         vi.resetModules();
         vi.stubGlobal("indexedDB", new IDBFactory());
         vi.stubGlobal("BroadcastChannel", undefined);
         localStorage.clear();
-        const { clear } = await import("idb-keyval");
-        await clear();
     });
 
     it("preserves an active legacy writer after a failed read and clears it after release", async () => {
-        const { get, set } = await import("idb-keyval");
+        const { get, set } = openLegacyCacheFixture();
         const locks = await import("../../src/storage/book-lock");
         const storage = await import("../../src/storage/cache/book-cache");
         const acquired = await locks.acquireBookDownloadLock("600", "detail");
         if (!acquired.acquired) {
             throw new Error("expected lock");
         }
-        const key = "esj_down_book_600";
+        const key = "esj_down_600";
+        await set("esj_down_book_600", { ts: Date.now(), chapters: [] });
         const cached = { ts: Date.now(), chapters: [[0, createChapter(0)]], writerTaskId: acquired.lock.taskId };
         await set(key, cached);
 
         const read = IDBObjectStore.prototype.get;
         vi.spyOn(IDBObjectStore.prototype, "get").mockImplementationOnce(function (this: IDBObjectStore, key) {
             const request = read.call(this, key);
-            this.transaction.abort();
+            request.addEventListener("success", () => this.transaction.abort(), { once: true });
             return request;
         });
         try {
@@ -39,11 +39,63 @@ describe("cache tombstone cleanup contracts", () => {
             });
             await expect(storage.clearBookCache("600")).resolves.toBe(false);
             expect(await get(key)).toEqual(cached);
+            const repository = await import("../../src/storage/cache/indexeddb-repository");
+            await expect(repository.readCacheManifestV3("600")).resolves.toBeUndefined();
         } finally {
             await locks.releaseBookDownloadLock(acquired.lock);
         }
         await expect(storage.clearBookCache("600")).resolves.toBe(true);
         expect(await get(key)).toBeUndefined();
+    });
+
+    it.each(["manager", "task"] as const)("protects a late legacy writer during %s cleanup", async (entry) => {
+        const { get, set } = openLegacyCacheFixture();
+        const storage = await import("../../src/storage/cache/book-cache");
+        const locks = await import("../../src/storage/book-lock");
+        const ownerBookId = entry === "manager" ? "605" : "606";
+        const acquired = await locks.acquireBookDownloadLock(ownerBookId, "detail");
+        if (!acquired.acquired) {
+            throw new Error("expected lock");
+        }
+        const ownTaskId = entry === "task" ? acquired.lock.taskId : "old-task";
+        const currentKey = `esj_down_book_${ownerBookId}`;
+        const olderKey = `esj_down_${ownerBookId}`;
+        const original = { ts: Date.now(), chapters: [[0, createChapter(0)]], writerTaskId: ownTaskId };
+        const foreign = { ...original, writerTaskId: `late-${entry}` };
+        localStorage.setItem(`esj_download_lock_presence_${foreign.writerTaskId}`, foreign.writerTaskId);
+        try {
+            await storage.claimBookCache(ownerBookId, ownTaskId, false);
+            await set(currentKey, original);
+
+            // v3 清除标记提交前排入另一页的旧库认领，旧库删除事务必须读到新 writer
+            const put = IDBObjectStore.prototype.put;
+            vi.spyOn(IDBObjectStore.prototype, "put").mockImplementationOnce(function (
+                this: IDBObjectStore,
+                value,
+                key
+            ) {
+                const request = put.call(this, value, key);
+                request.addEventListener("success", () => {
+                    void set(olderKey, foreign);
+                });
+                return request;
+            });
+            const clear = () =>
+                entry === "manager"
+                    ? storage.clearBookCache(ownerBookId)
+                    : storage.clearBookCacheForTask(ownerBookId, ownTaskId);
+            await expect(clear()).resolves.toBe(false);
+            expect(await get(currentKey)).toEqual(original);
+            expect(await get(olderKey)).toEqual(foreign);
+            expect((await storage.loadBookCache(ownerBookId)).map).toBeNull();
+
+            localStorage.removeItem(`esj_download_lock_presence_${foreign.writerTaskId}`);
+            await expect(clear()).resolves.toBe(true);
+            expect(await get(currentKey)).toBeUndefined();
+            expect(await get(olderKey)).toBeUndefined();
+        } finally {
+            await locks.releaseBookDownloadLock(acquired.lock);
+        }
     });
 
     it("keeps v3 chapters available when the clear transaction fails", async () => {
@@ -66,7 +118,7 @@ describe("cache tombstone cleanup contracts", () => {
     });
 
     it("retries residual legacy data after a partial batch clear without reimporting it", async () => {
-        const { get, set } = await import("idb-keyval");
+        const { get, set } = openLegacyCacheFixture();
         const storage = await import("../../src/storage/cache/book-cache");
         const remainingKey = "esj_down_book_601";
         const olderKey = "esj_down_601";
@@ -105,7 +157,7 @@ describe("cache tombstone cleanup contracts", () => {
     });
 
     it("retains a migrated chapter but reports failed legacy deletion on task cleanup", async () => {
-        const { get, set } = await import("idb-keyval");
+        const { get, set } = openLegacyCacheFixture();
         const storage = await import("../../src/storage/cache/book-cache");
         const key = "esj_down_604";
         const chapter = createChapter(0);

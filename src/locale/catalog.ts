@@ -49,7 +49,9 @@ export type LocaleCatalog = Readonly<Record<string, string>>;
 
 export type LocaleCatalogs = Readonly<Record<InterfaceLocale, LocaleCatalog>>;
 
-/** 键由基础字典推导，繁体字典在声明处检查同一组键。 */
+/**
+ * 键由基础字典推导，繁体字典在声明处检查同一组键
+ */
 export type LocaleKey = keyof typeof ZH_CN_MESSAGES;
 
 export const LOCALE_KEYS: readonly LocaleKey[] = Object.freeze(Object.keys(ZH_CN_MESSAGES) as LocaleKey[]);

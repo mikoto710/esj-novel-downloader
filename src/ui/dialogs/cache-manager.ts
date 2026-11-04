@@ -215,7 +215,9 @@ export function createCacheManagerPopup(): void {
         try {
             result = await clearAllManagedCaches(includeRuntime);
         } catch (error) {
-            showCacheClearFailure(error);
+            if (popup.isConnected) {
+                showCacheClearFailure(error);
+            }
             return;
         }
         if (result.protectedBookIds.length > 0) {
@@ -239,7 +241,7 @@ export function createCacheManagerPopup(): void {
         listBox.replaceChildren();
         footer.replaceChildren();
 
-        // 左侧刷新缓存列表，右侧按清理范围分组，活动任务由 app/cache-management 保护
+        // 左侧刷新缓存列表，右侧按清理范围分组
         const leftActions = el("div", { style: "display:flex;gap:8px;flex-wrap:wrap;" });
         const rightActions = el("div", { style: "display:flex;gap:8px;flex-wrap:wrap;" });
 

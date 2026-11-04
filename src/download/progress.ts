@@ -127,18 +127,24 @@ export class DownloadProgress {
         this.ui.update(this.snapshot);
     }
 
-    /** 有效恢复数同时成为初轮完成数和已持久化数。 */
+    /**
+     * 有效恢复数同时成为初轮完成数和已持久化数
+     */
     recordCacheRestored(): void {
         const restoredCount = this.plan.readyCount(this.chapters);
         this.update({ restoredCount, completedCount: restoredCount, persistedCount: restoredCount });
     }
 
-    /** 抓取累计包括补抓，密码授权请求不计入普通抓取。 */
+    /**
+     * 抓取累计包括补抓，密码授权请求不计入普通抓取
+     */
     recordFetched(): void {
         this.update({ fetchedCount: this.current.fetchedCount + 1 });
     }
 
-    /** 初轮处理推进完成数；补抓只增加实际处理数。 */
+    /**
+     * 初轮处理推进完成数；补抓只增加实际处理数
+     */
     recordProcessed(isRetry = false): void {
         this.update({
             completedCount: this.current.completedCount + (isRetry ? 0 : 1),
@@ -150,7 +156,9 @@ export class DownloadProgress {
         this.update({ completedCount: this.current.completedCount + 1, failedCount: this.current.failedCount + 1 });
     }
 
-    /** 仅确认提交的所选索引进入集合，重复写入不重复累计。 */
+    /**
+     * 仅确认提交的所选索引进入集合，重复写入不重复累计
+     */
     recordCommitted(indexes: Iterable<number>): void {
         for (const index of indexes) {
             if (this.plan.indexes.has(index)) {
@@ -164,7 +172,9 @@ export class DownloadProgress {
         this.persistedIndexes.delete(index);
     }
 
-    /** 完整性扫描可含图片问题；缺正文扫描由调用方明确传入自己的结果。 */
+    /**
+     * 完整性扫描可含图片问题；缺正文扫描由调用方明确传入自己的结果
+     */
     recordIntegrityScan(failedCount: number, retryPendingCount = 0): void {
         this.update({ failedCount, retryPendingCount });
     }
@@ -176,7 +186,9 @@ export class DownloadProgress {
         });
     }
 
-    /** 密码模块持有集合和轮次规则，此处只接收它汇总的计数。 */
+    /**
+     * 密码模块持有集合和轮次规则，此处只接收它汇总的计数
+     */
     recordProtectedSummary(
         summary: Pick<
             DownloadSnapshot,

@@ -10,7 +10,9 @@ function safeFilenamePart(value: string): string {
     );
 }
 
-/** 生成详情预览和实际下载共用的诊断文件名 */
+/**
+ * 生成详情预览和实际下载共用的诊断文件名
+ */
 export function createDiagnosticFilename(bookTitle: string, updatedAt: number): string {
     const date = new Date(updatedAt)
         .toISOString()

@@ -364,7 +364,6 @@ export function createSettingsPanel(): void {
         })
     );
 
-    // 创建分隔线
     const createDivider = () => el("hr", { style: "margin: 15px 0; border: 0; border-top: 1px solid #eee;" });
 
     // 子面板接管页面操作锁；诊断入口由诊断窗口自身关闭设置面板

@@ -30,7 +30,7 @@ vi.mock("../../src/storage/cache/indexeddb-repository", () => ({
 }));
 vi.mock("../../src/storage/cache/legacy-cache", () => ({
     readLegacyCache: mocks.readLegacy,
-    deleteLegacyCache: mocks.deleteLegacy,
+    clearLegacyCacheIfInactive: mocks.deleteLegacy,
     listLegacyCacheRecords: mocks.listLegacy,
     getLegacyCacheBookId: (key: string) => key.replace(/^esj_down_(?:book_)?/, "")
 }));
@@ -61,7 +61,7 @@ describe("v2 cache migration recovery", () => {
         mocks.readChapters.mockResolvedValue(new Map([[0, chapter]]));
         mocks.claim.mockResolvedValue({ status: "claimed", compatibility: "compatible", invalidatedCount: 0 });
         mocks.readLegacy.mockResolvedValue(legacyRecord);
-        mocks.deleteLegacy.mockResolvedValue(undefined);
+        mocks.deleteLegacy.mockResolvedValue(true);
         mocks.listManifests.mockResolvedValue([]);
         mocks.listLegacy.mockResolvedValue([]);
         mocks.clear.mockResolvedValue(true);
@@ -81,7 +81,7 @@ describe("v2 cache migration recovery", () => {
 
         expect(mocks.claim).toHaveBeenCalledTimes(2);
         expect(mocks.deleteLegacy).toHaveBeenCalledOnce();
-        expect(mocks.deleteLegacy).toHaveBeenCalledWith("200");
+        expect(mocks.deleteLegacy).toHaveBeenCalledWith("200", "clear", "task-200");
     });
 
     it("keeps v2 readable after migration retry fails and succeeds on a later attempt", async () => {

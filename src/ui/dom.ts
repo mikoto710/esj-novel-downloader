@@ -149,7 +149,7 @@ export function fullCleanup(originalTitle?: string): void {
  */
 export function el<K extends keyof HTMLElementTagNameMap>(
     tag: K,
-    attrs: Record<string, any> = {},
+    attrs: Record<string, unknown> = {},
     children: (string | Node)[] = []
 ): HTMLElementTagNameMap[K] {
     const element = document.createElement(tag);
@@ -159,9 +159,9 @@ export function el<K extends keyof HTMLElementTagNameMap>(
         } else if (key.startsWith("on") && typeof value === "function") {
             element.addEventListener(key.substring(2).toLowerCase(), value as EventListener);
         } else if (key === "className") {
-            element.className = value;
+            element.className = String(value);
         } else if (["checked", "value", "disabled", "selected"].includes(key)) {
-            (element as any)[key] = value;
+            Reflect.set(element, key, value);
         } else {
             element.setAttribute(key, String(value));
         }

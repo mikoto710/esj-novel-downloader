@@ -63,7 +63,7 @@ describe("download history interactions", () => {
         deleteButton.click();
         expect(document.querySelector("#esj-download-history-confirm")).toBeNull();
 
-        // 删除完成前切换语言，不能改变此次操作捕获的记录或当前筛选。
+        // 删除完成前切换语言，不能改变此次操作捕获的记录或当前筛选
         setInterfaceLocalePreference("zh-TW");
         publishInterfaceLocaleChange();
         deletion.resolve();

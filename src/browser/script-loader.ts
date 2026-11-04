@@ -55,16 +55,16 @@ export function loadSingleScript<T>(src: string, globalName: string): Promise<T>
  */
 export async function loadScript<T>(srcs: string | string[], globalName: string): Promise<T> {
     const urls = Array.isArray(srcs) ? srcs : [srcs];
-    let lastError: Error | null = null;
+    let lastMessage: string | undefined;
 
     for (const url of urls) {
         try {
             return await loadSingleScript<T>(url, globalName);
-        } catch (e: any) {
-            console.warn(`failed to load script (${url}):`, e.message);
-            lastError = e;
+        } catch (error) {
+            lastMessage = error instanceof Error ? error.message : String(error);
+            console.warn(`failed to load script (${url}):`, lastMessage);
         }
     }
 
-    throw new Error(`All scripts failed: ${lastError?.message}`);
+    throw new Error(`All scripts failed: ${lastMessage}`);
 }

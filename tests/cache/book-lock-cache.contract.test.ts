@@ -3,6 +3,7 @@
 import { IDBFactory } from "fake-indexeddb";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createCacheMeta, createChapter, createDeferred } from "../support";
+import { openLegacyCacheFixture } from "../support/legacy-cache";
 
 describe("book lock contracts", () => {
     beforeEach(() => {
@@ -137,7 +138,7 @@ describe("book lock contracts", () => {
 
     it("lazily migrates v2 chapters after the v3 writer is claimed", async () => {
         vi.stubGlobal("BroadcastChannel", undefined);
-        const { get, set } = await import("idb-keyval");
+        const { get, set } = openLegacyCacheFixture();
         const storage = await import("../../src/storage/cache/book-cache");
         const legacyChapter = createChapter(0, { content: "legacy chapter" });
         await set("esj_down_book_200", {
@@ -162,7 +163,7 @@ describe("book lock contracts", () => {
 
     it("keeps cleared v3 cache from falling back to residual v2 data", async () => {
         vi.stubGlobal("BroadcastChannel", undefined);
-        const { set } = await import("idb-keyval");
+        const { set } = openLegacyCacheFixture();
         const storage = await import("../../src/storage/cache/book-cache");
         await storage.claimBookCache("300", "task-300", false);
         await storage.putBookCacheBatchForTask("300", "task-300", new Map([[0, createChapter(0)]]));

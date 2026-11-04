@@ -155,6 +155,7 @@ function runWriteTransaction<T>(
                     }
                     resolve(result);
                 };
+                // 请求错误默认中止事务，统一在 onabort 结束等待，避免错误事件先于回滚完成
                 transaction.onabort = () => {
                     cleanupAbortListener();
                     reject(
@@ -165,7 +166,6 @@ function runWriteTransaction<T>(
                               : transaction.error || new Error("缓存事务已中止")
                     );
                 };
-                // 请求错误默认中止事务，统一在 onabort 结束等待，避免错误事件先于回滚完成
 
                 if (signal?.aborted) {
                     onSignalAbort();

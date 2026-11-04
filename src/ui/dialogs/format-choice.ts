@@ -237,8 +237,7 @@ export function showFormatChoice(data: CachedData): void {
         );
     }
 
-    // 生成并导出所选格式，各格式独立防重并允许失败后重试
-    // 按格式防重；标题变更先核对原结果资格，旧生成不会覆盖新任务
+    // 只锁定正在生成的格式，失败后恢复按钮供重试
     async function handleRichDownload(format: "epub" | "html", button: HTMLButtonElement): Promise<void> {
         if (exporting.has(format)) {
             return;

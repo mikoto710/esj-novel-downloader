@@ -37,8 +37,9 @@ export async function buildEpub(chapters: Chapter[], metadata: BookMetadata, inc
 
     try {
         ZipClass = await loadScript<new () => JSZip>(JSZIP_URLS, "JSZip");
-    } catch (e: any) {
-        throw new Error("Failed to load JSZip: " + e.message);
+    } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        throw new Error("Failed to load JSZip: " + message);
     }
 
     // 建立 EPUB 容器，mimetype 保持未压缩以满足阅读器识别要求

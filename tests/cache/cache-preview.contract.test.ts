@@ -3,15 +3,14 @@
 import { IDBFactory, IDBObjectStore } from "fake-indexeddb";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createCacheMeta, createChapter } from "../support";
+import { openLegacyCacheFixture } from "../support/legacy-cache";
 
 describe("cache preview and confirmed claims", () => {
-    beforeEach(async () => {
+    beforeEach(() => {
         vi.resetModules();
         vi.stubGlobal("indexedDB", new IDBFactory());
         vi.stubGlobal("BroadcastChannel", undefined);
         localStorage.clear();
-        const { clear } = await import("idb-keyval");
-        await clear();
     });
 
     async function seedBook(imageEnabled = false) {
@@ -68,7 +67,7 @@ describe("cache preview and confirmed claims", () => {
 
     it.each(["expired", "cleared"])("does not restore legacy records behind a %s v3 manifest", async (kind) => {
         const storage = await seedBook();
-        const { set } = await import("idb-keyval");
+        const { set } = openLegacyCacheFixture();
         const ts = Date.now();
         if (kind === "cleared") {
             await storage.clearBookCacheForTask("700", "previous-task");
@@ -86,7 +85,7 @@ describe("cache preview and confirmed claims", () => {
     });
 
     it("previews legacy data without migrating or removing it", async () => {
-        const { get, set } = await import("idb-keyval");
+        const { get, set } = openLegacyCacheFixture();
         const storage = await import("../../src/storage/cache/book-cache");
         const repository = await import("../../src/storage/cache/indexeddb-repository");
         const legacy = { ts: Date.now(), chapters: [[3, createChapter(3)]] };
@@ -106,7 +105,7 @@ describe("cache preview and confirmed claims", () => {
         const storage = await seedBook();
         const repository = await import("../../src/storage/cache/indexeddb-repository");
         const sync = await import("../../src/storage/cache/sync");
-        const { get, set } = await import("idb-keyval");
+        const { get, set } = openLegacyCacheFixture();
         await expect(storage.previewBookCache("700", false)).resolves.toMatchObject({
             compatibility: "compatible"
         });
@@ -177,7 +176,7 @@ describe("cache preview and confirmed claims", () => {
     });
 
     it("keeps incompatible legacy records intact until invalidation is confirmed", async () => {
-        const { get, set } = await import("idb-keyval");
+        const { get, set } = openLegacyCacheFixture();
         const storage = await import("../../src/storage/cache/book-cache");
         const repository = await import("../../src/storage/cache/indexeddb-repository");
         const sync = await import("../../src/storage/cache/sync");

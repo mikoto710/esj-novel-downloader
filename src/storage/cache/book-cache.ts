@@ -16,7 +16,7 @@ import {
     type CacheManifestV3
 } from "./indexeddb-repository";
 import {
-    deleteLegacyCache,
+    clearLegacyCacheIfInactive,
     getLegacyCacheBookId,
     listLegacyCacheRecords,
     readLegacyCache,
@@ -72,9 +72,9 @@ function isReusableV3Cache(data: CacheManifestV3 | undefined): data is CacheMani
     return Boolean(data && data.version === 3 && !data.cleared && !isExpired(data));
 }
 
-async function deleteLegacyCacheAfterMigration(bookId: string): Promise<void> {
+async function deleteLegacyCacheAfterMigration(bookId: string, taskId: string): Promise<void> {
     try {
-        await deleteLegacyCache(bookId);
+        await clearLegacyCacheIfInactive(bookId, "clear", taskId);
     } catch (error) {
         // v3 已提交时保留可重复清理的旧缓存，不回滚新缓存
         console.warn("清理旧版缓存失败，将在后续操作中重试", error);
@@ -247,7 +247,7 @@ export async function claimBookCache(
         if (claimResult.status === "needs-confirmation") {
             return { ...claimResult, valid: true, size: claimResult.indexes.length };
         }
-        await deleteLegacyCacheAfterMigration(bookId);
+        await deleteLegacyCacheAfterMigration(bookId, taskId);
         publishCacheSyncEvent({ type: "cache-claimed", bookId, taskId });
 
         const map = await readCacheChaptersV3(bookId);
@@ -360,11 +360,11 @@ export async function putBookCoverForTask(
 export async function clearBookCacheForTask(bookId: string, taskId: string, signal?: AbortSignal): Promise<boolean> {
     try {
         const cleared = await clearCacheV3ForTask(bookId, taskId, signal);
-        if (cleared) {
-            await deleteLegacyCache(bookId);
-            publishCacheSyncEvent({ type: "cache-cleared", bookId });
+        if (!cleared || !(await clearLegacyCacheIfInactive(bookId, "clear", taskId))) {
+            return false;
         }
-        return cleared;
+        publishCacheSyncEvent({ type: "cache-cleared", bookId });
+        return true;
     } catch (error) {
         if (isExpectedStorageCancellation(error, signal)) {
             return false;
@@ -407,15 +407,16 @@ export async function listBookCaches(): Promise<PersistentCacheEntry[]> {
  */
 export async function clearBookCache(bookId: string): Promise<boolean> {
     try {
-        const legacy = await readLegacyCache(bookId);
-        if (legacy?.data.writerTaskId && hasBookDownloadTaskPresence(legacy.data.writerTaskId)) {
+        if (!(await clearLegacyCacheIfInactive(bookId, "check"))) {
             return false;
         }
         if (!(await clearCacheV3(bookId, hasBookDownloadTaskPresence))) {
             return false;
         }
 
-        await deleteLegacyCache(bookId);
+        if (!(await clearLegacyCacheIfInactive(bookId, "clear"))) {
+            return false;
+        }
         publishCacheSyncEvent({ type: "cache-cleared", bookId });
         return true;
     } catch (error) {

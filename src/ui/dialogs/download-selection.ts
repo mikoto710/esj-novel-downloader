@@ -265,7 +265,7 @@ export function createDownloadSelectionPopup(options: DownloadSelectionPopupOpti
               : null;
     };
 
-    // 原地刷新控件与目录，不重建输入节点或来源目录。
+    // 原地刷新控件与目录，不重建输入节点或来源目录
     function refreshSelectionControls(disabled: boolean): void {
         allMode.disabled = rangeMode.disabled = disabled;
         allText.textContent = t("range.modeAll");
@@ -294,7 +294,7 @@ export function createDownloadSelectionPopup(options: DownloadSelectionPopupOpti
         directoryView?.setSelection(selected);
     }
 
-    // 章数与缓存复用预览使用同一份选择计划。
+    // 章数取自原目录或当前勾选数，缓存复用数按本次选择计划统计
     function refreshSelectionSummary(disabled: boolean, selection: DownloadSelection | null): void {
         const plan = selection
             ? createDownloadPlan({ tasks: selectDownloadTasks(preview.tasks, selection), selection })
@@ -316,7 +316,7 @@ export function createDownloadSelectionPopup(options: DownloadSelectionPopupOpti
         cacheReuse.hidden = preview.cacheWillBeInvalidated;
     }
 
-    // 提示和下载操作共用本次选择，旧结果入口独立于准备是否成功。
+    // 提示和下载操作共用本次选择，旧结果入口独立于准备是否成功
     function refreshSelectionActions(selection: DownloadSelection | null): void {
         cacheWarning.hidden = Boolean(stage) || !preview.cacheWillBeInvalidated;
         cacheWarning.textContent = "⚠️ " + t("range.cacheDiscardWarning", { count: preview.cacheCount });

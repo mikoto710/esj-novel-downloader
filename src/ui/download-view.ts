@@ -22,7 +22,9 @@ function updateDownloadStatus(status: string, originalTitle: string): void {
     updateTrayText(status);
 }
 
-/** 应用持有任务窗口生命周期，核心只接收 DownloadUiPort 中的业务交互。 */
+/**
+ * 应用持有任务窗口生命周期，核心只接收 DownloadUiPort 中的业务交互
+ */
 export interface DownloadView extends DownloadUiPort {
     prepare(selection: DownloadSelection): void;
     cleanup(): void;
@@ -54,7 +56,7 @@ export function createDownloadView(task: {
         }
     }
 
-    // 取消状态保留页面标题与进度，只更新弹窗和托盘。
+    // 取消状态保留页面标题与进度，只更新弹窗和托盘
     function updateCancellationStatus(snapshot: DownloadSnapshot): void {
         const cancelled = snapshot.phase === "cancelled";
         const status = t(cancelled ? "download.status.stopped" : "download.status.stopping");
@@ -132,7 +134,7 @@ export function createDownloadView(task: {
         }
     }
 
-    // 归属检查先于快照保存与渲染，语言切换也通过同一入口重放最新快照。
+    // 归属检查先于快照保存与渲染，语言切换也通过同一入口重放最新快照
     function update(snapshot: DownloadSnapshot): void {
         if (!isCurrent()) {
             return;

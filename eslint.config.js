@@ -4,7 +4,7 @@ import prettierConfig from "eslint-config-prettier";
 import globals from "globals";
 import stylistic from "@stylistic/eslint-plugin";
 
-// 导出声明在 AST 中多一层包装，显式匹配以覆盖普通声明与导出声明。
+// 导出声明在 AST 中多一层包装，显式匹配以覆盖普通声明与导出声明
 const spacedDeclaration = {
     selector: ":matches(TSTypeAliasDeclaration, TSInterfaceDeclaration, TSEnumDeclaration, FunctionDeclaration, ClassDeclaration, TSDeclareFunction, ExportNamedDeclaration[declaration.type=/^(TSTypeAliasDeclaration|TSInterfaceDeclaration|TSEnumDeclaration|FunctionDeclaration|ClassDeclaration|TSDeclareFunction)$/], ExportDefaultDeclaration[declaration.type=/^(FunctionDeclaration|ClassDeclaration|TSDeclareFunction)$/])"
 };
@@ -32,14 +32,14 @@ export default [
             "@stylistic": stylistic
         },
         rules: {
-            // 声明前后留空行，注释紧贴声明；重载签名与实现保持连续。
+            // 声明前后留空行，注释紧贴声明；重载签名与实现保持连续
             "@stylistic/padding-line-between-statements": [
                 "error",
                 { blankLine: "always", prev: "*", next: spacedDeclaration },
                 { blankLine: "always", prev: spacedDeclaration, next: "*" },
                 { blankLine: "any", prev: functionOverload, next: [functionOverload, functionDeclaration] }
             ],
-            // 仅以下划线明确标记有意未使用的绑定，避免将遗漏误认为可接受的死代码。
+            // 仅以下划线明确标记有意未使用的绑定，避免将遗漏误认为可接受的死代码
             "@typescript-eslint/no-unused-vars": [
                 "error",
                 {

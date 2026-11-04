@@ -198,9 +198,9 @@ export async function processHtmlImages(
 
                     downloadSuccess = true;
                     break;
-                } catch (e: any) {
+                } catch (error) {
                     // 如果是用户手动取消，直接中断重试，也不记录失败
-                    if (e.message === "User Aborted" || signal?.aborted) {
+                    if (signal?.aborted || (error instanceof Error && error.message === "User Aborted")) {
                         break;
                     }
                     // 如果还没到最后一次，等待后重试

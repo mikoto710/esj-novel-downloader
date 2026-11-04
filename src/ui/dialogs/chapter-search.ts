@@ -13,8 +13,14 @@ interface ChapterSearchOptions {
  */
 export interface ChapterSearchView {
     element: HTMLElement;
+    /**
+     * 刷新界面语言，保留输入与当前结果位置
+     */
     refresh(): void;
     close(): void;
+    /**
+     * 移除页面监听，旧结果不再触发目录跳转
+     */
     dispose(): void;
 }
 
@@ -135,7 +141,7 @@ export function createChapterSearchView(options: ChapterSearchOptions): ChapterS
         positionResults();
     };
 
-    // 展开后测量实际内容，在可用区域内定位下拉并滚动到当前结果。
+    // 展开后测量实际内容，在可用区域内定位下拉并滚动到当前结果
     function positionResults(): void {
         const bounds = root.getBoundingClientRect();
 
@@ -288,7 +294,6 @@ export function createChapterSearchView(options: ChapterSearchOptions): ChapterS
     window.addEventListener("blur", close);
     window.addEventListener("resize", close);
 
-    /** 刷新界面语言，保留输入与当前结果位置。 */
     function refresh(): void {
         if (disposed) {
             return;
@@ -303,7 +308,6 @@ export function createChapterSearchView(options: ChapterSearchOptions): ChapterS
         }
     }
 
-    /** 关闭后解除页面监听，旧结果不再触发目录跳转。 */
     function dispose(): void {
         disposed = true;
         close();

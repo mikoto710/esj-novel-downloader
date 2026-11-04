@@ -6,11 +6,17 @@ import { formatSelectionSummary, isPartialSelectionSummary } from "../messages/s
 
 interface DownloadHistoryTable {
     element: HTMLTableElement;
-    /** 只重建传入记录对应的表格正文，保留表头和列宽。 */
+    /**
+     * 只重建传入记录对应的表格正文，保留表头和列宽
+     */
     render(items: readonly DownloadHistoryItem[]): void;
-    /** 原地更新列标题，记录行由调用方按当前筛选重新渲染。 */
+    /**
+     * 原地更新列标题，记录行由调用方按当前筛选重新渲染
+     */
     refreshLocale(): void;
-    /** 结束当前列拖拽并移除列宽调整监听。 */
+    /**
+     * 结束当前列拖拽并移除列宽调整监听
+     */
     dispose(): void;
 }
 
@@ -166,6 +172,7 @@ function enableHistoryColumnResize(table: HTMLTableElement): () => void {
             if (event.button !== 0) {
                 return;
             }
+
             // 表格挂载后开始拖拽时测量，创建表格不读取布局尺寸
             const tableWidth = table.getBoundingClientRect().width;
             const columnWidths = headers.map((cell) => cell.getBoundingClientRect().width);
@@ -248,7 +255,7 @@ function createColumnHeader([key]: [Parameters<typeof t>[0], string], index: num
 }
 
 /**
- * 创建下载记录表格；行内删除只报告记录 ID，由外层处理存储和列表刷新。
+ * 创建下载记录表格；行内删除只报告记录 ID，由外层处理存储和列表刷新
  */
 export function createDownloadHistoryTable(onRemove: (id: string) => Promise<void>): DownloadHistoryTable {
     const tableBody = el("tbody");

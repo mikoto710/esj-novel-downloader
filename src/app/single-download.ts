@@ -190,14 +190,18 @@ export async function downloadCurrentPage(format: "txt" | "html" = "txt"): Promi
 
         log(t("single.log.completed", { format: format.toUpperCase() }));
         diagnosticResult = "success";
-    } catch (e: any) {
-        console.error(e);
+    } catch (error) {
+        console.error(error);
+        const failure = typeof error === "object" && error !== null ? error : null;
+        const code = failure && "name" in failure && typeof failure.name === "string" && failure.name;
+        const message = failure && "message" in failure && typeof failure.message === "string" && failure.message;
+        const detail = message || String(error);
         recordBrowserDiagnosticFailure(
             {
                 scope: "export",
                 stage: `single-${format}`,
-                code: e?.name || "single-export-failed",
-                message: e?.message || String(e),
+                code: code || "single-export-failed",
+                message: detail,
                 chapter: {
                     index: 0,
                     title: document.title.split(" - ")[0] || "未命名章节",
@@ -210,7 +214,7 @@ export async function downloadCurrentPage(format: "txt" | "html" = "txt"): Promi
             tone: "error",
             title: t("single.downloadFailed.title"),
             message: t("single.downloadFailed.message"),
-            details: e?.message || String(e)
+            details: detail
         });
     } finally {
         // 下载触发后历史写入失败不影响导出成功
@@ -290,7 +294,7 @@ async function prepareCurrentChapterImages(contentHtml: string, title: string, d
             );
         });
         log(t("single.log.imagesEmbedded", { count: processed.images.length }));
-    } catch (imgErr: any) {
+    } catch (imgErr) {
         imageFailureCount = (contentHtml.match(/<img\s/gi) || []).length;
         console.error(imgErr);
         if (imageFailureCount > 0) {

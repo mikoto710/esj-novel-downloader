@@ -11,6 +11,8 @@ This single file supplies the project workflow, ownership, verification selectio
 
 Inspect the request, current branch/commit, `git status --short`, scoped diff, `package.json`, and nearby source/tests. When latest source is requested, fetch the relevant remote and compare exact commits before assessing the skill or code. Preserve local changes before an authorized fast-forward; inspect divergence before choosing integration. Use the lockfile and CI runtime configuration; install missing/outdated dependencies with `npm ci`.
 
+Before editing or reviewing source code, tests, UI text, or hidden template prompts, read the contribution guide’s [代码与注释](../../../CONTRIBUTING.md#代码与注释) section. Check the final diff against that section before committing or reporting review findings.
+
 | Request                   | Work and completion                                                                                                                                                                                                                                                        |
 | ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Investigation or review   | Trace affected behavior and existing evidence. Report actionable findings with locations, triggers, and impact; distinguish static findings from reproduction. Run checks within the requested validation scope.                                                           |
@@ -45,7 +47,7 @@ New contribution branches start from the latest `dev`; continue an existing bran
 
 Types follow their rule owner: content in `src/content/model.ts`, cancellation/ports in `src/download/contracts.ts`, snapshots in `src/export/snapshot.ts`, formats in `src/export/filename.ts`, public cache models in `src/storage/cache/model.ts`; private schemas stay in persistence implementations. Generators consume passed data/resources; application workflows own collection, confirmation, file triggering, history, and diagnostics.
 
-Use existing dialogs and `src/ui/dialogs/common.ts`. `src/ui/popups.ts` is a view barrel; nodes/dragging/cleanup belong to `src/ui/dom.ts`. CSS uses `?inline` imports and Rollup's CSS pipeline, with readable watch output. Source and test explanatory comments use Chinese; test filenames and `describe`/`it` names use English. Use JSDoc for public responsibilities/contracts when needed, `//` for internal constraints/stages, and preserve necessary order/exit explanations. Group longer UI assembly by responsibility with short adjacent comments. Follow TypeScript, ESLint, and Prettier configuration.
+Use existing dialogs and `src/ui/dialogs/common.ts`. `src/ui/popups.ts` is a view barrel; nodes/dragging/cleanup belong to `src/ui/dom.ts`. CSS uses `?inline` imports and Rollup's CSS pipeline, with readable watch output.
 
 ## Preserve affected contracts
 

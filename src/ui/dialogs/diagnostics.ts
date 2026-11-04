@@ -224,7 +224,7 @@ export function createDiagnosticPopup(): void {
         detail.append(...createDiagnosticSessionDetail(view));
     };
 
-    // 按活动、待确认和最近记录分组，点击行后同步右侧详情。
+    // 按活动、待确认和最近记录分组，点击行后同步右侧详情
     function appendSessionSection(title: string, items: DiagnosticSessionView[]): void {
         if (items.length === 0) {
             return;

@@ -45,7 +45,9 @@ function sessionPresentationHint(view: DiagnosticSessionView): string | null {
     return null;
 }
 
-/** 创建会话选择行，由调用方持有选中状态并响应选择。 */
+/**
+ * 创建会话选择行，由调用方持有选中状态并响应选择
+ */
 export function createDiagnosticSessionRow(
     view: DiagnosticSessionView,
     selected: boolean,
@@ -80,7 +82,9 @@ export function createDiagnosticSessionRow(
     );
 }
 
-/** 根据传入会话创建详情内容；空选择保留空状态，按钮可用性由父对话框管理。 */
+/**
+ * 根据传入会话创建详情内容；空选择保留空状态，按钮可用性由父对话框管理
+ */
 export function createDiagnosticSessionDetail(view: DiagnosticSessionView | null): HTMLElement[] {
     if (!view) {
         return [el("div", { style: "padding:50px 12px;text-align:center;color:#777;" }, [t("diagnostics.empty")])];
@@ -90,7 +94,7 @@ export function createDiagnosticSessionDetail(view: DiagnosticSessionView | null
     const presentation = sessionResult(view);
     const presentationHint = sessionPresentationHint(view);
 
-    // 详情先显示结果及解释，再展示脱敏摘要和导出文件名。
+    // 详情先显示结果及解释，再展示脱敏摘要和导出文件名
     const title = el("div", { style: "font-size:18px;font-weight:bold;margin-bottom:6px;overflow-wrap:anywhere;" }, [
         bookTitle
     ]);
