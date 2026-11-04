@@ -14,7 +14,7 @@ import {
     type DiagnosticSessionView
 } from "../../diagnostics/manager";
 import { el, enableDrag, registerElementCleanup, removeElement } from "../dom";
-import { createCommonHeader } from "./common";
+import { createCommonHeader, showDecisionDialog } from "./common";
 import { subscribeInterfaceLocaleChange, t } from "../locale";
 import { acquirePageActionGroupLockForPopup } from "../page-action-lock";
 import { createDiagnosticSessionDetail, createDiagnosticSessionRow } from "./diagnostic-session-view";
@@ -26,14 +26,8 @@ function formatBytes(bytes: number): string {
     return bytes < 1024 * 1024 ? `${Math.round(bytes / 1024)} KiB` : `${(bytes / (1024 * 1024)).toFixed(1)} MiB`;
 }
 
-function showClearConfirm(): Promise<boolean> {
-    document.querySelector("#esj-diagnostic-clear-confirm")?.remove();
-
-    return new Promise((resolve) => {
-        const finish = (confirmed: boolean) => {
-            confirmPopup.remove();
-            resolve(confirmed);
-        };
+function showClearConfirm(owner: HTMLElement): Promise<boolean> {
+    return showDecisionDialog({ dismissed: false, owner, focus: "#esj-diagnostic-clear-cancel" }, (finish) => {
         const header = createCommonHeader(t("diagnostics.confirm.title"), () => finish(false));
         const message = el("div", { style: "padding:16px;font-size:15px;line-height:1.7;color:#333;" }, [
             t("diagnostics.confirm.message")
@@ -60,7 +54,7 @@ function showClearConfirm(): Promise<boolean> {
             cancelButton,
             confirmButton
         ]);
-        const confirmPopup = el(
+        return el(
             "div",
             {
                 id: "esj-diagnostic-clear-confirm",
@@ -70,9 +64,6 @@ function showClearConfirm(): Promise<boolean> {
             },
             [header, message, actions]
         );
-        document.body.appendChild(confirmPopup);
-        enableDrag(confirmPopup, ".esj-common-header");
-        (confirmPopup.querySelector("#esj-diagnostic-clear-cancel") as HTMLButtonElement).focus();
     });
 }
 
@@ -100,7 +91,6 @@ export function createDiagnosticPopup(): void {
         }
         document.removeEventListener("visibilitychange", onVisibilityChange);
         stopLocaleRefresh();
-        document.querySelector("#esj-diagnostic-clear-confirm")?.remove();
         if (disposeActiveDiagnosticPopup === dispose) {
             disposeActiveDiagnosticPopup = null;
         }
@@ -167,7 +157,7 @@ export function createDiagnosticPopup(): void {
             id: "esj-diagnostic-clear",
             style: `${buttonStyle}background:#fff;color:#c62828;border-color:#d9534f;`,
             onclick: async () => {
-                if (!(await showClearConfirm())) {
+                if (!(await showClearConfirm(popup))) {
                     return;
                 }
                 clearBrowserDiagnosticSessions();

@@ -382,16 +382,21 @@ describe("full-book export recovery contracts", () => {
         await vi.waitFor(() => expect(mocks.addDownloadHistory).toHaveBeenCalledOnce());
     });
 
+    it("releases the replaced EPUB confirmation and exports the confirmed HTML", async () => {
+        await prepareExportPopup(createMappedBook());
+
+        click("#esj-epub");
+        click("#esj-html");
+        await vi.waitFor(() => expect((document.querySelector("#esj-epub") as HTMLButtonElement).disabled).toBe(false));
+        click("#esj-mapping-export-continue");
+
+        await vi.waitFor(() => expect(mocks.triggerDownload).toHaveBeenCalledOnce());
+        expect(mocks.triggerDownload).toHaveBeenCalledWith(expect.any(Blob), "测试小说.html");
+        expect(mocks.buildEpub).not.toHaveBeenCalled();
+    });
+
     it("restores mapped EPUB controls after confirmation is cancelled", async () => {
-        const mappedChapter = createChapter(0, {
-            mappingFont: {
-                family: "1",
-                blob: new Blob([new Uint8Array(64)], { type: "font/woff2" }),
-                mediaType: "font/woff2",
-                sha256: "a".repeat(64)
-            }
-        });
-        const source = createCachedData({ chapters: [mappedChapter] });
+        const source = createMappedBook();
         source.exportContext!.taskId = "mapped-cancel";
         await prepareExportPopup(source);
         const diagnostics = await import("../../src/diagnostics/runtime");
@@ -421,6 +426,18 @@ describe("full-book export recovery contracts", () => {
         expect(mocks.buildEpub).toHaveBeenCalledOnce();
     });
 });
+
+function createMappedBook() {
+    const mappedChapter = createChapter(0, {
+        mappingFont: {
+            family: "1",
+            blob: new Blob([new Uint8Array(64)], { type: "font/woff2" }),
+            mediaType: "font/woff2",
+            sha256: "a".repeat(64)
+        }
+    });
+    return createCachedData({ chapters: [mappedChapter] });
+}
 
 async function prepareExportPopup(data = createCachedData()) {
     const [{ state }, { showFormatChoice }] = await Promise.all([

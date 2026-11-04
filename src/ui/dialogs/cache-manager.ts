@@ -11,6 +11,7 @@ import { log } from "../../ui/log-view";
 import { showMessagePopup } from "./message";
 import { bindInterfaceAttribute, subscribeInterfaceLocaleChange, t } from "../locale";
 import { acquirePageActionGroupLockForPopup } from "../page-action-lock";
+import { showDecisionDialog } from "./common";
 
 let disposeActiveCacheManagerSynchronizer: (() => void) | null = null;
 
@@ -97,16 +98,12 @@ function createActionButton(
 }
 
 // 确认缓存清理操作，关闭视为取消
-function showCacheConfirm(options: { title?: string; message: string; danger?: boolean }): Promise<boolean> {
-    document.querySelector("#esj-cache-confirm")?.remove();
-
-    return new Promise((resolve) => {
-        const cleanup = (result: boolean) => {
-            popup.remove();
-            resolve(result);
-        };
-
-        const header = createHeader(options.title || t("cache.confirm.title"), () => cleanup(false));
+function showCacheConfirm(
+    owner: HTMLElement,
+    options: { title?: string; message: string; danger?: boolean }
+): Promise<boolean> {
+    return showDecisionDialog({ dismissed: false, owner }, (finish) => {
+        const header = createHeader(options.title || t("cache.confirm.title"), () => finish(false));
 
         const body = el("div", { style: "padding:16px;font-size:14px;line-height:1.7;color:#333;" }, [options.message]);
 
@@ -115,7 +112,7 @@ function showCacheConfirm(options: { title?: string; message: string; danger?: b
             {
                 id: "esj-cache-confirm-cancel",
                 style: "padding:8px 12px;background:#eee;border:1px solid #ccc;border-radius:6px;cursor:pointer;",
-                onclick: () => cleanup(false)
+                onclick: () => finish(false)
             },
             [t("common.cancel")]
         );
@@ -127,7 +124,7 @@ function showCacheConfirm(options: { title?: string; message: string; danger?: b
                 style: `padding:8px 12px;${
                     options.danger ? "background:#d9534f;" : "background:#2b9bd7;"
                 }color:#fff;border:none;border-radius:6px;cursor:pointer;`,
-                onclick: () => cleanup(true)
+                onclick: () => finish(true)
             },
             [t("cache.action.clear")]
         );
@@ -140,7 +137,7 @@ function showCacheConfirm(options: { title?: string; message: string; danger?: b
             [btnCancel, btnOk]
         );
 
-        const popup = el(
+        return el(
             "div",
             {
                 id: "esj-cache-confirm",
@@ -148,46 +145,33 @@ function showCacheConfirm(options: { title?: string; message: string; danger?: b
             },
             [header, body, footer]
         );
-
-        document.body.appendChild(popup);
-        enableDrag(popup, ".esj-common-header");
     });
 }
 
 // 展示活动任务保护或清理结果，等待用户关闭
-function showCacheProtectionNotice(message: string): Promise<void> {
-    document.querySelector("#esj-cache-protection-notice")?.remove();
-
-    return new Promise((resolve) => {
-        const cleanup = () => {
-            popup.remove();
-            resolve();
-        };
-
-        const popup = el(
+function showCacheProtectionNotice(owner: HTMLElement, message: string): Promise<void> {
+    return showDecisionDialog<void>({ dismissed: undefined, owner }, (finish) => {
+        return el(
             "div",
             {
                 id: "esj-cache-protection-notice",
                 style: "position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:380px;background:#fff;border:1px solid #aaa;border-radius:8px;box-shadow:0 0 18px rgba(0,0,0,0.28);z-index:1000000;display:flex;flex-direction:column;"
             },
             [
-                createHeader(t("cache.protection.title"), cleanup),
+                createHeader(t("cache.protection.title"), () => finish()),
                 el("div", { style: "padding:16px;font-size:14px;line-height:1.7;color:#333;" }, [message]),
                 el("div", { style: "padding:12px;display:flex;justify-content:flex-end;" }, [
                     el(
                         "button",
                         {
                             style: "padding:8px 12px;background:#eee;border:1px solid #ccc;border-radius:6px;cursor:pointer;",
-                            onclick: cleanup
+                            onclick: () => finish()
                         },
                         [t("common.close")]
                     )
                 ])
             ]
         );
-
-        document.body.appendChild(popup);
-        enableDrag(popup, ".esj-common-header");
     });
 }
 
@@ -196,7 +180,6 @@ function showCacheProtectionNotice(message: string): Promise<void> {
  */
 export function createCacheManagerPopup(): void {
     removeElement(document.querySelector("#esj-cache-manager"));
-    removeElement(document.querySelector("#esj-cache-confirm"));
     disposeActiveCacheManagerSynchronizer?.();
 
     let stopSynchronizing: () => void = () => {};
@@ -222,7 +205,6 @@ export function createCacheManagerPopup(): void {
     };
 
     const closeAction = () => {
-        removeElement(document.querySelector("#esj-cache-confirm"));
         removeElement(popup);
     };
 
@@ -248,7 +230,7 @@ export function createCacheManagerPopup(): void {
 
     // 两种清理范围共用确认、失败与保护项反馈；活动任务的实际保护只在应用层
     async function clearCaches(includeRuntime: boolean): Promise<void> {
-        const confirmed = await showCacheConfirm({
+        const confirmed = await showCacheConfirm(popup, {
             title: `🗑️ ${t("cache.action.clear")}${t("common.confirm")}`,
             message: t(includeRuntime ? "cache.confirm.clearAll" : "cache.confirm.clearPersistent"),
             danger: true
@@ -264,7 +246,10 @@ export function createCacheManagerPopup(): void {
             return;
         }
         if (result.protectedBookIds.length > 0) {
-            await showCacheProtectionNotice(t("cache.protectedCount", { count: result.protectedBookIds.length }));
+            await showCacheProtectionNotice(
+                popup,
+                t("cache.protectedCount", { count: result.protectedBookIds.length })
+            );
         }
         log(t("cache.log.clearCompleted"));
         await renderList();
@@ -312,7 +297,7 @@ export function createCacheManagerPopup(): void {
         }
 
         items.forEach((item) => {
-            listBox.appendChild(createCacheItem(item, renderList));
+            listBox.appendChild(createCacheItem(item, popup, renderList));
         });
     }
 
@@ -354,10 +339,10 @@ export function createCacheManagerPopup(): void {
 }
 
 // 按缓存来源和任务状态组装书籍卡片及可用操作
-function createCacheItem(item: CacheListItem, rerender: () => Promise<void>): HTMLElement {
+function createCacheItem(item: CacheListItem, popup: HTMLElement, rerender: () => Promise<void>): HTMLElement {
     const badges = createCacheItemBadges(item);
     const progressTrack = createCacheItemProgress(item);
-    const actions = createCacheItemActions(item, rerender);
+    const actions = createCacheItemActions(item, popup, rerender);
 
     // 卡片按书籍信息、缓存章节数、状态徽标、进度和操作排列
     const title = el("div", { style: "font-weight:bold;color:#333;word-break:break-word;" }, [item.bookName]);
@@ -441,14 +426,14 @@ function createCacheItemProgress(item: CacheListItem): HTMLElement {
     );
 }
 
-function createCacheItemActions(item: CacheListItem, rerender: () => Promise<void>): HTMLElement {
+function createCacheItemActions(item: CacheListItem, popup: HTMLElement, rerender: () => Promise<void>): HTMLElement {
     async function clearItem(source: "indexeddb" | "runtime" | "all"): Promise<void> {
         const messageKeys = {
             indexeddb: "cache.confirm.clearIndexedDb",
             runtime: "cache.confirm.clearRuntime",
             all: "cache.confirm.clearItemAll"
         } as const;
-        const confirmed = await showCacheConfirm({
+        const confirmed = await showCacheConfirm(popup, {
             title: `🗑️ ${t("cache.action.clear")}${t("common.confirm")}`,
             message: t(messageKeys[source], { book: item.bookName }),
             danger: true
@@ -458,7 +443,7 @@ function createCacheItemActions(item: CacheListItem, rerender: () => Promise<voi
         }
         const result = await clearManagedCache(item.bookId, source);
         if (result.protectedBookIds.length > 0) {
-            await showCacheProtectionNotice(t("cache.protected"));
+            await showCacheProtectionNotice(popup, t("cache.protected"));
         } else {
             log(t("cache.log.cleared", { book: item.bookName }));
         }
@@ -466,7 +451,7 @@ function createCacheItemActions(item: CacheListItem, rerender: () => Promise<voi
     }
 
     async function stopAndClearItem(): Promise<void> {
-        const confirmed = await showCacheConfirm({
+        const confirmed = await showCacheConfirm(popup, {
             title: `🛑 ${t("cache.action.stopClear")}`,
             message: t("cache.confirm.stopClear", { book: item.bookName }),
             danger: true
@@ -485,7 +470,7 @@ function createCacheItemActions(item: CacheListItem, rerender: () => Promise<voi
             stale: t("cache.stop.stale"),
             timeout: t("cache.stop.timeout")
         };
-        await showCacheProtectionNotice(resultMessage[result.status]);
+        await showCacheProtectionNotice(popup, resultMessage[result.status]);
         await rerender();
     }
 

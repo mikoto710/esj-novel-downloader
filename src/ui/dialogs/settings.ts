@@ -16,7 +16,7 @@ import { fullCleanup, enableDrag, el, removeElement } from "../dom";
 import { log } from "../../ui/log-view";
 import { bindInterfaceAttribute, bindInterfaceText, publishInterfaceLocaleChange, t } from "../locale";
 import { acquirePageActionGroupLockForPopup } from "../page-action-lock";
-import { createCommonHeader } from "./common";
+import { createCommonHeader, showDecisionDialog } from "./common";
 import { createCacheManagerPopup } from "./cache-manager";
 import { createDownloadHistoryPopup } from "./download-history";
 import { createDiagnosticPopup } from "./diagnostics";
@@ -40,20 +40,10 @@ function saveSettingsChange(save: () => void, restore: () => void): boolean {
     }
 }
 
-function confirmImageSettingChange(activeTaskCount: number): Promise<boolean> {
-    document.querySelector("#esj-image-setting-task-confirm")?.remove();
-
-    return new Promise((resolve) => {
-        let settled = false;
-        const finish = (confirmed: boolean) => {
-            if (settled) {
-                return;
-            }
-            settled = true;
-            popup.remove();
-            resolve(confirmed);
-        };
-        const popup = el(
+function confirmImageSettingChange(activeTaskCount: number, owner: Element): Promise<boolean> {
+    const options = { dismissed: false, owner, focus: "#esj-image-setting-task-confirm-cancel" };
+    return showDecisionDialog(options, (finish) => {
+        return el(
             "div",
             {
                 id: "esj-image-setting-task-confirm",
@@ -88,9 +78,6 @@ function confirmImageSettingChange(activeTaskCount: number): Promise<boolean> {
                 ])
             ]
         );
-        document.body.appendChild(popup);
-        enableDrag(popup, ".esj-common-header");
-        (popup.querySelector("#esj-image-setting-task-confirm-cancel") as HTMLButtonElement | null)?.focus();
     });
 }
 
@@ -236,7 +223,11 @@ function createImageDownloadRow(initiallyEnabled: boolean): HTMLElement {
             previous = getImageDownloadSetting();
             isImageEnabled = previous;
             const activeTasks = await listActiveBookDownloadLocks();
-            if (activeTasks.length > 0 && !(await confirmImageSettingChange(activeTasks.length))) {
+            const panel = input.closest("#esj-settings");
+            if (
+                !panel?.isConnected ||
+                (activeTasks.length > 0 && !(await confirmImageSettingChange(activeTasks.length, panel)))
+            ) {
                 input.checked = previous;
                 return;
             }

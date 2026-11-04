@@ -51,6 +51,17 @@ describe("protected chapter password UI", () => {
         expect(document.querySelector("#esj-protected-chapter")).toBeNull();
     });
 
+    it("cancels the replaced prompt and ignores its late abort while the next prompt is open", async () => {
+        const controller = new AbortController();
+        const first = prompt(controller.signal);
+        const second = prompt();
+        controller.abort();
+
+        (document.querySelector("#esj-protected-skip") as HTMLButtonElement).click();
+        await expect(second).resolves.toEqual({ action: "skip-current" });
+        await expect(first).resolves.toEqual({ action: "cancel" });
+    });
+
     it("keeps cancellation active while an authorization request is pending", async () => {
         const cancelTask = vi.fn();
         const decision = promptProtectedChapterPassword(

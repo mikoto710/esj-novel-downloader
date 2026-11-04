@@ -20,6 +20,14 @@ describe("mapping font confirmation cancellation", () => {
 });
 
 describe("incomplete chapter decision cancellation", () => {
+    it("cancels the decision if its dialog is removed externally", async () => {
+        const decision = confirmIncompleteChapters({ missingTasks: [createDownloadTask()], totalChapters: 1 });
+
+        document.querySelector("#esj-incomplete-chapters")!.remove();
+
+        await expect(decision).resolves.toBe("cancel");
+    });
+
     it("closes as cancellation when the download signal aborts", async () => {
         const controller = new AbortController();
         const decision = confirmIncompleteChapters(

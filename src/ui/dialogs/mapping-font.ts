@@ -1,7 +1,7 @@
 import type { MappingFontDetection, MappingFontFailure, MappingFontSummary } from "../../download/contracts";
-import { enableDrag, el } from "../dom";
+import { el } from "../dom";
 import { showMessagePopup } from "./message";
-import { createCommonHeader } from "./common";
+import { createCommonHeader, showDecisionDialog } from "./common";
 import { t } from "../locale";
 import { formatMappingFontError } from "../messages/mapping-font";
 
@@ -40,22 +40,7 @@ export function updateMappingFontWarning(summary: MappingFontSummary): void {
  * 首次检测到映射正文后要求用户明确同意，关闭弹窗等同停止下载
  */
 export function confirmMappingFontDownload(detection: MappingFontDetection, signal?: AbortSignal): Promise<boolean> {
-    document.querySelector("#esj-mapping-confirm")?.remove();
-    if (signal?.aborted) {
-        return Promise.resolve(false);
-    }
-    return new Promise<boolean>((resolve) => {
-        let settled = false;
-        const finish = (confirmed: boolean) => {
-            if (settled) {
-                return;
-            }
-            settled = true;
-            signal?.removeEventListener("abort", onAbort);
-            popup.remove();
-            resolve(confirmed);
-        };
-        const onAbort = () => finish(false);
+    return showDecisionDialog({ dismissed: false, signal, focus: "#esj-mapping-continue" }, (finish) => {
         const header = createCommonHeader(t("mapping.detected.title"), () => finish(false));
 
         // 说明字体限制和当前并发请求情况，用户在底部决定是否继续
@@ -101,7 +86,7 @@ export function confirmMappingFontDownload(detection: MappingFontDetection, sign
                 [t("mapping.continue")]
             )
         ]);
-        const popup = el(
+        return el(
             "div",
             {
                 id: "esj-mapping-confirm",
@@ -111,10 +96,6 @@ export function confirmMappingFontDownload(detection: MappingFontDetection, sign
             },
             [header, body, footer]
         );
-        document.body.appendChild(popup);
-        enableDrag(popup, ".esj-common-header");
-        (popup.querySelector("#esj-mapping-continue") as HTMLButtonElement | null)?.focus();
-        signal?.addEventListener("abort", onAbort, { once: true });
     });
 }
 
@@ -138,21 +119,14 @@ export function showMappingFontFailure(failures: readonly MappingFontFailure[]):
 /**
  * 在 EPUB 或 HTML 导出前提示映射字型嵌入信息，关闭弹窗或选择返回时解析为 false
  */
-export function confirmMappingFontExport(format: "EPUB" | "HTML", summary: MappingFontSummary): Promise<boolean> {
-    document.querySelector("#esj-mapping-export-confirm")?.remove();
-    return new Promise<boolean>((resolve) => {
-        let settled = false;
-        const finish = (confirmed: boolean) => {
-            if (settled) {
-                return;
-            }
-            settled = true;
-            popup.remove();
-            resolve(confirmed);
-        };
-
+export function confirmMappingFontExport(
+    format: "EPUB" | "HTML",
+    summary: MappingFontSummary,
+    owner?: Element
+): Promise<boolean> {
+    return showDecisionDialog({ dismissed: false, owner, focus: "#esj-mapping-export-continue" }, (finish) => {
         // 导出确认只影响本次格式生成，不重新开始下载任务
-        const popup = el(
+        return el(
             "div",
             {
                 id: "esj-mapping-export-confirm",
@@ -190,8 +164,5 @@ export function confirmMappingFontExport(format: "EPUB" | "HTML", summary: Mappi
                 ])
             ]
         );
-        document.body.appendChild(popup);
-        enableDrag(popup, ".esj-common-header");
-        (popup.querySelector("#esj-mapping-export-continue") as HTMLButtonElement | null)?.focus();
     });
 }

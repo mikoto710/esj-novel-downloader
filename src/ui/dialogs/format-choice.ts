@@ -249,7 +249,8 @@ export function showFormatChoice(data: CachedData): void {
         try {
             button.disabled = true;
             await exportBookRich(data, format, {
-                confirm: (format, summary) => confirmMappingFontExport(format === "epub" ? "EPUB" : "HTML", summary),
+                confirm: (format, summary) =>
+                    confirmMappingFontExport(format === "epub" ? "EPUB" : "HTML", summary, popup),
                 generating: (format) => {
                     button.textContent = t("export.generating");
                     if (format === "epub") {

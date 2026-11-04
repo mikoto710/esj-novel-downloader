@@ -3,18 +3,15 @@ import type {
     ProtectedChapterPrompt,
     ProtectedChapterPromptMessageCode
 } from "../../download/contracts";
-import { enableDrag, el } from "../dom";
+import { enableDrag, el, registerElementCleanup, removeElement } from "../dom";
 import { createCommonHeader } from "./common";
 import { subscribeInterfaceLocaleChange, t } from "../locale";
-
-let disposeActiveProtectedPromptLocaleRefresh: (() => void) | null = null;
 
 /**
  * 关闭已打开的密码章节弹窗并释放其语言切换订阅
  */
 export function closeProtectedChapterPrompt(): void {
-    disposeActiveProtectedPromptLocaleRefresh?.();
-    document.querySelector("#esj-protected-chapter")?.remove();
+    removeElement(document.getElementById("esj-protected-chapter"));
 }
 
 /**
@@ -88,10 +85,7 @@ export function promptProtectedChapterPassword(
     signal?: AbortSignal,
     cancelTask?: () => void
 ): Promise<ProtectedChapterDecision> {
-    disposeActiveProtectedPromptLocaleRefresh?.();
-    const existingPopup = document.querySelector("#esj-protected-chapter") as HTMLElement | null;
     if (signal?.aborted) {
-        closeProtectedChapterPrompt();
         return Promise.resolve({ action: "cancel" });
     }
 
@@ -100,35 +94,23 @@ export function promptProtectedChapterPassword(
     const decision = new Promise<ProtectedChapterDecision>((resolve) => {
         resolveDecision = resolve;
     });
-    let settled = false;
-    let mountedPopup: HTMLElement;
-    let disposeLocaleRefresh = () => {};
 
-    function finish(decision: ProtectedChapterDecision, keepOpen = false): void {
-        if (settled) {
-            return;
-        }
-        settled = true;
-        if (!keepOpen) {
-            signal?.removeEventListener("abort", onAbort);
-            disposeLocaleRefresh();
-            mountedPopup.remove();
-        }
+    function finish(decision: ProtectedChapterDecision): void {
         resolveDecision(decision);
+        if (decision.action !== "submit") {
+            removeElement(popup);
+        }
     }
 
-    const onAbort = () => {
-        finish({ action: "cancel" });
-        disposeLocaleRefresh();
-        mountedPopup.remove();
-    };
+    const onAbort = () => removeElement(popup);
     const finishOrNotify = (
         decision: Extract<ProtectedChapterDecision, { action: "skip-current" | "skip-all" | "cancel" }>
     ) => {
+        if (!popup.isConnected) {
+            return;
+        }
         if (decision.action === "cancel") {
             cancelTask?.();
-            onAbort();
-            return;
         }
         finish(decision);
     };
@@ -154,16 +136,19 @@ export function promptProtectedChapterPassword(
     }) as HTMLInputElement;
 
     function submitPassword(): void {
+        if (!popup.isConnected || passwordInput.disabled) {
+            return;
+        }
         const password = passwordInput.value;
         if (!password) {
-            mountedPopup.dataset.esjProtectedMessageState = "required";
+            popup.dataset.esjProtectedMessageState = "required";
             error.textContent = t("protected.passwordRequired");
             error.style.color = "#c62828";
             passwordInput.focus();
             return;
         }
         setProtectedChapterPromptBusy();
-        finish({ action: "submit", password, rememberPassword: remember.checked }, true);
+        finish({ action: "submit", password, rememberPassword: remember.checked });
     }
 
     passwordInput.onkeydown = (event) => {
@@ -265,25 +250,24 @@ export function promptProtectedChapterPassword(
         [header, body, footer]
     );
 
-    // 重试更新内容和回调，保留原窗口位置
-    if (existingPopup) {
-        existingPopup.replaceChildren(...Array.from(popup.childNodes));
-        mountedPopup = existingPopup;
-    } else {
-        document.body.appendChild(popup);
-        mountedPopup = popup;
+    // 重试沿用窗口位置，每次提示独立持有决策、信号监听和语言订阅
+    const previous = document.getElementById("esj-protected-chapter");
+    if (previous) {
+        popup.style.cssText = previous.style.cssText;
+        removeElement(previous);
     }
-    mountedPopup.dataset.esjProtectedMessageState = "prompt";
+    document.body.appendChild(popup);
+    popup.dataset.esjProtectedMessageState = "prompt";
 
     function refreshPromptText(): void {
-        const headerLabel = mountedPopup.querySelector(".esj-common-header span");
-        const position = mountedPopup.querySelector("#esj-protected-position");
-        const openChapter = mountedPopup.querySelector("#esj-protected-open-chapter");
-        const rememberLabel = mountedPopup.querySelector("#esj-protected-remember-label");
-        const cancel = mountedPopup.querySelector("#esj-protected-cancel");
-        const skipAll = mountedPopup.querySelector("#esj-protected-skip-all");
-        const skip = mountedPopup.querySelector("#esj-protected-skip");
-        const submitButton = mountedPopup.querySelector("#esj-protected-submit") as HTMLButtonElement | null;
+        const headerLabel = popup.querySelector(".esj-common-header span");
+        const position = popup.querySelector("#esj-protected-position");
+        const openChapter = popup.querySelector("#esj-protected-open-chapter");
+        const rememberLabel = popup.querySelector("#esj-protected-remember-label");
+        const cancel = popup.querySelector("#esj-protected-cancel");
+        const skipAll = popup.querySelector("#esj-protected-skip-all");
+        const skip = popup.querySelector("#esj-protected-skip");
+        const submitButton = popup.querySelector("#esj-protected-submit") as HTMLButtonElement | null;
         if (headerLabel) {
             headerLabel.textContent = t("protected.required");
         }
@@ -313,7 +297,7 @@ export function promptProtectedChapterPassword(
         if (skip) {
             skip.textContent = t("download.action.skipChapter");
         }
-        const messageState = mountedPopup.dataset.esjProtectedMessageState;
+        const messageState = popup.dataset.esjProtectedMessageState;
         if (submitButton) {
             submitButton.textContent = t(
                 messageState === "busy"
@@ -332,23 +316,14 @@ export function promptProtectedChapterPassword(
         }
     }
 
-    const unsubscribeLocale = subscribeInterfaceLocaleChange(() => {
-        if (!mountedPopup.isConnected) {
-            disposeLocaleRefresh();
-            return;
-        }
-        refreshPromptText();
-    });
-    disposeLocaleRefresh = () => {
-        unsubscribeLocale();
+    const unsubscribeLocale = subscribeInterfaceLocaleChange(refreshPromptText);
+    registerElementCleanup(popup, () => {
         signal?.removeEventListener("abort", onAbort);
-        if (disposeActiveProtectedPromptLocaleRefresh === disposeLocaleRefresh) {
-            disposeActiveProtectedPromptLocaleRefresh = null;
-        }
-    };
-    disposeActiveProtectedPromptLocaleRefresh = disposeLocaleRefresh;
-    enableDrag(mountedPopup, ".esj-common-header");
-    passwordInput.focus();
+        unsubscribeLocale();
+        resolveDecision({ action: "cancel" });
+    });
     signal?.addEventListener("abort", onAbort, { once: true });
+    enableDrag(popup, ".esj-common-header");
+    passwordInput.focus();
     return decision;
 }

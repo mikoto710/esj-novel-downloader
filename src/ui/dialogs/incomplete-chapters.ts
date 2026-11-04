@@ -1,6 +1,6 @@
 import type { IncompleteChapterDecision, IncompleteChapterDetection } from "../../download/contracts";
-import { enableDrag, el } from "../dom";
-import { createCommonHeader } from "./common";
+import { el } from "../dom";
+import { createCommonHeader, showDecisionDialog } from "./common";
 import { t } from "../locale";
 
 /**
@@ -10,15 +10,8 @@ export function confirmIncompleteChapters(
     detection: IncompleteChapterDetection,
     signal?: AbortSignal
 ): Promise<IncompleteChapterDecision> {
-    document.querySelector("#esj-incomplete-chapters")?.remove();
-    if (signal?.aborted) {
-        return Promise.resolve("cancel");
-    }
-
-    return new Promise<IncompleteChapterDecision>((resolve) => {
-        let settled = false;
-        const abortListener = () => finish("cancel");
-
+    const options = { dismissed: "cancel" as const, signal, focus: "#esj-incomplete-retry" };
+    return showDecisionDialog<IncompleteChapterDecision>(options, (finish) => {
         // 只预览前十条缺章，范围任务同时标明本次位置和原书章序
         const preview = detection.missingTasks.slice(0, 10).map((task) =>
             el("li", { style: "margin-bottom:8px;" }, [
@@ -92,7 +85,7 @@ export function confirmIncompleteChapters(
             [cancelButton, exportButton, retryButton]
         );
 
-        const popup = el(
+        return el(
             "div",
             {
                 id: "esj-incomplete-chapters",
@@ -102,18 +95,5 @@ export function confirmIncompleteChapters(
             },
             [header, body, footer]
         );
-        const finish = (decision: IncompleteChapterDecision) => {
-            if (settled) {
-                return;
-            }
-            settled = true;
-            signal?.removeEventListener("abort", abortListener);
-            popup.remove();
-            resolve(decision);
-        };
-        signal?.addEventListener("abort", abortListener, { once: true });
-        document.body.appendChild(popup);
-        enableDrag(popup, ".esj-common-header");
-        (popup.querySelector("#esj-incomplete-retry") as HTMLButtonElement | null)?.focus();
     });
 }

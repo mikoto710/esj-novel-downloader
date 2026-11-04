@@ -46,7 +46,10 @@ describe("image setting cache contracts", () => {
         expect(document.querySelector("#esj-image-cache-confirm")).toBeNull();
     });
 
-    it("warns about active book tasks and preserves the setting when cancelled", async () => {
+    it.each([
+        ["cancelled", "#esj-image-setting-task-confirm-cancel"],
+        ["closed with its settings panel", "#esj-settings .esj-common-header button"]
+    ])("releases the pending image setting change when %s", async (_case, closeSelector) => {
         listActiveBookDownloadLocks.mockResolvedValue([{ bookId: "701" }, { bookId: "702" }]);
         const { createSettingsPanel } = await import("../../src/ui/popups");
         createSettingsPanel();
@@ -56,9 +59,10 @@ describe("image setting cache contracts", () => {
         imageSetting.dispatchEvent(new Event("change", { bubbles: true }));
 
         await vi.waitFor(() => expect(document.querySelector("#esj-image-setting-task-confirm")).not.toBeNull());
-        (document.querySelector("#esj-image-setting-task-confirm-cancel") as HTMLButtonElement).click();
+        (document.querySelector(closeSelector) as HTMLButtonElement).click();
 
         await vi.waitFor(() => expect(document.querySelector("#esj-image-setting-task-confirm")).toBeNull());
+        expect(imageSetting.disabled).toBe(false);
         expect(imageSetting.checked).toBe(false);
         expect(GM_getValue("enable_image_download", false)).toBe(false);
     });

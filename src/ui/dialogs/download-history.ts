@@ -10,6 +10,7 @@ import type { DownloadHistoryItem } from "../../storage/history";
 import { el, enableDrag, registerElementCleanup, removeElement } from "../dom";
 import { subscribeInterfaceLocaleChange, t } from "../locale";
 import { acquirePageActionGroupLockForPopup } from "../page-action-lock";
+import { showDecisionDialog } from "./common";
 import { createDownloadHistoryTable } from "./download-history-table";
 
 let disposeActiveHistoryPopup: (() => void) | null = null;
@@ -19,14 +20,8 @@ function selectOptions(values: Array<[string, string]>): HTMLElement[] {
 }
 
 // 确认清空全部下载记录，关闭视为取消
-function showHistoryClearConfirm(): Promise<boolean> {
-    document.querySelector("#esj-download-history-confirm")?.remove();
-
-    return new Promise((resolve) => {
-        const cleanup = (confirmed: boolean) => {
-            popup.remove();
-            resolve(confirmed);
-        };
+function showHistoryClearConfirm(owner: HTMLElement): Promise<boolean> {
+    return showDecisionDialog({ dismissed: false, owner }, (finish) => {
         const header = el(
             "div",
             {
@@ -40,7 +35,7 @@ function showHistoryClearConfirm(): Promise<boolean> {
                     {
                         title: t("common.close"),
                         style: "border:none;background:#ef5350;color:#fff;padding:4px 10px;border-radius:6px;cursor:pointer;font-weight:bold;",
-                        onclick: () => cleanup(false)
+                        onclick: () => finish(false)
                     },
                     ["✕"]
                 )
@@ -50,7 +45,7 @@ function showHistoryClearConfirm(): Promise<boolean> {
             "button",
             {
                 style: "padding:8px 12px;background:#eee;border:1px solid #ccc;border-radius:6px;cursor:pointer;",
-                onclick: () => cleanup(false)
+                onclick: () => finish(false)
             },
             [t("common.cancel")]
         );
@@ -58,11 +53,11 @@ function showHistoryClearConfirm(): Promise<boolean> {
             "button",
             {
                 style: "padding:8px 12px;background:#d9534f;color:#fff;border:none;border-radius:6px;cursor:pointer;",
-                onclick: () => cleanup(true)
+                onclick: () => finish(true)
             },
             [t("history.action.clear")]
         );
-        const popup = el(
+        return el(
             "div",
             {
                 id: "esj-download-history-confirm",
@@ -79,8 +74,6 @@ function showHistoryClearConfirm(): Promise<boolean> {
                 ])
             ]
         );
-        document.body.appendChild(popup);
-        enableDrag(popup, ".esj-common-header");
     });
 }
 
@@ -89,7 +82,6 @@ function showHistoryClearConfirm(): Promise<boolean> {
  */
 export function createDownloadHistoryPopup(): void {
     removeElement(document.querySelector("#esj-download-history"));
-    removeElement(document.querySelector("#esj-download-history-confirm"));
     disposeActiveHistoryPopup?.();
     let disposeLocaleRefresh: () => void = () => undefined;
     let disposed = false;
@@ -103,7 +95,6 @@ export function createDownloadHistoryPopup(): void {
         historyTable.dispose();
         if (disposeActiveHistoryPopup === dispose) {
             disposeActiveHistoryPopup = null;
-            removeElement(document.querySelector("#esj-download-history-confirm"));
         }
     }
 
@@ -179,7 +170,7 @@ export function createDownloadHistoryPopup(): void {
     }
 
     async function clearHistory(): Promise<void> {
-        const confirmed = await showHistoryClearConfirm();
+        const confirmed = await showHistoryClearConfirm(popup);
         if (!confirmed) {
             return;
         }
