@@ -132,6 +132,11 @@ export function createChapterSearchView(options: ChapterSearchOptions): ChapterS
         popup.removeAttribute("data-compact");
         popup.hidden = false;
         input.setAttribute("aria-expanded", "true");
+        positionResults();
+    };
+
+    // 展开后测量实际内容，在可用区域内定位下拉并滚动到当前结果。
+    function positionResults(): void {
         const bounds = root.getBoundingClientRect();
 
         // 下拉可以覆盖目录，但不能挡住弹窗的关闭、取消和下载操作
@@ -160,7 +165,7 @@ export function createChapterSearchView(options: ChapterSearchOptions): ChapterS
             Math.min(230, availableHeight - (resultsHeader.hidden ? 0 : headerHeight) - borderHeight)
         )}px`;
         setActive(position, true);
-    };
+    }
 
     const navigate = (index: number) => {
         if (!disposed) {
@@ -283,45 +288,34 @@ export function createChapterSearchView(options: ChapterSearchOptions): ChapterS
     window.addEventListener("blur", close);
     window.addEventListener("resize", close);
 
-    return {
-        element: root,
-
-        /**
-         * 刷新界面语言，保留输入与当前结果位置
-         */
-        refresh() {
-            if (disposed) {
-                return;
-            }
-
-            input.placeholder = t("selection.search");
-            input.setAttribute("aria-label", t("selection.search"));
-            clear.setAttribute("aria-label", t("selection.clearSearch"));
-            list.setAttribute("aria-label", t("selection.searchResults"));
-            if (!popup.hidden) {
-                open();
-            }
-        },
-
-        /**
-         * 收起下拉，保留查找输入以供再次展开
-         */
-        close,
-
-        /**
-         * 关闭后解除页面监听，旧结果不再触发目录跳转
-         */
-        dispose() {
-            disposed = true;
-            close();
-
-            document.removeEventListener("pointerdown", onOutsidePointer);
-            root.removeEventListener("focusout", onFocusOut);
-            window.removeEventListener("blur", close);
-            window.removeEventListener("resize", close);
-
-            matches = [];
-            activeOption = undefined;
+    /** 刷新界面语言，保留输入与当前结果位置。 */
+    function refresh(): void {
+        if (disposed) {
+            return;
         }
-    };
+
+        input.placeholder = t("selection.search");
+        input.setAttribute("aria-label", t("selection.search"));
+        clear.setAttribute("aria-label", t("selection.clearSearch"));
+        list.setAttribute("aria-label", t("selection.searchResults"));
+        if (!popup.hidden) {
+            open();
+        }
+    }
+
+    /** 关闭后解除页面监听，旧结果不再触发目录跳转。 */
+    function dispose(): void {
+        disposed = true;
+        close();
+
+        document.removeEventListener("pointerdown", onOutsidePointer);
+        root.removeEventListener("focusout", onFocusOut);
+        window.removeEventListener("blur", close);
+        window.removeEventListener("resize", close);
+
+        matches = [];
+        activeOption = undefined;
+    }
+
+    return { element: root, refresh, close, dispose };
 }

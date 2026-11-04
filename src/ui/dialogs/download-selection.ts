@@ -167,19 +167,20 @@ export function createDownloadSelectionPopup(options: DownloadSelectionPopupOpti
         }
     });
 
-    const selectAll = el("button", {
-        type: "button",
-        onclick: () => {
-            selected = new Set(preview.tasks.map((task) => task.index));
-            refresh();
-        }
-    });
+    function selectAllChapters(): void {
+        selected = new Set(preview.tasks.map((task) => task.index));
+        refresh();
+    }
+
+    function invertChapterSelection(): void {
+        selected = new Set(preview.tasks.filter((task) => !selected.has(task.index)).map((task) => task.index));
+        refresh();
+    }
+
+    const selectAll = el("button", { type: "button", onclick: selectAllChapters });
     const invertSelection = el("button", {
         type: "button",
-        onclick: () => {
-            selected = new Set(preview.tasks.filter((task) => !selected.has(task.index)).map((task) => task.index));
-            refresh();
-        }
+        onclick: invertChapterSelection
     });
     const clearSelection = el("button", {
         id: "esj-range-clear-selection",
@@ -242,14 +243,16 @@ export function createDownloadSelectionPopup(options: DownloadSelectionPopupOpti
         id: "esj-range-download",
         type: "button",
         className: "esj-selection-download",
-        onclick: () => {
-            const selection = getSelection();
-            if (selection) {
-                const filename = filenameInput.value.trim();
-                finish({ action: "download", selection, ...(filename ? { filename } : {}) });
-            }
-        }
+        onclick: submitSelection
     });
+
+    function submitSelection(): void {
+        const selection = getSelection();
+        if (selection) {
+            const filename = filenameInput.value.trim();
+            finish({ action: "download", selection, ...(filename ? { filename } : {}) });
+        }
+    }
 
     const getSelection = (): DownloadSelection | null => {
         if (unavailable()) {
@@ -262,12 +265,8 @@ export function createDownloadSelectionPopup(options: DownloadSelectionPopupOpti
               : null;
     };
 
-    const refresh = () => {
-        if (settled) {
-            return;
-        }
-
-        const disabled = unavailable();
+    // 原地刷新控件与目录，不重建输入节点或来源目录。
+    function refreshSelectionControls(disabled: boolean): void {
         allMode.disabled = rangeMode.disabled = disabled;
         allText.textContent = t("range.modeAll");
         selectedText.textContent = t("range.modeRange");
@@ -293,9 +292,10 @@ export function createDownloadSelectionPopup(options: DownloadSelectionPopupOpti
         clearSelection.textContent = t("selection.clear");
         selectAll.disabled = invertSelection.disabled = clearSelection.disabled = disabled;
         directoryView?.setSelection(selected);
+    }
 
-        // 章数与缓存复用预览使用同一份选择计划
-        const selection = getSelection();
+    // 章数与缓存复用预览使用同一份选择计划。
+    function refreshSelectionSummary(disabled: boolean, selection: DownloadSelection | null): void {
         const plan = selection
             ? createDownloadPlan({ tasks: selectDownloadTasks(preview.tasks, selection), selection })
             : null;
@@ -314,8 +314,10 @@ export function createDownloadSelectionPopup(options: DownloadSelectionPopupOpti
         cacheValue.textContent = String(plan?.readyCount(preview.cachedIndexes) || 0);
         cacheUnit.textContent = " " + t("range.cacheUnit");
         cacheReuse.hidden = preview.cacheWillBeInvalidated;
+    }
 
-        // 准备状态、空选与整书缓存失效提示
+    // 提示和下载操作共用本次选择，旧结果入口独立于准备是否成功。
+    function refreshSelectionActions(selection: DownloadSelection | null): void {
         cacheWarning.hidden = Boolean(stage) || !preview.cacheWillBeInvalidated;
         cacheWarning.textContent = "⚠️ " + t("range.cacheDiscardWarning", { count: preview.cacheCount });
         validation.textContent = stage
@@ -339,9 +341,37 @@ export function createDownloadSelectionPopup(options: DownloadSelectionPopupOpti
             : allMode.checked
               ? t("range.download")
               : t("selection.downloadSelected", { count: selected.size });
+    }
 
+    function refresh(): void {
+        if (settled) {
+            return;
+        }
+
+        const disabled = unavailable();
+        refreshSelectionControls(disabled);
+        const selection = getSelection();
+        refreshSelectionSummary(disabled, selection);
+        refreshSelectionActions(selection);
         searchView.refresh();
-    };
+    }
+
+    function changeChapterSelection(indexes: readonly number[], checked: boolean): void {
+        if (settled || unavailable() || !rangeMode.checked) {
+            directoryView?.setSelection(selected);
+            return;
+        }
+
+        indexes.forEach((index) => {
+            if (checked) {
+                selected.add(index);
+            } else {
+                selected.delete(index);
+            }
+        });
+
+        refresh();
+    }
 
     const buildDirectory = () => {
         directoryView?.dispose();
@@ -350,22 +380,7 @@ export function createDownloadSelectionPopup(options: DownloadSelectionPopupOpti
             ...(preview.directory ? { snapshot: preview.directory } : {}),
             tasks: preview.tasks,
             selectedIndexes: selected,
-            onSelect(indexes, checked) {
-                if (settled || unavailable() || !rangeMode.checked) {
-                    directoryView?.setSelection(selected);
-                    return;
-                }
-
-                indexes.forEach((index) => {
-                    if (checked) {
-                        selected.add(index);
-                    } else {
-                        selected.delete(index);
-                    }
-                });
-
-                refresh();
-            }
+            onSelect: changeChapterSelection
         });
         directoryBox.replaceChildren(directoryView.element);
     };
