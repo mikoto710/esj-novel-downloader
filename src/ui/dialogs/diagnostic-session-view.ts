@@ -1,8 +1,8 @@
-import { createDiagnosticExport } from "../../diagnostics/export";
+import { createDiagnosticFilename } from "../../diagnostics/export";
 import type { DiagnosticSessionPresentation, DiagnosticSessionView } from "../../diagnostics/manager";
 import { el } from "../dom";
 import { t } from "../locale";
-import { formatDiagnosticSummary, formatDiagnosticBookTitle, formatDiagnosticLog } from "../messages/diagnostics";
+import { formatDiagnosticSummary, formatDiagnosticBookTitle } from "../messages/diagnostics";
 
 const resultPresentation: Record<
     DiagnosticSessionPresentation,
@@ -89,10 +89,6 @@ export function createDiagnosticSessionDetail(view: DiagnosticSessionView | null
     const bookTitle = formatDiagnosticBookTitle(session);
     const presentation = sessionResult(view);
     const presentationHint = sessionPresentationHint(view);
-    const exported = createDiagnosticExport(session, {
-        bookTitle: formatDiagnosticBookTitle(session),
-        formatLog: formatDiagnosticLog
-    });
 
     // 详情先显示结果及解释，再展示脱敏摘要和导出文件名。
     const title = el("div", { style: "font-size:18px;font-weight:bold;margin-bottom:6px;overflow-wrap:anywhere;" }, [
@@ -128,7 +124,7 @@ export function createDiagnosticSessionDetail(view: DiagnosticSessionView | null
         [formatDiagnosticSummary(session, view.presentation)]
     );
     const filename = el("div", { style: "margin-top:10px;color:#777;font-size:12px;overflow-wrap:anywhere;" }, [
-        t("diagnostics.file", { filename: exported.filename })
+        t("diagnostics.file", { filename: createDiagnosticFilename(bookTitle, session.updatedAt) })
     ]);
     content.push(privacyNotice, summary, filename);
     return content;

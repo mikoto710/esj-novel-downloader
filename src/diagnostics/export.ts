@@ -10,6 +10,15 @@ function safeFilenamePart(value: string): string {
     );
 }
 
+/** 生成详情预览和实际下载共用的诊断文件名 */
+export function createDiagnosticFilename(bookTitle: string, updatedAt: number): string {
+    const date = new Date(updatedAt)
+        .toISOString()
+        .replace(/[-:]/g, "")
+        .replace(/\.\d{3}Z$/, "Z");
+    return `esj-diagnostic-${safeFilenamePart(bookTitle)}-${date}.json`;
+}
+
 /**
  * 生成适合本地保存的文件名和诊断 JSON，由调用方提供书名回退和当前语言日志文本
  */
@@ -17,12 +26,8 @@ export function createDiagnosticExport(
     session: DiagnosticSession,
     presentation: { bookTitle: string; formatLog: (entry: DiagnosticLogRecord) => string }
 ): { filename: string; json: string } {
-    const date = new Date(session.updatedAt)
-        .toISOString()
-        .replace(/[-:]/g, "")
-        .replace(/\.\d{3}Z$/, "Z");
     return {
-        filename: `esj-diagnostic-${safeFilenamePart(presentation.bookTitle)}-${date}.json`,
+        filename: createDiagnosticFilename(presentation.bookTitle, session.updatedAt),
         json: JSON.stringify(
             {
                 session: {
