@@ -1,4 +1,4 @@
-import { del, get, set } from "idb-keyval";
+import { createStore, del, get } from "idb-keyval";
 import type { ChapterSummary } from "../export/snapshot";
 import type { DownloadFormat } from "../export/filename";
 import type { SourcePageType } from "../content/model";
@@ -31,31 +31,54 @@ export interface DownloadHistoryItem {
 
 const HISTORY_KEY = "esj_down_history";
 const HISTORY_LIMIT = 100;
+// 历史记录沿用 idb-keyval 的默认数据库和对象仓库
+const historyStore = createStore("keyval-store", "keyval");
 
 interface StoredHistory {
     version: 1;
     items: DownloadHistoryItem[];
 }
 
-async function readHistory(): Promise<DownloadHistoryItem[]> {
-    try {
-        const data = await get<StoredHistory>(HISTORY_KEY);
-        return Array.isArray(data?.items) ? data.items : [];
-    } catch (error) {
-        console.error("读取下载记录失败", error);
-        return [];
-    }
+function historyItems(data: StoredHistory | undefined): DownloadHistoryItem[] {
+    return Array.isArray(data?.items) ? data.items : [];
 }
 
-async function writeHistory(items: DownloadHistoryItem[]): Promise<void> {
-    await set(HISTORY_KEY, { version: 1, items } satisfies StoredHistory);
+function updateHistory(change: (items: DownloadHistoryItem[]) => DownloadHistoryItem[]): Promise<void> {
+    return historyStore(
+        "readwrite",
+        (store) =>
+            new Promise<void>((resolve, reject) => {
+                const transaction = store.transaction;
+                const request: IDBRequest<StoredHistory | undefined> = store.get(HISTORY_KEY);
+                // 读写请求失败会中止事务，只有提交后才确认历史变更
+                transaction.oncomplete = () => resolve();
+                transaction.onabort = () =>
+                    reject(transaction.error ?? new DOMException("下载记录事务已中止", "AbortError"));
+                request.onsuccess = () => {
+                    try {
+                        const items = change(historyItems(request.result));
+                        store.put({ version: 1, items } satisfies StoredHistory, HISTORY_KEY);
+                    } catch (error) {
+                        transaction.abort();
+                        reject(error);
+                    }
+                };
+            })
+    );
 }
 
 /**
  * 按导出时间倒序列出下载记录
  */
 export async function listDownloadHistory(): Promise<DownloadHistoryItem[]> {
-    return (await readHistory()).sort((a, b) => b.exportedAt - a.exportedAt);
+    let data: StoredHistory | undefined;
+    try {
+        data = await get<StoredHistory>(HISTORY_KEY, historyStore);
+    } catch (error) {
+        console.error("读取下载记录失败", error);
+        return [];
+    }
+    return historyItems(data).sort((a, b) => b.exportedAt - a.exportedAt);
 }
 
 /**
@@ -63,13 +86,14 @@ export async function listDownloadHistory(): Promise<DownloadHistoryItem[]> {
  */
 export async function addDownloadHistory(item: Omit<DownloadHistoryItem, "id" | "exportedAt">): Promise<void> {
     try {
-        const items = await readHistory();
-        items.unshift({
-            ...item,
-            id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-            exportedAt: Date.now()
+        await updateHistory((items) => {
+            items.unshift({
+                ...item,
+                id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+                exportedAt: Date.now()
+            });
+            return items.sort((a, b) => b.exportedAt - a.exportedAt).slice(0, HISTORY_LIMIT);
         });
-        await writeHistory(items.sort((a, b) => b.exportedAt - a.exportedAt).slice(0, HISTORY_LIMIT));
     } catch (error) {
         console.error("保存下载记录失败", error);
     }
@@ -79,15 +103,14 @@ export async function addDownloadHistory(item: Omit<DownloadHistoryItem, "id" | 
  * 删除指定下载记录
  */
 export async function removeDownloadHistory(id: string): Promise<void> {
-    const items = await readHistory();
-    await writeHistory(items.filter((item) => item.id !== id));
+    await updateHistory((items) => items.filter((item) => item.id !== id));
 }
 
 /**
  * 清空全部下载记录
  */
 export async function clearDownloadHistory(): Promise<void> {
-    await del(HISTORY_KEY);
+    await del(HISTORY_KEY, historyStore);
 }
 
 /**
