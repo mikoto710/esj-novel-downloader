@@ -9,13 +9,15 @@
 3. 复用已有测试；只为尚未覆盖、能够可靠重现的业务边界增加用例。更新受影响的文档，用户可见变化同时核对两份 README；维护入口变化时更新相关 `.codex/skills`。
 4. 执行适用检查，再按职责拆分提交，向 `dev` 创建 Pull Request。PR 写明问题、改动、验证方式和未验证范围；较大的行为或缓存格式调整先通过 Issue 讨论。
 
+本地迭代：`npm run watch` 监听构建，`npm run build:fast` 做类型检查后构建；两者均不能替代提交前检查。`npm run format` 会修改文件，执行后检查差异。
+
 提交前运行：
 
 ```bash
 npm run build
 ```
 
-它包含 TypeScript、普通测试、ESLint、格式检查和 userscript 构建。`build:fast` 仅用于本地迭代。
+它包含 TypeScript、普通测试、ESLint、格式检查和 userscript 构建。
 
 涉及下载生命周期、缓存、迁移、锁、并发或取消时，另运行：
 
