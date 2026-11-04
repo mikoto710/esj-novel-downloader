@@ -42,6 +42,56 @@ export function confirmIncompleteChapters(
             );
         }
 
+        const header = createCommonHeader(t("download.missing.title"), () => finish("cancel"));
+        const warning = el(
+            "div",
+            {
+                style: "padding:10px 12px;border:1px solid #e6a23c;background:#fff7e6;color:#8a5a00;border-radius:6px;"
+            },
+            [t("download.missing.message", { count: detection.missingTasks.length })]
+        );
+        const previewList = el("ol", { style: "margin:12px 0 0;padding-left:28px;" }, preview);
+        const body = el("div", { style: "padding:16px;font-size:15px;line-height:1.7;min-height:0;overflow:auto;" }, [
+            warning,
+            previewList
+        ]);
+
+        // 底部三种决策交回下载流程，窗口本身不补抓或写入占位章节
+        const cancelButton = el(
+            "button",
+            {
+                id: "esj-incomplete-cancel",
+                style: "padding:8px 12px;background:#eee;border:1px solid #ccc;border-radius:6px;cursor:pointer;",
+                onclick: () => finish("cancel")
+            },
+            [t("download.action.cancelKeepCache")]
+        );
+        const exportButton = el(
+            "button",
+            {
+                id: "esj-incomplete-export",
+                style: "padding:8px 12px;background:#fff7e6;color:#8a5a00;border:1px solid #e6a23c;border-radius:6px;cursor:pointer;",
+                onclick: () => finish("export-with-placeholders")
+            },
+            [t("download.action.exportPlaceholder")]
+        );
+        const retryButton = el(
+            "button",
+            {
+                id: "esj-incomplete-retry",
+                style: "padding:8px 12px;background:#2b9bd7;color:#fff;border:1px solid #2b9bd7;border-radius:6px;cursor:pointer;font-weight:bold;",
+                onclick: () => finish("retry")
+            },
+            [t("download.action.retryMissing")]
+        );
+        const footer = el(
+            "div",
+            {
+                style: "padding:12px;display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap;"
+            },
+            [cancelButton, exportButton, retryButton]
+        );
+
         const popup = el(
             "div",
             {
@@ -50,56 +100,7 @@ export function confirmIncompleteChapters(
                 "aria-modal": "true",
                 style: "position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:560px;max-width:calc(100vw - 32px);max-height:calc(100vh - 32px);background:#fff;border:1px solid #aaa;border-radius:8px;box-shadow:0 0 18px rgba(0,0,0,.28);z-index:1000001;display:flex;flex-direction:column;"
             },
-            [
-                createCommonHeader(t("download.missing.title"), () => finish("cancel")),
-                el("div", { style: "padding:16px;font-size:15px;line-height:1.7;min-height:0;overflow:auto;" }, [
-                    el(
-                        "div",
-                        {
-                            style: "padding:10px 12px;border:1px solid #e6a23c;background:#fff7e6;color:#8a5a00;border-radius:6px;"
-                        },
-                        [t("download.missing.message", { count: detection.missingTasks.length })]
-                    ),
-                    el("ol", { style: "margin:12px 0 0;padding-left:28px;" }, preview)
-                ]),
-
-                // 底部三种决策交回下载流程，窗口本身不补抓或写入占位章节
-                el(
-                    "div",
-                    {
-                        style: "padding:12px;display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap;"
-                    },
-                    [
-                        el(
-                            "button",
-                            {
-                                id: "esj-incomplete-cancel",
-                                style: "padding:8px 12px;background:#eee;border:1px solid #ccc;border-radius:6px;cursor:pointer;",
-                                onclick: () => finish("cancel")
-                            },
-                            [t("download.action.cancelKeepCache")]
-                        ),
-                        el(
-                            "button",
-                            {
-                                id: "esj-incomplete-export",
-                                style: "padding:8px 12px;background:#fff7e6;color:#8a5a00;border:1px solid #e6a23c;border-radius:6px;cursor:pointer;",
-                                onclick: () => finish("export-with-placeholders")
-                            },
-                            [t("download.action.exportPlaceholder")]
-                        ),
-                        el(
-                            "button",
-                            {
-                                id: "esj-incomplete-retry",
-                                style: "padding:8px 12px;background:#2b9bd7;color:#fff;border:1px solid #2b9bd7;border-radius:6px;cursor:pointer;font-weight:bold;",
-                                onclick: () => finish("retry")
-                            },
-                            [t("download.action.retryMissing")]
-                        )
-                    ]
-                )
-            ]
+            [header, body, footer]
         );
         const finish = (decision: IncompleteChapterDecision) => {
             if (settled) {

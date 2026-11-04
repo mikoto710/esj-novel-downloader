@@ -8,44 +8,30 @@ export function createCommonHeader(title: string, onClose: () => void, onMinimiz
     const buttons: HTMLElement[] = [];
 
     if (onMinimize) {
-        buttons.push(
-            bindInterfaceAttribute(
-                bindInterfaceAttribute(
-                    el(
-                        "button",
-                        {
-                            style: "border:none;background:#81d4fa;color:#000;padding:4px 10px;border-radius:6px;cursor:pointer;font-weight:bold;margin-right:5px;",
-                            onclick: onMinimize
-                        },
-                        ["＿"]
-                    ),
-                    "title",
-                    "common.minimize"
-                ),
-                "aria-label",
-                "common.minimize"
-            )
+        const minimizeButton = el(
+            "button",
+            {
+                style: "border:none;background:#81d4fa;color:#000;padding:4px 10px;border-radius:6px;cursor:pointer;font-weight:bold;margin-right:5px;",
+                onclick: onMinimize
+            },
+            ["＿"]
         );
+        bindInterfaceAttribute(minimizeButton, "title", "common.minimize");
+        bindInterfaceAttribute(minimizeButton, "aria-label", "common.minimize");
+        buttons.push(minimizeButton);
     }
 
-    buttons.push(
-        bindInterfaceAttribute(
-            bindInterfaceAttribute(
-                el(
-                    "button",
-                    {
-                        style: "border:none;background:#ef5350;color:#fff;padding:4px 10px;border-radius:6px;cursor:pointer;font-weight:bold;",
-                        onclick: onClose
-                    },
-                    ["✕"]
-                ),
-                "title",
-                "common.close"
-            ),
-            "aria-label",
-            "common.close"
-        )
+    const closeButton = el(
+        "button",
+        {
+            style: "border:none;background:#ef5350;color:#fff;padding:4px 10px;border-radius:6px;cursor:pointer;font-weight:bold;",
+            onclick: onClose
+        },
+        ["✕"]
     );
+    bindInterfaceAttribute(closeButton, "title", "common.close");
+    bindInterfaceAttribute(closeButton, "aria-label", "common.close");
+    buttons.push(closeButton);
 
     // 标题和操作区左右排列，整个标题栏作为弹窗拖拽手柄
     return el(
