@@ -303,6 +303,7 @@ export const ZH_CN_MESSAGES = Object.freeze({
     "history.title": "⬇️ 下载记录",
     "history.confirm.title": "🗑️ 清空确认",
     "history.confirm.message": "确定清空全部下载记录吗？此操作无法恢复。",
+    "history.deleteFailed": "未能删除下载记录，请检查浏览器存储状态后重试。",
     "history.action.clear": "清空",
     "history.source.detail": "详情页",
     "history.source.forum": "论坛页",

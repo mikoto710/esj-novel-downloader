@@ -12,6 +12,7 @@ import { subscribeInterfaceLocaleChange, t } from "../locale";
 import { acquirePageActionGroupLockForPopup } from "../page-action-lock";
 import { showDecisionDialog } from "./common";
 import { createDownloadHistoryTable } from "./download-history-table";
+import { showMessagePopup } from "./message";
 
 let disposeActiveHistoryPopup: (() => void) | null = null;
 
@@ -153,7 +154,7 @@ export function createDownloadHistoryPopup(): void {
         ])
     );
     const summary = el("span", { style: "margin-left:auto;color:#666;font-size:12px;" });
-    const historyTable = createDownloadHistoryTable(removeHistoryItem);
+    const historyTable = createDownloadHistoryTable((id) => refreshAfterDeletion(removeDownloadHistory(id)));
     const listBox = el("div", { style: "flex:1;min-height:0;overflow:auto;padding:0 16px 16px;" }, [
         historyTable.element
     ]);
@@ -164,8 +165,19 @@ export function createDownloadHistoryPopup(): void {
         render();
     }
 
-    async function removeHistoryItem(id: string): Promise<void> {
-        await removeDownloadHistory(id);
+    async function refreshAfterDeletion(deletion: Promise<void>): Promise<void> {
+        try {
+            await deletion;
+        } catch (error) {
+            if (popup.isConnected) {
+                showMessagePopup({
+                    tone: "error",
+                    message: t("history.deleteFailed"),
+                    details: error instanceof Error ? error.message : String(error)
+                });
+            }
+            return;
+        }
         await refreshHistory();
     }
 
@@ -174,8 +186,7 @@ export function createDownloadHistoryPopup(): void {
         if (!confirmed) {
             return;
         }
-        await clearDownloadHistory();
-        await refreshHistory();
+        await refreshAfterDeletion(clearDownloadHistory());
     }
 
     // 按导出范围、格式和来源筛选并重建记录列表

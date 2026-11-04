@@ -307,6 +307,7 @@ export const ZH_TW_MESSAGES = Object.freeze({
     "history.title": "⬇️ 下載紀錄",
     "history.confirm.title": "🗑️ 清空確認",
     "history.confirm.message": "確定清空全部下載紀錄嗎？此操作無法復原。",
+    "history.deleteFailed": "無法刪除下載紀錄，請檢查瀏覽器的儲存狀態後再試一次。",
     "history.action.clear": "清空",
     "history.source.detail": "詳細資料頁",
     "history.source.forum": "論壇頁面",

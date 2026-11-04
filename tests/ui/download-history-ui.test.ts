@@ -14,6 +14,29 @@ describe("download history interactions", () => {
         vi.restoreAllMocks();
     });
 
+    it("keeps the row available for retry when deleting it fails", async () => {
+        const record: history.DownloadHistoryItem = {
+            id: "kept",
+            bookName: "Saved book",
+            author: "Test author",
+            format: "txt",
+            sourcePageType: "detail",
+            pageUrl: "https://example.com/book",
+            exportedAt: 1
+        };
+        vi.spyOn(history, "listDownloadHistory").mockResolvedValue([record]);
+        vi.spyOn(history, "removeDownloadHistory").mockRejectedValue(new Error("transaction interrupted"));
+        createDownloadHistoryPopup();
+        await vi.waitFor(() => expect(document.querySelector("tbody")?.textContent).toContain(record.bookName));
+
+        document.querySelectorAll<HTMLButtonElement>("tbody button")[1].click();
+
+        await vi.waitFor(() =>
+            expect(document.querySelector("#esj-message-details")?.textContent).toContain("transaction interrupted")
+        );
+        expect(document.querySelector("tbody")?.textContent).toContain(record.bookName);
+    });
+
     it("deletes the selected row after filtering and retains the filter through async refresh", async () => {
         let records: history.DownloadHistoryItem[] = [0, 1].map((index) => ({
             id: `export-${index}`,
