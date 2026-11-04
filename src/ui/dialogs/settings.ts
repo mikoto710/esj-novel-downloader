@@ -10,7 +10,7 @@ import {
     getInterfaceLocalePreference,
     setInterfaceLocalePreference
 } from "../../storage/settings";
-import { isInterfaceLocalePreference } from "../../locale/catalog";
+import { isInterfaceLocalePreference, type InterfaceLocalePreference } from "../../locale/catalog";
 import { listActiveBookDownloadLocks } from "../../storage/book-lock";
 import { fullCleanup, enableDrag, el, removeElement } from "../dom";
 import { log } from "../../ui/log-view";
@@ -21,6 +21,8 @@ import { createCacheManagerPopup } from "./cache-manager";
 import { createDownloadHistoryPopup } from "./download-history";
 import { createDiagnosticPopup } from "./diagnostics";
 import { showMessagePopup } from "./message";
+
+const SETTINGS_ROW_STYLE = "display:flex; align-items:center; justify-content:space-between;";
 
 function reportSettingsStorageFailure(error: unknown): void {
     console.error("设置读写失败", error);
@@ -92,52 +94,36 @@ function confirmImageSettingChange(activeTaskCount: number): Promise<boolean> {
     });
 }
 
-/**
- * 创建设置面板弹窗
- */
-export function createSettingsPanel(): void {
-    fullCleanup();
-
-    const closeAction = () => {
-        removeElement(popup);
-    };
-
-    const header = createCommonHeader(`⚙️ ${t("settings.title")}`, closeAction);
-    const settingsHeaderLabel = header.querySelector("span");
-    if (settingsHeaderLabel instanceof HTMLElement) {
-        settingsHeaderLabel.replaceChildren("⚙️ ", bindInterfaceText(el("span"), "settings.title"));
-    }
-    const installedVersion =
-        typeof GM_info !== "undefined" && GM_info.script?.version?.trim()
-            ? `v${GM_info.script.version.trim()}`
-            : t("settings.versionUnknown");
+function createInterfaceLanguageRow(initialPreference: InterfaceLocalePreference): HTMLElement {
+    let interfaceLocalePreference = initialPreference;
 
     // 语言选择立即保存并通知已打开的界面刷新
-    let interfaceLocalePreference = getInterfaceLocalePreference();
+    function changeInterfaceLanguage(e: Event): void {
+        const target = e.target as HTMLSelectElement;
+        const value = target.value;
+        if (isInterfaceLocalePreference(value)) {
+            if (
+                !saveSettingsChange(
+                    () => setInterfaceLocalePreference(value),
+                    () => {
+                        target.value = interfaceLocalePreference;
+                    }
+                )
+            ) {
+                return;
+            }
+            interfaceLocalePreference = value;
+            publishInterfaceLocaleChange();
+        }
+    }
+
     const interfaceLocaleSelect = bindInterfaceAttribute(
         el(
             "select",
             {
                 id: "esj-interface-language",
                 style: "min-width: 150px; padding: 6px; border: 1px solid #ccc; border-radius: 4px;",
-                onchange: (e: Event) => {
-                    const target = e.target as HTMLSelectElement;
-                    const value = target.value;
-                    if (isInterfaceLocalePreference(value)) {
-                        if (
-                            !saveSettingsChange(
-                                () => setInterfaceLocalePreference(value),
-                                () => {
-                                    target.value = interfaceLocalePreference;
-                                }
-                            )
-                        ) {
-                            return;
-                        }
-                        interfaceLocalePreference = value;
-                        publishInterfaceLocaleChange();
-                    }
-                }
+                onchange: changeInterfaceLanguage
             },
             [
                 bindInterfaceText(
@@ -158,8 +144,64 @@ export function createSettingsPanel(): void {
         "settings.interfaceLanguage"
     );
 
-    // 并发数输入框
-    let currentConcurrency = getConcurrency();
+    return el("div", { style: SETTINGS_ROW_STYLE }, [
+        bindInterfaceText(el("label", { style: "color: #333;" }), "settings.interfaceLanguage"),
+        interfaceLocaleSelect
+    ]);
+}
+
+function createConcurrencyRow(initialConcurrency: number): HTMLElement {
+    let currentConcurrency = initialConcurrency;
+
+    function changeConcurrency(e: Event): void {
+        const target = e.target as HTMLInputElement;
+        if (target.value === "") {
+            return;
+        }
+        let val = parseInt(target.value, 10);
+        if (isNaN(val)) {
+            return;
+        }
+
+        if (val > 10) {
+            val = 10;
+            target.value = "10";
+        } else if (val < 1) {
+            val = 1;
+            target.value = "1";
+        }
+
+        if (
+            !saveSettingsChange(
+                () => setConcurrency(val),
+                () => {
+                    target.value = currentConcurrency.toString();
+                }
+            )
+        ) {
+            return;
+        }
+        currentConcurrency = val;
+        log(t("settings.log.concurrency", { count: val }));
+    }
+
+    function restoreEmptyConcurrency(e: Event): void {
+        const target = e.target as HTMLInputElement;
+        const val = parseInt(target.value, 10);
+        if (isNaN(val) || target.value === "") {
+            target.value = currentConcurrency.toString();
+            if (
+                !saveSettingsChange(
+                    () => setConcurrency(currentConcurrency),
+                    () => undefined
+                )
+            ) {
+                return;
+            }
+            log(t("settings.log.concurrency", { count: currentConcurrency }));
+        }
+    }
+
     const inputConcurrency = el("input", {
         id: "esj-settings-concurrency",
         type: "number",
@@ -167,94 +209,18 @@ export function createSettingsPanel(): void {
         max: 10,
         value: currentConcurrency,
         style: "width: 60px; padding: 6px; border: 1px solid #ccc; border-radius: 4px; text-align: center;",
-        oninput: (e: Event) => {
-            const target = e.target as HTMLInputElement;
-            if (target.value === "") {
-                return;
-            }
-            let val = parseInt(target.value, 10);
-            if (isNaN(val)) {
-                return;
-            }
-
-            if (val > 10) {
-                val = 10;
-                target.value = "10";
-            } else if (val < 1) {
-                val = 1;
-                target.value = "1";
-            }
-
-            if (
-                !saveSettingsChange(
-                    () => setConcurrency(val),
-                    () => {
-                        target.value = currentConcurrency.toString();
-                    }
-                )
-            ) {
-                return;
-            }
-            currentConcurrency = val;
-            log(t("settings.log.concurrency", { count: val }));
-        },
-        onblur: (e: Event) => {
-            const target = e.target as HTMLInputElement;
-            const val = parseInt(target.value, 10);
-            if (isNaN(val) || target.value === "") {
-                target.value = currentConcurrency.toString();
-                if (
-                    !saveSettingsChange(
-                        () => setConcurrency(currentConcurrency),
-                        () => undefined
-                    )
-                ) {
-                    return;
-                }
-                log(t("settings.log.concurrency", { count: currentConcurrency }));
-            }
-        }
+        oninput: changeConcurrency,
+        onblur: restoreEmptyConcurrency
     });
 
-    // 子面板接管页面操作锁，设置面板随之关闭
-    const btnCacheManager = el(
-        "button",
-        {
-            className: "btn btn-primary btn-sm esj-cache-manager-trigger",
-            style: "color: white; min-width: 110px;",
-            onclick: () => {
-                removeElement(popup);
-                createCacheManagerPopup();
-            }
-        },
-        [bindInterfaceText(el("span"), "settings.cache")]
-    );
+    return el("div", { style: SETTINGS_ROW_STYLE }, [
+        bindInterfaceText(el("label", { style: "color: #333;" }), "settings.concurrency", { max: 10 }),
+        inputConcurrency
+    ]);
+}
 
-    const btnDownloadHistory = el(
-        "button",
-        {
-            className: "btn btn-primary btn-sm",
-            style: "color:white;min-width:110px;",
-            onclick: () => {
-                removeElement(popup);
-                createDownloadHistoryPopup();
-            }
-        },
-        [bindInterfaceText(el("span"), "settings.history")]
-    );
-
-    const btnDiagnostics = el(
-        "button",
-        {
-            className: "btn btn-primary btn-sm",
-            style: "color:white;min-width:110px;",
-            onclick: () => createDiagnosticPopup()
-        },
-        [bindInterfaceText(el("span"), "settings.diagnosticsButton")]
-    );
-
-    // 图片下载开关
-    let isImageEnabled = getImageDownloadSetting();
+function createImageDownloadRow(initiallyEnabled: boolean): HTMLElement {
+    let isImageEnabled = initiallyEnabled;
 
     // 读当前设置 → 核对活动任务并确认 → 保存；失败恢复面板最后确认值，finally 解锁控件
     async function changeImageDownloadSetting(e: Event): Promise<void> {
@@ -304,42 +270,101 @@ export function createSettingsPanel(): void {
         el("span", { className: "esj-slider" })
     ]);
 
-    // EPUB 标签页开关
-    let isEpubTagPageEnabled = getEpubTagPageSetting();
+    return el("div", { style: SETTINGS_ROW_STYLE }, [
+        el("div", {}, [
+            bindInterfaceText(el("label", { style: "color: #333;" }), "settings.imageDownload"),
+            bindInterfaceText(
+                el("div", { style: "font-size:12px; color:#999; margin-top: 2px;" }),
+                "settings.imageDownloadDescription"
+            )
+        ]),
+        switchToggleImage
+    ]);
+}
+
+function createEpubTagPageRow(initiallyEnabled: boolean): HTMLElement {
+    let isEpubTagPageEnabled = initiallyEnabled;
+
+    function changeEpubTagPageSetting(e: Event): void {
+        const target = e.target as HTMLInputElement;
+        const checked = target.checked;
+        if (
+            !saveSettingsChange(
+                () => setEpubTagPageSetting(checked),
+                () => {
+                    target.checked = isEpubTagPageEnabled;
+                }
+            )
+        ) {
+            return;
+        }
+        isEpubTagPageEnabled = checked;
+
+        // 标签页改变后需重新生成 EPUB，已有正文结果继续复用
+        invalidateCachedEpub(state.cachedData);
+
+        log(
+            t("settings.log.epubTag", {
+                state: t(checked ? "diagnostics.summary.enabled" : "diagnostics.summary.disabled")
+            })
+        );
+    }
+
     const checkboxEpubTagPage = el("input", {
         id: "esj-settings-epub-tag-page",
         type: "checkbox",
         checked: isEpubTagPageEnabled,
-        onchange: (e: Event) => {
-            const target = e.target as HTMLInputElement;
-            const checked = target.checked;
-            if (
-                !saveSettingsChange(
-                    () => setEpubTagPageSetting(checked),
-                    () => {
-                        target.checked = isEpubTagPageEnabled;
-                    }
-                )
-            ) {
-                return;
-            }
-            isEpubTagPageEnabled = checked;
-
-            // 标签页改变后需重新生成 EPUB，已有正文结果继续复用
-            invalidateCachedEpub(state.cachedData);
-
-            log(
-                t("settings.log.epubTag", {
-                    state: t(checked ? "diagnostics.summary.enabled" : "diagnostics.summary.disabled")
-                })
-            );
-        }
+        onchange: changeEpubTagPageSetting
     });
 
     const switchToggleEpubTagPage = el("label", { className: "esj-switch" }, [
         checkboxEpubTagPage,
         el("span", { className: "esj-slider" })
     ]);
+
+    return el("div", { style: SETTINGS_ROW_STYLE }, [
+        el("div", {}, [
+            bindInterfaceText(el("label", { style: "color: #333;" }), "settings.epubTagPage"),
+            bindInterfaceText(
+                el("div", { style: "font-size:12px; color:#999; margin-top: 2px;" }),
+                "settings.epubTagPageDescription"
+            )
+        ]),
+        switchToggleEpubTagPage
+    ]);
+}
+
+/**
+ * 创建设置面板弹窗
+ */
+export function createSettingsPanel(): void {
+    fullCleanup();
+
+    const closeAction = () => {
+        removeElement(popup);
+    };
+
+    const header = createCommonHeader(`⚙️ ${t("settings.title")}`, closeAction);
+    const settingsHeaderLabel = header.querySelector("span");
+    if (settingsHeaderLabel instanceof HTMLElement) {
+        settingsHeaderLabel.replaceChildren("⚙️ ", bindInterfaceText(el("span"), "settings.title"));
+    }
+    const installedVersion =
+        typeof GM_info !== "undefined" && GM_info.script?.version?.trim()
+            ? `v${GM_info.script.version.trim()}`
+            : t("settings.versionUnknown");
+
+    // 先读取设置初值，供设置行和初始化日志共同使用
+    const interfaceLocalePreference = getInterfaceLocalePreference();
+    const currentConcurrency = getConcurrency();
+    const isImageEnabled = getImageDownloadSetting();
+    const isEpubTagPageEnabled = getEpubTagPageSetting();
+
+    // 每行独立管理控件、保存结果和失败恢复
+    const rowInterfaceLanguage = createInterfaceLanguageRow(interfaceLocalePreference);
+    const rowConcurrency = createConcurrencyRow(currentConcurrency);
+    const rowImage = createImageDownloadRow(isImageEnabled);
+    const rowEpubTagPage = createEpubTagPageRow(isEpubTagPageEnabled);
 
     log(
         t("settings.log.initialized", {
@@ -351,31 +376,54 @@ export function createSettingsPanel(): void {
     // 创建分隔线
     const createDivider = () => el("hr", { style: "margin: 15px 0; border: 0; border-top: 1px solid #eee;" });
 
-    // 通用行样式
-    const rowStyle = "display:flex; align-items:center; justify-content:space-between;";
+    // 子面板接管页面操作锁；诊断入口由诊断窗口自身关闭设置面板
+    const btnCacheManager = el(
+        "button",
+        {
+            className: "btn btn-primary btn-sm esj-cache-manager-trigger",
+            style: "color: white; min-width: 110px;",
+            onclick: () => {
+                removeElement(popup);
+                createCacheManagerPopup();
+            }
+        },
+        [bindInterfaceText(el("span"), "settings.cache")]
+    );
 
-    // 设置项和管理入口统一为左侧说明、右侧控件的行结构
-    const rowConcurrency = el("div", { style: rowStyle }, [
-        bindInterfaceText(el("label", { style: "color: #333;" }), "settings.concurrency", { max: 10 }),
-        inputConcurrency
-    ]);
+    const btnDownloadHistory = el(
+        "button",
+        {
+            className: "btn btn-primary btn-sm",
+            style: "color:white;min-width:110px;",
+            onclick: () => {
+                removeElement(popup);
+                createDownloadHistoryPopup();
+            }
+        },
+        [bindInterfaceText(el("span"), "settings.history")]
+    );
 
-    const rowInterfaceLanguage = el("div", { style: rowStyle }, [
-        bindInterfaceText(el("label", { style: "color: #333;" }), "settings.interfaceLanguage"),
-        interfaceLocaleSelect
-    ]);
+    const btnDiagnostics = el(
+        "button",
+        {
+            className: "btn btn-primary btn-sm",
+            style: "color:white;min-width:110px;",
+            onclick: () => createDiagnosticPopup()
+        },
+        [bindInterfaceText(el("span"), "settings.diagnosticsButton")]
+    );
 
-    const rowCache = el("div", { style: rowStyle }, [
+    const rowCache = el("div", { style: SETTINGS_ROW_STYLE }, [
         bindInterfaceText(el("label", { style: "color: #333;" }), "settings.cache"),
         btnCacheManager
     ]);
 
-    const rowHistory = el("div", { style: rowStyle }, [
+    const rowHistory = el("div", { style: SETTINGS_ROW_STYLE }, [
         bindInterfaceText(el("label", { style: "color:#333;" }), "settings.history"),
         btnDownloadHistory
     ]);
 
-    const rowDiagnostics = el("div", { style: rowStyle }, [
+    const rowDiagnostics = el("div", { style: SETTINGS_ROW_STYLE }, [
         el("div", {}, [
             bindInterfaceText(el("label", { style: "color:#333;" }), "settings.diagnostics"),
             bindInterfaceText(
@@ -384,28 +432,6 @@ export function createSettingsPanel(): void {
             )
         ]),
         btnDiagnostics
-    ]);
-
-    const rowImage = el("div", { style: rowStyle }, [
-        el("div", {}, [
-            bindInterfaceText(el("label", { style: "color: #333;" }), "settings.imageDownload"),
-            bindInterfaceText(
-                el("div", { style: "font-size:12px; color:#999; margin-top: 2px;" }),
-                "settings.imageDownloadDescription"
-            )
-        ]),
-        switchToggleImage
-    ]);
-
-    const rowEpubTagPage = el("div", { style: rowStyle }, [
-        el("div", {}, [
-            bindInterfaceText(el("label", { style: "color: #333;" }), "settings.epubTagPage"),
-            bindInterfaceText(
-                el("div", { style: "font-size:12px; color:#999; margin-top: 2px;" }),
-                "settings.epubTagPageDescription"
-            )
-        ]),
-        switchToggleEpubTagPage
     ]);
 
     // 外部项目链接和当前脚本版本集中放在面板末尾
