@@ -44,6 +44,10 @@
 
 弹窗交互和状态由各自模块维护。全局样式见 [ui/styles.css](../src/ui/styles.css)，局部样式见[章节选择](../src/ui/dialogs/download-selection.css)和[格式导出](../src/ui/dialogs/format-choice.css)。CSS 通过 `?inline` 导入，由构建工具压缩后内联到脚本，watch 模式保留可读格式。
 
+设置窗口的语言、并发、插图和 EPUB 设置行各自维护控件、最后保存值与失败恢复，父窗口负责排列和管理入口。缓存卡片的徽标、进度与操作区在同文件内组装；普通清理在 `clearItem` 中按来源确认，停止清理由 `stopAndClearItem` 处理实际结果，任务保护规则仍在 `app/cache-management`。`download-view` 的 `update` 统一检查任务归属并分派阶段显示，快照、取消状态和语言订阅归同一个任务视图。
+
+历史窗口持有完整记录、筛选和存储操作，[download-history-table](../src/ui/dialogs/download-history-table.ts) 负责列定义、记录行、列宽拖拽及其清理，通过记录 ID 将删除交回窗口；刷新记录只替换表体。诊断窗口持有当前选择、导出操作、可见性轮询和订阅，[diagnostic-session-view](../src/ui/dialogs/diagnostic-session-view.ts) 只根据传入会话生成行与详情节点。章节选择的控件、摘要和动作提示分别刷新，选择集合、准备阶段、文件名编辑状态和最终决策仍由选择会话统一维护，子视图不另存一份业务状态。
+
 书籍下载入口先读 `runBookDownload` 的准备/选择，再读同文件 `executeBookDownload` 的持锁执行及其后 `finalizeBookDownloadTask` 的统一收尾。核心 `runDownload` 直接保留完整性补抓和缺正文决策循环；选择窗口 `showReady` 保留文件名和勾选，目录 `searchChapters/revealChapter` 保留搜索与导航规则，搜索键盘行为在 `handleSearchKeydown`，格式生成在 `handleRichDownload`。密码弹窗的布局、`submitPassword`、`refreshPromptText` 与一次决策接线在同一函数内顺序排列。
 
 书籍下载的成功路径：
