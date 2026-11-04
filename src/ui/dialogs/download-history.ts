@@ -10,7 +10,7 @@ import type { DownloadHistoryItem } from "../../storage/history";
 import { el, enableDrag, registerElementCleanup, removeElement } from "../dom";
 import { subscribeInterfaceLocaleChange, t } from "../locale";
 import { acquirePageActionGroupLockForPopup } from "../page-action-lock";
-import { showDecisionDialog } from "./common";
+import { createCommonHeader, showDecisionDialog } from "./common";
 import { createDownloadHistoryTable } from "./download-history-table";
 import { showMessagePopup } from "./message";
 
@@ -23,25 +23,7 @@ function selectOptions(values: Array<[string, string]>): HTMLElement[] {
 // 确认清空全部下载记录，关闭视为取消
 function showHistoryClearConfirm(owner: HTMLElement): Promise<boolean> {
     return showDecisionDialog({ dismissed: false, owner }, (finish) => {
-        const header = el(
-            "div",
-            {
-                className: "esj-common-header",
-                style: "padding:10px;background:#2b9bd7;color:#fff;display:flex;justify-content:space-between;align-items:center;cursor:move;border-radius:8px 8px 0 0;"
-            },
-            [
-                el("span", { style: "font-weight:bold;" }, [t("history.confirm.title")]),
-                el(
-                    "button",
-                    {
-                        title: t("common.close"),
-                        style: "border:none;background:#ef5350;color:#fff;padding:4px 10px;border-radius:6px;cursor:pointer;font-weight:bold;",
-                        onclick: () => finish(false)
-                    },
-                    ["✕"]
-                )
-            ]
-        );
+        const header = createCommonHeader(t("history.confirm.title"), () => finish(false));
         const cancelButton = el(
             "button",
             {
@@ -102,25 +84,7 @@ export function createDownloadHistoryPopup(): void {
     const close = () => {
         removeElement(popup);
     };
-    const header = el(
-        "div",
-        {
-            className: "esj-common-header",
-            style: "padding:10px;background:#2b9bd7;color:#fff;display:flex;justify-content:space-between;align-items:center;cursor:move;border-radius:8px 8px 0 0;"
-        },
-        [
-            el("span", { style: "font-weight:bold;" }, [t("history.title")]),
-            el(
-                "button",
-                {
-                    title: t("common.close"),
-                    style: "border:none;background:#ef5350;color:#fff;padding:4px 10px;border-radius:6px;cursor:pointer;font-weight:bold;",
-                    onclick: close
-                },
-                ["✕"]
-            )
-        ]
-    );
+    const header = createCommonHeader(t("history.title"), close);
 
     // 三个筛选器只改变当前展示，记录本身仍保留在完整列表中
     const scopeSelect = el(
@@ -276,12 +240,8 @@ export function createDownloadHistoryPopup(): void {
     function refreshLocaleText(): void {
         const listScrollTop = listBox.scrollTop;
         const headerLabel = header.querySelector("span");
-        const headerClose = header.querySelector("button");
         if (headerLabel) {
             headerLabel.textContent = t("history.title");
-        }
-        if (headerClose) {
-            headerClose.setAttribute("title", t("common.close"));
         }
         const optionKeys = new Map<string, Parameters<typeof t>[0]>([
             ["all", "history.filter.allType"],

@@ -9,9 +9,9 @@ import { subscribeCacheSync } from "../../storage/cache/sync";
 import { el, enableDrag, registerElementCleanup, removeElement } from "../dom";
 import { log } from "../../ui/log-view";
 import { showMessagePopup } from "./message";
-import { bindInterfaceAttribute, subscribeInterfaceLocaleChange, t } from "../locale";
+import { subscribeInterfaceLocaleChange, t } from "../locale";
 import { acquirePageActionGroupLockForPopup } from "../page-action-lock";
-import { showDecisionDialog } from "./common";
+import { createCommonHeader, showDecisionDialog } from "./common";
 
 let disposeActiveCacheManagerSynchronizer: (() => void) | null = null;
 
@@ -22,33 +22,6 @@ function showCacheClearFailure(error: unknown): void {
         message: t("cache.failure.message"),
         details: error instanceof Error ? error.message : String(error)
     });
-}
-
-function createHeader(title: string, onClose: () => void): HTMLElement {
-    return el(
-        "div",
-        {
-            className: "esj-common-header",
-            style: "padding:10px;background:#2b9bd7;color:#fff;display:flex;justify-content:space-between;align-items:center;cursor:move;border-radius:8px 8px 0 0;"
-        },
-        [
-            el("span", { style: "font-weight:bold;" }, [title]),
-            el("div", { style: "display:flex;" }, [
-                bindInterfaceAttribute(
-                    el(
-                        "button",
-                        {
-                            style: "border:none;background:#ef5350;color:#fff;padding:4px 10px;border-radius:6px;cursor:pointer;font-weight:bold;",
-                            onclick: onClose
-                        },
-                        ["✕"]
-                    ),
-                    "title",
-                    "common.close"
-                )
-            ])
-        ]
-    );
 }
 
 function formatTime(timestamp: number): string {
@@ -103,7 +76,7 @@ function showCacheConfirm(
     options: { title?: string; message: string; danger?: boolean }
 ): Promise<boolean> {
     return showDecisionDialog({ dismissed: false, owner }, (finish) => {
-        const header = createHeader(options.title || t("cache.confirm.title"), () => finish(false));
+        const header = createCommonHeader(options.title || t("cache.confirm.title"), () => finish(false));
 
         const body = el("div", { style: "padding:16px;font-size:14px;line-height:1.7;color:#333;" }, [options.message]);
 
@@ -158,7 +131,7 @@ function showCacheProtectionNotice(owner: HTMLElement, message: string): Promise
                 style: "position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:380px;background:#fff;border:1px solid #aaa;border-radius:8px;box-shadow:0 0 18px rgba(0,0,0,0.28);z-index:1000000;display:flex;flex-direction:column;"
             },
             [
-                createHeader(t("cache.protection.title"), () => finish()),
+                createCommonHeader(t("cache.protection.title"), () => finish()),
                 el("div", { style: "padding:16px;font-size:14px;line-height:1.7;color:#333;" }, [message]),
                 el("div", { style: "padding:12px;display:flex;justify-content:flex-end;" }, [
                     el(
@@ -218,7 +191,7 @@ export function createCacheManagerPopup(): void {
         style: "padding:12px;display:flex;justify-content:space-between;gap:8px;border-top:1px solid #eee;background:#fff;border-radius:0 0 8px 8px;"
     });
 
-    const header = createHeader(t("cache.title"), closeAction);
+    const header = createCommonHeader(t("cache.title"), closeAction);
     const popup = el(
         "div",
         {
