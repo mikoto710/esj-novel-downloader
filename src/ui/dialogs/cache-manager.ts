@@ -355,6 +355,48 @@ export function createCacheManagerPopup(): void {
 
 // 按缓存来源和任务状态组装书籍卡片及可用操作
 function createCacheItem(item: CacheListItem, rerender: () => Promise<void>): HTMLElement {
+    const badges = createCacheItemBadges(item);
+    const progressTrack = createCacheItemProgress(item);
+    const actions = createCacheItemActions(item, rerender);
+
+    // 卡片按书籍信息、缓存章节数、状态徽标、进度和操作排列
+    const title = el("div", { style: "font-weight:bold;color:#333;word-break:break-word;" }, [item.bookName]);
+    const author = el("div", { style: "margin-top:6px;font-size:12px;color:#666;word-break:break-word;" }, [
+        t("cache.item.author", { author: item.author || "-", bookId: item.bookId })
+    ]);
+    const progressSummary = el("div", { style: "margin-top:4px;font-size:12px;color:#666;" }, [
+        t("cache.item.progress", { progress: formatProgress(item), time: formatTime(item.updatedAt) })
+    ]);
+    const source = el("div", { style: "margin-top:4px;font-size:12px;color:#666;word-break:break-word;" }, [
+        t("cache.item.source", {
+            source: item.sourcePageType,
+            url: item.pageUrl ? ` | ${item.pageUrl}` : ""
+        })
+    ]);
+    const content = el("div", { style: "flex:1;min-width:0;" }, [
+        title,
+        author,
+        progressSummary,
+        source,
+        badges,
+        progressTrack,
+        actions
+    ]);
+    const row = el("div", { style: "display:flex;justify-content:space-between;gap:12px;align-items:flex-start;" }, [
+        content
+    ]);
+
+    return el(
+        "div",
+        {
+            className: "esj-cache-item",
+            style: "background:#fff;border:1px solid #e5e5e5;border-radius:8px;padding:12px;margin-bottom:10px;"
+        },
+        [row]
+    );
+}
+
+function createCacheItemBadges(item: CacheListItem): HTMLElement {
     // 徽标分别说明存储来源、任务状态和本页是否已有可导出结果
     const badges = el("div", {
         className: "esj-cache-badges",
@@ -378,6 +420,10 @@ function createCacheItem(item: CacheListItem, rerender: () => Promise<void>): HT
         badges.appendChild(createBadge(t("cache.status.legacy"), "legacy"));
     }
 
+    return badges;
+}
+
+function createCacheItemProgress(item: CacheListItem): HTMLElement {
     const percent =
         item.totalChapters && item.totalChapters > 0
             ? Math.min(100, Math.round((item.progressCount / item.totalChapters) * 100))
@@ -385,7 +431,7 @@ function createCacheItem(item: CacheListItem, rerender: () => Promise<void>): HT
 
     // 以整书章数展示管理进度，分子可包含已处理但未保存的章节
     const progressBar = el("div", { className: "esj-cache-progress-bar", style: `width:${percent}%;` });
-    const progressTrack = el(
+    return el(
         "div",
         {
             className: "esj-cache-progress-track",
@@ -393,138 +439,71 @@ function createCacheItem(item: CacheListItem, rerender: () => Promise<void>): HT
         },
         [progressBar]
     );
+}
 
-    const actions = el("div", { style: "display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;" });
+function createCacheItemActions(item: CacheListItem, rerender: () => Promise<void>): HTMLElement {
+    async function clearItem(source: "indexeddb" | "runtime" | "all"): Promise<void> {
+        const messageKeys = {
+            indexeddb: "cache.confirm.clearIndexedDb",
+            runtime: "cache.confirm.clearRuntime",
+            all: "cache.confirm.clearItemAll"
+        } as const;
+        const confirmed = await showCacheConfirm({
+            title: `🗑️ ${t("cache.action.clear")}${t("common.confirm")}`,
+            message: t(messageKeys[source], { book: item.bookName }),
+            danger: true
+        });
+        if (!confirmed) {
+            return;
+        }
+        const result = await clearManagedCache(item.bookId, source);
+        if (result.protectedBookIds.length > 0) {
+            await showCacheProtectionNotice(t("cache.protected"));
+        } else {
+            log(t("cache.log.cleared", { book: item.bookName }));
+        }
+        await rerender();
+    }
+
+    async function stopAndClearItem(): Promise<void> {
+        const confirmed = await showCacheConfirm({
+            title: `🛑 ${t("cache.action.stopClear")}`,
+            message: t("cache.confirm.stopClear", { book: item.bookName }),
+            danger: true
+        });
+        if (!confirmed) {
+            return;
+        }
+
+        // 发出停止请求不等于清理完成，以实际结果展示提示
+        const result = await stopAndClearManagedCache(item.bookId);
+        const resultMessage: Record<typeof result.status, string> = {
+            "not-active": t("cache.stop.notActive"),
+            cleared: t("cache.stop.cleared"),
+            "cleanup-failed": t("cache.stop.cleanupFailed"),
+            replaced: t("cache.stop.replaced"),
+            stale: t("cache.stop.stale"),
+            timeout: t("cache.stop.timeout")
+        };
+        await showCacheProtectionNotice(resultMessage[result.status]);
+        await rerender();
+    }
 
     // 活动任务只提供停止并清除，空闲记录才按持久或本页来源清理
+    const actions = el("div", { style: "display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;" });
     if (item.activeTask) {
-        actions.appendChild(
-            createActionButton(
-                t("cache.action.stopClear"),
-                async () => {
-                    const confirmed = await showCacheConfirm({
-                        title: `🛑 ${t("cache.action.stopClear")}`,
-                        message: t("cache.confirm.stopClear", { book: item.bookName }),
-                        danger: true
-                    });
-                    if (!confirmed) {
-                        return;
-                    }
-
-                    // 发出停止请求不等于清理完成，以实际结果展示提示
-                    const result = await stopAndClearManagedCache(item.bookId);
-                    const resultMessage: Record<typeof result.status, string> = {
-                        "not-active": t("cache.stop.notActive"),
-                        cleared: t("cache.stop.cleared"),
-                        "cleanup-failed": t("cache.stop.cleanupFailed"),
-                        replaced: t("cache.stop.replaced"),
-                        stale: t("cache.stop.stale"),
-                        timeout: t("cache.stop.timeout")
-                    };
-                    await showCacheProtectionNotice(resultMessage[result.status]);
-                    await rerender();
-                },
-                "danger"
-            )
-        );
+        actions.appendChild(createActionButton(t("cache.action.stopClear"), stopAndClearItem, "danger"));
     } else if (item.sources.includes("indexeddb")) {
-        actions.appendChild(
-            createActionButton(t("cache.action.clearIndexedDb"), async () => {
-                const confirmed = await showCacheConfirm({
-                    title: `🗑️ ${t("cache.action.clear")}${t("common.confirm")}`,
-                    message: t("cache.confirm.clearIndexedDb", { book: item.bookName }),
-                    danger: true
-                });
-                if (!confirmed) {
-                    return;
-                }
-                const result = await clearManagedCache(item.bookId, "indexeddb");
-                if (result.protectedBookIds.length > 0) {
-                    await showCacheProtectionNotice(t("cache.protected"));
-                } else {
-                    log(t("cache.log.cleared", { book: item.bookName }));
-                }
-                await rerender();
-            })
-        );
+        actions.appendChild(createActionButton(t("cache.action.clearIndexedDb"), () => clearItem("indexeddb")));
     }
 
     if (!item.activeTask && item.sources.includes("runtime")) {
-        actions.appendChild(
-            createActionButton(t("cache.action.clearRuntime"), async () => {
-                const confirmed = await showCacheConfirm({
-                    title: `🗑️ ${t("cache.action.clear")}${t("common.confirm")}`,
-                    message: t("cache.confirm.clearRuntime", { book: item.bookName }),
-                    danger: true
-                });
-                if (!confirmed) {
-                    return;
-                }
-                const result = await clearManagedCache(item.bookId, "runtime");
-                if (result.protectedBookIds.length > 0) {
-                    await showCacheProtectionNotice(t("cache.protected"));
-                } else {
-                    log(t("cache.log.cleared", { book: item.bookName }));
-                }
-                await rerender();
-            })
-        );
+        actions.appendChild(createActionButton(t("cache.action.clearRuntime"), () => clearItem("runtime")));
     }
 
     if (!item.activeTask && item.sources.length > 1) {
-        actions.appendChild(
-            createActionButton(
-                t("cache.action.clearItemAll"),
-                async () => {
-                    const confirmed = await showCacheConfirm({
-                        title: `🗑️ ${t("cache.action.clear")}${t("common.confirm")}`,
-                        message: t("cache.confirm.clearItemAll", { book: item.bookName }),
-                        danger: true
-                    });
-                    if (!confirmed) {
-                        return;
-                    }
-                    const result = await clearManagedCache(item.bookId, "all");
-                    if (result.protectedBookIds.length > 0) {
-                        await showCacheProtectionNotice(t("cache.protected"));
-                    } else {
-                        log(t("cache.log.cleared", { book: item.bookName }));
-                    }
-                    await rerender();
-                },
-                "danger"
-            )
-        );
+        actions.appendChild(createActionButton(t("cache.action.clearItemAll"), () => clearItem("all"), "danger"));
     }
 
-    // 卡片按书籍信息、缓存章节数、状态徽标、进度和操作排列
-    return el(
-        "div",
-        {
-            className: "esj-cache-item",
-            style: "background:#fff;border:1px solid #e5e5e5;border-radius:8px;padding:12px;margin-bottom:10px;"
-        },
-        [
-            el("div", { style: "display:flex;justify-content:space-between;gap:12px;align-items:flex-start;" }, [
-                el("div", { style: "flex:1;min-width:0;" }, [
-                    el("div", { style: "font-weight:bold;color:#333;word-break:break-word;" }, [item.bookName]),
-                    el("div", { style: "margin-top:6px;font-size:12px;color:#666;word-break:break-word;" }, [
-                        t("cache.item.author", { author: item.author || "-", bookId: item.bookId })
-                    ]),
-                    el("div", { style: "margin-top:4px;font-size:12px;color:#666;" }, [
-                        t("cache.item.progress", { progress: formatProgress(item), time: formatTime(item.updatedAt) })
-                    ]),
-                    el("div", { style: "margin-top:4px;font-size:12px;color:#666;word-break:break-word;" }, [
-                        t("cache.item.source", {
-                            source: item.sourcePageType,
-                            url: item.pageUrl ? ` | ${item.pageUrl}` : ""
-                        })
-                    ]),
-                    badges,
-                    progressTrack,
-                    actions
-                ])
-            ])
-        ]
-    );
+    return actions;
 }
