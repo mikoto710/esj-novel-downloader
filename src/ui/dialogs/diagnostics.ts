@@ -11,60 +11,69 @@ import {
     DIAGNOSTIC_RETENTION_MS,
     DIAGNOSTIC_SESSION_BYTES_LIMIT,
     DIAGNOSTIC_TOTAL_BYTES_LIMIT,
-    type DiagnosticSessionPresentation,
     type DiagnosticSessionView
 } from "../../diagnostics/manager";
 import { el, enableDrag, registerElementCleanup, removeElement } from "../dom";
 import { createCommonHeader } from "./common";
 import { subscribeInterfaceLocaleChange, t } from "../locale";
 import { acquirePageActionGroupLockForPopup } from "../page-action-lock";
+import { createDiagnosticSessionDetail, createDiagnosticSessionRow } from "./diagnostic-session-view";
 
 const DIAGNOSTIC_AUTO_REFRESH_INTERVAL_MS = 3000;
 let disposeActiveDiagnosticPopup: (() => void) | null = null;
-
-const resultPresentation: Record<
-    DiagnosticSessionPresentation,
-    { icon: string; key: Parameters<typeof t>[0]; color: string }
-> = {
-    running: { icon: "🔄", key: "diagnostics.result.running", color: "#2b9bd7" },
-    success: { icon: "✅", key: "diagnostics.result.success", color: "#2e7d32" },
-    cancelled: { icon: "🛑", key: "diagnostics.result.cancelled", color: "#777" },
-    failed: { icon: "❌", key: "diagnostics.result.failed", color: "#c62828" },
-    interrupted: { icon: "⚠️", key: "diagnostics.result.interrupted", color: "#a05a00" },
-    "closed-unconfirmed": { icon: "⏳", key: "diagnostics.result.closed", color: "#a05a00" },
-    superseded: { icon: "↪️", key: "diagnostics.result.superseded", color: "#56708a" }
-};
-
-function formatTime(timestamp: number): string {
-    return new Date(timestamp).toLocaleString();
-}
 
 function formatBytes(bytes: number): string {
     return bytes < 1024 * 1024 ? `${Math.round(bytes / 1024)} KiB` : `${(bytes / (1024 * 1024)).toFixed(1)} MiB`;
 }
 
-function sessionResult(view: DiagnosticSessionView): { icon: string; label: string; color: string } {
-    if (view.session.failures.some((failure) => failure.scope === "export") && view.presentation === "success") {
-        return { icon: "⚠️", label: t("diagnostics.result.exportFailed"), color: "#a05a00" };
-    }
-    if (view.presentation === "running" && view.session.task.protectedPendingChapters > 0) {
-        return { icon: "🔒", label: t("diagnostics.result.passwordPending"), color: "#a05a00" };
-    }
-    const presentation = resultPresentation[view.presentation];
-    return { icon: presentation.icon, label: t(presentation.key), color: presentation.color };
-}
+function showClearConfirm(): Promise<boolean> {
+    document.querySelector("#esj-diagnostic-clear-confirm")?.remove();
 
-function sessionPresentationHint(view: DiagnosticSessionView): string | null {
-    if (view.presentation === "closed-unconfirmed") {
-        return t("diagnostics.reason.closed");
-    }
-    if (view.presentation === "superseded") {
-        return t("diagnostics.reason.superseded");
-    }
-    if (view.presentation === "interrupted" && view.session.result === "running") {
-        return t("diagnostics.reason.interrupted");
-    }
-    return null;
+    return new Promise((resolve) => {
+        const finish = (confirmed: boolean) => {
+            confirmPopup.remove();
+            resolve(confirmed);
+        };
+        const header = createCommonHeader(t("diagnostics.confirm.title"), () => finish(false));
+        const message = el("div", { style: "padding:16px;font-size:15px;line-height:1.7;color:#333;" }, [
+            t("diagnostics.confirm.message")
+        ]);
+        const cancelButton = el(
+            "button",
+            {
+                id: "esj-diagnostic-clear-cancel",
+                style: "padding:8px 12px;background:#eee;border:1px solid #ccc;border-radius:6px;cursor:pointer;",
+                onclick: () => finish(false)
+            },
+            [t("common.cancel")]
+        );
+        const confirmButton = el(
+            "button",
+            {
+                id: "esj-diagnostic-clear-confirm-button",
+                style: "padding:8px 12px;background:#d9534f;color:#fff;border:1px solid #d9534f;border-radius:6px;cursor:pointer;",
+                onclick: () => finish(true)
+            },
+            [t("cache.action.clear")]
+        );
+        const actions = el("div", { style: "padding:12px;display:flex;justify-content:flex-end;gap:8px;" }, [
+            cancelButton,
+            confirmButton
+        ]);
+        const confirmPopup = el(
+            "div",
+            {
+                id: "esj-diagnostic-clear-confirm",
+                role: "alertdialog",
+                "aria-modal": "true",
+                style: "position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:380px;max-width:calc(100vw - 32px);background:#fff;border:1px solid #aaa;border-radius:8px;box-shadow:0 0 18px rgba(0,0,0,.28);z-index:1000004;display:flex;flex-direction:column;"
+            },
+            [header, message, actions]
+        );
+        document.body.appendChild(confirmPopup);
+        enableDrag(confirmPopup, ".esj-common-header");
+        (confirmPopup.querySelector("#esj-diagnostic-clear-cancel") as HTMLButtonElement).focus();
+    });
 }
 
 /**
@@ -222,61 +231,26 @@ export function createDiagnosticPopup(): void {
         downloadButton.disabled = !view;
         copyButton.disabled = !view;
         deleteButton.disabled = !view;
-        if (!view) {
-            detail.appendChild(
-                el("div", { style: "padding:50px 12px;text-align:center;color:#777;" }, [t("diagnostics.empty")])
-            );
+        detail.append(...createDiagnosticSessionDetail(view));
+    };
+
+    // 按活动、待确认和最近记录分组，点击行后同步右侧详情。
+    function appendSessionSection(title: string, items: DiagnosticSessionView[]): void {
+        if (items.length === 0) {
             return;
         }
-        const session = view.session;
-        const bookTitle = formatDiagnosticBookTitle(session);
-        const presentation = sessionResult(view);
-        const presentationHint = sessionPresentationHint(view);
-        const exported = createDiagnosticExport(session, {
-            bookTitle: formatDiagnosticBookTitle(session),
-            formatLog: formatDiagnosticLog
+        const sectionTitle = el("div", { style: "padding:9px 12px;color:#777;font-size:12px;font-weight:bold;" }, [
+            title
+        ]);
+        list.appendChild(sectionTitle);
+        items.forEach((item) => {
+            const row = createDiagnosticSessionRow(item, item.session.id === selectedId, () => {
+                selectedId = item.session.id;
+                render();
+            });
+            list.appendChild(row);
         });
-
-        // 详情先显示结果及解释，再展示脱敏摘要和导出文件名
-        detail.append(
-            el("div", { style: "font-size:18px;font-weight:bold;margin-bottom:6px;overflow-wrap:anywhere;" }, [
-                bookTitle
-            ]),
-            el("div", { style: `color:${presentation.color};font-weight:bold;margin-bottom:12px;` }, [
-                `${presentation.icon} ${presentation.label}`
-            ])
-        );
-        if (presentationHint) {
-            detail.appendChild(
-                el(
-                    "div",
-                    {
-                        style: "padding:10px 12px;border:1px solid #9eb7ce;background:#f1f7fc;color:#375a7a;border-radius:6px;line-height:1.6;margin-bottom:12px;"
-                    },
-                    [presentationHint]
-                )
-            );
-        }
-        detail.append(
-            el(
-                "div",
-                {
-                    style: "padding:10px 12px;border:1px solid #e6a23c;background:#fff7e6;color:#8a5a00;border-radius:6px;line-height:1.6;margin-bottom:12px;"
-                },
-                [t("diagnostics.privacy")]
-            ),
-            el(
-                "pre",
-                {
-                    style: "margin:0;padding:12px;white-space:pre-wrap;overflow-wrap:anywhere;background:#f7f7f7;border:1px solid #ddd;border-radius:6px;font:13px/1.65 monospace;"
-                },
-                [formatDiagnosticSummary(session, view.presentation)]
-            ),
-            el("div", { style: "margin-top:10px;color:#777;font-size:12px;overflow-wrap:anywhere;" }, [
-                t("diagnostics.file", { filename: exported.filename })
-            ])
-        );
-    };
+    }
 
     const render = ({ preserveScroll = false }: { preserveScroll?: boolean } = {}) => {
         const listScrollTop = preserveScroll ? list.scrollTop : 0;
@@ -294,52 +268,9 @@ export function createDiagnosticPopup(): void {
                 el("div", { style: "padding:40px 12px;text-align:center;color:#777;" }, [t("diagnostics.empty")])
             );
         } else {
-            // 按活动、待确认和最近记录分组，点击行后同步右侧详情
-            const appendSection = (title: string, items: DiagnosticSessionView[]) => {
-                if (items.length === 0) {
-                    return;
-                }
-                list.appendChild(
-                    el("div", { style: "padding:9px 12px;color:#777;font-size:12px;font-weight:bold;" }, [title])
-                );
-                items.forEach((item) => {
-                    const session = item.session;
-                    const bookTitle = formatDiagnosticBookTitle(session);
-                    const presentation = sessionResult(item);
-                    const selected = session.id === selectedId;
-                    const row = el(
-                        "button",
-                        {
-                            type: "button",
-                            style: `display:block;width:100%;padding:10px 12px;border:0;border-bottom:1px solid #eee;background:${selected ? "#e8f5fc" : "transparent"};text-align:left;cursor:pointer;`,
-                            onclick: () => {
-                                selectedId = session.id;
-                                render();
-                            }
-                        },
-                        [
-                            el("div", { style: `color:${presentation.color};font-weight:bold;` }, [
-                                `${presentation.icon} ${presentation.label}`
-                            ]),
-                            el(
-                                "div",
-                                {
-                                    title: bookTitle,
-                                    style: "margin-top:3px;color:#333;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
-                                },
-                                [bookTitle]
-                            ),
-                            el("div", { style: "margin-top:2px;color:#888;font-size:11px;" }, [
-                                formatTime(session.updatedAt)
-                            ])
-                        ]
-                    );
-                    list.appendChild(row);
-                });
-            };
-            appendSection(t("diagnostics.section.active"), view.active);
-            appendSection(t("diagnostics.section.unconfirmed"), view.unconfirmed);
-            appendSection(t("diagnostics.section.recent", { limit: DIAGNOSTIC_HISTORY_LIMIT }), view.history);
+            appendSessionSection(t("diagnostics.section.active"), view.active);
+            appendSessionSection(t("diagnostics.section.unconfirmed"), view.unconfirmed);
+            appendSessionSection(t("diagnostics.section.recent", { limit: DIAGNOSTIC_HISTORY_LIMIT }), view.history);
         }
         renderDetail(sessions.find((item) => item.session.id === selectedId) || null);
         if (preserveScroll) {
@@ -379,22 +310,19 @@ export function createDiagnosticPopup(): void {
     }
 
     // 保留说明和操作栏固定，双栏内容填满中间剩余高度
+    const sessionContent = el("div", { style: "display:flex;flex:1;min-height:0;" }, [list, detail]);
+    const actions = el(
+        "div",
+        { style: "padding:12px;display:flex;justify-content:flex-end;gap:8px;border-top:1px solid #ddd;" },
+        [refreshButton, deleteButton, clearButton, copyButton, downloadButton]
+    );
     const popup = el(
         "div",
         {
             id: "esj-diagnostics",
             style: "position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:760px;max-width:calc(100vw - 32px);height:560px;max-height:calc(100vh - 32px);background:#fff;border:1px solid #aaa;border-radius:8px;box-shadow:0 0 18px rgba(0,0,0,.28);z-index:1000003;display:flex;flex-direction:column;"
         },
-        [
-            header,
-            retentionNotice,
-            el("div", { style: "display:flex;flex:1;min-height:0;" }, [list, detail]),
-            el(
-                "div",
-                { style: "padding:12px;display:flex;justify-content:flex-end;gap:8px;border-top:1px solid #ddd;" },
-                [refreshButton, deleteButton, clearButton, copyButton, downloadButton]
-            )
-        ]
+        [header, retentionNotice, sessionContent, actions]
     );
 
     document.body.appendChild(popup);
@@ -422,53 +350,4 @@ export function createDiagnosticPopup(): void {
     disposeActiveDiagnosticPopup = dispose;
     document.addEventListener("visibilitychange", onVisibilityChange);
     scheduleAutoRefresh();
-
-    function showClearConfirm(): Promise<boolean> {
-        document.querySelector("#esj-diagnostic-clear-confirm")?.remove();
-
-        return new Promise((resolve) => {
-            const finish = (confirmed: boolean) => {
-                confirmPopup.remove();
-                resolve(confirmed);
-            };
-            const confirmPopup = el(
-                "div",
-                {
-                    id: "esj-diagnostic-clear-confirm",
-                    role: "alertdialog",
-                    "aria-modal": "true",
-                    style: "position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:380px;max-width:calc(100vw - 32px);background:#fff;border:1px solid #aaa;border-radius:8px;box-shadow:0 0 18px rgba(0,0,0,.28);z-index:1000004;display:flex;flex-direction:column;"
-                },
-                [
-                    createCommonHeader(t("diagnostics.confirm.title"), () => finish(false)),
-                    el("div", { style: "padding:16px;font-size:15px;line-height:1.7;color:#333;" }, [
-                        t("diagnostics.confirm.message")
-                    ]),
-                    el("div", { style: "padding:12px;display:flex;justify-content:flex-end;gap:8px;" }, [
-                        el(
-                            "button",
-                            {
-                                id: "esj-diagnostic-clear-cancel",
-                                style: "padding:8px 12px;background:#eee;border:1px solid #ccc;border-radius:6px;cursor:pointer;",
-                                onclick: () => finish(false)
-                            },
-                            [t("common.cancel")]
-                        ),
-                        el(
-                            "button",
-                            {
-                                id: "esj-diagnostic-clear-confirm-button",
-                                style: "padding:8px 12px;background:#d9534f;color:#fff;border:1px solid #d9534f;border-radius:6px;cursor:pointer;",
-                                onclick: () => finish(true)
-                            },
-                            [t("cache.action.clear")]
-                        )
-                    ])
-                ]
-            );
-            document.body.appendChild(confirmPopup);
-            enableDrag(confirmPopup, ".esj-common-header");
-            (confirmPopup.querySelector("#esj-diagnostic-clear-cancel") as HTMLButtonElement).focus();
-        });
-    }
 }
