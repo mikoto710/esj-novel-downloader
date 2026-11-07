@@ -82,10 +82,10 @@ ui/pages/detail 或 forum
 - **任务状态**：章节 Map、取消能力和锁归属具体任务。初始库存由 `DownloadOptions.initialChapters` 只读交接，核心复制 Map 容器后由章节流程写入；页面只保留入口、摘要和最近结果。回调按 `taskId` 校验归属，失败或取消保留旧导出。`readyChapterCount` 计本次选择的已有记录，`bookChapterCount` 计整书库存快照，`persistedCount` 计确认保存的唯一所选索引。计数增减只在 `DownloadProgress` 的具名方法，密码模块只提交自己的汇总。
 - **输出与资源**：按固定计划恢复、补抓和组装。未选章节不参与缺章判断或占位，占位只进入导出快照。书籍 HTML 有封面和目录，单章使用独立布局。图片按发起页面地址解析。字体先规范化和校验，映射字体禁用 TXT。
 - **再次导出**：`app/export` 绑定原结果和自定义文件名，不改书籍元数据或历史归属。EPUB 缓存按生成设置和失效版本复用。`recordExportOutcome` 共用成功/取消的原身份保护，未知来源旧结果不写入后来任务诊断。关闭格式弹窗不取消生成，旧生成不能改写新任务标题。插图设置在缓存预览前固定，并发数在装配时读取，EPUB 设置在生成时读取。
-- **设置与诊断规则**：图片设置在 `changeImageDownloadSetting` 连续执行读取、跨页确认、保存和失败恢复。诊断 `recordDownloadEvent` 的 `applyDownloadEvent` 只投影事件，`mutateSession` 统一处理终态搬移与保存；JSON 导出只生成日志展示副本。
+- **设置**：图片设置在 `changeImageDownloadSetting` 连续执行读取、跨页确认、保存和失败恢复。
 - **管理视图**：缓存弹窗分别展示活动任务保护和存储失败。批量清理等待各书操作结束，重试时重新枚举尚未清除的书籍和残留旧键。v3 清除标记阻止旧章节再次导入。历史 `createHistoryRow` 维护行操作，诊断 `downloadSelectedDiagnostic/copySelectedDiagnostic` 明确作用于当前选择，刷新保留筛选与滚动。
 - **装配**：`createDownloadDependencies` 直接绑定站点、存储和计时能力。`createChapterProcessor` 保留解析/图片采集与原任务诊断职责，`createCoverFetcher` 保留封面采集事实的本地化；`observeDownloadEvent` 只更新页面摘要和记录诊断。
-- **诊断**：记录原任务的中性消息，已有终态优先。存储失败不阻断主流程，敏感内容不写入记录。过长区间可简化，为事件和日志保留容量。快照和历史仍保留完整选择。
+- **诊断**：`storage/diagnostics` 按站点来源隔离，在 IndexedDB 中按 `taskId` 事务更新。旧 GM 记录按来源一次性导入，清空后不再导入。诊断故障不阻断下载，关闭观察不改变任务终态。
 - **语言**：`LocaleKey` 和 `LOCALE_KEYS` 从简体基础字典派生，繁体字典声明处检查同键；新增文案只改两份字典和使用它的控件。依次采用手动偏好、站点提示和浏览器语言。界面刷新不改小说内容、元数据、URL 或站点协议原文。
 
 一般改动直接运行对应测试；涉及取消、锁或缓存写入时，连同相邻退出路径与压力场景检查。测试目录、隔离要求和真实页面清单统一见[测试指南](testing.md)。
