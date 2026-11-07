@@ -3,7 +3,6 @@ import {
     DiagnosticManager,
     classifyDownloadLogLevel,
     type DiagnosticResult,
-    type DiagnosticSession,
     type DiagnosticStore,
     type DiagnosticSessionViewStore,
     type RecordDiagnosticFailureInput,
@@ -11,16 +10,26 @@ import {
     type StartDiagnosticSessionInput
 } from "./manager";
 import type { DownloadEvent, DownloadEventSink, DownloadLog, DownloadOptions } from "../download/contracts";
-import { GmDiagnosticRepository } from "../storage/diagnostics";
+import { IndexedDbDiagnosticRepository } from "../storage/diagnostics";
+import { forgetDiagnosticPageCloses, rememberDiagnosticPageClose } from "../storage/diagnostic-page-close";
 import { getConcurrency, getEpubTagPageSetting } from "../storage/settings";
 import { log } from "../ui/log-view";
 import { formatDownloadLog } from "../ui/messages/download-log";
 
-const manager = new DiagnosticManager(new GmDiagnosticRepository());
+const manager = new DiagnosticManager(new IndexedDbDiagnosticRepository(() => location.origin));
+const observedWrites = new WeakSet<Promise<void>>();
 // currentTaskId 记录默认日志归属；lastTaskId 为任务结束后未指定身份的失败与导出提供回退
 let currentTaskId: string | null = null;
 let lastTaskId: string | null = null;
 const closeObserverCleanups = new Map<string, () => void>();
+
+// 同一批次可能包含多个事件，持久化失败只报告一次且不打断调用者
+function observeDiagnosticWrite(operation: Promise<void>): void {
+    if (!observedWrites.has(operation)) {
+        observedWrites.add(operation);
+        void operation.catch((error) => console.warn("保存诊断日志失败", error));
+    }
+}
 
 // 停止指定任务的 pagehide 监听，并移除该任务登记的清理回调
 function stopBrowserDiagnosticCloseObserver(taskId: string): void {
@@ -38,7 +47,8 @@ function observeBrowserDiagnosticPageClose(taskId: string): void {
             return;
         }
         stopBrowserDiagnosticCloseObserver(taskId);
-        manager.markCloseObserved(taskId);
+        rememberDiagnosticPageClose(taskId);
+        observeDiagnosticWrite(manager.markCloseObserved(taskId).then(() => forgetDiagnosticPageCloses([taskId])));
     };
     window.addEventListener("pagehide", onPageHide);
     closeObserverCleanups.set(taskId, () => window.removeEventListener("pagehide", onPageHide));
@@ -61,20 +71,20 @@ function getApplicationInfo(): StartDiagnosticSessionInput["application"] {
 }
 
 /**
- * 固定任务诊断快照，options 控制默认回写归属和页面关闭观察，诊断不可用时返回 undefined
+ * 固定任务诊断快照并提交写入，返回值仅表示设置快照是否已取得
  */
 export function startBrowserDiagnosticSession(
     input: Omit<StartDiagnosticSessionInput, "application" | "settings"> & {
         imageEnabled: boolean;
     },
     options: { rememberForLaterFailures?: boolean; observePageClose?: boolean } = {}
-): DiagnosticSession | undefined {
+): boolean {
     currentTaskId = input.taskId;
     if (options.rememberForLaterFailures !== false) {
         lastTaskId = input.taskId;
     }
     try {
-        const session = manager.start({
+        const starting = manager.start({
             ...input,
             application: getApplicationInfo(),
             settings: {
@@ -83,34 +93,34 @@ export function startBrowserDiagnosticSession(
                 epubTagPageEnabled: getEpubTagPageSetting()
             }
         });
+        observeDiagnosticWrite(starting);
         if (options.observePageClose) {
             observeBrowserDiagnosticPageClose(input.taskId);
         }
-        return session;
+        return true;
     } catch (error) {
         // 设置快照也可能读取失败；诊断不可用不能反向阻断预检、下载或导出
         console.warn("初始化诊断日志失败", error);
-        return undefined;
+        return false;
     }
 }
 
 /**
- * 在下载锁建立前为预检失败创建独立短生命周期会话，并立即写入失败终态
+ * 在下载锁建立前依序提交预检会话、失败详情和终态
  */
 export function recordBrowserPreflightDiagnosticFailure(
     input: Omit<StartDiagnosticSessionInput, "taskId" | "application" | "settings"> & {
         imageEnabled: boolean;
         failure: RecordDiagnosticFailureInput;
     }
-): DiagnosticSession | undefined {
+): void {
     // 缓存预读失败发生在下载锁创建前，不能依赖正常下载任务的 taskId
     const taskId = `preflight-${input.bookId}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     if (!startBrowserDiagnosticSession({ ...input, taskId })) {
-        return undefined;
+        return;
     }
-    manager.recordFailure(taskId, input.failure);
+    observeDiagnosticWrite(manager.recordFailure(taskId, input.failure));
     finishBrowserDiagnosticSession(taskId, "failed");
-    return manager.list().history.find((session) => session.taskId === taskId);
 }
 
 /**
@@ -118,7 +128,7 @@ export function recordBrowserPreflightDiagnosticFailure(
  */
 export function updateBrowserDiagnosticSession(options: DownloadOptions): void {
     currentTaskId = options.taskId;
-    manager.updateSession(options.taskId, options);
+    observeDiagnosticWrite(manager.updateSession(options.taskId, options));
 }
 
 /**
@@ -128,7 +138,7 @@ export function updateBrowserDiagnosticSessionMetadata(
     taskId: string,
     options: Partial<Pick<DownloadOptions, "bookName" | "pageUrl" | "sourcePageType">>
 ): void {
-    manager.updateSession(taskId, options);
+    observeDiagnosticWrite(manager.updateSession(taskId, options));
 }
 
 /**
@@ -136,7 +146,7 @@ export function updateBrowserDiagnosticSessionMetadata(
  */
 export function finishBrowserDiagnosticSession(taskId: string, result: Exclude<DiagnosticResult, "running">): void {
     stopBrowserDiagnosticCloseObserver(taskId);
-    manager.finish(taskId, result);
+    observeDiagnosticWrite(manager.finish(taskId, result));
     if (currentTaskId === taskId) {
         currentTaskId = null;
     }
@@ -151,14 +161,16 @@ export function finishBrowserSingleChapterDiagnosticSession(
 ): void {
     stopBrowserDiagnosticCloseObserver(taskId);
     const completed = result === "success" ? 1 : 0;
-    manager.finish(taskId, result, {
-        phase: result === "success" ? "export-ready" : result === "cancelled" ? "cancelled" : "failed",
-        totalChapters: 1,
-        fetchedChapters: completed,
-        processedChapters: completed,
-        completedChapters: completed,
-        failedChapters: result === "failed" ? 1 : 0
-    });
+    observeDiagnosticWrite(
+        manager.finish(taskId, result, {
+            phase: result === "success" ? "export-ready" : result === "cancelled" ? "cancelled" : "failed",
+            totalChapters: 1,
+            fetchedChapters: completed,
+            processedChapters: completed,
+            completedChapters: completed,
+            failedChapters: result === "failed" ? 1 : 0
+        })
+    );
     if (currentTaskId === taskId) {
         currentTaskId = null;
     }
@@ -168,20 +180,14 @@ export function finishBrowserSingleChapterDiagnosticSession(
  * 将失败写回 taskId 标识的诊断会话；未传 taskId 时依次选择日志归属任务、导出回写任务和更新时间最新的会话
  */
 export function recordBrowserDiagnosticFailure(input: RecordDiagnosticFailureInput, taskId = currentTaskId): void {
-    const targetTaskId = taskId || lastTaskId || getLatestBrowserDiagnosticSession()?.taskId;
-    if (targetTaskId) {
-        manager.recordFailure(targetTaskId, input);
-    }
+    observeDiagnosticWrite(manager.recordFailure(taskId || lastTaskId, input));
 }
 
 /**
  * 将导出结果写回 taskId 标识的诊断会话；未传 taskId 时使用与失败记录相同的会话选择规则
  */
 export function recordBrowserDiagnosticExport(input: RecordDiagnosticExportInput, taskId = currentTaskId): void {
-    const targetTaskId = taskId || lastTaskId || getLatestBrowserDiagnosticSession()?.taskId;
-    if (targetTaskId) {
-        manager.recordExport(targetTaskId, input);
-    }
+    observeDiagnosticWrite(manager.recordExport(taskId || lastTaskId, input));
 }
 
 /**
@@ -197,7 +203,7 @@ export function browserDiagnosticLog(message: string | DownloadLog, taskId = cur
         }
     }
     if (taskId) {
-        try {
+        observeDiagnosticWrite(
             manager.recordLog(
                 taskId,
                 typeof message === "string"
@@ -207,10 +213,8 @@ export function browserDiagnosticLog(message: string | DownloadLog, taskId = cur
                           code: message.code,
                           ...(message.params === undefined ? {} : { params: message.params })
                       }
-            );
-        } catch {
-            // 诊断观察失败不影响调用方
-        }
+            )
+        );
     }
 }
 
@@ -218,7 +222,7 @@ export function browserDiagnosticLog(message: string | DownloadLog, taskId = cur
  * 将下载事件写回固定任务，终态不影响其他任务的观察
  */
 export function recordBrowserDownloadEvent(taskId: string, event: DownloadEvent): void {
-    manager.recordDownloadEvent(taskId, event);
+    observeDiagnosticWrite(manager.recordDownloadEvent(taskId, event));
     if (
         (event.type === "phase-changed" && ["export-ready", "cancelled"].includes(event.current)) ||
         event.type === "download-failed"
@@ -241,42 +245,40 @@ export const browserDiagnosticEvents: DownloadEventSink = {
 /**
  * 读取经过兼容修复、保留期限和容量约束处理的活动诊断会话与历史记录
  */
-export function listBrowserDiagnosticSessions(): DiagnosticStore {
+export function listBrowserDiagnosticSessions(): Promise<DiagnosticStore> {
     return manager.list();
 }
 
 /**
  * 读取按当前时间计算展示状态的诊断会话视图，不改写持久终态
  */
-export function listBrowserDiagnosticSessionView(): DiagnosticSessionViewStore {
-    return createDiagnosticSessionView(manager.list(), Date.now());
+export async function listBrowserDiagnosticSessionView(): Promise<DiagnosticSessionViewStore> {
+    return createDiagnosticSessionView(await manager.list(), Date.now());
 }
 
-export function isBrowserDiagnosticSessionActive(taskId: string): boolean {
-    return manager.list().active.some((session) => session.taskId === taskId);
-}
-
-export function removeBrowserDiagnosticSession(sessionId: string): void {
-    manager.remove(sessionId);
+export function removeBrowserDiagnosticSession(sessionId: string): Promise<void> {
+    return manager.remove(sessionId);
 }
 
 /**
- * 停止全部页面关闭观察，并清空诊断存储及无 taskId 记录使用的默认会话归属
+ * 清空诊断存储，提交后移除清空发起时的页面观察和默认会话归属
  */
-export function clearBrowserDiagnosticSessions(): void {
-    for (const cleanup of closeObserverCleanups.values()) {
-        cleanup();
+export async function clearBrowserDiagnosticSessions(): Promise<void> {
+    const observers = [...closeObserverCleanups];
+    const active = currentTaskId;
+    const latest = lastTaskId;
+    await manager.clear();
+
+    // 清空等待期间可能启动新任务，只移除操作发起时的观察和归属
+    for (const [taskId, cleanup] of observers) {
+        if (closeObserverCleanups.get(taskId) === cleanup) {
+            stopBrowserDiagnosticCloseObserver(taskId);
+        }
     }
-    closeObserverCleanups.clear();
-    manager.clear();
-    currentTaskId = null;
-    lastTaskId = null;
-}
-
-/**
- * 返回更新时间最新的 active 会话；没有 active 会话时回退到最近一条历史记录
- */
-export function getLatestBrowserDiagnosticSession(): DiagnosticSession | null {
-    const store = manager.list();
-    return store.active.sort((a, b) => b.updatedAt - a.updatedAt)[0] || store.history[0] || null;
+    if (currentTaskId === active) {
+        currentTaskId = null;
+    }
+    if (lastTaskId === latest) {
+        lastTaskId = null;
+    }
 }

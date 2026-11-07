@@ -367,7 +367,10 @@ export const ZH_CN_MESSAGES = Object.freeze({
     "diagnostics.section.recent": "最近任务（最多 {limit} 条）",
     "diagnostics.retention": "历史最多 {limit} 条 / {days} 天；单条 {single}，总计 {total}",
     "diagnostics.confirm.title": "🗑️ 清除确认",
-    "diagnostics.confirm.message": "确定清除全部诊断记录吗？这也会清除其他页面的进行中记录，且无法恢复",
+    "diagnostics.confirm.message":
+        "确定清除当前站点的全部诊断记录吗？这也会清除同一站点其他页面的进行中记录，且无法恢复",
+    "diagnostics.readFailed": "无法读取诊断记录，请检查浏览器的存储状态后刷新",
+    "diagnostics.deleteFailed": "无法删除诊断记录，请检查浏览器的存储状态后重试",
     "page.bookIdMissing": "无法解析书籍 ID，已取消书籍下载任务",
     "page.cacheReadFailed": "❌ 无法读取本地缓存：{detail}",
     "page.cacheUnavailable.title": "本地缓存不可用",

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
     clearBrowserDiagnosticSessions,
     listBrowserDiagnosticSessions,
@@ -14,6 +14,7 @@ import {
     expectReadyDownload,
     resetBrowserDownloadHarness
 } from "../support/browser-download-harness";
+import { deleteTestDatabase } from "../support/resources";
 
 const mocks = getBrowserDownloadMocks();
 let runtime: BrowserDownloadRuntime;
@@ -31,8 +32,13 @@ function startDiagnosticSession(): void {
 
 describe("browser inline image diagnostic contracts", () => {
     beforeEach(async () => {
-        clearBrowserDiagnosticSessions();
+        await clearBrowserDiagnosticSessions();
         runtime = await resetBrowserDownloadHarness();
+    });
+
+    afterEach(async () => {
+        await listBrowserDiagnosticSessions();
+        await deleteTestDatabase("esj-novel-downloader-diagnostics");
     });
 
     it("retains a successful export after an image retry recovers", async () => {
@@ -58,7 +64,7 @@ describe("browser inline image diagnostic contracts", () => {
             imageEnabled: true
         });
 
-        const session = listBrowserDiagnosticSessions().history[0];
+        const session = (await listBrowserDiagnosticSessions()).history[0];
         expect(expectReadyDownload(result).chapters[0]?.imageErrors).toBe(0);
         expect(session).toMatchObject({ result: "success", task: { phase: "export-ready" } });
         expect(session.failures).toEqual([
@@ -95,7 +101,7 @@ describe("browser inline image diagnostic contracts", () => {
             imageEnabled: true
         });
 
-        const session = listBrowserDiagnosticSessions().history[0];
+        const session = (await listBrowserDiagnosticSessions()).history[0];
         expect(session).toMatchObject({ result: "cancelled", task: { phase: "cancelled" } });
         expect(session.failures).toEqual([]);
         expect(result).toEqual({ status: "cancelled", outcome: "saved", storageFailure: null });

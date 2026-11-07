@@ -1,12 +1,14 @@
 // @vitest-environment jsdom
 
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { IDBDatabase } from "fake-indexeddb";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
     browserDiagnosticLog,
     clearBrowserDiagnosticSessions,
     browserDiagnosticEvents,
     finishBrowserDiagnosticSession,
     listBrowserDiagnosticSessions,
+    recordBrowserDownloadEvent,
     recordBrowserPreflightDiagnosticFailure,
     recordBrowserDiagnosticExport,
     recordBrowserDiagnosticFailure,
@@ -19,11 +21,16 @@ import { formatDiagnosticBookTitle, formatDiagnosticLog } from "../../src/ui/mes
 import { createInitialDownloadSnapshot } from "../../src/download/progress";
 import { setInterfaceLocalePreference } from "../../src/storage/settings";
 import { getUserscriptApiMocks } from "../support/gm";
+import { deleteTestDatabase } from "../support/resources";
 
 describe("browser diagnostic persistence", () => {
-    beforeEach(() => {
+    beforeEach(async () => {
         setInterfaceLocalePreference("zh-CN");
-        clearBrowserDiagnosticSessions();
+        await clearBrowserDiagnosticSessions();
+    });
+
+    afterEach(async () => {
+        await deleteTestDatabase("esj-novel-downloader-diagnostics");
     });
 
     function dispatchPageHide(persisted: boolean): void {
@@ -32,7 +39,7 @@ describe("browser diagnostic persistence", () => {
         window.dispatchEvent(event);
     }
 
-    it("does not block a caller when diagnostic settings cannot be read", () => {
+    it("does not block a caller when diagnostic settings cannot be read", async () => {
         vi.spyOn(console, "warn").mockImplementation(() => undefined);
         const gm = getUserscriptApiMocks();
         gm.getValue.mockImplementation((key: string, fallback?: unknown) => {
@@ -53,37 +60,56 @@ describe("browser diagnostic persistence", () => {
                 { observePageClose: true }
             )
         ).not.toThrow();
-        expect(listBrowserDiagnosticSessions().active).toEqual([]);
+        expect((await listBrowserDiagnosticSessions()).active).toEqual([]);
     });
 
-    it.each(["read", "write"] as const)("allows preflight recovery when diagnostic storage cannot %s", (operation) => {
-        vi.spyOn(console, "warn").mockImplementation(() => undefined);
-        const gm = getUserscriptApiMocks();
-        if (operation === "read") {
-            gm.getValue.mockImplementation((key: string, fallback?: unknown) => {
-                if (key === "esj_diagnostic_sessions_v1") throw new Error("GM read unavailable");
-                return gm.values.has(key) ? gm.values.get(key) : fallback;
+    it.each(["readonly", "readwrite"] as const)(
+        "allows preflight recovery when diagnostic %s transactions fail",
+        async (mode) => {
+            vi.spyOn(console, "warn").mockImplementation(() => undefined);
+            const transaction = IDBDatabase.prototype.transaction;
+            const storage = vi.spyOn(IDBDatabase.prototype, "transaction").mockImplementation(function (
+                this: IDBDatabase,
+                names,
+                transactionMode,
+                options
+            ) {
+                if (transactionMode === mode) {
+                    throw new Error("IndexedDB unavailable");
+                }
+                return transaction.call(this, names, transactionMode, options);
             });
-        } else {
-            gm.setValue.mockImplementation((key: string, value: unknown) => {
-                if (key === "esj_diagnostic_sessions_v1") throw new Error("GM write unavailable");
-                gm.values.set(key, value);
-            });
-        }
 
-        expect(
-            recordBrowserPreflightDiagnosticFailure({
+            const failure = {
                 bookId: "100",
                 bookTitle: "Book",
                 pageUrl: location.href,
                 sourcePageType: "detail",
                 imageEnabled: false,
-                failure: { scope: "storage", stage: "cache-read", code: "database-unavailable", message: "Unavailable" }
-            })
-        ).toBeUndefined();
-    });
+                failure: {
+                    scope: "storage" as const,
+                    stage: "cache-read",
+                    code: "database-unavailable",
+                    message: "Unavailable"
+                }
+            };
+            expect(() => recordBrowserPreflightDiagnosticFailure(failure)).not.toThrow();
+            if (mode === "readonly") {
+                await expect(listBrowserDiagnosticSessions()).rejects.toThrow("IndexedDB unavailable");
+            } else {
+                expect((await listBrowserDiagnosticSessions()).history).toEqual([]);
+            }
 
-    it("records the original diagnostic log even when its view cannot render", () => {
+            storage.mockRestore();
+            recordBrowserPreflightDiagnosticFailure(failure);
+            expect((await listBrowserDiagnosticSessions()).history[0]).toMatchObject({
+                result: "failed",
+                failures: [expect.objectContaining({ code: "database-unavailable" })]
+            });
+        }
+    );
+
+    it("records the original diagnostic log even when its view cannot render", async () => {
         startBrowserDiagnosticSession({
             taskId: "task-log-failure",
             bookId: "100",
@@ -98,12 +124,12 @@ describe("browser diagnostic persistence", () => {
         expect(() =>
             browserDiagnosticLog({ code: "download-started", params: { concurrency: 1 } }, "task-log-failure")
         ).not.toThrow();
-        expect(listBrowserDiagnosticSessions().active[0].logs).toContainEqual(
+        expect((await listBrowserDiagnosticSessions()).active[0].logs).toContainEqual(
             expect.objectContaining({ code: "download-started", params: { concurrency: 1 } })
         );
     });
 
-    it("persists a completed session with logs, exports and controlled book details", () => {
+    it("persists a completed session with logs, exports and controlled book details", async () => {
         startBrowserDiagnosticSession({
             taskId: "task-1",
             bookId: "1737469479",
@@ -135,7 +161,7 @@ describe("browser diagnostic persistence", () => {
             failureStage: null
         });
 
-        const session = listBrowserDiagnosticSessions().history[0];
+        const session = (await listBrowserDiagnosticSessions()).history[0];
         const exported = createDiagnosticExport(session, {
             bookTitle: formatDiagnosticBookTitle(session),
             formatLog: formatDiagnosticLog
@@ -156,7 +182,7 @@ describe("browser diagnostic persistence", () => {
         expect(exported).not.toContain("token=secret");
     });
 
-    it("persists structured log codes and parameters after completion", () => {
+    it("persists structured log codes and parameters after completion", async () => {
         startBrowserDiagnosticSession({
             taskId: "task-structured-log",
             bookId: "book-log",
@@ -168,13 +194,13 @@ describe("browser diagnostic persistence", () => {
         browserDiagnosticLog({ code: "download-started", params: { concurrency: 3 } });
         finishBrowserDiagnosticSession("task-structured-log", "success");
 
-        const session = listBrowserDiagnosticSessions().history[0];
+        const session = (await listBrowserDiagnosticSessions()).history[0];
         expect(session.logs).toEqual([
             { at: expect.any(Number), level: "info", code: "download-started", params: { concurrency: 3 } }
         ]);
     });
 
-    it("keeps failed chapter location and export failures after download completion", () => {
+    it("keeps failed chapter location and export failures after download completion", async () => {
         startBrowserDiagnosticSession({
             taskId: "task-2",
             bookId: "book-2",
@@ -202,7 +228,7 @@ describe("browser diagnostic persistence", () => {
             message: "download blocked"
         });
 
-        const session = listBrowserDiagnosticSessions().history[0];
+        const session = (await listBrowserDiagnosticSessions()).history[0];
         expect(session.result).toBe("success");
         expect(session.failures).toEqual([
             expect.objectContaining({
@@ -217,7 +243,7 @@ describe("browser diagnostic persistence", () => {
         ]);
     });
 
-    it("keeps inline image failures inside a successful diagnostic session", () => {
+    it("keeps inline image failures inside a successful diagnostic session", async () => {
         startBrowserDiagnosticSession({
             taskId: "task-inline-image",
             bookId: "book-image",
@@ -241,7 +267,7 @@ describe("browser diagnostic persistence", () => {
         });
         finishBrowserDiagnosticSession("task-inline-image", "success");
 
-        const session = listBrowserDiagnosticSessions().history[0];
+        const session = (await listBrowserDiagnosticSessions()).history[0];
         const exported = createDiagnosticExport(session, {
             bookTitle: formatDiagnosticBookTitle(session),
             formatLog: formatDiagnosticLog
@@ -260,7 +286,7 @@ describe("browser diagnostic persistence", () => {
         expect(exported).not.toContain("cookie=secret");
     });
 
-    it("records structured download snapshots, mapped fonts and terminal failures", () => {
+    it("records structured download snapshots, mapped fonts and terminal failures", async () => {
         startBrowserDiagnosticSession({
             taskId: "task-events",
             bookId: "book-events",
@@ -305,7 +331,7 @@ describe("browser diagnostic persistence", () => {
             snapshot: failed
         });
 
-        const session = listBrowserDiagnosticSessions().history[0];
+        const session = (await listBrowserDiagnosticSessions()).history[0];
         expect(session.task).toEqual(
             expect.objectContaining({
                 phase: "failed",
@@ -326,8 +352,8 @@ describe("browser diagnostic persistence", () => {
         ]);
     });
 
-    it("persists failures that happen before a download lock is acquired", () => {
-        const session = recordBrowserPreflightDiagnosticFailure({
+    it("persists failures that happen before a download lock is acquired", async () => {
+        recordBrowserPreflightDiagnosticFailure({
             bookId: "book-preflight",
             bookTitle: "Preflight Book",
             pageUrl: "https://www.esjzone.cc/detail/10.html",
@@ -341,9 +367,10 @@ describe("browser diagnostic persistence", () => {
             }
         });
 
-        if (!session) throw new Error("expected a stored preflight diagnostic");
+        const { active, history } = await listBrowserDiagnosticSessions();
+        const [session] = history;
         expect(session.result).toBe("failed");
-        expect(listBrowserDiagnosticSessions().active).toEqual([]);
+        expect(active).toEqual([]);
         expect(session.failures).toEqual([
             expect.objectContaining({
                 scope: "storage",
@@ -353,7 +380,7 @@ describe("browser diagnostic persistence", () => {
         ]);
     });
 
-    it("does not let scraper finalization overwrite an export-ready success", () => {
+    it("does not let scraper finalization overwrite an export-ready success", async () => {
         startBrowserDiagnosticSession({
             taskId: "task-success-finalizer",
             bookId: "book-success",
@@ -378,16 +405,23 @@ describe("browser diagnostic persistence", () => {
             snapshot
         });
 
+        recordBrowserDownloadEvent("task-success-finalizer", {
+            type: "phase-changed",
+            previous: "export-ready",
+            current: "failed",
+            snapshot: { ...snapshot, phase: "failed" }
+        });
+
         // 页面 finally 无法判断下载流程是否已经结束，因此仍会执行失败兜底
         finishBrowserDiagnosticSession("task-success-finalizer", "failed");
 
-        const session = listBrowserDiagnosticSessions().history[0];
+        const session = (await listBrowserDiagnosticSessions()).history[0];
         expect(session.result).toBe("success");
         expect(session.task.phase).toBe("export-ready");
         expect(session.failures).toEqual([]);
     });
 
-    it("records a real page close without treating bfcache as a terminal outcome", () => {
+    it("records a non-bfcache pagehide without treating it as a terminal outcome", async () => {
         startBrowserDiagnosticSession(
             {
                 taskId: "task-page-close",
@@ -401,12 +435,12 @@ describe("browser diagnostic persistence", () => {
         );
 
         dispatchPageHide(true);
-        const afterBfcache = listBrowserDiagnosticSessions().active[0];
+        const afterBfcache = (await listBrowserDiagnosticSessions()).active[0];
         expect(afterBfcache).toEqual(expect.objectContaining({ taskId: "task-page-close", result: "running" }));
         expect(afterBfcache.closeObservedAt).toBeUndefined();
 
         dispatchPageHide(false);
-        expect(listBrowserDiagnosticSessions().active[0]).toEqual(
+        expect((await listBrowserDiagnosticSessions()).active[0]).toEqual(
             expect.objectContaining({
                 taskId: "task-page-close",
                 result: "running",
@@ -415,7 +449,7 @@ describe("browser diagnostic persistence", () => {
         );
     });
 
-    it("stops page-close observation after a real terminal outcome", () => {
+    it("stops page-close observation after a real terminal outcome", async () => {
         startBrowserDiagnosticSession(
             {
                 taskId: "task-page-terminal",
@@ -431,8 +465,59 @@ describe("browser diagnostic persistence", () => {
 
         dispatchPageHide(false);
 
-        const terminal = listBrowserDiagnosticSessions().history[0];
+        const terminal = (await listBrowserDiagnosticSessions()).history[0];
         expect(terminal).toEqual(expect.objectContaining({ taskId: "task-page-terminal", result: "cancelled" }));
         expect(terminal.closeObservedAt).toBeUndefined();
     });
+
+    it.each([23, 25])(
+        "preserves page-close presentation after %i idle hours when the async write fails",
+        async (hours) => {
+            const hour = 60 * 60 * 1000;
+            let now = Date.now();
+            vi.spyOn(Date, "now").mockImplementation(() => now);
+            const input = {
+                taskId: "task-close-during-navigation",
+                bookId: "100",
+                pageUrl: location.href,
+                sourcePageType: "detail",
+                imageEnabled: false
+            };
+            startBrowserDiagnosticSession(input, { observePageClose: true });
+            expect((await listBrowserDiagnosticSessions()).active).toHaveLength(1);
+            now += hours * hour;
+            vi.spyOn(console, "warn").mockImplementation(() => undefined);
+            const transaction = IDBDatabase.prototype.transaction;
+            const storage = vi.spyOn(IDBDatabase.prototype, "transaction").mockImplementation(function (
+                this: IDBDatabase,
+                names,
+                mode,
+                options
+            ) {
+                if (mode === "readwrite") {
+                    throw new Error("Page stopped before the diagnostic write");
+                }
+                return transaction.call(this, names, mode, options);
+            });
+
+            dispatchPageHide(false);
+            const { active, history } = await listBrowserDiagnosticSessions();
+            storage.mockRestore();
+            if (hours === 25) {
+                expect(active).toEqual([]);
+                expect(history[0]).toMatchObject({ taskId: input.taskId, result: "interrupted" });
+                expect(history[0].closeObservedAt).toBeUndefined();
+                return;
+            }
+            expect(active[0]).toMatchObject({ taskId: input.taskId, result: "running", closeObservedAt: now });
+
+            now += 2 * hour;
+            for (let index = 0; index < 30; index++) {
+                const taskId = "history-" + index;
+                startBrowserDiagnosticSession({ ...input, taskId });
+                finishBrowserDiagnosticSession(taskId, "success");
+            }
+            expect((await listBrowserDiagnosticSessions()).active.map(({ taskId }) => taskId)).toEqual([input.taskId]);
+        }
+    );
 });

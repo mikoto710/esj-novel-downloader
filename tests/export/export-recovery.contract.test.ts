@@ -1,8 +1,10 @@
 // @vitest-environment jsdom
 
+import { IDBFactory } from "fake-indexeddb";
 import { createDownloadHarness } from "../support/download-harness";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createCachedData, createChapter, createDeferred } from "../support";
+import { deleteTestDatabase } from "../support/resources";
 
 const mocks = vi.hoisted(() => ({
     buildEpub: vi.fn(),
@@ -21,6 +23,7 @@ vi.mock("../../src/storage/history", () => ({ addDownloadHistory: mocks.addDownl
 describe("full-book export recovery contracts", () => {
     beforeEach(async () => {
         vi.resetModules();
+        vi.stubGlobal("indexedDB", new IDBFactory());
         vi.clearAllMocks();
         document.body.innerHTML = "";
         document.title = "ESJZone Test";
@@ -29,6 +32,12 @@ describe("full-book export recovery contracts", () => {
         mocks.buildEpub.mockResolvedValue(new Blob(["epub"], { type: "application/epub+zip" }));
         mocks.buildBookHtml.mockResolvedValue(new Blob(["html"], { type: "text/html" }));
         vi.spyOn(console, "error").mockImplementation(() => undefined);
+    });
+
+    afterEach(async () => {
+        const { listBrowserDiagnosticSessions } = await import("../../src/diagnostics/runtime");
+        await listBrowserDiagnosticSessions();
+        await deleteTestDatabase("esj-novel-downloader-diagnostics");
     });
 
     it("retries EPUB generation without caching a failed result", async () => {
@@ -89,7 +98,7 @@ describe("full-book export recovery contracts", () => {
 
         expect(mocks.buildEpub).toHaveBeenCalledOnce();
         expect(mocks.addDownloadHistory).toHaveBeenCalledOnce();
-        expect(diagnostics.listBrowserDiagnosticSessions().history[0].exports).toEqual([
+        expect((await diagnostics.listBrowserDiagnosticSessions()).history[0].exports).toEqual([
             expect.objectContaining({
                 format: "epub",
                 outcome: "failed",
@@ -159,7 +168,7 @@ describe("full-book export recovery contracts", () => {
         diagnostics.finishBrowserDiagnosticSession("unrelated-task", "failed");
         click("#esj-txt");
         expect(mocks.triggerDownload).toHaveBeenCalledOnce();
-        expect(diagnostics.listBrowserDiagnosticSessions().history[0].exports).toEqual([]);
+        expect((await diagnostics.listBrowserDiagnosticSessions()).history[0].exports).toEqual([]);
     });
 
     it("rebuilds EPUB when another page changes the tag setting", async () => {
@@ -191,7 +200,7 @@ describe("full-book export recovery contracts", () => {
         diagnostics.startBrowserDiagnosticSession({ ...input, taskId: "later-failure" });
         diagnostics.finishBrowserDiagnosticSession("later-failure", "failed");
         click("#esj-txt");
-        const sessions = diagnostics.listBrowserDiagnosticSessions().history;
+        const sessions = (await diagnostics.listBrowserDiagnosticSessions()).history;
         expect(sessions.find((session) => session.taskId === "original-export")?.exports).toEqual([
             expect.objectContaining({ outcome: "success", format: "txt" })
         ]);
@@ -415,7 +424,7 @@ describe("full-book export recovery contracts", () => {
         click("#esj-mapping-export-confirm .esj-common-header button");
         await vi.waitFor(() => expect((document.querySelector("#esj-epub") as HTMLButtonElement).disabled).toBe(false));
         expect(mocks.buildEpub).not.toHaveBeenCalled();
-        expect(diagnostics.listBrowserDiagnosticSessions().history[0].exports).toEqual([
+        expect((await diagnostics.listBrowserDiagnosticSessions()).history[0].exports).toEqual([
             expect.objectContaining({ format: "epub", outcome: "cancelled", generated: false })
         ]);
 

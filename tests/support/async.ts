@@ -52,8 +52,11 @@ export interface FakeClock {
 /**
  * 启用并封装 Vitest 假时钟
  */
-export function useFakeClock(now: string | number | Date = "2026-01-01T00:00:00.000Z"): FakeClock {
-    vi.useFakeTimers();
+export function useFakeClock(
+    now: string | number | Date = "2026-01-01T00:00:00.000Z",
+    timers?: Parameters<typeof vi.useFakeTimers>[0]
+): FakeClock {
+    vi.useFakeTimers(timers);
     vi.setSystemTime(now);
     let restored = false;
 

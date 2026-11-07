@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { IDBFactory } from "fake-indexeddb";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
     createCachedData,
     useFakeClock,
@@ -10,6 +10,7 @@ import {
     createProtectedChapterFixture,
     installDocumentFixture
 } from "../support";
+import { deleteTestDatabase } from "../support/resources";
 
 describe("full-book and single-chapter export isolation", () => {
     const alertMock = vi.fn();
@@ -41,6 +42,12 @@ describe("full-book and single-chapter export isolation", () => {
         vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(clickMock);
     });
 
+    afterEach(async () => {
+        const { listBrowserDiagnosticSessions } = await import("../../src/diagnostics/runtime");
+        await listBrowserDiagnosticSessions();
+        await deleteTestDatabase("esj-novel-downloader-diagnostics");
+    });
+
     it("preserves full-book data while single TXT waits for enabled image preparation", async () => {
         GM_setValue("enable_image_download", true);
         const images = createDeferred<Awaited<ReturnType<typeof import("../../src/site/images").processHtmlImages>>>();
@@ -59,7 +66,7 @@ describe("full-book and single-chapter export isolation", () => {
         await exporting;
 
         const { listBrowserDiagnosticSessions } = await import("../../src/diagnostics/runtime");
-        const diagnostic = listBrowserDiagnosticSessions().history[0];
+        const diagnostic = (await listBrowserDiagnosticSessions()).history[0];
 
         expect(state.cachedData).toBe(fullBookData);
         expect(state.cachedData?.metadata.title).toBe("测试小说");
@@ -103,7 +110,7 @@ describe("full-book and single-chapter export isolation", () => {
         await downloadCurrentPage("html");
 
         const { listBrowserDiagnosticSessions } = await import("../../src/diagnostics/runtime");
-        const diagnostic = listBrowserDiagnosticSessions().history[0];
+        const diagnostic = (await listBrowserDiagnosticSessions()).history[0];
 
         expect(clickMock).toHaveBeenCalledOnce();
         expect(diagnostic).toMatchObject({ result: "success", book: { sourcePageType: "single" } });
@@ -124,7 +131,7 @@ describe("full-book and single-chapter export isolation", () => {
         const { downloadCurrentPage } = await import("../../src/app/single-download");
         await downloadCurrentPage("txt");
         const { listBrowserDiagnosticSessions } = await import("../../src/diagnostics/runtime");
-        const diagnostic = listBrowserDiagnosticSessions().history[0];
+        const diagnostic = (await listBrowserDiagnosticSessions()).history[0];
 
         expect(diagnostic).toMatchObject({
             result: "failed",
@@ -144,7 +151,7 @@ describe("full-book and single-chapter export isolation", () => {
                 failureStage: "download"
             })
         ]);
-        expect(document.querySelector("#esj-message-diagnostic")).not.toBeNull();
+        await vi.waitFor(() => expect(document.querySelector("#esj-message-diagnostic")).not.toBeNull());
     });
 
     it("awaits single history failure after immediate URL cleanup but retains triggered success", async () => {
@@ -163,7 +170,7 @@ describe("full-book and single-chapter export isolation", () => {
         history.reject(new Error("history unavailable"));
         await running;
         const { listBrowserDiagnosticSessions } = await import("../../src/diagnostics/runtime");
-        expect(listBrowserDiagnosticSessions().history[0]).toMatchObject({
+        expect((await listBrowserDiagnosticSessions()).history[0]).toMatchObject({
             result: "failed",
             exports: [{ outcome: "success", generated: true, downloadTriggered: true, failureStage: null }]
         });
@@ -203,7 +210,7 @@ describe("full-book and single-chapter export isolation", () => {
         await downloadCurrentPage("txt");
         expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:single-chapter");
         const { listBrowserDiagnosticSessions } = await import("../../src/diagnostics/runtime");
-        expect(listBrowserDiagnosticSessions().history[0]).toMatchObject({
+        expect((await listBrowserDiagnosticSessions()).history[0]).toMatchObject({
             result: "failed",
             exports: [{ outcome: "success", generated: true, downloadTriggered: true }]
         });

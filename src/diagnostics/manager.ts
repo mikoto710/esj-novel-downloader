@@ -208,7 +208,7 @@ export interface DiagnosticSessionViewStore {
 }
 
 /**
- * 诊断仓库保存的活动与历史会话集合，schemaVersion 用于兼容读取
+ * 分组后的诊断会话快照，沿用旧存储和导出使用的会话版本
  */
 export interface DiagnosticStore {
     schemaVersion: typeof DIAGNOSTIC_SCHEMA_VERSION;
@@ -217,11 +217,18 @@ export interface DiagnosticStore {
 }
 
 /**
- * 同步读写诊断记录的能力，具体存储和故障处理由外层实现
+ * 按任务提交诊断变更，更新回调在目标会话存在时于事务内执行
  */
 export interface DiagnosticRepository {
-    load(): DiagnosticStore;
-    save(store: DiagnosticStore): void;
+    start(session: DiagnosticSession, now: number): Promise<void>;
+    update(
+        taskId: string,
+        change: (session: DiagnosticSession) => DiagnosticSession | undefined,
+        now: number
+    ): Promise<void>;
+    list(now: number): Promise<DiagnosticSession[]>;
+    remove(sessionId: string, now: number): Promise<void>;
+    clear(): Promise<void>;
 }
 
 /**
@@ -379,42 +386,94 @@ function sanitizeDiagnosticParams(params: DomainMessageParams): DomainMessagePar
     );
 }
 
-function normalizeStore(store: DiagnosticStore, now: number): DiagnosticStore {
-    const active: DiagnosticSession[] = [];
-    const interrupted: DiagnosticSession[] = [];
-    // 页面异常退出不会执行正常收尾；超过 24 小时未更新的进行中会话转为异常中断
-    for (const session of store.active || []) {
-        if (now - session.updatedAt > DIAGNOSTIC_ACTIVE_STALE_MS) {
-            interrupted.push({ ...session, result: "interrupted", endedAt: session.updatedAt });
-        } else {
-            active.push(trimSessionToLimit(repairTerminalResult(session)));
+/**
+ * 按现有保留规则判断会话在指定时间是否仍处于活动期
+ */
+export function isDiagnosticSessionActive(
+    session: Pick<DiagnosticSession, "result" | "updatedAt">,
+    now: number
+): boolean {
+    return session.result === "running" && now - session.updatedAt <= DIAGNOSTIC_ACTIVE_STALE_MS;
+}
+
+/**
+ * 兼容早期诊断字段并裁剪单条记录，过期活动会话沿用中断语义
+ */
+export function normalizeDiagnosticSession(session: DiagnosticSession, now: number): DiagnosticSession {
+    const current = repairTerminalResult(session);
+    if (current.result === "running" && !isDiagnosticSessionActive(current, now)) {
+        current.result = "interrupted";
+        current.endedAt = current.updatedAt;
+    }
+    return trimSessionToLimit(current);
+}
+
+export type DiagnosticRetentionEntry = Pick<DiagnosticSession, "result" | "endedAt" | "updatedAt"> & {
+    bytes: number;
+};
+
+export function measureDiagnosticSession(session: DiagnosticSession): number {
+    return stringBytes(session);
+}
+
+/**
+ * 按会话大小、结果和时间选择应保留的活动及历史记录，无需读取其他会话内容
+ */
+export function retainDiagnosticEntries<T extends DiagnosticRetentionEntry>(
+    entries: Iterable<T>,
+    now: number
+): { active: T[]; history: T[] } {
+    const active: T[] = [];
+    const completed: T[] = [];
+    for (const entry of entries) {
+        if (entry.bytes > DIAGNOSTIC_SESSION_BYTES_LIMIT) {
+            continue;
+        }
+        if (isDiagnosticSessionActive(entry, now)) {
+            active.push(entry);
+        } else if (now - (entry.endedAt || entry.updatedAt) <= DIAGNOSTIC_RETENTION_MS) {
+            completed.push(entry);
         }
     }
-    const history = [...interrupted, ...(store.history || [])]
-        .filter((session) => now - (session.endedAt || session.updatedAt) <= DIAGNOSTIC_RETENTION_MS)
-        .map(repairTerminalResult)
-        .map(trimSessionToLimit);
+    const history = completed
+        .sort((a, b) => (b.endedAt || b.updatedAt) - (a.endedAt || a.updatedAt))
+        .slice(0, DIAGNOSTIC_HISTORY_LIMIT);
 
-    history.sort((a, b) => (b.endedAt || b.updatedAt) - (a.endedAt || a.updatedAt));
-
-    // 当前任务不占历史条数；历史始终按时间保留最近记录，并与全部进行中会话共同受总容量上限约束
-    while (history.length > DIAGNOSTIC_HISTORY_LIMIT) {
-        history.pop();
-    }
-    while (stringBytes({ schemaVersion: DIAGNOSTIC_SCHEMA_VERSION, active, history }) > DIAGNOSTIC_TOTAL_BYTES_LIMIT) {
+    // 优先淘汰历史，保留活动任务的诊断；逗号也计入导出集合的容量
+    const arrayBytes = (entries: readonly T[]) =>
+        entries.reduce((bytes, entry) => bytes + entry.bytes, Math.max(0, entries.length - 1));
+    let bytes = stringBytes(createEmptyDiagnosticStore()) + arrayBytes(active) + arrayBytes(history);
+    while (bytes > DIAGNOSTIC_TOTAL_BYTES_LIMIT) {
         if (history.length > 0) {
-            history.pop();
-        } else if (active.length > 0) {
+            bytes -= history.pop()!.bytes + Number(history.length > 0);
+        } else {
             const oldest = active.reduce(
                 (candidate, session, index, all) => (session.updatedAt < all[candidate].updatedAt ? index : candidate),
                 0
             );
-            active.splice(oldest, 1);
-        } else {
-            break;
+            bytes -= active.splice(oldest, 1)[0].bytes + Number(active.length > 0);
         }
     }
-    return { schemaVersion: DIAGNOSTIC_SCHEMA_VERSION, active, history };
+    return { active, history };
+}
+
+function createDiagnosticStore(sessions: DiagnosticSession[], now: number): DiagnosticStore {
+    const entries = sessions.map((record) => {
+        const session = normalizeDiagnosticSession(record, now);
+        return {
+            session,
+            result: session.result,
+            endedAt: session.endedAt,
+            updatedAt: session.updatedAt,
+            bytes: measureDiagnosticSession(session)
+        };
+    });
+    const { active, history } = retainDiagnosticEntries(entries, now);
+    return {
+        schemaVersion: DIAGNOSTIC_SCHEMA_VERSION,
+        active: active.map(({ session }) => session),
+        history: history.map(({ session }) => session)
+    };
 }
 
 function isFullBookSession(session: DiagnosticSession): boolean {
@@ -515,24 +574,34 @@ function applySnapshot(session: DiagnosticSession, snapshot: DownloadSnapshot): 
     };
 }
 
+interface DiagnosticMutation {
+    now: number;
+    apply(session: DiagnosticSession): boolean;
+}
+
+interface DiagnosticMutationBatch {
+    taskId: string;
+    changes: DiagnosticMutation[];
+    committed: Promise<void>;
+}
+
 /**
  * 管理环境无关的诊断会话；浏览器存储、下载和剪贴板能力由外层适配
  */
 export class DiagnosticManager {
+    private operations = Promise.resolve();
+    private pendingBatch: DiagnosticMutationBatch | undefined;
+
     constructor(
         private readonly repository: DiagnosticRepository,
         private readonly now: () => number = () => Date.now()
     ) {}
 
     /**
-     * 创建脱敏的活动诊断会话，并替换同 taskId 的旧活动记录
+     * 创建脱敏的活动诊断会话，重复的任务启动不会覆盖已有记录
      */
-    start(input: StartDiagnosticSessionInput): DiagnosticSession {
+    start(input: StartDiagnosticSessionInput): Promise<void> {
         const now = this.now();
-        const store = normalizeStore(this.repository.load(), now);
-
-        // 同一 taskId 重入时替换旧的进行中记录，避免重复会话持续占用容量
-        store.active = store.active.filter((session) => session.taskId !== input.taskId);
         const session: DiagnosticSession = {
             schemaVersion: DIAGNOSTIC_SCHEMA_VERSION,
             id: `${now}-${Math.random().toString(36).slice(2, 10)}`,
@@ -556,26 +625,19 @@ export class DiagnosticManager {
             events: [{ at: 0, type: "session-started" }],
             logs: []
         };
-        store.active.push(session);
-        this.repository.save(normalizeStore(store, now));
-        return session;
+        return this.enqueue(() => this.repository.start(trimSessionToLimit(session), now));
     }
 
     /**
      * 为 taskId 标识的活动会话记录页面关闭时间，会话不存在或已有 closeObservedAt 时不重复写入
      */
-    markCloseObserved(taskId: string): void {
-        const now = this.now();
-        const store = normalizeStore(this.repository.load(), now);
-        const session = store.active.find((item) => item.taskId === taskId);
-        if (!session || session.closeObservedAt !== undefined) {
-            return;
-        }
-
-        // 页面关闭只记录可观察事实
-        session.closeObservedAt = now;
-        session.updatedAt = now;
-        this.repository.save(normalizeStore(store, now));
+    markCloseObserved(taskId: string): Promise<void> {
+        return this.mutateSession(taskId, (session, now) => {
+            if (session.closeObservedAt !== undefined) {
+                return false;
+            }
+            session.closeObservedAt = now;
+        });
     }
 
     /**
@@ -584,8 +646,8 @@ export class DiagnosticManager {
     updateSession(
         taskId: string,
         options: Partial<Pick<DownloadOptions, "bookName" | "pageUrl" | "sourcePageType" | "tasks" | "selection">>
-    ): void {
-        this.mutateSession(taskId, (session) => {
+    ): Promise<void> {
+        return this.mutateSession(taskId, (session) => {
             if (options.bookName) {
                 session.book.title = options.bookName;
             }
@@ -607,8 +669,8 @@ export class DiagnosticManager {
     /**
      * 向 taskId 标识的活动会话追加脱敏日志，字符串输入按 info 级别记录
      */
-    recordLog(taskId: string, input: string | RecordDiagnosticLogInput): void {
-        this.mutateSession(taskId, (session, now) => {
+    recordLog(taskId: string, input: string | RecordDiagnosticLogInput): Promise<void> {
+        return this.mutateSession(taskId, (session, now) => {
             const record = typeof input === "string" ? { level: "info" as const, message: input } : input;
             session.logs.push(
                 normalizeDiagnosticLogRecord({
@@ -628,8 +690,8 @@ export class DiagnosticManager {
     /**
      * 向 taskId 标识的活动或历史会话追加脱敏失败记录，会话不存在时保持不变
      */
-    recordFailure(taskId: string, input: RecordDiagnosticFailureInput): void {
-        this.mutateSession(
+    recordFailure(taskId: string | null, input: RecordDiagnosticFailureInput): Promise<void> {
+        return this.mutateSession(
             taskId,
             (session, now) => {
                 session.failures.push({
@@ -657,8 +719,8 @@ export class DiagnosticManager {
     /**
      * 向 taskId 标识的活动或历史会话追加导出结果，会话不存在时保持不变
      */
-    recordExport(taskId: string, input: RecordDiagnosticExportInput): void {
-        this.mutateSession(
+    recordExport(taskId: string | null, input: RecordDiagnosticExportInput): Promise<void> {
+        return this.mutateSession(
             taskId,
             (session, now) => {
                 session.exports.push({ at: now - session.startedAt, ...input });
@@ -673,19 +735,23 @@ export class DiagnosticManager {
     /**
      * 将下载事件归并到诊断摘要，并在导出就绪、取消或失败时写入终态
      */
-    recordDownloadEvent(taskId: string, event: DownloadEvent): void {
+    recordDownloadEvent(taskId: string, event: DownloadEvent): Promise<void> {
         if (event.type === "chapter-restored" || event.type === "chapter-processed") {
             // 逐章恢复和处理只汇总到快照
-            return;
+            return Promise.resolve();
         }
-        // 事件只投影到本会话；mutateSession 仍统一维护终态搬移、脱敏、容量和一次保存
+        // 失败终态后允许追加对应的失败详情，其他迟到事件不能改写终态或摘要
         const applyDownloadEvent = (session: DiagnosticSession, now: number) => {
+            if (session.result !== "running" && session.result !== "failed") {
+                return false;
+            }
             const at = now - session.startedAt;
             // 高频 snapshot 只覆盖汇总，不逐条写入事件数组；阶段、失败和缓存结果才进入时间线
             if (
-                event.type === "snapshot-updated" ||
-                event.type === "phase-changed" ||
-                event.type === "download-failed"
+                session.result === "running" &&
+                (event.type === "snapshot-updated" ||
+                    event.type === "phase-changed" ||
+                    event.type === "download-failed")
             ) {
                 applySnapshot(session, event.snapshot);
             }
@@ -764,15 +830,19 @@ export class DiagnosticManager {
                 session.events.shift();
             }
         };
-        this.mutateSession(taskId, applyDownloadEvent, true);
+        return this.mutateSession(taskId, applyDownloadEvent, event.type === "download-failed");
     }
 
     /**
      * 完成 taskId 标识的活动会话并合并可选任务摘要，任务已转入历史时不覆盖终态
      */
-    finish(taskId: string, result: Exclude<DiagnosticResult, "running">, task?: Partial<DiagnosticTaskSummary>): void {
+    finish(
+        taskId: string,
+        result: Exclude<DiagnosticResult, "running">,
+        task?: Partial<DiagnosticTaskSummary>
+    ): Promise<void> {
         // 应用 finally 只结束仍活跃的启动会话，不覆盖下载事件已发布的终态
-        this.mutateSession(taskId, (session, now) => {
+        return this.mutateSession(taskId, (session, now) => {
             if (task) {
                 session.task = { ...session.task, ...task };
             }
@@ -783,21 +853,16 @@ export class DiagnosticManager {
     /**
      * 读取经过兼容修复、保留期限和容量约束处理的快照，不将结果回写 repository
      */
-    list(): DiagnosticStore {
-        // 诊断查询不回写旧快照
-        return normalizeStore(this.repository.load(), this.now());
+    list(): Promise<DiagnosticStore> {
+        return this.enqueue(() => this.readStore(this.now()));
     }
 
-    remove(sessionId: string): void {
-        const now = this.now();
-        const store = normalizeStore(this.repository.load(), now);
-        store.active = store.active.filter((session) => session.id !== sessionId);
-        store.history = store.history.filter((session) => session.id !== sessionId);
-        this.repository.save(store);
+    remove(sessionId: string): Promise<void> {
+        return this.enqueue(() => this.repository.remove(sessionId, this.now()));
     }
 
-    clear(): void {
-        this.repository.save(createEmptyDiagnosticStore());
+    clear(): Promise<void> {
+        return this.enqueue(() => this.repository.clear());
     }
 
     private finishInStore(session: DiagnosticSession, result: Exclude<DiagnosticResult, "running">, now: number): void {
@@ -807,29 +872,75 @@ export class DiagnosticManager {
     }
 
     private mutateSession(
-        taskId: string,
-        mutator: (session: DiagnosticSession, now: number) => void,
+        taskId: string | null,
+        mutator: (session: DiagnosticSession, now: number) => false | void,
         includeHistory = false
-    ): void {
+    ): Promise<void> {
         const now = this.now();
-        const store = normalizeStore(this.repository.load(), now);
-        let session = store.active.find((item) => item.taskId === taskId);
-        const activeIndex = session ? store.active.indexOf(session) : -1;
-        if (!session && includeHistory) {
-            session = store.history.find((item) => item.taskId === taskId);
+        const change: DiagnosticMutation = {
+            now,
+            apply(session) {
+                if ((!includeHistory && session.result !== "running") || mutator(session, now) === false) {
+                    return false;
+                }
+                session.updatedAt = Math.max(session.updatedAt, now);
+                return true;
+            }
+        };
+        if (!taskId) {
+            return this.enqueue(async () => {
+                const { active, history } = await this.readStore(now);
+                const latest = active.sort((a, b) => b.updatedAt - a.updatedAt)[0] || history[0];
+                if (latest) {
+                    await this.commitChanges(latest.taskId, [change]);
+                }
+            });
         }
-        if (!session) {
-            return;
-        }
-        mutator(session, now);
-        session.updatedAt = now;
 
-        // 终态变更与历史搬移在同一次 repository save 中完成，避免同时存在于 active 和 history
-        if (activeIndex >= 0 && session.result !== "running") {
-            store.active.splice(activeIndex, 1);
-            store.history.unshift(session);
+        // 合并连续的同任务变更，读取、创建和清理都结束当前批次
+        if (this.pendingBatch?.taskId === taskId && this.pendingBatch.changes.length < 64) {
+            this.pendingBatch.changes.push(change);
+            return this.pendingBatch.committed;
         }
-        this.repository.save(normalizeStore(store, now));
+        const changes = [change];
+        const committed = this.enqueue(() => {
+            if (this.pendingBatch?.changes === changes) {
+                this.pendingBatch = undefined;
+            }
+            return this.commitChanges(taskId, changes);
+        });
+        this.pendingBatch = { taskId, changes, committed };
+        return committed;
+    }
+
+    private commitChanges(taskId: string, changes: DiagnosticMutation[]): Promise<void> {
+        return this.repository.update(
+            taskId,
+            (session) => {
+                const current = normalizeDiagnosticSession(session, changes[0].now);
+                let changed = false;
+                for (const change of changes) {
+                    changed = change.apply(current) || changed;
+                }
+                return changed ? trimSessionToLimit(current) : undefined;
+            },
+            changes.at(-1)!.now
+        );
+    }
+
+    private async readStore(now: number): Promise<DiagnosticStore> {
+        return createDiagnosticStore(await this.repository.list(now), now);
+    }
+
+    private enqueue<T>(operation: () => Promise<T>): Promise<T> {
+        this.pendingBatch = undefined;
+        const result = this.operations.then(operation);
+        // 单次持久化失败不阻塞队列中的后续诊断操作
+        this.operations = result.then(
+            () => undefined,
+            () => undefined
+        );
+        return result;
     }
 }
 

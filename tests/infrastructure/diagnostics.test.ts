@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import {
-    createEmptyDiagnosticStore,
     createDiagnosticSessionView,
     DiagnosticManager,
     DIAGNOSTIC_CLOSE_UNCONFIRMED_MS,
@@ -11,33 +10,50 @@ import {
     sanitizeDiagnosticMessage,
     sanitizeDiagnosticUrl,
     type DiagnosticRepository,
-    type DiagnosticStore,
+    type DiagnosticSession,
     type StartDiagnosticSessionInput
 } from "../../src/diagnostics/manager";
 import { createInitialDownloadSnapshot } from "../../src/download/progress";
 
 class MemoryDiagnosticRepository implements DiagnosticRepository {
-    store = createEmptyDiagnosticStore();
+    sessions: DiagnosticSession[] = [];
     saveCount = 0;
 
-    load(): DiagnosticStore {
-        return structuredClone(this.store);
+    async start(session: DiagnosticSession): Promise<void> {
+        this.sessions.push(structuredClone(session));
+        this.saveCount++;
     }
 
-    save(store: DiagnosticStore): void {
-        this.saveCount++;
-        this.store = structuredClone(store);
+    async update(taskId: string, change: (session: DiagnosticSession) => DiagnosticSession | undefined): Promise<void> {
+        const index = this.sessions.findIndex((session) => session.taskId === taskId);
+        if (index >= 0) {
+            const updated = change(structuredClone(this.sessions[index]));
+            if (updated) {
+                this.sessions[index] = updated;
+                this.saveCount++;
+            }
+        }
+    }
+
+    async list(): Promise<DiagnosticSession[]> {
+        return structuredClone(this.sessions);
+    }
+
+    async remove(sessionId: string): Promise<void> {
+        this.sessions = this.sessions.filter(({ id }) => id !== sessionId);
+    }
+
+    async clear(): Promise<void> {
+        this.sessions = [];
     }
 }
 
 class InterleavingDiagnosticRepository extends MemoryDiagnosticRepository {
-    onLoad: (() => void) | null = null;
+    afterRead?: () => Promise<void>;
 
-    load(): DiagnosticStore {
-        const snapshot = super.load();
-        const onLoad = this.onLoad;
-        this.onLoad = null;
-        onLoad?.();
+    override async list(): Promise<DiagnosticSession[]> {
+        const snapshot = await super.list();
+        await this.afterRead?.();
         return snapshot;
     }
 }
@@ -64,10 +80,10 @@ function createInput(
 }
 
 describe("diagnostic session retention", () => {
-    it("does not persist every restored or processed chapter when a large cache is resumed", () => {
+    it("does not persist every restored or processed chapter when a large cache is resumed", async () => {
         const repository = new MemoryDiagnosticRepository();
         const manager = new DiagnosticManager(repository, () => 1_000);
-        manager.start(createInput("large-cache", { totalChapters: 3_000 }));
+        await manager.start(createInput("large-cache", { totalChapters: 3_000 }));
         const savesAfterStart = repository.saveCount;
 
         for (let index = 0; index < 1_224; index++) {
@@ -76,8 +92,8 @@ describe("diagnostic session retention", () => {
                 title: `Chapter ${index + 1}`,
                 url: `https://www.esjzone.cc/forum/book/${index}.html`
             };
-            manager.recordDownloadEvent("large-cache", { type: "chapter-restored", task });
-            manager.recordDownloadEvent("large-cache", { type: "chapter-processed", task, retry: false });
+            await manager.recordDownloadEvent("large-cache", { type: "chapter-restored", task });
+            await manager.recordDownloadEvent("large-cache", { type: "chapter-processed", task, retry: false });
         }
 
         expect(repository.saveCount).toBe(savesAfterStart);
@@ -93,10 +109,10 @@ describe("diagnostic session retention", () => {
             protectedResolvedCount: 2,
             protectedSkippedCount: 1
         };
-        manager.recordDownloadEvent("large-cache", { type: "snapshot-updated", snapshot });
+        await manager.recordDownloadEvent("large-cache", { type: "snapshot-updated", snapshot });
 
         expect(repository.saveCount).toBe(savesAfterStart + 1);
-        expect(manager.list().active[0].task).toMatchObject({
+        expect((await manager.list()).active[0].task).toMatchObject({
             restoredChapters: 1_224,
             completedChapters: 1_224,
             readyChapters: 1_224,
@@ -107,57 +123,55 @@ describe("diagnostic session retention", () => {
         });
     });
 
-    it("does not overwrite another page's terminal result while listing a stale snapshot", () => {
+    it("does not overwrite another page's terminal result while listing a stale snapshot", async () => {
         const repository = new InterleavingDiagnosticRepository();
         const writer = new DiagnosticManager(repository, () => 1_000);
         const reader = new DiagnosticManager(repository, () => 1_000);
-        writer.start(createInput("concurrent"));
+        await writer.start(createInput("concurrent"));
 
-        repository.onLoad = () => {
-            writer.finish("concurrent", "success");
-        };
+        repository.afterRead = () => writer.finish("concurrent", "success");
 
-        expect(reader.list().active).toEqual([expect.objectContaining({ taskId: "concurrent" })]);
-        expect(repository.store.history).toEqual([
+        expect((await reader.list()).active).toEqual([expect.objectContaining({ taskId: "concurrent" })]);
+        expect(repository.sessions).toEqual([expect.objectContaining({ taskId: "concurrent", result: "success" })]);
+        expect((await reader.list()).history).toEqual([
             expect.objectContaining({ taskId: "concurrent", result: "success" })
         ]);
-        expect(reader.list().history).toEqual([expect.objectContaining({ taskId: "concurrent", result: "success" })]);
     });
 
-    it("keeps a page-close observation nonterminal when a real outcome arrives", () => {
+    it("keeps a page-close observation nonterminal when a real outcome arrives", async () => {
         const repository = new MemoryDiagnosticRepository();
         let now = 1_000;
         const manager = new DiagnosticManager(repository, () => now);
-        manager.start(createInput("closed"));
+        await manager.start(createInput("closed"));
 
         now = 2_000;
-        manager.markCloseObserved("closed");
-        manager.finish("closed", "success");
+        await manager.markCloseObserved("closed");
+        await manager.finish("closed", "success");
 
-        expect(manager.list().history).toEqual([
+        expect((await manager.list()).history).toEqual([
             expect.objectContaining({ taskId: "closed", result: "success", closeObservedAt: 2_000 })
         ]);
     });
 
-    it("derives replacement and interruption views without rewriting the active record", () => {
+    it("derives replacement and interruption views without rewriting the active record", async () => {
         const repository = new MemoryDiagnosticRepository();
         let now = 1_000;
         const manager = new DiagnosticManager(repository, () => now);
-        manager.start(createInput("closed", { bookId: "book-1" }));
+        await manager.start(createInput("closed", { bookId: "book-1" }));
 
         now = 2_000;
-        manager.markCloseObserved("closed");
+        await manager.markCloseObserved("closed");
         now = 3_000;
-        manager.start(createInput("replacement", { bookId: "book-1" }));
+        await manager.start(createInput("replacement", { bookId: "book-1" }));
         const preparing = { ...createInitialDownloadSnapshot(12, 0), phase: "preparing" as const };
-        manager.recordDownloadEvent("replacement", {
+        await manager.recordDownloadEvent("replacement", {
             type: "phase-changed",
             previous: "idle",
             current: "preparing",
             snapshot: preparing
         });
 
-        expect(createDiagnosticSessionView(manager.list(), now).unconfirmed).toEqual([
+        expect(createDiagnosticSessionView(await manager.list(), now).unconfirmed).toEqual([
             expect.objectContaining({
                 session: expect.objectContaining({ taskId: "closed", result: "running" }),
                 presentation: "superseded"
@@ -165,7 +179,7 @@ describe("diagnostic session retention", () => {
         ]);
 
         now = 2_000 + DIAGNOSTIC_CLOSE_UNCONFIRMED_MS;
-        const view = createDiagnosticSessionView(manager.list(), now);
+        const view = createDiagnosticSessionView(await manager.list(), now);
         expect(view.unconfirmed).toEqual([]);
         expect(view.history).toContainEqual(
             expect.objectContaining({
@@ -173,12 +187,12 @@ describe("diagnostic session retention", () => {
                 presentation: "interrupted"
             })
         );
-        expect(repository.store.active).toContainEqual(
+        expect(repository.sessions).toContainEqual(
             expect.objectContaining({ taskId: "closed", result: "running", closeObservedAt: 2_000 })
         );
     });
 
-    it("keeps the thirty most recent completed sessions regardless of result", () => {
+    it("keeps the thirty most recent completed sessions regardless of result", async () => {
         const repository = new MemoryDiagnosticRepository();
         let now = 1_000;
         const manager = new DiagnosticManager(repository, () => now);
@@ -186,31 +200,32 @@ describe("diagnostic session retention", () => {
         for (let index = 0; index < DIAGNOSTIC_HISTORY_LIMIT; index++) {
             const taskId = `older-${index}`;
             const result = index % 2 === 0 ? "failed" : "cancelled";
-            manager.start(createInput(taskId));
-            manager.finish(taskId, result);
+            await manager.start(createInput(taskId));
+            await manager.finish(taskId, result);
             now++;
         }
-        manager.start(createInput("latest-success"));
-        manager.finish("latest-success", "success");
+        await manager.start(createInput("latest-success"));
+        await manager.finish("latest-success", "success");
 
-        const history = manager.list().history;
+        const history = (await manager.list()).history;
         expect(history).toHaveLength(DIAGNOSTIC_HISTORY_LIMIT);
         expect(history[0]).toEqual(expect.objectContaining({ taskId: "latest-success", result: "success" }));
         expect(history.map((session) => session.taskId)).not.toContain("older-0");
         expect(history.at(-1)?.taskId).toBe("older-1");
     });
 
-    it("expires old history and converts stale active sessions to interrupted records", () => {
+    it("expires old history and converts stale active sessions to interrupted records", async () => {
         const repository = new MemoryDiagnosticRepository();
         let now = 1_000;
         const manager = new DiagnosticManager(repository, () => now);
 
-        manager.start(createInput("finished"));
-        manager.finish("finished", "success");
-        manager.start(createInput("stale"));
+        await manager.start(createInput("finished"));
+        await manager.finish("finished", "success");
+        now++;
+        await manager.start(createInput("stale"));
         now += 2 * 24 * 60 * 60 * 1000;
 
-        const interrupted = manager.list();
+        const interrupted = await manager.list();
         expect(interrupted.active).toEqual([]);
         expect(interrupted.history.map((session) => [session.taskId, session.result])).toEqual([
             ["stale", "interrupted"],
@@ -218,14 +233,14 @@ describe("diagnostic session retention", () => {
         ]);
 
         now += DIAGNOSTIC_RETENTION_MS;
-        expect(manager.list().history).toEqual([]);
+        expect((await manager.list()).history).toEqual([]);
     });
 
-    it("bounds one session while retaining structured failures", () => {
+    it("bounds one session while retaining structured failures", async () => {
         const repository = new MemoryDiagnosticRepository();
         const manager = new DiagnosticManager(repository, () => 1_000);
-        manager.start(createInput("large"));
-        manager.recordFailure("large", {
+        await manager.start(createInput("large"));
+        await manager.recordFailure("large", {
             scope: "chapter",
             stage: "fetch",
             code: "network-error",
@@ -233,10 +248,10 @@ describe("diagnostic session retention", () => {
             chapter: { index: 4, title: "Chapter", url: "https://www.esjzone.cc/forum/1/5.html" }
         });
         for (let index = 0; index < 160; index++) {
-            manager.recordLog("large", `${index}-${"x".repeat(2_000)}`);
+            await manager.recordLog("large", `${index}-${"x".repeat(2_000)}`);
         }
 
-        const session = manager.list().active[0];
+        const session = (await manager.list()).active[0];
         expect(new TextEncoder().encode(JSON.stringify(session)).byteLength).toBeLessThanOrEqual(
             DIAGNOSTIC_SESSION_BYTES_LIMIT
         );
@@ -248,7 +263,7 @@ describe("diagnostic session retention", () => {
         });
     });
 
-    it("bounds sparse selection details without losing diagnostic events or logs", () => {
+    it("bounds sparse selection details without losing diagnostic events or logs", async () => {
         const repository = new MemoryDiagnosticRepository();
         const manager = new DiagnosticManager(repository, () => 1_000);
         const selection = {
@@ -261,10 +276,14 @@ describe("diagnostic session retention", () => {
                 endChapter: index * 2 + 1
             }))
         };
-        manager.start(createInput("sparse", { totalChapters: 8_000, selection }));
-        manager.recordLog("sparse", { level: "warning", code: "cache-write-failed", params: { detail: "retry" } });
+        await manager.start(createInput("sparse", { totalChapters: 8_000, selection }));
+        await manager.recordLog("sparse", {
+            level: "warning",
+            code: "cache-write-failed",
+            params: { detail: "retry" }
+        });
 
-        const session = manager.list().active[0];
+        const session = (await manager.list()).active[0];
         expect(new TextEncoder().encode(JSON.stringify(session)).byteLength).toBeLessThanOrEqual(
             DIAGNOSTIC_SESSION_BYTES_LIMIT
         );
@@ -285,19 +304,19 @@ describe("diagnostic session retention", () => {
         expect(selection.ranges.at(-1)).toEqual({ startChapter: 15_999, endChapter: 15_999 });
     });
 
-    it("evicts the oldest history first when the total capacity is exceeded", () => {
+    it("evicts the oldest history first when the total capacity is exceeded", async () => {
         const repository = new MemoryDiagnosticRepository();
         const manager = new DiagnosticManager(repository, () => 1_000);
-        manager.start(createInput("large-template"));
-        repository.store.active[0].logs = Array.from({ length: 80 }, (_, index) => ({
+        await manager.start(createInput("large-template"));
+        repository.sessions[0].logs = Array.from({ length: 80 }, (_, index) => ({
             at: index,
             level: "info" as const,
             message: `${index}-${"诊断".repeat(1_000)}`
         }));
-        manager.finish("large-template", "success");
+        await manager.finish("large-template", "success");
 
-        const template = repository.store.history[0];
-        repository.store.history = Array.from({ length: DIAGNOSTIC_HISTORY_LIMIT }, (_, index) => ({
+        const template = repository.sessions[0];
+        repository.sessions = Array.from({ length: DIAGNOSTIC_HISTORY_LIMIT }, (_, index) => ({
             ...structuredClone(template),
             id: `session-${index}`,
             taskId: `task-${index}`,
@@ -306,7 +325,7 @@ describe("diagnostic session retention", () => {
             endedAt: index
         }));
 
-        const store = manager.list();
+        const store = await manager.list();
         expect(new TextEncoder().encode(JSON.stringify(store)).byteLength).toBeLessThanOrEqual(
             DIAGNOSTIC_TOTAL_BYTES_LIMIT
         );
@@ -316,19 +335,19 @@ describe("diagnostic session retention", () => {
         );
     });
 
-    it("persists explicit log levels without inferring severity from localized words", () => {
+    it("persists explicit log levels without inferring severity from localized words", async () => {
         const repository = new MemoryDiagnosticRepository();
         const manager = new DiagnosticManager(repository, () => 1_000);
-        manager.start(createInput("structured-logs"));
+        await manager.start(createInput("structured-logs"));
 
-        manager.recordLog("structured-logs", "失败后重试");
-        manager.recordLog("structured-logs", {
+        await manager.recordLog("structured-logs", "失败后重试");
+        await manager.recordLog("structured-logs", {
             level: "warning",
             code: "chapter-fetch-failed",
             params: { chapter: "Chapter 1", retry: 2 }
         });
 
-        expect(manager.list().active[0].logs).toEqual([
+        expect((await manager.list()).active[0].logs).toEqual([
             { at: 0, level: "info", message: "失败后重试" },
             {
                 at: 0,
@@ -339,13 +358,13 @@ describe("diagnostic session retention", () => {
         ]);
     });
 
-    it("records multi-format export outcomes after a task completes", () => {
+    it("records multi-format export outcomes after a task completes", async () => {
         const repository = new MemoryDiagnosticRepository();
         const manager = new DiagnosticManager(repository, () => 1_000);
-        manager.start(createInput("exports"));
-        manager.finish("exports", "success");
+        await manager.start(createInput("exports"));
+        await manager.finish("exports", "success");
 
-        manager.recordExport("exports", {
+        await manager.recordExport("exports", {
             scope: "full",
             format: "epub",
             outcome: "failed",
@@ -353,7 +372,7 @@ describe("diagnostic session retention", () => {
             downloadTriggered: false,
             failureStage: "download"
         });
-        manager.recordExport("exports", {
+        await manager.recordExport("exports", {
             scope: "full",
             format: "epub",
             outcome: "success",
@@ -361,7 +380,7 @@ describe("diagnostic session retention", () => {
             downloadTriggered: true,
             failureStage: null
         });
-        manager.recordExport("exports", {
+        await manager.recordExport("exports", {
             scope: "full",
             format: "html",
             outcome: "cancelled",
@@ -370,19 +389,19 @@ describe("diagnostic session retention", () => {
             failureStage: null
         });
 
-        expect(manager.list().history[0].exports).toEqual([
+        expect((await manager.list()).history[0].exports).toEqual([
             expect.objectContaining({ format: "epub", outcome: "failed", failureStage: "download" }),
             expect.objectContaining({ format: "epub", outcome: "success", downloadTriggered: true }),
             expect.objectContaining({ format: "html", outcome: "cancelled", generated: false })
         ]);
     });
 
-    it("records a rejected protected password as a retryable event instead of a failure", () => {
+    it("records a rejected protected password as a retryable event instead of a failure", async () => {
         const repository = new MemoryDiagnosticRepository();
         const manager = new DiagnosticManager(repository, () => 1_000);
-        manager.start(createInput("protected-rejected"));
+        await manager.start(createInput("protected-rejected"));
 
-        manager.recordDownloadEvent("protected-rejected", {
+        await manager.recordDownloadEvent("protected-rejected", {
             type: "protected-chapter-password-rejected",
             task: {
                 index: 4,
@@ -391,7 +410,7 @@ describe("diagnostic session retention", () => {
             }
         });
 
-        const session = manager.list().active[0];
+        const session = (await manager.list()).active[0];
         expect(session.failures).toEqual([]);
         expect(session.events.at(-1)).toEqual({
             at: 0,
@@ -419,17 +438,17 @@ describe("diagnostic session retention", () => {
         );
     });
 
-    it("repairs legacy failed records that reached export-ready without failures", () => {
+    it("repairs legacy failed records that reached export-ready without failures", async () => {
         const repository = new MemoryDiagnosticRepository();
         const manager = new DiagnosticManager(repository, () => 1_000);
-        manager.start(createInput("legacy-success"));
-        manager.finish("legacy-success", "success");
-        repository.store.history[0].result = "failed";
-        repository.store.history[0].task.phase = "export-ready";
-        repository.store.history[0].task.completedChapters = 12;
-        delete (repository.store.history[0] as Partial<(typeof repository.store.history)[number]>).exports;
+        await manager.start(createInput("legacy-success"));
+        await manager.finish("legacy-success", "success");
+        repository.sessions[0].result = "failed";
+        repository.sessions[0].task.phase = "export-ready";
+        repository.sessions[0].task.completedChapters = 12;
+        delete (repository.sessions[0] as Partial<DiagnosticSession>).exports;
 
-        const session = manager.list().history[0];
+        const session = (await manager.list()).history[0];
         expect(session.result).toBe("success");
         expect(session.failures).toEqual([]);
         expect(session.exports).toEqual([]);

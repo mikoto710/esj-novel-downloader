@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getBrowserDownloadMocks, resetBrowserDownloadHarness } from "../support/browser-download-harness";
 import { runBookDownload } from "../../src/app/book-download";
 import { loadDetailBook, loadForumBook, type PreparedBook } from "../../src/site/book";
@@ -12,6 +12,7 @@ import {
     installDocumentFixture,
     useFakeClock
 } from "../support";
+import { deleteTestDatabase } from "../support/resources";
 
 const mocks = getBrowserDownloadMocks();
 let selection: typeof import("../../src/ui/dialogs/download-selection");
@@ -25,6 +26,11 @@ describe("book preparation lifetime", () => {
         mocks.selectionView.mockImplementation(selection.createDownloadSelectionPopup);
         window.history.replaceState({}, "", "/detail/100.html");
         installDocumentFixture(createDetailPageFixture({ chapterCount: 4 }));
+    });
+
+    afterEach(async () => {
+        await listBrowserDiagnosticSessions();
+        await deleteTestDatabase("esj-novel-downloader-diagnostics");
     });
 
     it("shows a cancellable window while the directory is still pending", async () => {
@@ -99,7 +105,7 @@ describe("book preparation lifetime", () => {
             await Promise.resolve();
             await Promise.resolve();
             expect(document.querySelector("#esj-range-selection")).toBe(element);
-            expect(listBrowserDiagnosticSessions().history).toHaveLength(0);
+            expect((await listBrowserDiagnosticSessions()).history).toHaveLength(0);
             expect(mocks.acquire).not.toHaveBeenCalled();
             next.close();
             await next.decision;
@@ -110,7 +116,7 @@ describe("book preparation lifetime", () => {
     });
 
     it("keeps a timed-out forum preparation outside the book lock", async () => {
-        const clock = useFakeClock();
+        const clock = useFakeClock(undefined, { toFake: ["Date", "setTimeout", "clearTimeout"] });
         const fetching = createDeferred<void>();
         const request = createDeferred<Response>();
         vi.stubGlobal(
@@ -131,7 +137,7 @@ describe("book preparation lifetime", () => {
             await clock.advanceBy(15000);
             expect(document.querySelector<HTMLButtonElement>("#esj-range-download")?.disabled).toBe(true);
             expect(mocks.acquire).not.toHaveBeenCalled();
-            expect(listBrowserDiagnosticSessions().history[0].failures[0].code).toBe("detail-fetch-timeout");
+            expect((await listBrowserDiagnosticSessions()).history[0].failures[0].code).toBe("detail-fetch-timeout");
             document.querySelector<HTMLButtonElement>("#esj-range-cancel")?.click();
             await running;
             expect(vi.getTimerCount()).toBe(0);

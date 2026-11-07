@@ -91,37 +91,19 @@ export function showMessagePopup(options: MessagePopupOptions): HTMLElement {
         );
     }
 
-    // 错误已有诊断记录时提供查看入口，打开诊断前关闭消息窗口
-    const footerButtons: Array<string | Node> = [];
-    const diagnosticStore = options.tone === "error" ? listBrowserDiagnosticSessions() : null;
-    if (diagnosticStore && diagnosticStore.active.length + diagnosticStore.history.length > 0) {
-        footerButtons.push(
-            el(
-                "button",
-                {
-                    id: "esj-message-diagnostic",
-                    style: "padding:8px 12px;background:#2b9bd7;color:#fff;border:1px solid #2b9bd7;border-radius:6px;cursor:pointer;",
-                    onclick: () => {
-                        close();
-                        createDiagnosticPopup();
-                    }
-                },
-                [t("common.viewDiagnostics")]
-            )
-        );
-    }
-    footerButtons.push(
-        el(
-            "button",
-            {
-                id: "esj-message-close",
-                style: "padding:8px 12px;background:#eee;border:1px solid #ccc;border-radius:6px;cursor:pointer;",
-                onclick: close
-            },
-            [options.closeText || t("common.close")]
-        )
+    // 操作区先提供关闭按钮，诊断入口按读取结果补充
+    const closeButton = el(
+        "button",
+        {
+            id: "esj-message-close",
+            style: "padding:8px 12px;background:#eee;border:1px solid #ccc;border-radius:6px;cursor:pointer;",
+            onclick: close
+        },
+        [options.closeText || t("common.close")]
     );
+    const footer = el("div", { style: "padding:12px;display:flex;justify-content:flex-end;gap:8px;" }, [closeButton]);
 
+    // 组合标题、滚动正文和操作区，挂载后将焦点交给关闭按钮
     const popup = el(
         "div",
         {
@@ -139,12 +121,36 @@ export function showMessagePopup(options: MessagePopupOptions): HTMLElement {
                 { style: "padding:16px;font-size:15px;line-height:1.7;min-height:0;overflow:auto;" },
                 bodyChildren
             ),
-            el("div", { style: "padding:12px;display:flex;justify-content:flex-end;gap:8px;" }, footerButtons)
+            footer
         ]
     );
-
     document.body.appendChild(popup);
     enableDrag(popup, ".esj-common-header");
-    (popup.querySelector("#esj-message-close") as HTMLButtonElement | null)?.focus();
+    closeButton.focus();
+
+    // 仅为仍在页面上的错误弹窗追加诊断入口
+    if (options.tone === "error") {
+        void listBrowserDiagnosticSessions()
+            .then(({ active, history }) => {
+                if (popup.isConnected && active.length + history.length > 0) {
+                    footer.prepend(
+                        el(
+                            "button",
+                            {
+                                id: "esj-message-diagnostic",
+                                style: "padding:8px 12px;background:#2b9bd7;color:#fff;border:1px solid #2b9bd7;border-radius:6px;cursor:pointer;",
+                                onclick: () => {
+                                    close();
+                                    createDiagnosticPopup();
+                                }
+                            },
+                            [t("common.viewDiagnostics")]
+                        )
+                    );
+                }
+            })
+            .catch((error) => console.warn("读取诊断日志失败", error));
+    }
+
     return popup;
 }

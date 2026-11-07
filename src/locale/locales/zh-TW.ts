@@ -372,7 +372,10 @@ export const ZH_TW_MESSAGES = Object.freeze({
     "diagnostics.section.recent": "最近任務（最多 {limit} 筆）",
     "diagnostics.retention": "保留最近 {days} 天內最多 {limit} 筆紀錄；單筆上限 {single}，總計上限 {total}",
     "diagnostics.confirm.title": "🗑️ 清除確認",
-    "diagnostics.confirm.message": "確定清除全部診斷紀錄嗎？這也會清除其他頁面的進行中紀錄，且無法復原",
+    "diagnostics.confirm.message":
+        "確定清除目前網站的全部診斷紀錄嗎？這也會清除同一網站其他頁面的進行中紀錄，且無法復原",
+    "diagnostics.readFailed": "無法讀取診斷紀錄，請檢查瀏覽器的儲存狀態後重新整理",
+    "diagnostics.deleteFailed": "無法刪除診斷紀錄，請檢查瀏覽器的儲存狀態後再試一次",
     "page.bookIdMissing": "無法解析書籍 ID，已取消書籍下載任務",
     "page.cacheReadFailed": "❌ 無法讀取本機快取：{detail}",
     "page.cacheUnavailable.title": "本機快取無法使用",

@@ -11,7 +11,8 @@ import {
     DIAGNOSTIC_RETENTION_MS,
     DIAGNOSTIC_SESSION_BYTES_LIMIT,
     DIAGNOSTIC_TOTAL_BYTES_LIMIT,
-    type DiagnosticSessionView
+    type DiagnosticSessionView,
+    type DiagnosticSessionViewStore
 } from "../../diagnostics/manager";
 import { el, enableDrag, registerElementCleanup, removeElement } from "../dom";
 import { createCommonHeader, showDecisionDialog } from "./common";
@@ -20,6 +21,7 @@ import { acquirePageActionGroupLockForPopup } from "../page-action-lock";
 import { createDiagnosticSessionDetail, createDiagnosticSessionRow } from "./diagnostic-session-view";
 
 const DIAGNOSTIC_AUTO_REFRESH_INTERVAL_MS = 3000;
+const EMPTY_DIAGNOSTIC_VIEW: DiagnosticSessionViewStore = { active: [], unconfirmed: [], history: [] };
 let disposeActiveDiagnosticPopup: (() => void) | null = null;
 
 function formatBytes(bytes: number): string {
@@ -76,7 +78,16 @@ export function createDiagnosticPopup(): void {
     disposeActiveDiagnosticPopup?.();
     removeElement(document.querySelector("#esj-settings"));
 
+    // 选择和列表快照由当前弹窗持有，异步读取按刷新次序应用
     let selectedId: string | null = null;
+    let shownView = EMPTY_DIAGNOSTIC_VIEW;
+    let refreshVersion = 0;
+    let refreshing = false;
+    let changingRecords = false;
+    let storageStatus: "common.loading" | "diagnostics.readFailed" | "diagnostics.deleteFailed" | null =
+        "common.loading";
+
+    // 关闭时停止轮询和语言订阅，已开始的读取不会重绘已移除的弹窗
     let refreshTimer: number | null = null;
     let stopLocaleRefresh: () => void = () => {};
     let disposed = false;
@@ -112,6 +123,14 @@ export function createDiagnosticPopup(): void {
     };
     refreshRetentionNotice();
 
+    // 存储状态独立于会话详情，读取或删除失败时保留可重试的界面
+    const storageNotice = el("div", { role: "status", style: "padding:8px 12px;font-size:13px;" });
+    const renderStorageNotice = () => {
+        storageNotice.hidden = storageStatus === null;
+        storageNotice.textContent = storageStatus ? t(storageStatus) : "";
+    };
+    renderStorageNotice();
+
     // 左侧选择会话，右侧展示所选会话；两栏各自滚动
     const list = el("div", {
         id: "esj-diagnostic-list",
@@ -129,7 +148,7 @@ export function createDiagnosticPopup(): void {
         {
             id: "esj-diagnostic-refresh",
             style: `${buttonStyle}background:#eee;margin-right:auto;`,
-            onclick: () => render({ preserveScroll: true })
+            onclick: () => void refresh(true)
         },
         [t("cache.action.refresh")]
     ) as HTMLButtonElement;
@@ -156,14 +175,7 @@ export function createDiagnosticPopup(): void {
         {
             id: "esj-diagnostic-clear",
             style: `${buttonStyle}background:#fff;color:#c62828;border-color:#d9534f;`,
-            onclick: async () => {
-                if (!(await showClearConfirm(popup))) {
-                    return;
-                }
-                clearBrowserDiagnosticSessions();
-                selectedId = null;
-                render();
-            }
+            onclick: () => void changeRecords()
         },
         [t("diagnostics.action.clearAll")]
     ) as HTMLButtonElement;
@@ -177,35 +189,54 @@ export function createDiagnosticPopup(): void {
                 if (!selected) {
                     return;
                 }
-                removeBrowserDiagnosticSession(selected.session.id);
-                selectedId = null;
-                render();
+                void changeRecords(selected.session.id);
             }
         },
         [t("diagnostics.action.delete")]
     ) as HTMLButtonElement;
 
-    const findSelectedView = (): DiagnosticSessionView | null => {
-        const view = listBrowserDiagnosticSessionView();
-        return (
-            [...view.active, ...view.unconfirmed, ...view.history].find((item) => item.session.id === selectedId) ||
-            null
-        );
+    const findSelectedView = (view = shownView, id = selectedId): DiagnosticSessionView | null => {
+        const { active, unconfirmed, history } = view;
+        return [...active, ...unconfirmed, ...history].find((item) => item.session.id === id) ?? null;
     };
 
-    function downloadSelectedDiagnostic(): void {
-        const selected = findSelectedView();
-        if (selected) {
+    // 导出前按点击时的选择读取，避免使用另一标签页已删除的记录
+    async function readSelectedView(): Promise<DiagnosticSessionView | null> {
+        const id = selectedId;
+        if (!id) {
+            return null;
+        }
+        try {
+            const view = await listBrowserDiagnosticSessionView();
+            return popup.isConnected ? findSelectedView(view, id) : null;
+        } catch (error) {
+            if (popup.isConnected) {
+                storageStatus = "diagnostics.readFailed";
+                renderStorageNotice();
+            }
+            console.warn("读取诊断日志失败", error);
+            return null;
+        }
+    }
+
+    async function downloadSelectedDiagnostic(): Promise<void> {
+        const selected = await readSelectedView();
+        if (!selected) {
+            return;
+        }
+        try {
             const exported = createDiagnosticExport(selected.session, {
                 bookTitle: formatDiagnosticBookTitle(selected.session),
                 formatLog: formatDiagnosticLog
             });
             triggerDownload(new Blob([exported.json], { type: "application/json;charset=utf-8" }), exported.filename);
+        } catch (error) {
+            console.error("下载诊断日志失败", error);
         }
     }
 
     async function copySelectedDiagnostic(): Promise<void> {
-        const selected = findSelectedView();
+        const selected = await readSelectedView();
         if (!selected) {
             return;
         }
@@ -216,12 +247,17 @@ export function createDiagnosticPopup(): void {
         }
     }
 
+    // 选中项决定可用操作，删除期间避免重复提交
+    const updateActions = (hasSelection: boolean) => {
+        downloadButton.disabled = changingRecords || !hasSelection;
+        copyButton.disabled = changingRecords || !hasSelection;
+        deleteButton.disabled = changingRecords || !hasSelection;
+        clearButton.disabled = changingRecords;
+    };
+
     const renderDetail = (view: DiagnosticSessionView | null) => {
-        detail.replaceChildren();
-        downloadButton.disabled = !view;
-        copyButton.disabled = !view;
-        deleteButton.disabled = !view;
-        detail.append(...createDiagnosticSessionDetail(view));
+        updateActions(Boolean(view));
+        detail.replaceChildren(...createDiagnosticSessionDetail(view));
     };
 
     // 按活动、待确认和最近记录分组，点击行后同步右侧详情
@@ -236,16 +272,16 @@ export function createDiagnosticPopup(): void {
         items.forEach((item) => {
             const row = createDiagnosticSessionRow(item, item.session.id === selectedId, () => {
                 selectedId = item.session.id;
-                render();
+                render(shownView);
             });
             list.appendChild(row);
         });
     }
 
-    const render = ({ preserveScroll = false }: { preserveScroll?: boolean } = {}) => {
+    const render = (view: DiagnosticSessionViewStore, preserveScroll = false) => {
         const listScrollTop = preserveScroll ? list.scrollTop : 0;
         const detailScrollTop = preserveScroll ? detail.scrollTop : 0;
-        const view = listBrowserDiagnosticSessionView();
+        shownView = view;
 
         // 已观察到页面关闭但终态未确认的会话单独列出，仍可查看、导出和删除
         const sessions = [...view.active, ...view.unconfirmed, ...view.history];
@@ -269,15 +305,93 @@ export function createDiagnosticPopup(): void {
         }
     };
 
+    // 只应用本弹窗最新的读取，清除确认和删除期间暂停刷新
+    async function refresh(preserveScroll = false): Promise<void> {
+        if (changingRecords) {
+            return;
+        }
+        const version = ++refreshVersion;
+        refreshing = true;
+        try {
+            const view = await listBrowserDiagnosticSessionView();
+            if (disposed || !popup.isConnected || version !== refreshVersion) {
+                return;
+            }
+            if (storageStatus !== "diagnostics.deleteFailed") {
+                storageStatus = null;
+                renderStorageNotice();
+            }
+            render(view, preserveScroll);
+        } catch (error) {
+            if (!disposed && popup.isConnected && version === refreshVersion) {
+                storageStatus = "diagnostics.readFailed";
+                renderStorageNotice();
+            }
+            console.warn("读取诊断日志失败", error);
+        } finally {
+            if (version === refreshVersion) {
+                refreshing = false;
+            }
+        }
+    }
+
+    async function changeRecords(sessionId?: string): Promise<void> {
+        if (changingRecords) {
+            return;
+        }
+        changingRecords = true;
+        // 确认和删除期间让此前发出的读取失效
+        refreshVersion++;
+        refreshing = false;
+        updateActions(Boolean(findSelectedView()));
+        let changed = false;
+        try {
+            if (sessionId === undefined) {
+                if (!(await showClearConfirm(popup))) {
+                    return;
+                }
+                await clearBrowserDiagnosticSessions();
+            } else {
+                await removeBrowserDiagnosticSession(sessionId);
+            }
+            changed = true;
+            storageStatus = null;
+            if (!disposed && popup.isConnected) {
+                // 已提交的删除立即反映在当前列表，刷新失败也不会保留已删记录
+                const keep = ({ session }: DiagnosticSessionView) => session.id !== sessionId;
+                const view =
+                    sessionId === undefined
+                        ? EMPTY_DIAGNOSTIC_VIEW
+                        : {
+                              active: shownView.active.filter(keep),
+                              unconfirmed: shownView.unconfirmed.filter(keep),
+                              history: shownView.history.filter(keep)
+                          };
+                render(view, true);
+            }
+        } catch (error) {
+            storageStatus = "diagnostics.deleteFailed";
+            console.warn("删除诊断日志失败", error);
+        } finally {
+            changingRecords = false;
+            if (!disposed && popup.isConnected) {
+                renderStorageNotice();
+                if (changed) {
+                    await refresh(true);
+                }
+                updateActions(Boolean(findSelectedView()));
+            }
+        }
+    }
+
     const refreshAutomatically = () => {
         if (disposed || !popup.isConnected) {
             dispose();
             return;
         }
 
-        // 清除确认期间不重绘，保留用户当前操作与确认对话框的归属
-        if (document.visibilityState === "visible" && !document.querySelector("#esj-diagnostic-clear-confirm")) {
-            render({ preserveScroll: true });
+        if (document.visibilityState === "visible" && !refreshing) {
+            void refresh(true);
         }
     };
 
@@ -312,14 +426,19 @@ export function createDiagnosticPopup(): void {
             id: "esj-diagnostics",
             style: "position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:760px;max-width:calc(100vw - 32px);height:560px;max-height:calc(100vh - 32px);background:#fff;border:1px solid #aaa;border-radius:8px;box-shadow:0 0 18px rgba(0,0,0,.28);z-index:1000003;display:flex;flex-direction:column;"
         },
-        [header, retentionNotice, sessionContent, actions]
+        [header, retentionNotice, storageNotice, sessionContent, actions]
     );
 
     document.body.appendChild(popup);
     registerElementCleanup(popup, dispose);
     acquirePageActionGroupLockForPopup(popup);
     enableDrag(popup, ".esj-common-header");
-    render();
+
+    // 先建立空详情，再异步载入会话
+    renderDetail(null);
+    void refresh();
+
+    // 切换语言时重绘当前会话快照并保留滚动位置
     stopLocaleRefresh = subscribeInterfaceLocaleChange(() => {
         if (!popup.isConnected) {
             dispose();
@@ -335,7 +454,8 @@ export function createDiagnosticPopup(): void {
         copyButton.textContent = t("diagnostics.action.copy");
         clearButton.textContent = t("diagnostics.action.clearAll");
         deleteButton.textContent = t("diagnostics.action.delete");
-        render({ preserveScroll: true });
+        renderStorageNotice();
+        render(shownView, true);
     });
     disposeActiveDiagnosticPopup = dispose;
     document.addEventListener("visibilitychange", onVisibilityChange);
