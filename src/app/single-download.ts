@@ -272,7 +272,7 @@ async function readCurrentBookMetadata(bookLink: HTMLAnchorElement | null, diagn
 // 两种格式沿用同一资源准备时机；图片失败降级为原正文，并保留原任务诊断
 async function prepareCurrentChapterImages(contentHtml: string, title: string, diagnosticTaskId: string) {
     let imageSuccessCount = 0;
-    let imageFailureCount = 0;
+    let imageFailureCount: number;
     log(t("single.log.images"));
     try {
         const processed = await processHtmlImages(contentHtml, 0);

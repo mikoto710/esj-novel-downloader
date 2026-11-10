@@ -427,7 +427,7 @@ async function executeBookDownload(
                 cancellation.isCancellationRequested() ? "cancelled" : "failed"
             );
         }
-        let wasCurrent = false;
+        let wasCurrent: boolean;
         let data: CachedData | undefined;
         let finalization: BookDownloadFinalizationResult;
         let finalized = false;

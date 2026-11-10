@@ -150,7 +150,7 @@ export class ChapterCacheWriteBuffer {
             const controller = new AbortController();
             this.activeWrite = controller;
 
-            let saved = false;
+            let saved: boolean;
             try {
                 saved = await this.write(batch, controller.signal);
                 if (controller.signal.aborted) {
