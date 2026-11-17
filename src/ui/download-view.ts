@@ -1,5 +1,5 @@
 import type { DownloadCancellationPort, DownloadSnapshot, DownloadUiPort } from "../download/contracts";
-import type { DownloadSelection } from "../download/plan";
+import type { ChapterSelection } from "../download/plan";
 import { isCurrentDownload } from "../app/page-session";
 import {
     closeProtectedChapterPrompt,
@@ -26,7 +26,7 @@ function updateDownloadStatus(status: string, originalTitle: string): void {
  * 应用持有任务窗口生命周期，核心只接收 DownloadUiPort 中的业务交互
  */
 export interface DownloadView extends DownloadUiPort {
-    prepare(selection: DownloadSelection): void;
+    prepare(selection: ChapterSelection): void;
     cleanup(): void;
 }
 
@@ -45,7 +45,7 @@ export function createDownloadView(task: {
     let cleaned = false;
     let prepared = false;
 
-    function prepare(selection: DownloadSelection): void {
+    function prepare(selection: ChapterSelection): void {
         if (!isCurrent()) {
             return;
         }

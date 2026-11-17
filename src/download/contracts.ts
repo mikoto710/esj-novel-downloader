@@ -1,4 +1,4 @@
-import type { DownloadSelection, ChapterSelection } from "./plan";
+import type { ChapterSelection } from "./plan";
 import type { ExportSnapshot } from "../export/snapshot";
 import type { CacheMeta } from "../storage/cache/model";
 import type { BookCover, Chapter, SourcePageType } from "../content/model";
@@ -114,7 +114,7 @@ export interface ProtectedChapterPrompt {
     taskOrder?: number;
     totalChapters: number;
     sourceTotalChapters?: number;
-    selectionMode?: DownloadSelection["mode"];
+    selectionMode?: ChapterSelection["mode"];
     pendingCount: number;
     // 仅保留 ESJZone status 206 返回的原始站点提示
     message?: string;
@@ -250,7 +250,7 @@ export interface IncompleteChapterDetection {
     missingTasks: readonly DownloadTask[];
     totalChapters: number;
     sourceTotalChapters?: number;
-    selectionMode?: DownloadSelection["mode"];
+    selectionMode?: ChapterSelection["mode"];
     taskOrderByIndex?: ReadonlyMap<number, number>;
 }
 

@@ -1,5 +1,5 @@
 import type { BookDirectorySnapshot } from "../../site/book-directory";
-import type { DownloadSelection, ChapterSelection, ChapterSelectionSummary } from "../../download/plan";
+import type { ChapterSelection, ChapterSelectionSummary } from "../../download/plan";
 import type { LocaleKey } from "../../locale/catalog";
 import type { DownloadTask } from "../../download/contracts";
 import {
@@ -254,7 +254,7 @@ export function createDownloadSelectionPopup(options: DownloadSelectionPopupOpti
         }
     }
 
-    const getSelection = (): DownloadSelection | null => {
+    const getSelection = (): ChapterSelection | null => {
         if (unavailable()) {
             return null;
         }
@@ -295,7 +295,7 @@ export function createDownloadSelectionPopup(options: DownloadSelectionPopupOpti
     }
 
     // 章数取自原目录或当前勾选数，缓存复用数按本次选择计划统计
-    function refreshSelectionSummary(disabled: boolean, selection: DownloadSelection | null): void {
+    function refreshSelectionSummary(disabled: boolean, selection: ChapterSelection | null): void {
         const plan = selection
             ? createDownloadPlan({ tasks: selectDownloadTasks(preview.tasks, selection), selection })
             : null;
@@ -317,7 +317,7 @@ export function createDownloadSelectionPopup(options: DownloadSelectionPopupOpti
     }
 
     // 提示和下载操作共用本次选择，旧结果入口独立于准备是否成功
-    function refreshSelectionActions(selection: DownloadSelection | null): void {
+    function refreshSelectionActions(selection: ChapterSelection | null): void {
         cacheWarning.hidden = Boolean(stage) || !preview.cacheWillBeInvalidated;
         cacheWarning.textContent = "⚠️ " + t("range.cacheDiscardWarning", { count: preview.cacheCount });
         validation.textContent = stage

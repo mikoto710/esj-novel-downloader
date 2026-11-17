@@ -20,10 +20,6 @@ export interface ChapterSelectionSummary {
     ranges: readonly Readonly<{ startChapter: number; endChapter: number }>[];
 }
 
-export type DownloadSelection = ChapterSelection;
-
-export type DownloadSelectionSummary = ChapterSelectionSummary;
-
 /**
  * 旧版持久摘要使用从 1 开始的闭区间，仅在读取时兼容
  */
