@@ -11,22 +11,12 @@ export interface WorkerPoolOptions<T> {
 }
 
 /**
- * WorkerPool 执行结果
- */
-export interface WorkerPoolResult {
-    claimedCount: number;
-    completedCount: number;
-    cancelled: boolean;
-}
-
-/**
  * 并发处理共享任务列表，等待单项返回后再领取，单项异常向调用方抛出
  */
-export async function runWorkerPool<T>(options: WorkerPoolOptions<T>): Promise<WorkerPoolResult> {
+export async function runWorkerPool<T>(options: WorkerPoolOptions<T>): Promise<void> {
     const { items, isCancellationRequested, process } = options;
     const workerCount = Math.min(items.length, Math.max(1, Math.floor(options.concurrency) || 1));
     let cursor = 0;
-    let completedCount = 0;
     let failed = false;
     let firstFailure: unknown;
 
@@ -44,7 +34,6 @@ export async function runWorkerPool<T>(options: WorkerPoolOptions<T>): Promise<W
             }
             cursor += 1;
             await process(items[index], index);
-            completedCount += 1;
         }
     };
 
@@ -63,9 +52,4 @@ export async function runWorkerPool<T>(options: WorkerPoolOptions<T>): Promise<W
     if (failed) {
         throw firstFailure;
     }
-    return {
-        claimedCount: cursor,
-        completedCount,
-        cancelled: isCancellationRequested()
-    };
 }

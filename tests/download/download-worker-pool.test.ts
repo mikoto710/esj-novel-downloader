@@ -8,7 +8,7 @@ describe("runWorkerPool", () => {
         let activeCount = 0;
         let maxActiveCount = 0;
 
-        const result = await runWorkerPool({
+        await runWorkerPool({
             items: [0, 1, 2, 3, 4, 5],
             concurrency: 3,
             isCancellationRequested: () => false,
@@ -23,7 +23,6 @@ describe("runWorkerPool", () => {
 
         expect(processed.toSorted((left, right) => left - right)).toEqual([0, 1, 2, 3, 4, 5]);
         expect(maxActiveCount).toBe(3);
-        expect(result).toEqual({ claimedCount: 6, completedCount: 6, cancelled: false });
     });
 
     it("waits for downstream work before claiming the next item", async () => {
@@ -52,7 +51,7 @@ describe("runWorkerPool", () => {
         let cancelled = false;
         const processed: number[] = [];
 
-        const result = await runWorkerPool({
+        await runWorkerPool({
             items: [0, 1, 2],
             concurrency: 1,
             isCancellationRequested: () => cancelled,
@@ -63,7 +62,6 @@ describe("runWorkerPool", () => {
         });
 
         expect(processed).toEqual([0]);
-        expect(result).toEqual({ claimedCount: 1, completedCount: 1, cancelled: true });
     });
 
     it("waits for a shared consent gate before claiming another item", async () => {
@@ -88,9 +86,8 @@ describe("runWorkerPool", () => {
         expect(processed).toEqual([0]);
 
         consent.resolve(false);
-        const result = await poolPromise;
+        await poolPromise;
 
         expect(processed).toEqual([0]);
-        expect(result.claimedCount).toBe(1);
     });
 });
