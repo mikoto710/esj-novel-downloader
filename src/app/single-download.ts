@@ -34,19 +34,15 @@ export async function downloadCurrentPage(format: "txt" | "html" = "txt"): Promi
     let generated = false;
     let downloadTriggered = false;
 
-    startBrowserDiagnosticSession(
-        {
-            taskId: diagnosticTaskId,
-            bookId,
-            bookTitle: document.title.split(" - ")[0] || "未命名小说",
-            pageUrl: location.href,
-            sourcePageType: "single",
-            totalChapters: 1,
-            imageEnabled: getImageDownloadSetting()
-        },
-        // 单章导出不覆盖全本任务的会话指针
-        { rememberForLaterFailures: false }
-    );
+    startBrowserDiagnosticSession({
+        taskId: diagnosticTaskId,
+        bookId,
+        bookTitle: document.title.split(" - ")[0] || "未命名小说",
+        pageUrl: location.href,
+        sourcePageType: "single",
+        totalChapters: 1,
+        imageEnabled: getImageDownloadSetting()
+    });
 
     try {
         log(t("single.log.started", { format: format.toUpperCase() }));

@@ -690,7 +690,7 @@ export class DiagnosticManager {
     /**
      * 向 taskId 标识的活动或历史会话追加脱敏失败记录，会话不存在时保持不变
      */
-    recordFailure(taskId: string | null, input: RecordDiagnosticFailureInput): Promise<void> {
+    recordFailure(taskId: string, input: RecordDiagnosticFailureInput): Promise<void> {
         return this.mutateSession(
             taskId,
             (session, now) => {
@@ -719,7 +719,7 @@ export class DiagnosticManager {
     /**
      * 向 taskId 标识的活动或历史会话追加导出结果，会话不存在时保持不变
      */
-    recordExport(taskId: string | null, input: RecordDiagnosticExportInput): Promise<void> {
+    recordExport(taskId: string, input: RecordDiagnosticExportInput): Promise<void> {
         return this.mutateSession(
             taskId,
             (session, now) => {
@@ -872,7 +872,7 @@ export class DiagnosticManager {
     }
 
     private mutateSession(
-        taskId: string | null,
+        taskId: string,
         mutator: (session: DiagnosticSession, now: number) => false | void,
         includeHistory = false
     ): Promise<void> {
@@ -887,16 +887,6 @@ export class DiagnosticManager {
                 return true;
             }
         };
-        if (!taskId) {
-            return this.enqueue(async () => {
-                const { active, history } = await this.readStore(now);
-                const latest = active.sort((a, b) => b.updatedAt - a.updatedAt)[0] || history[0];
-                if (latest) {
-                    await this.commitChanges(latest.taskId, [change]);
-                }
-            });
-        }
-
         // 合并连续的同任务变更，读取、创建和清理都结束当前批次
         if (this.pendingBatch?.taskId === taskId && this.pendingBatch.changes.length < 64) {
             this.pendingBatch.changes.push(change);

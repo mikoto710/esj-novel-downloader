@@ -9,7 +9,7 @@ import {
     type RecordDiagnosticExportInput,
     type StartDiagnosticSessionInput
 } from "./manager";
-import type { DownloadEvent, DownloadEventSink, DownloadLog, DownloadOptions } from "../download/contracts";
+import type { DownloadEvent, DownloadLog, DownloadOptions } from "../download/contracts";
 import { IndexedDbDiagnosticRepository } from "../storage/diagnostics";
 import { forgetDiagnosticPageCloses, rememberDiagnosticPageClose } from "../storage/diagnostic-page-close";
 import { getConcurrency, getEpubTagPageSetting } from "../storage/settings";
@@ -18,9 +18,8 @@ import { formatDownloadLog } from "../ui/messages/download-log";
 
 const manager = new DiagnosticManager(new IndexedDbDiagnosticRepository(() => location.origin));
 const observedWrites = new WeakSet<Promise<void>>();
-// currentTaskId 记录默认日志归属；lastTaskId 为任务结束后未指定身份的失败与导出提供回退
+// currentTaskId 仅记录未显式指定任务的界面日志归属
 let currentTaskId: string | null = null;
-let lastTaskId: string | null = null;
 const closeObserverCleanups = new Map<string, () => void>();
 
 // 同一批次可能包含多个事件，持久化失败只报告一次且不打断调用者
@@ -77,12 +76,9 @@ export function startBrowserDiagnosticSession(
     input: Omit<StartDiagnosticSessionInput, "application" | "settings"> & {
         imageEnabled: boolean;
     },
-    options: { rememberForLaterFailures?: boolean; observePageClose?: boolean } = {}
+    options: { observePageClose?: boolean } = {}
 ): boolean {
     currentTaskId = input.taskId;
-    if (options.rememberForLaterFailures !== false) {
-        lastTaskId = input.taskId;
-    }
     try {
         const starting = manager.start({
             ...input,
@@ -177,17 +173,17 @@ export function finishBrowserSingleChapterDiagnosticSession(
 }
 
 /**
- * 将失败写回 taskId 标识的诊断会话；未传 taskId 时依次选择日志归属任务、导出回写任务和更新时间最新的会话
+ * 将失败写回显式指定的任务，会话不存在时保持不变
  */
-export function recordBrowserDiagnosticFailure(input: RecordDiagnosticFailureInput, taskId = currentTaskId): void {
-    observeDiagnosticWrite(manager.recordFailure(taskId || lastTaskId, input));
+export function recordBrowserDiagnosticFailure(input: RecordDiagnosticFailureInput, taskId: string): void {
+    observeDiagnosticWrite(manager.recordFailure(taskId, input));
 }
 
 /**
- * 将导出结果写回 taskId 标识的诊断会话；未传 taskId 时使用与失败记录相同的会话选择规则
+ * 将导出结果写回原任务，会话不存在时保持不变
  */
-export function recordBrowserDiagnosticExport(input: RecordDiagnosticExportInput, taskId = currentTaskId): void {
-    observeDiagnosticWrite(manager.recordExport(taskId || lastTaskId, input));
+export function recordBrowserDiagnosticExport(input: RecordDiagnosticExportInput, taskId: string): void {
+    observeDiagnosticWrite(manager.recordExport(taskId, input));
 }
 
 /**
@@ -234,14 +230,6 @@ export function recordBrowserDownloadEvent(taskId: string, event: DownloadEvent)
     }
 }
 
-export const browserDiagnosticEvents: DownloadEventSink = {
-    emit(event) {
-        if (currentTaskId) {
-            recordBrowserDownloadEvent(currentTaskId, event);
-        }
-    }
-};
-
 /**
  * 读取经过兼容修复、保留期限和容量约束处理的活动诊断会话与历史记录
  */
@@ -266,7 +254,6 @@ export function removeBrowserDiagnosticSession(sessionId: string): Promise<void>
 export async function clearBrowserDiagnosticSessions(): Promise<void> {
     const observers = [...closeObserverCleanups];
     const active = currentTaskId;
-    const latest = lastTaskId;
     await manager.clear();
 
     // 清空等待期间可能启动新任务，只移除操作发起时的观察和归属
@@ -277,8 +264,5 @@ export async function clearBrowserDiagnosticSessions(): Promise<void> {
     }
     if (currentTaskId === active) {
         currentTaskId = null;
-    }
-    if (lastTaskId === latest) {
-        lastTaskId = null;
     }
 }

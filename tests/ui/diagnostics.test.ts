@@ -28,17 +28,20 @@ function seedDiagnostic(result: "success" | "failed" = "failed", label: string =
         imageEnabled: false
     });
     if (result === "failed") {
-        recordBrowserDiagnosticFailure({
-            scope: "chapter",
-            stage: "fetch",
-            code: "network-error",
-            message: "request failed",
-            chapter: {
-                index: 0,
-                title: "Chapter 1",
-                url: "https://www.esjzone.cc/forum/1737469479/1.html"
-            }
-        });
+        recordBrowserDiagnosticFailure(
+            {
+                scope: "chapter",
+                stage: "fetch",
+                code: "network-error",
+                message: "request failed",
+                chapter: {
+                    index: 0,
+                    title: "Chapter 1",
+                    url: "https://www.esjzone.cc/forum/1737469479/1.html"
+                }
+            },
+            taskId
+        );
     }
     finishBrowserDiagnosticSession(taskId, result);
 }

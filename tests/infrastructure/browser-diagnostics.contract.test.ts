@@ -5,7 +5,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
     browserDiagnosticLog,
     clearBrowserDiagnosticSessions,
-    browserDiagnosticEvents,
     finishBrowserDiagnosticSession,
     listBrowserDiagnosticSessions,
     recordBrowserDownloadEvent,
@@ -152,14 +151,17 @@ describe("browser diagnostic persistence", () => {
         });
         browserDiagnosticLog("正在下载章节");
         finishBrowserDiagnosticSession("task-1", "success");
-        recordBrowserDiagnosticExport({
-            scope: "full",
-            format: "epub",
-            outcome: "success",
-            generated: true,
-            downloadTriggered: true,
-            failureStage: null
-        });
+        recordBrowserDiagnosticExport(
+            {
+                scope: "full",
+                format: "epub",
+                outcome: "success",
+                generated: true,
+                downloadTriggered: true,
+                failureStage: null
+            },
+            "task-1"
+        );
 
         const session = (await listBrowserDiagnosticSessions()).history[0];
         const exported = createDiagnosticExport(session, {
@@ -209,24 +211,30 @@ describe("browser diagnostic persistence", () => {
             sourcePageType: "detail",
             imageEnabled: false
         });
-        recordBrowserDiagnosticFailure({
-            scope: "chapter",
-            stage: "fetch",
-            code: "network-error",
-            message: "request failed",
-            chapter: {
-                index: 2,
-                title: "Chapter 3",
-                url: "https://www.esjzone.cc/forum/2/3.html?cookie=secret"
-            }
-        });
+        recordBrowserDiagnosticFailure(
+            {
+                scope: "chapter",
+                stage: "fetch",
+                code: "network-error",
+                message: "request failed",
+                chapter: {
+                    index: 2,
+                    title: "Chapter 3",
+                    url: "https://www.esjzone.cc/forum/2/3.html?cookie=secret"
+                }
+            },
+            "task-2"
+        );
         finishBrowserDiagnosticSession("task-2", "success");
-        recordBrowserDiagnosticFailure({
-            scope: "export",
-            stage: "epub-download",
-            code: "NotAllowedError",
-            message: "download blocked"
-        });
+        recordBrowserDiagnosticFailure(
+            {
+                scope: "export",
+                stage: "epub-download",
+                code: "NotAllowedError",
+                message: "download blocked"
+            },
+            "task-2"
+        );
 
         const session = (await listBrowserDiagnosticSessions()).history[0];
         expect(session.result).toBe("success");
@@ -252,19 +260,22 @@ describe("browser diagnostic persistence", () => {
             sourcePageType: "detail",
             imageEnabled: true
         });
-        recordBrowserDiagnosticFailure({
-            scope: "image",
-            stage: "request",
-            code: "image-request-failed",
-            message:
-                "图片请求在重试后仍失败 data:image/png;base64,AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-            imageFailureCount: 2,
-            chapter: {
-                index: 0,
-                title: "Chapter 1",
-                url: "https://www.esjzone.cc/forum/3/1.html?cookie=secret"
-            }
-        });
+        recordBrowserDiagnosticFailure(
+            {
+                scope: "image",
+                stage: "request",
+                code: "image-request-failed",
+                message:
+                    "图片请求在重试后仍失败 data:image/png;base64,AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+                imageFailureCount: 2,
+                chapter: {
+                    index: 0,
+                    title: "Chapter 1",
+                    url: "https://www.esjzone.cc/forum/3/1.html?cookie=secret"
+                }
+            },
+            "task-inline-image"
+        );
         finishBrowserDiagnosticSession("task-inline-image", "success");
 
         const session = (await listBrowserDiagnosticSessions()).history[0];
@@ -304,12 +315,12 @@ describe("browser diagnostic persistence", () => {
             fetchedCount: 2,
             processedCount: 2
         };
-        browserDiagnosticEvents.emit({ type: "snapshot-updated", snapshot: downloading });
-        browserDiagnosticEvents.emit({
+        recordBrowserDownloadEvent("task-events", { type: "snapshot-updated", snapshot: downloading });
+        recordBrowserDownloadEvent("task-events", {
             type: "mapping-font-updated",
             summary: { chapterCount: 2, fontBytes: 700_000 }
         });
-        browserDiagnosticEvents.emit({
+        recordBrowserDownloadEvent("task-events", {
             type: "chapter-failed",
             task: { index: 8, title: "Broken chapter", url: "https://www.esjzone.cc/forum/9/10.html" },
             stage: "fetch",
@@ -318,13 +329,13 @@ describe("browser diagnostic persistence", () => {
             retry: true
         });
         const failed = { ...downloading, phase: "failed" as const, failedCount: 1 };
-        browserDiagnosticEvents.emit({
+        recordBrowserDownloadEvent("task-events", {
             type: "phase-changed",
             previous: "downloading",
             current: "failed",
             snapshot: failed
         });
-        browserDiagnosticEvents.emit({
+        recordBrowserDownloadEvent("task-events", {
             type: "download-failed",
             code: "download-failed",
             params: { detail: "download failed" },
@@ -398,7 +409,7 @@ describe("browser diagnostic persistence", () => {
             persistedCount: 16,
             hasExportData: true
         };
-        browserDiagnosticEvents.emit({
+        recordBrowserDownloadEvent("task-success-finalizer", {
             type: "phase-changed",
             previous: "preparing-export",
             current: "export-ready",
