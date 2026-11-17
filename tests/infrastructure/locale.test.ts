@@ -1,22 +1,15 @@
 import { describe, expect, it } from "vitest";
 import {
-    LOCALE_CATALOGS,
-    LOCALE_KEYS,
     MissingLocaleParameterError,
     ZH_CN_MESSAGES,
     ZH_TW_MESSAGES,
-    assertLocaleCatalogsComplete,
-    findMissingLocaleKeys,
     interpolateLocaleMessage,
     translate
 } from "../../src/locale/catalog";
 
 describe("locale infrastructure", () => {
     it("keeps the base catalogs complete for both supported locales", () => {
-        expect(Object.keys(ZH_CN_MESSAGES)).toHaveLength(LOCALE_KEYS.length);
-        expect(Object.keys(ZH_TW_MESSAGES)).toHaveLength(LOCALE_KEYS.length);
-        expect(findMissingLocaleKeys(LOCALE_CATALOGS)).toEqual({ "zh-CN": [], "zh-TW": [] });
-        expect(() => assertLocaleCatalogsComplete()).not.toThrow();
+        expect(Object.keys(ZH_TW_MESSAGES).sort()).toEqual(Object.keys(ZH_CN_MESSAGES).sort());
     });
 
     it("supports repeated and non-string interpolation values", () => {

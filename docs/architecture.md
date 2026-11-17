@@ -86,6 +86,6 @@ ui/pages/detail 或 forum
 - **管理视图**：缓存弹窗分别展示活动任务保护和存储失败。批量清理等待各书操作结束，重试时重新枚举尚未清除的书籍和残留旧键。v3 清除标记阻止旧章节再次导入。历史 `createHistoryRow` 维护行操作，诊断 `downloadSelectedDiagnostic/copySelectedDiagnostic` 明确作用于当前选择，刷新保留筛选与滚动。
 - **装配**：`createDownloadDependencies` 直接绑定站点、存储和计时能力。`createChapterProcessor` 保留解析/图片采集与原任务诊断职责，`createCoverFetcher` 保留封面采集事实的本地化；`observeDownloadEvent` 只更新页面摘要和记录诊断。
 - **诊断**：`storage/diagnostics` 按站点来源隔离，在 IndexedDB 中按 `taskId` 事务更新。旧 GM 记录按来源一次性导入，清空后不再导入。诊断故障不阻断下载，关闭观察不改变任务终态。
-- **语言**：`LocaleKey` 和 `LOCALE_KEYS` 从简体基础字典派生，繁体字典声明处检查同键；新增文案只改两份字典和使用它的控件。依次采用手动偏好、站点提示和浏览器语言。界面刷新不改小说内容、元数据、URL 或站点协议原文。
+- **语言**：`LocaleKey` 从简体基础字典派生，繁体字典声明处检查同键；新增文案只改两份字典和使用它的控件。依次采用手动偏好、站点提示和浏览器语言。界面刷新不改小说内容、元数据、URL 或站点协议原文。
 
 一般改动直接运行对应测试；涉及取消、锁或缓存写入时，连同相邻退出路径与压力场景检查。测试目录、隔离要求和真实页面清单统一见[测试指南](testing.md)。

@@ -54,8 +54,6 @@ export type LocaleCatalogs = Readonly<Record<InterfaceLocale, LocaleCatalog>>;
  */
 export type LocaleKey = keyof typeof ZH_CN_MESSAGES;
 
-export const LOCALE_KEYS: readonly LocaleKey[] = Object.freeze(Object.keys(ZH_CN_MESSAGES) as LocaleKey[]);
-
 export const LOCALE_CATALOGS: LocaleCatalogs = Object.freeze({
     "zh-CN": ZH_CN_MESSAGES,
     "zh-TW": ZH_TW_MESSAGES
@@ -84,46 +82,6 @@ export class MissingLocaleParameterError extends Error {
         this.name = "MissingLocaleParameterError";
         this.key = key;
         this.parameter = parameter;
-    }
-}
-
-export class IncompleteLocaleCatalogError extends Error {
-    readonly missing: Readonly<Record<InterfaceLocale, readonly string[]>>;
-
-    constructor(missing: Readonly<Record<InterfaceLocale, readonly string[]>>) {
-        const details = (Object.entries(missing) as Array<[InterfaceLocale, readonly string[]]>)
-            .filter(([, keys]) => keys.length > 0)
-            .map(([locale, keys]) => `${locale}: ${keys.join(", ")}`)
-            .join("; ");
-        super(`Incomplete locale catalog: ${details}`);
-        this.name = "IncompleteLocaleCatalogError";
-        this.missing = missing;
-    }
-}
-
-/**
- * 检查字典缺失的稳定键
- */
-export function findMissingLocaleKeys(
-    catalogs: LocaleCatalogs,
-    expectedKeys: readonly string[] = LOCALE_KEYS
-): Readonly<Record<InterfaceLocale, readonly string[]>> {
-    return {
-        "zh-CN": expectedKeys.filter((key) => !(key in catalogs["zh-CN"])),
-        "zh-TW": expectedKeys.filter((key) => !(key in catalogs["zh-TW"]))
-    };
-}
-
-/**
- * 断言字典包含完整稳定键
- */
-export function assertLocaleCatalogsComplete(
-    catalogs: LocaleCatalogs = LOCALE_CATALOGS,
-    expectedKeys: readonly string[] = LOCALE_KEYS
-): void {
-    const missing = findMissingLocaleKeys(catalogs, expectedKeys);
-    if (missing["zh-CN"].length > 0 || missing["zh-TW"].length > 0) {
-        throw new IncompleteLocaleCatalogError(missing);
     }
 }
 
