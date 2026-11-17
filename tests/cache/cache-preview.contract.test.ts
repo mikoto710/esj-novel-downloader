@@ -62,7 +62,7 @@ describe("cache preview and confirmed claims", () => {
             indexes: [1, 7],
             compatibility: "refetch-required"
         });
-        await expect(storage.loadBookCache("700")).resolves.toMatchObject({ size: 2 });
+        await expect(storage.previewBookCache("700", false)).resolves.toMatchObject({ size: 2 });
     });
 
     it.each(["expired", "cleared"])("does not restore legacy records behind a %s v3 manifest", async (kind) => {
@@ -118,6 +118,7 @@ describe("cache preview and confirmed claims", () => {
         const legacy = { ts: Date.now(), chapters: [[0, createChapter(0)]] };
         await set("esj_down_book_700", legacy);
         const before = await repository.readCacheManifestV3("700");
+        const chaptersBefore = await repository.readCacheChaptersV3("700");
         const publish = vi.spyOn(sync, "publishCacheSyncEvent");
         const put = vi.spyOn(IDBObjectStore.prototype, "put");
         const remove = vi.spyOn(IDBObjectStore.prototype, "delete");
@@ -138,7 +139,7 @@ describe("cache preview and confirmed claims", () => {
         expect(publish).not.toHaveBeenCalled();
         expect(await repository.readCacheManifestV3("700")).toEqual(before);
         expect(await get("esj_down_book_700")).toEqual(legacy);
-        expect((await storage.loadBookCache("700")).map?.size).toBe(3);
+        expect(await repository.readCacheChaptersV3("700")).toEqual(chaptersBefore);
     });
 
     it("invalidates the whole book only after explicit confirmation", async () => {
@@ -150,7 +151,7 @@ describe("cache preview and confirmed claims", () => {
         await expect(
             storage.claimBookCache("700", "new-task", true, undefined, { allowInvalidation: true })
         ).resolves.toMatchObject({ status: "claimed", size: 0, map: null, invalidatedCount: 2 });
-        await expect(storage.loadBookCache("700")).resolves.toMatchObject({ size: 0 });
+        await expect(storage.previewBookCache("700", false)).resolves.toMatchObject({ size: 0 });
         await expect(
             storage.putBookCacheBatchForTask("700", "previous-task", new Map([[1, createChapter(1)]]))
         ).resolves.toBe(false);

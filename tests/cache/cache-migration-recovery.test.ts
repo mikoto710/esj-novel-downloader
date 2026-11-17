@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createCacheMeta, createChapter } from "../support";
 
 const mocks = vi.hoisted(() => ({
-    readManifest: vi.fn(),
+    preview: vi.fn(),
     readChapters: vi.fn(),
     claim: vi.fn(),
     clear: vi.fn(),
@@ -18,7 +18,7 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("../../src/storage/cache/indexeddb-repository", () => ({
-    readCacheManifestV3: mocks.readManifest,
+    previewCacheV3: mocks.preview,
     readCacheChaptersV3: mocks.readChapters,
     claimCacheV3: mocks.claim,
     clearCacheV3: mocks.clear,
@@ -57,7 +57,7 @@ describe("v2 cache migration recovery", () => {
 
     beforeEach(() => {
         vi.clearAllMocks();
-        mocks.readManifest.mockResolvedValue(undefined);
+        mocks.preview.mockResolvedValue({ manifest: undefined, indexes: [] });
         mocks.readChapters.mockResolvedValue(new Map([[0, chapter]]));
         mocks.claim.mockResolvedValue({ status: "claimed", compatibility: "compatible", invalidatedCount: 0 });
         mocks.readLegacy.mockResolvedValue(legacyRecord);
@@ -95,7 +95,7 @@ describe("v2 cache migration recovery", () => {
         });
         expect(mocks.claim).toHaveBeenCalledTimes(2);
         expect(mocks.deleteLegacy).not.toHaveBeenCalled();
-        await expect(storage.loadBookCache("200")).resolves.toMatchObject({ size: 1 });
+        await expect(storage.previewBookCache("200", false)).resolves.toMatchObject({ size: 1 });
 
         mocks.claim
             .mockReset()
@@ -105,10 +105,10 @@ describe("v2 cache migration recovery", () => {
     });
 
     it("does not silently treat an unavailable database as an empty cache", async () => {
-        mocks.readManifest.mockRejectedValue(new DOMException("database disabled", "InvalidStateError"));
+        mocks.preview.mockRejectedValue(new DOMException("database disabled", "InvalidStateError"));
         const storage = await import("../../src/storage/cache/book-cache");
 
-        await expect(storage.loadBookCache("200")).rejects.toMatchObject({
+        await expect(storage.previewBookCache("200", false)).rejects.toMatchObject({
             reason: "database-unavailable",
             operation: "read"
         });

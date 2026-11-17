@@ -60,25 +60,25 @@ export interface StopAndClearResult {
     status: "not-active" | "cleared" | "cleanup-failed" | "replaced" | "stale" | "timeout";
 }
 
-function createPersistentListItem(entry: PersistentCacheEntry): CacheListItem {
+function createCacheListItem(bookId: string, entry?: PersistentCacheEntry): CacheListItem {
     return {
-        bookId: entry.bookId,
-        bookName: entry.meta?.rawBookName || entry.meta?.bookName || `Book ${entry.bookId}`,
-        ...(entry.meta?.rawBookName ? { rawBookName: entry.meta.rawBookName } : {}),
-        author: entry.meta?.author || "-",
-        pageUrl: entry.meta?.pageUrl || "",
-        totalChapters: entry.totalChapters,
-        progressCount: entry.chapterCount,
-        persistentChapterCount: entry.chapterCount,
+        bookId,
+        bookName: entry?.meta?.rawBookName || entry?.meta?.bookName || `Book ${bookId}`,
+        ...(entry?.meta?.rawBookName ? { rawBookName: entry.meta.rawBookName } : {}),
+        author: entry?.meta?.author || "-",
+        pageUrl: entry?.meta?.pageUrl || "",
+        totalChapters: entry?.totalChapters ?? null,
+        progressCount: entry?.chapterCount ?? 0,
+        persistentChapterCount: entry?.chapterCount ?? 0,
         runtimeChapterCount: 0,
         runtimeCompletedCount: 0,
-        updatedAt: entry.updatedAt,
-        sourcePageType: entry.meta?.sourcePageType || "unknown",
-        imageEnabled: entry.meta?.imageEnabled ?? null,
-        sources: ["indexeddb"],
+        updatedAt: entry?.updatedAt ?? 0,
+        sourcePageType: entry?.meta?.sourcePageType || "unknown",
+        imageEnabled: entry?.meta?.imageEnabled ?? null,
+        sources: entry ? ["indexeddb"] : [],
         status: "persisted",
         hasExportData: false,
-        isLegacy: entry.isLegacy,
+        isLegacy: entry?.isLegacy ?? false,
         activeTask: false
     };
 }
@@ -106,7 +106,7 @@ export async function listManagedCaches(): Promise<CacheListItem[]> {
 
     // 持久缓存作为列表基础数据
     persistentEntries.forEach((entry) => {
-        result.set(entry.bookId, createPersistentListItem(entry));
+        result.set(entry.bookId, createCacheListItem(entry.bookId, entry));
     });
 
     // 存在的 writer 或活动锁不得指向其他任务；缺失事实不单独排除会话摘要
@@ -125,14 +125,13 @@ export async function listManagedCaches(): Promise<CacheListItem[]> {
 
             const rawBookName = runtime.rawBookName || existing?.rawBookName;
             result.set(runtime.bookId, {
-                bookId: runtime.bookId,
+                ...(existing || createCacheListItem(runtime.bookId)),
                 bookName: runtime.rawBookName || runtime.bookName || existing?.bookName || `Book ${runtime.bookId}`,
                 ...(rawBookName ? { rawBookName } : {}),
                 author: runtime.author || existing?.author || "-",
                 pageUrl: runtime.pageUrl || existing?.pageUrl || "",
                 totalChapters: runtime.totalChapters || existing?.totalChapters || null,
                 progressCount,
-                persistentChapterCount,
                 runtimeChapterCount: runtime.bookChapterCount,
                 runtimeCompletedCount: runtime.completedCount,
                 updatedAt: Math.max(existing?.updatedAt || 0, runtime.updatedAt),
@@ -140,67 +139,48 @@ export async function listManagedCaches(): Promise<CacheListItem[]> {
                 imageEnabled: runtime.imageEnabled,
                 sources: existing ? Array.from(new Set([...existing.sources, "runtime"])) : ["runtime"],
                 status: existing ? mergeStatus(existing.status, runtime.status) : runtime.status,
-                hasExportData: runtime.hasExportData,
-                isLegacy: existing?.isLegacy || false,
-                activeTask: false
+                hasExportData: runtime.hasExportData
             });
         }
     }
 
     // 导出按结果自身归属列出，不能借用新任务的会话标记
     const data = state.cachedData;
-    const context = data?.exportContext;
-    if (data && context) {
+    if (data) {
+        const context = data.exportContext;
         const existing = result.get(context.bookId);
         const count = data.chapters.length;
         const hasTaskInventory =
             existing && (existing.sources.includes("runtime") || activeLockByBookId.has(context.bookId));
         result.set(context.bookId, {
-            bookId: context.bookId,
+            ...(existing || createCacheListItem(context.bookId)),
             bookName: existing?.bookName || context.rawBookName || data.metadata.title,
             ...(context.rawBookName ? { rawBookName: context.rawBookName } : {}),
             author: existing?.author || data.metadata.author,
             pageUrl: existing?.pageUrl || context.pageUrl,
-            totalChapters: existing?.totalChapters || context.selection?.sourceTotalChapters || count,
+            totalChapters: existing?.totalChapters || context.selection.sourceTotalChapters,
             progressCount: hasTaskInventory ? existing.progressCount : Math.max(existing?.progressCount || 0, count),
-            persistentChapterCount: existing?.persistentChapterCount || 0,
             runtimeChapterCount: hasTaskInventory
                 ? existing.runtimeChapterCount
                 : Math.max(existing?.runtimeChapterCount || 0, count),
-            runtimeCompletedCount: existing?.runtimeCompletedCount || 0,
             updatedAt: existing?.updatedAt || Date.now(),
             sourcePageType: context.sourcePageType,
             imageEnabled: existing?.imageEnabled ?? context.imageEnabled,
             sources: Array.from(new Set([...(existing?.sources || []), "runtime"])),
             status: existing ? mergeStatus(existing.status, "export-ready") : "export-ready",
-            hasExportData: true,
-            isLegacy: existing?.isLegacy || false,
-            activeTask: false
+            hasExportData: true
         });
     }
 
     // 活动锁最终覆盖任务状态，避免把下载中的条目标记为普通缓存
     activeLocks.forEach((lock) => {
         const existing = result.get(lock.bookId);
-        const rawBookName = existing?.rawBookName;
         result.set(lock.bookId, {
-            bookId: lock.bookId,
+            ...(existing || createCacheListItem(lock.bookId)),
             bookName: existing?.bookName || lock.bookName || `Book ${lock.bookId}`,
-            ...(rawBookName ? { rawBookName } : {}),
-            author: existing?.author || "-",
-            pageUrl: existing?.pageUrl || "",
-            totalChapters: existing?.totalChapters || null,
-            progressCount: existing?.progressCount || 0,
-            persistentChapterCount: existing?.persistentChapterCount || 0,
-            runtimeChapterCount: existing?.runtimeChapterCount || 0,
-            runtimeCompletedCount: existing?.runtimeCompletedCount || 0,
             updatedAt: Math.max(existing?.updatedAt || 0, lock.heartbeatAt),
             sourcePageType: existing?.sourcePageType || lock.sourcePageType,
-            imageEnabled: existing?.imageEnabled ?? null,
-            sources: existing?.sources || [],
             status: "downloading",
-            hasExportData: existing?.hasExportData || false,
-            isLegacy: existing?.isLegacy || false,
             activeTask: true
         });
     });

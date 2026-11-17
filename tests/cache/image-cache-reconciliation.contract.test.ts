@@ -40,7 +40,7 @@ describe("image cache reconciliation contracts", () => {
             compatibility: "refetch-required",
             invalidatedCount: 2
         });
-        expect((await storage.loadBookCache("501")).size).toBe(0);
+        expect((await storage.previewBookCache("501", false)).size).toBe(0);
     });
 
     it("keeps the independent cover when mismatched chapter cache is invalidated", async () => {
@@ -63,7 +63,7 @@ describe("image cache reconciliation contracts", () => {
 
         await storage.claimBookCache("502", "task-new", true, undefined, { allowInvalidation: true });
 
-        expect((await storage.loadBookCache("502")).size).toBe(0);
+        expect((await storage.previewBookCache("502", false)).size).toBe(0);
         await expect(storage.loadBookCover("502", "https://img.example/cover.jpg")).resolves.not.toBeNull();
     });
 
@@ -85,7 +85,7 @@ describe("image cache reconciliation contracts", () => {
             name: "AbortError"
         });
 
-        const restored = await storage.loadBookCache("504");
+        const restored = await storage.previewBookCache("504", false);
         expect(restored).toMatchObject({ size: 1, meta: { imageEnabled: false } });
     });
 });

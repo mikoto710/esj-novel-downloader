@@ -111,7 +111,7 @@ describe("cache and history isolation contract", () => {
 
         await storage.clearAllPersistentCaches();
 
-        expect((await storage.loadBookCache("100")).size).toBe(0);
+        expect((await storage.previewBookCache("100", false)).size).toBe(0);
         expect(await history.listDownloadHistory()).toEqual([
             expect.objectContaining({ bookId: "100", bookName: "测试小说", format: "txt" })
         ]);

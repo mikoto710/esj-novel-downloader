@@ -87,7 +87,7 @@ describe("cache tombstone cleanup contracts", () => {
             await expect(clear()).resolves.toBe(false);
             expect(await get(currentKey)).toEqual(original);
             expect(await get(olderKey)).toEqual(foreign);
-            expect((await storage.loadBookCache(ownerBookId)).map).toBeNull();
+            expect((await storage.previewBookCache(ownerBookId, false)).size).toBe(0);
 
             localStorage.removeItem(`esj_download_lock_presence_${foreign.writerTaskId}`);
             await expect(clear()).resolves.toBe(true);
@@ -100,6 +100,7 @@ describe("cache tombstone cleanup contracts", () => {
 
     it("keeps v3 chapters available when the clear transaction fails", async () => {
         const storage = await import("../../src/storage/cache/book-cache");
+        const repository = await import("../../src/storage/cache/indexeddb-repository");
         const chapter = createChapter(0);
         await storage.claimBookCache("602", "task-602", false);
         await storage.putBookCacheBatchForTask("602", "task-602", new Map([[0, chapter]]));
@@ -112,9 +113,9 @@ describe("cache tombstone cleanup contracts", () => {
             reason: "transaction-aborted",
             operation: "clear"
         });
-        expect((await storage.loadBookCache("602")).map?.get(0)).toEqual(chapter);
+        expect((await repository.readCacheChaptersV3("602")).get(0)).toEqual(chapter);
         await expect(storage.clearBookCache("602")).resolves.toBe(true);
-        expect((await storage.loadBookCache("602")).map).toBeNull();
+        expect((await storage.previewBookCache("602", false)).size).toBe(0);
     });
 
     it("retries residual legacy data after a partial batch clear without reimporting it", async () => {
@@ -148,7 +149,7 @@ describe("cache tombstone cleanup contracts", () => {
         expect(await get(otherKey)).toBeUndefined();
         expect(await get(remainingKey)).toEqual(cached);
         expect(await get(olderKey)).toEqual(cached);
-        expect((await storage.loadBookCache("601")).map).toBeNull();
+        expect((await storage.previewBookCache("601", false)).size).toBe(0);
 
         fault.mockRestore();
         await expect(storage.clearAllPersistentCaches()).resolves.toEqual([]);
@@ -159,6 +160,7 @@ describe("cache tombstone cleanup contracts", () => {
     it("retains a migrated chapter but reports failed legacy deletion on task cleanup", async () => {
         const { get, set } = openLegacyCacheFixture();
         const storage = await import("../../src/storage/cache/book-cache");
+        const repository = await import("../../src/storage/cache/indexeddb-repository");
         const key = "esj_down_604";
         const chapter = createChapter(0);
         await set(key, {
@@ -178,13 +180,13 @@ describe("cache tombstone cleanup contracts", () => {
         });
 
         await expect(storage.claimBookCache("604", "task-604", false)).resolves.toMatchObject({ status: "claimed" });
-        expect((await storage.loadBookCache("604")).map?.get(0)).toEqual(chapter);
+        expect((await repository.readCacheChaptersV3("604")).get(0)).toEqual(chapter);
         await expect(storage.clearBookCacheForTask("604", "task-604")).rejects.toMatchObject({
             reason: "database-unavailable",
             operation: "clear"
         });
         expect(await get(key)).toBeDefined();
-        expect((await storage.loadBookCache("604")).map).toBeNull();
+        expect((await storage.previewBookCache("604", false)).size).toBe(0);
 
         fault.mockRestore();
         await expect(storage.clearBookCacheForTask("604", "task-604")).resolves.toBe(true);

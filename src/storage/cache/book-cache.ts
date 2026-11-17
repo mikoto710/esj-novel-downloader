@@ -12,7 +12,6 @@ import {
     putCacheCoverV3ForTask,
     readCacheChaptersV3,
     readCacheCoverV3,
-    readCacheManifestV3,
     type CacheManifestV3
 } from "./indexeddb-repository";
 import {
@@ -151,47 +150,6 @@ export async function previewBookCache(
         }
         return { valid: false, size: 0, indexes: [], compatibility: "compatible" };
     } catch (error) {
-        throw normalizeStorageError(error, "read");
-    }
-}
-
-/**
- * 优先读取 v3 小说缓存，未迁移时只读 v2 缓存
- */
-export async function loadBookCache(bookId: string): Promise<BookCacheLoadResult> {
-    try {
-        const manifest = await readCacheManifestV3(bookId);
-        if (manifest) {
-            if (!isReusableV3Cache(manifest)) {
-                return { size: 0, map: null };
-            }
-            const map = await readCacheChaptersV3(bookId);
-            console.log(`✅ 读取到本地缓存，章节数：${map.size}`);
-            return {
-                size: map.size,
-                map: map.size > 0 ? map : null,
-                ...(manifest.meta === undefined ? {} : { meta: manifest.meta })
-            };
-        }
-
-        const legacy = await readLegacyCache(bookId);
-        if (!legacy || legacy.data.cleared) {
-            return { size: 0, map: null };
-        }
-        if (isExpired(legacy.data)) {
-            console.warn("⚠️ 本地缓存已过期，本次不再使用");
-            return { size: 0, map: null };
-        }
-
-        const map = new Map<number, Chapter>(legacy.data.chapters);
-        console.log(`✅ 读取到本地缓存，章节数：${map.size}`);
-        return {
-            size: map.size,
-            map: map.size > 0 ? map : null,
-            ...(legacy.data.meta === undefined ? {} : { meta: legacy.data.meta })
-        };
-    } catch (error) {
-        console.error("读取缓存失败", error);
         throw normalizeStorageError(error, "read");
     }
 }

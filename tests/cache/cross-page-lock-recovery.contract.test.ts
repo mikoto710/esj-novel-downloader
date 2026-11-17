@@ -27,7 +27,7 @@ describe("cross-page lock recovery contracts", () => {
                 createCacheMeta({ bookId: "700", imageEnabled: false })
             )
         ).toBe(true);
-        expect((await storage.loadBookCache("700")).size).toBe(1);
+        expect((await storage.previewBookCache("700", false)).size).toBe(1);
 
         unsubscribe();
     });
@@ -54,6 +54,7 @@ describe("cross-page lock recovery contracts", () => {
         vi.stubGlobal("BroadcastChannel", undefined);
         const locks = await import("../../src/storage/book-lock");
         const storage = await import("../../src/storage/cache/book-cache");
+        const repository = await import("../../src/storage/cache/indexeddb-repository");
         const [first, second] = await Promise.all([
             locks.acquireBookDownloadLock("710", "detail"),
             locks.acquireBookDownloadLock("711", "forum")
@@ -89,8 +90,8 @@ describe("cross-page lock recovery contracts", () => {
             )
         ).toBe(false);
         expect(await storage.clearBookCacheForTask("710", first.lock.taskId)).toBe(true);
-        expect((await storage.loadBookCache("710")).size).toBe(0);
-        expect((await storage.loadBookCache("711")).map?.get(0)?.content).toBe("second book");
+        expect((await storage.previewBookCache("710", false)).size).toBe(0);
+        expect((await repository.readCacheChaptersV3("711")).get(0)?.content).toBe("second book");
 
         await Promise.all([locks.releaseBookDownloadLock(first.lock), locks.releaseBookDownloadLock(second.lock)]);
     });
@@ -161,10 +162,11 @@ describe("cross-page lock recovery contracts", () => {
             )
         ).toBe(true);
 
-        const restored = await storage.loadBookCache("730");
+        const repository = await import("../../src/storage/cache/indexeddb-repository");
+        const restored = await repository.readCacheChaptersV3("730");
         expect(restored.size).toBe(2);
-        expect(restored.map?.get(0)?.content).toBe("recoverable chapter");
-        expect(restored.map?.get(1)?.content).toBe("replacement chapter");
+        expect(restored.get(0)?.content).toBe("recoverable chapter");
+        expect(restored.get(1)?.content).toBe("replacement chapter");
         await locks.releaseBookDownloadLock(replacement.lock);
     });
 });

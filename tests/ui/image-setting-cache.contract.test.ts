@@ -42,7 +42,7 @@ describe("image setting cache contracts", () => {
 
         await vi.waitFor(() => expect(GM_getValue("enable_image_download", false)).toBe(true));
 
-        expect((await storage.loadBookCache("700")).size).toBe(1);
+        expect((await storage.previewBookCache("700", false)).size).toBe(1);
         expect(document.querySelector("#esj-image-cache-confirm")).toBeNull();
     });
 

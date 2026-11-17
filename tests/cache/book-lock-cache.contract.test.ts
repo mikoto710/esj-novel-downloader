@@ -87,11 +87,10 @@ describe("book lock contracts", () => {
         expect(await storage.putBookCacheBatchForTask("100", first.lock.taskId, staleOverwrite)).toBe(false);
         expect(await storage.clearBookCacheForTask("100", first.lock.taskId)).toBe(false);
 
-        const restored = await storage.loadBookCache("100");
-        expect(restored.map?.get(0)?.content).toBe("original");
-        expect(await storage.putBookCacheBatchForTask("100", replacement.lock.taskId, restored.map ?? new Map())).toBe(
-            true
-        );
+        const repository = await import("../../src/storage/cache/indexeddb-repository");
+        const restored = await repository.readCacheChaptersV3("100");
+        expect(restored.get(0)?.content).toBe("original");
+        expect(await storage.putBookCacheBatchForTask("100", replacement.lock.taskId, restored)).toBe(true);
         await locks.releaseBookDownloadLock(replacement.lock);
     });
 
@@ -133,7 +132,7 @@ describe("book lock contracts", () => {
         await storage.putBookCacheBatchForTask("106", "task-range", new Map([[2, createChapter(2)]]), meta);
         expect(await storage.finishBookCacheForTask("106", "task-range", meta)).toBe(true);
         expect(await storage.clearBookCacheForTask("106", "task-range")).toBe(true);
-        expect(await storage.loadBookCache("106")).toEqual({ size: 0, map: null });
+        expect(await storage.previewBookCache("106", false)).toMatchObject({ size: 0, indexes: [] });
     });
 
     it("lazily migrates v2 chapters after the v3 writer is claimed", async () => {
@@ -148,7 +147,7 @@ describe("book lock contracts", () => {
             meta: createCacheMeta({ bookId: "200", imageEnabled: false, updatedAt: Date.now() })
         });
 
-        expect((await storage.loadBookCache("200")).map?.get(0)?.content).toBe("legacy chapter");
+        expect((await storage.previewBookCache("200", false)).indexes).toEqual([0]);
         expect(await get("esj_down_book_200")).toBeDefined();
 
         const claimed = await storage.claimBookCache("200", "task-200", false);
@@ -158,7 +157,7 @@ describe("book lock contracts", () => {
         expect(await get("esj_down_book_200")).toBeUndefined();
 
         expect(await storage.putBookCacheBatchForTask("200", "task-200", new Map([[1, createChapter(1)]]))).toBe(true);
-        expect((await storage.loadBookCache("200")).size).toBe(2);
+        expect((await storage.previewBookCache("200", false)).size).toBe(2);
     });
 
     it("keeps cleared v3 cache from falling back to residual v2 data", async () => {
@@ -175,7 +174,7 @@ describe("book lock contracts", () => {
             chapters: [[0, createChapter(0, { content: "residual legacy chapter" })]]
         });
 
-        expect(await storage.loadBookCache("300")).toEqual({ size: 0, map: null });
+        expect(await storage.previewBookCache("300", false)).toMatchObject({ size: 0, indexes: [] });
         expect(await storage.listBookCaches()).toEqual([]);
     });
 
@@ -208,8 +207,9 @@ describe("book lock contracts", () => {
             )
         ).toBe(false);
 
-        const restored = await storage.loadBookCache("103");
-        expect(restored.map?.get(0)?.content).toBe("persisted");
+        const repository = await import("../../src/storage/cache/indexeddb-repository");
+        const restored = await repository.readCacheChaptersV3("103");
+        expect(restored.get(0)?.content).toBe("persisted");
         await locks.releaseBookDownloadLock(acquired.lock);
     });
 

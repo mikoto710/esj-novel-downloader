@@ -37,7 +37,7 @@ describe("independent cover cache contracts", () => {
             ext: "png",
             mediaType: "image/png"
         });
-        expect((await storage.loadBookCache("400")).size).toBe(0);
+        expect((await storage.previewBookCache("400", false)).size).toBe(0);
     });
 
     it("atomically replaces an old URL without reusing its Blob", async () => {
