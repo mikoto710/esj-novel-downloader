@@ -96,7 +96,7 @@ export function createExportData(
         exportContext: {
             bookId: options.bookId,
             taskId: options.taskId,
-            rawBookName: options.rawBookName || options.bookName,
+            rawBookName: options.rawBookName || options.bookName || "未命名小说",
             pageUrl,
             sourcePageType: options.sourcePageType === "forum" ? "forum" : "detail",
             chapterSummary: {

@@ -3,7 +3,7 @@
 import { IDBFactory } from "fake-indexeddb";
 import { createDownloadHarness } from "../support/download-harness";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createCachedData, createChapter, createDeferred } from "../support";
+import { createCachedData, createChapter, createDeferred, createDownloadTask } from "../support";
 import { deleteTestDatabase } from "../support/resources";
 
 const mocks = vi.hoisted(() => ({
@@ -304,6 +304,27 @@ describe("full-book export recovery contracts", () => {
         expect(mocks.addDownloadHistory).toHaveBeenCalledWith(expect.objectContaining({ format: "html" }));
         await vi.waitFor(() => expect((document.querySelector("#esj-html") as HTMLButtonElement).disabled).toBe(false));
         history.resolve();
+    });
+
+    it("keeps an unnamed book visible in history without changing its default filename", async () => {
+        const tasks = [createDownloadTask()];
+        const result = await createDownloadHarness(tasks).run({
+            bookId: "100",
+            taskId: "untitled-export",
+            bookName: "",
+            rawBookName: "",
+            introTxt: "",
+            description: "",
+            tags: [],
+            imageEnabled: false,
+            tasks
+        });
+        if (result.status !== "ready") throw new Error("expected a ready export snapshot");
+        await prepareExportPopup({ ...result.data, epubBlob: null });
+        click("#esj-txt");
+
+        expect(mocks.triggerDownload).toHaveBeenCalledWith(expect.any(Blob), "book.txt");
+        expect(mocks.addDownloadHistory).toHaveBeenCalledWith(expect.objectContaining({ bookName: "未命名小说" }));
     });
 
     it("keeps the captured filename while preserving the original book and selection in history", async () => {
