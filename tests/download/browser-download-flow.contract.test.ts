@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 
+import { createRangeSelection } from "../../src/download/plan";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
     type BrowserDownloadRuntime,
@@ -137,10 +138,7 @@ describe("browser download flow contracts", () => {
         });
         const actual = await vi.importActual<typeof import("../../src/download/run")>("../../src/download/run");
         mocks.runDownload.mockImplementationOnce((options, dependencies) =>
-            actual.runDownload(
-                { ...options, selection: { mode: "range", sourceTotalChapters: 3, startIndex: 1, endIndex: 2 } },
-                dependencies
-            )
+            actual.runDownload({ ...options, selection: createRangeSelection(2, 3, 3) }, dependencies)
         );
         await expect(
             runtime.runBookDownload(createBrowserDownloadOptions(createBrowserDownloadTasks(1)))

@@ -8,7 +8,7 @@ import type {
 } from "../download/contracts";
 import type { DomainMessageParams } from "../messages";
 import {
-    createDownloadSelectionSummary,
+    summarizeChapterSelection,
     normalizeChapterSelectionSummary,
     type StoredDownloadSelectionSummary
 } from "../download/plan";
@@ -661,7 +661,7 @@ export class DiagnosticManager {
                 session.task.totalChapters = options.tasks.length;
             }
             if (options.selection) {
-                session.selection = createDownloadSelectionSummary(options.selection);
+                session.selection = summarizeChapterSelection(options.selection);
             }
         });
     }

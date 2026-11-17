@@ -73,7 +73,7 @@ describe("full-book export recovery contracts", () => {
             throw new Error("object URL unavailable");
         });
         const source = createCachedData();
-        source.exportContext!.taskId = "export-retry";
+        source.exportContext.taskId = "export-retry";
         const { state } = await prepareExportPopup(source);
         const diagnostics = await import("../../src/diagnostics/runtime");
         diagnostics.startBrowserDiagnosticSession({
@@ -154,7 +154,7 @@ describe("full-book export recovery contracts", () => {
         await vi.waitFor(() => expect(mocks.buildEpub).toHaveBeenCalledTimes(2));
     });
 
-    it("does not attribute a legacy result without task identity to a later task", async () => {
+    it("does not attribute an export whose original session is absent to a later task", async () => {
         const diagnostics = await import("../../src/diagnostics/runtime");
         await prepareExportPopup();
         diagnostics.startBrowserDiagnosticSession({
@@ -196,7 +196,7 @@ describe("full-book export recovery contracts", () => {
         diagnostics.startBrowserDiagnosticSession({ ...input, taskId: "original-export" });
         diagnostics.finishBrowserDiagnosticSession("original-export", "success");
         const data = createCachedData();
-        await prepareExportPopup({ ...data, exportContext: { ...data.exportContext!, taskId: "original-export" } });
+        await prepareExportPopup({ ...data, exportContext: { ...data.exportContext, taskId: "original-export" } });
         diagnostics.startBrowserDiagnosticSession({ ...input, taskId: "later-failure" });
         diagnostics.finishBrowserDiagnosticSession("later-failure", "failed");
         click("#esj-txt");
@@ -310,16 +310,18 @@ describe("full-book export recovery contracts", () => {
         const rangeData = createCachedData({
             exportFilename: "  我的/选集.epub  ",
             exportContext: {
+                taskId: "task-range-export",
                 bookId: "100",
                 rawBookName: "测试小说",
                 pageUrl: "https://www.esjzone.cc/detail/100.html",
                 sourcePageType: "detail",
                 chapterSummary: { totalCount: 20, missingCount: 1 },
                 selection: {
-                    mode: "range",
+                    version: 2,
+                    mode: "selected",
                     sourceTotalChapters: 120,
-                    startChapter: 101,
-                    endChapter: 120
+                    selectedCount: 20,
+                    ranges: [{ startChapter: 101, endChapter: 120 }]
                 },
                 imageEnabled: false
             }
@@ -337,10 +339,11 @@ describe("full-book export recovery contracts", () => {
                     bookName: "测试小说",
                     chapterSummary: { totalCount: 20, missingCount: 1 },
                     selection: {
-                        mode: "range",
+                        version: 2,
+                        mode: "selected",
                         sourceTotalChapters: 120,
-                        startChapter: 101,
-                        endChapter: 120
+                        selectedCount: 20,
+                        ranges: [{ startChapter: 101, endChapter: 120 }]
                     }
                 })
             )
@@ -406,7 +409,7 @@ describe("full-book export recovery contracts", () => {
 
     it("restores mapped EPUB controls after confirmation is cancelled", async () => {
         const source = createMappedBook();
-        source.exportContext!.taskId = "mapped-cancel";
+        source.exportContext.taskId = "mapped-cancel";
         await prepareExportPopup(source);
         const diagnostics = await import("../../src/diagnostics/runtime");
         diagnostics.startBrowserDiagnosticSession({

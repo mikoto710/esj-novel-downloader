@@ -3,7 +3,6 @@ import {
     exportBookTxt,
     exportBookRich,
     getExportCapabilities,
-    getExportImageSetting,
     type CachedData,
     type ExportFormat,
     type ExportFailureStage
@@ -72,7 +71,7 @@ export function showFormatChoice(data: CachedData): void {
     const imageSuccessCount = data.chapters.reduce((count, chapter) => count + (chapter.images?.length || 0), 0);
     const imageFailureCount = data.chapters.reduce((count, chapter) => count + (chapter.imageErrors || 0), 0);
     const imageTotalCount = imageSuccessCount + imageFailureCount;
-    const isImageDownloadEnabled = getExportImageSetting(data);
+    const isImageDownloadEnabled = data.exportContext.imageEnabled;
     const imageStatus = isImageDownloadEnabled
         ? el("div", {
               id: "esj-format-image-status",
@@ -83,9 +82,9 @@ export function showFormatChoice(data: CachedData): void {
     // 自选结果显示实际区间摘要，全本结果显示总章数
     const infoBody = el("div", { className: "esj-format-info" }, [
         el("div", { id: "esj-format-book-status" }, [t("export.bookReady", { title: data.metadata.title })]),
-        isPartialSelectionSummary(data.exportContext?.selection)
+        isPartialSelectionSummary(data.exportContext.selection)
             ? el("div", { id: "esj-format-range", style: "color:#2b6f9f;font-size:12px;margin-top:4px;" }, [
-                  formatSelectionSummary(data.exportContext?.selection)
+                  formatSelectionSummary(data.exportContext.selection)
               ])
             : el("div", { id: "esj-format-chapter-count", style: "color:#666;font-size:12px;margin-top:4px;" }, [
                   t("export.chapterCount", { count: data.chapters.length })
@@ -187,7 +186,7 @@ export function showFormatChoice(data: CachedData): void {
             chapterCount.textContent = t("export.chapterCount", { count: data.chapters.length });
         }
         if (rangeStatus) {
-            rangeStatus.textContent = formatSelectionSummary(data.exportContext?.selection);
+            rangeStatus.textContent = formatSelectionSummary(data.exportContext.selection);
         }
         if (imageStatus instanceof HTMLElement) {
             imageStatus.textContent =
@@ -233,7 +232,7 @@ export function showFormatChoice(data: CachedData): void {
     function ownsTitle(): boolean {
         return (
             activeFormatView === formatView &&
-            (!state.activeDownload || state.activeDownload.taskId === data.exportContext?.taskId)
+            (!state.activeDownload || state.activeDownload.taskId === data.exportContext.taskId)
         );
     }
 

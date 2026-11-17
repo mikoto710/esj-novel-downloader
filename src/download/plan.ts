@@ -25,16 +25,6 @@ export type DownloadSelection = ChapterSelection;
 export type DownloadSelectionSummary = ChapterSelectionSummary;
 
 /**
- * 旧输入只在规范化入口接收，不能直接作为新任务的固定计划
- */
-export interface LegacyDownloadSelection {
-    mode: "all" | "range";
-    sourceTotalChapters: number;
-    startIndex: number;
-    endIndex: number;
-}
-
-/**
  * 旧版持久摘要使用从 1 开始的闭区间，仅在读取时兼容
  */
 export interface LegacyDownloadSelectionSummary {
@@ -44,13 +34,11 @@ export interface LegacyDownloadSelectionSummary {
     endChapter: number;
 }
 
-export type DownloadSelectionInput = ChapterSelection | LegacyDownloadSelection;
-
 export type StoredDownloadSelectionSummary = ChapterSelectionSummary | LegacyDownloadSelectionSummary;
 
 interface DownloadPlanInput {
     tasks: readonly DownloadTask[];
-    selection?: DownloadSelectionInput;
+    selection?: ChapterSelection;
 }
 
 export type DownloadSelectionErrorCode =
@@ -119,27 +107,11 @@ export function createRangeSelection(
     );
 }
 
-function normalizeSelection(selection: DownloadSelectionInput): ChapterSelection {
-    if ("indexes" in selection) {
-        return createChapterSelection(selection.indexes, selection.sourceTotalChapters);
-    }
-    if (
-        selection.mode === "all" &&
-        (selection.startIndex !== 0 || selection.endIndex !== selection.sourceTotalChapters - 1)
-    ) {
-        throw new DownloadSelectionError("selection-range-invalid");
-    }
-    return createRangeSelection(selection.startIndex + 1, selection.endIndex + 1, selection.sourceTotalChapters);
-}
-
 /**
  * 从完整目录选出原任务，保留绝对索引和目录顺序
  */
-export function selectDownloadTasks(
-    sourceTasks: readonly DownloadTask[],
-    selection: DownloadSelectionInput
-): DownloadTask[] {
-    const normalized = normalizeSelection(selection);
+export function selectDownloadTasks(sourceTasks: readonly DownloadTask[], selection: ChapterSelection): DownloadTask[] {
+    const normalized = createChapterSelection(selection.indexes, selection.sourceTotalChapters);
     if (
         sourceTasks.length !== normalized.sourceTotalChapters ||
         sourceTasks.some((task, index) => task.index !== index)
@@ -155,7 +127,7 @@ export function selectDownloadTasks(
  */
 export function resolveDownloadSelection(options: DownloadPlanInput): ChapterSelection {
     const selection = options.selection
-        ? normalizeSelection(options.selection)
+        ? createChapterSelection(options.selection.indexes, options.selection.sourceTotalChapters)
         : createRangeSelection(1, options.tasks.length, options.tasks.length);
     if (options.tasks.length !== selection.indexes.length) {
         throw new DownloadSelectionError("selection-task-mismatch");
@@ -259,13 +231,6 @@ export function normalizeChapterSelectionSummary(value: unknown): ChapterSelecti
         return null;
     }
     return summary;
-}
-
-/**
- * 从规范化选择构造快照摘要，旧任务输入在此兼容
- */
-export function createDownloadSelectionSummary(selection: DownloadSelectionInput): ChapterSelectionSummary {
-    return summarizeChapterSelection(normalizeSelection(selection));
 }
 
 /**

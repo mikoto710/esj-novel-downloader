@@ -120,7 +120,7 @@ describe("runtime cache ownership", () => {
     it("clears an explicitly selected export by its own book rather than the newer session", async () => {
         runtime.startRuntimeCacheSession(createCacheMeta({ bookId: "200" }), "task-200", 1);
         await manager.clearManagedCache("200", "runtime");
-        expect(runtime.state.cachedData?.exportContext?.bookId).toBe("100");
+        expect(runtime.state.cachedData?.exportContext.bookId).toBe("100");
         await manager.clearManagedCache("100", "runtime");
         expect(runtime.state.cachedData).toBeNull();
     });

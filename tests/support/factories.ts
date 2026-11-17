@@ -108,10 +108,18 @@ export function createCachedData(overrides: Partial<CachedData> = {}): CachedDat
         epubBlob: null,
         exportContext: {
             bookId: "100",
+            taskId: "task-100",
             rawBookName: "测试小说",
             pageUrl: "https://www.esjzone.cc/detail/100.html",
             sourcePageType: "detail",
             chapterSummary: { totalCount: chapters.length, missingCount: 0 },
+            selection: {
+                version: 2,
+                mode: "all",
+                sourceTotalChapters: chapters.length,
+                selectedCount: chapters.length,
+                ranges: [{ startChapter: 1, endChapter: chapters.length }]
+            },
             imageEnabled: false
         },
         ...overrides

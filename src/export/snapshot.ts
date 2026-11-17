@@ -1,6 +1,6 @@
 import type { BookCover, Chapter, BookMetadata, SourcePageType } from "../content/model";
 import type { DownloadOptions, DownloadTask } from "../download/contracts";
-import type { DownloadPlan, StoredDownloadSelectionSummary } from "../download/plan";
+import type { ChapterSelectionSummary, DownloadPlan } from "../download/plan";
 import { escapeXml } from "./text";
 import { assembleBookTxt } from "./txt";
 
@@ -19,16 +19,14 @@ export interface ExportSnapshot {
     txt: string;
     chapters: Chapter[];
     metadata: BookMetadata;
-    exportContext?: {
+    exportContext: {
         bookId: string;
-        taskId?: string;
-        rawBookName?: string;
+        taskId: string;
+        rawBookName: string;
         pageUrl: string;
         sourcePageType: Extract<SourcePageType, "detail" | "forum">;
-        chapterSummary?: ChapterSummary;
-        selection?: StoredDownloadSelectionSummary;
-        // 兼容旧版运行时导出数据
-        chapterInfo?: string;
+        chapterSummary: ChapterSummary;
+        selection: ChapterSelectionSummary;
         imageEnabled: boolean;
     };
 }

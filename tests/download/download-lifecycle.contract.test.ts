@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 
+import { createRangeSelection } from "../../src/download/plan";
 import { createSelectionPopupFake } from "../support/fakes";
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -116,7 +117,7 @@ describe("download lifecycle contracts", () => {
         mocks.updateTitle.mockResolvedValue(undefined);
         mocks.selectionPopup.mockResolvedValue({
             action: "download",
-            selection: { mode: "all", sourceTotalChapters: 2, startIndex: 0, endIndex: 1 }
+            selection: createRangeSelection(1, 2, 2)
         });
         mocks.runDownload.mockResolvedValue({ status: "ready", data: createCachedData() });
         mocks.release.mockResolvedValue(undefined);

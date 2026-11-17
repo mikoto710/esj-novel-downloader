@@ -1,3 +1,4 @@
+import { createRangeSelection } from "../../src/download/plan";
 import { describe, expect, it, vi } from "vitest";
 import { createDownloadHarness as createHarness } from "../support/download-harness";
 import type {
@@ -307,12 +308,7 @@ describe("runDownload characterization", () => {
 
         await harness.run(
             createOptions(tasks, {
-                selection: {
-                    mode: "range",
-                    sourceTotalChapters: 120,
-                    startIndex: 100,
-                    endIndex: 119
-                }
+                selection: createRangeSelection(101, 120, 120)
             })
         );
 
@@ -320,7 +316,7 @@ describe("runDownload characterization", () => {
         expect(harness.exportData?.chapters).toHaveLength(20);
         expect(harness.exportData?.chapters[0]).toEqual(createChapter(100));
         expect(harness.exportData?.chapters.at(-1)).toEqual(createChapter(119));
-        expect(harness.exportData?.exportContext?.selection).toEqual({
+        expect(harness.exportData?.exportContext.selection).toEqual({
             version: 2,
             mode: "selected",
             sourceTotalChapters: 120,
@@ -354,7 +350,7 @@ describe("runDownload characterization", () => {
 
         await harness.run(
             createOptions(tasks, {
-                selection: { mode: "range", sourceTotalChapters: 20, startIndex: 10, endIndex: 11 }
+                selection: createRangeSelection(11, 12, 20)
             })
         );
 
@@ -783,7 +779,7 @@ describe("runDownload characterization", () => {
         expect(harness.exportData?.txt).toContain("https://www.esjzone.cc/forum/100/1.html?from=%3Cunsafe%3E");
         expect(harness.exportData?.chapters[0].content).toContain("第 &lt;script&gt; 章");
         expect(harness.exportData?.chapters[0].content).not.toContain("<script>");
-        expect(harness.exportData?.exportContext?.chapterSummary).toEqual({ totalCount: 1, missingCount: 1 });
+        expect(harness.exportData?.exportContext.chapterSummary).toEqual({ totalCount: 1, missingCount: 1 });
         expect(harness.initialChapters.size).toBe(0);
         expect(harness.ui.snapshots.at(-1)).toMatchObject({
             phase: "export-ready",

@@ -1,4 +1,4 @@
-import type { DownloadSelection, DownloadSelectionInput } from "./plan";
+import type { DownloadSelection, ChapterSelection } from "./plan";
 import type { ExportSnapshot } from "../export/snapshot";
 import type { CacheMeta } from "../storage/cache/model";
 import type { BookCover, Chapter, SourcePageType } from "../content/model";
@@ -148,7 +148,7 @@ export interface DownloadOptions {
     sourcePageType?: SourcePageType;
     imageEnabled: boolean;
     tasks: DownloadTask[];
-    selection?: DownloadSelectionInput;
+    selection?: ChapterSelection;
     // 核心只复制索引容器，正文和 Blob 继续复用；应用不再持有活库存
     initialChapters?: ReadonlyMap<number, Chapter>;
 }

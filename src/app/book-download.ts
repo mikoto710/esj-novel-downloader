@@ -34,7 +34,7 @@ import type {
     DownloadResult,
     DownloadUiPort
 } from "../download/contracts";
-import type { DownloadSelectionInput } from "../download/plan";
+import type { ChapterSelection } from "../download/plan";
 import { createDownloadPlan, selectDownloadTasks } from "../download/plan";
 import { runDownload } from "../download/run";
 import { BookPreflightError, type PreparedBook } from "../site/book";
@@ -116,9 +116,7 @@ export async function runBookDownload(options: RunBookDownloadOptions): Promise<
     const viewOptions = {
         imageEnabled,
         hasExistingExport: Boolean(previousExport),
-        ...(previousExport?.exportContext?.selection
-            ? { existingSelection: previousExport.exportContext.selection }
-            : {})
+        ...(previousExport ? { existingSelection: previousExport.exportContext.selection } : {})
     };
     const preparation = new AbortController();
     const popup = createDownloadSelectionPopup({
@@ -129,7 +127,7 @@ export async function runBookDownload(options: RunBookDownloadOptions): Promise<
     const isPreparing = () => !preparation.signal.aborted && !popup.closed;
 
     // 将本次预检事实转换为选择窗口预览，旧导出和插图设置保持创建时的值
-    function selectionPreview(initialSelection?: DownloadSelectionInput) {
+    function selectionPreview(initialSelection?: ChapterSelection) {
         return {
             tasks: plan?.tasks || [],
             ...(plan ? { directory: plan.directory, bookTitle: plan.meta.rawBookName || plan.meta.bookName } : {}),
@@ -257,7 +255,7 @@ export async function runBookDownload(options: RunBookDownloadOptions): Promise<
 async function executeBookDownload(
     options: RunBookDownloadOptions,
     plan: PreparedBook,
-    inputSelection: DownloadSelectionInput,
+    inputSelection: ChapterSelection,
     imageEnabled: boolean,
     allowInvalidation: boolean,
     filename?: string

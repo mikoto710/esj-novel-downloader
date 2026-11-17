@@ -1,3 +1,4 @@
+import { createRangeSelection } from "../../src/download/plan";
 import { describe, expect, it, vi } from "vitest";
 import { DownloadProgress, canTransitionDownloadPhase } from "../../src/download/progress";
 import { createDownloadPlan } from "../../src/download/plan";
@@ -17,7 +18,7 @@ describe("DownloadProgress", () => {
     it("derives readiness from selected chapters after additions and invalidation", () => {
         const plan = createDownloadPlan({
             tasks: [createDownloadTask(10), createDownloadTask(11)],
-            selection: { mode: "range", sourceTotalChapters: 20, startIndex: 10, endIndex: 11 }
+            selection: createRangeSelection(11, 12, 20)
         });
         const chapters = new Map([
             [0, createChapter(0)],

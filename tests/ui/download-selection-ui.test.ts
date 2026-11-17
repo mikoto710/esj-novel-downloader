@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 
+import { createRangeSelection } from "../../src/download/plan";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createCachedData, createDeferred, createDownloadTask } from "../support";
 import { createDownloadButton, createSettingButton } from "../../src/ui/components";
@@ -157,7 +158,7 @@ describe("unified download selection UI", () => {
     });
 
     it("retains the chosen range when a changed cache requires another confirmation", async () => {
-        const selection = { mode: "range" as const, sourceTotalChapters: 5, startIndex: 1, endIndex: 3 };
+        const selection = createRangeSelection(2, 4, 5);
         const { decision } = createDownloadSelectionPopup(
             selectionOptions({ initialSelection: selection, cacheWillBeInvalidated: true })
         );
@@ -175,7 +176,13 @@ describe("unified download selection UI", () => {
         const { decision } = createDownloadSelectionPopup(
             selectionOptions({
                 hasExistingExport: true,
-                existingSelection: { mode: "range", sourceTotalChapters: 10, startChapter: 2, endChapter: 3 },
+                existingSelection: {
+                    version: 2,
+                    mode: "selected",
+                    sourceTotalChapters: 10,
+                    selectedCount: 2,
+                    ranges: [{ startChapter: 2, endChapter: 3 }]
+                },
                 preparationErrorKey: "page.cacheUnavailable.message"
             })
         );
@@ -183,6 +190,7 @@ describe("unified download selection UI", () => {
         expect(document.querySelector<HTMLButtonElement>("#esj-range-download")?.disabled).toBe(true);
         const previous = document.querySelector<HTMLButtonElement>("#esj-range-open-previous")!;
         expect(previous.disabled).toBe(false);
+        expect(previous.title).toContain("2–3");
         expect(document.activeElement).toBe(previous);
         setInterfaceLocalePreference("zh-TW");
         publishInterfaceLocaleChange();

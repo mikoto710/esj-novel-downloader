@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 
+import { createRangeSelection } from "../../src/download/plan";
 import { createSelectionPopupFake } from "../support/fakes";
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -132,30 +133,28 @@ describe("range download lifecycle", () => {
         const readConcurrency = vi.spyOn(settings, "getConcurrency").mockReturnValue(2);
         const selectionDecision = createDeferred<{
             action: "download";
-            selection: { mode: "range"; sourceTotalChapters: number; startIndex: number; endIndex: number };
+            selection: ReturnType<typeof createRangeSelection>;
         }>();
         mocks.rangePopup.mockReturnValue(selectionDecision.promise);
         mocks.runDownload.mockImplementationOnce(async () => {
-            const data = {
-                txt: "",
-                chapters: [],
-                metadata: {
-                    title: "测试小说",
-                    author: "作者",
-                    description: "",
-                    tags: [],
-                    coverBlob: null,
-                    coverExt: "jpg"
-                },
-                epubBlob: null,
+            const data = createCachedData({
                 exportContext: {
                     bookId: "100",
+                    taskId: lock.taskId,
+                    rawBookName: "测试小说",
                     pageUrl: plan.pageUrl,
                     sourcePageType: "detail",
                     imageEnabled: false,
-                    selection: { mode: "range" as const, sourceTotalChapters: 3, startChapter: 2, endChapter: 3 }
+                    chapterSummary: { totalCount: 2, missingCount: 0 },
+                    selection: {
+                        version: 2,
+                        mode: "selected",
+                        sourceTotalChapters: 3,
+                        selectedCount: 2,
+                        ranges: [{ startChapter: 2, endChapter: 3 }]
+                    }
                 }
-            };
+            });
             return { status: "ready", data };
         });
 
@@ -175,7 +174,7 @@ describe("range download lifecycle", () => {
 
         selectionDecision.resolve({
             action: "download",
-            selection: { mode: "range", sourceTotalChapters: 3, startIndex: 1, endIndex: 2 }
+            selection: createRangeSelection(2, 3, 3)
         });
         await running;
 
@@ -208,7 +207,7 @@ describe("range download lifecycle", () => {
     it("rejects a task acquired after a clear lock precheck", async () => {
         mocks.rangePopup.mockResolvedValue({
             action: "download",
-            selection: { mode: "range", sourceTotalChapters: 3, startIndex: 0, endIndex: 1 }
+            selection: createRangeSelection(1, 2, 3)
         });
         mocks.acquire.mockResolvedValueOnce({ acquired: false, lock });
 
@@ -281,7 +280,7 @@ describe("range download lifecycle", () => {
     });
 
     it("claims again with explicit invalidation consent after showing the changed cache", async () => {
-        const selection = { mode: "all", sourceTotalChapters: 3, startIndex: 0, endIndex: 2 };
+        const selection = createRangeSelection(1, 3, 3);
         mocks.rangePopup.mockResolvedValue({ action: "download", selection });
         mocks.claimCache.mockResolvedValueOnce({
             status: "needs-confirmation",
@@ -364,7 +363,7 @@ describe("range download lifecycle", () => {
         state.cachedData = old;
         mocks.rangePopup.mockResolvedValueOnce({
             action: "download",
-            selection: { mode: "all", sourceTotalChapters: 3, startIndex: 0, endIndex: 2 }
+            selection: createRangeSelection(1, 3, 3)
         });
         if (status === "failed") {
             mocks.runDownload.mockRejectedValueOnce(new Error("download failed"));

@@ -134,7 +134,7 @@ export function clearRuntimeCacheSession(bookId?: string, taskId?: string): void
  * 清除匹配书籍的保留导出结果，未指定书籍时直接清除当前结果
  */
 export function clearCachedExport(bookId?: string): void {
-    if (bookId && state.cachedData?.exportContext?.bookId !== bookId) {
+    if (bookId && state.cachedData?.exportContext.bookId !== bookId) {
         return;
     }
     state.cachedData = null;

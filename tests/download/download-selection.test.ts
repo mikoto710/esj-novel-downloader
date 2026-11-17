@@ -126,17 +126,17 @@ describe("download selection", () => {
         });
     });
 
-    it("normalizes an explicit full-source range before downstream consumers use it", () => {
+    it("normalizes a selection covering the full source before downstream consumers use it", () => {
         expect(
             resolveDownloadSelection({
                 tasks: createTasks(3),
-                selection: { mode: "range", sourceTotalChapters: 3, startIndex: 0, endIndex: 2 }
+                selection: { mode: "selected", sourceTotalChapters: 3, indexes: [0, 1, 2] }
             })
         ).toEqual({ mode: "all", sourceTotalChapters: 3, indexes: [0, 1, 2] });
         expect(
             createDownloadPlan({
                 tasks: createTasks(3),
-                selection: { mode: "range", sourceTotalChapters: 3, startIndex: 0, endIndex: 2 }
+                selection: { mode: "selected", sourceTotalChapters: 3, indexes: [0, 1, 2] }
             })
         ).toMatchObject({
             summary: {

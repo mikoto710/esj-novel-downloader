@@ -4,7 +4,7 @@ import { buildEpub } from "../export/epub";
 import { buildTxt } from "../export/txt";
 import { buildBookHtml } from "../export/html";
 import { createBookExportFilename, type DownloadFormat } from "../export/filename";
-import { getEpubTagPageSetting, getImageDownloadSetting } from "../storage/settings";
+import { getEpubTagPageSetting } from "../storage/settings";
 import { addDownloadHistory } from "../storage/history";
 import { recordBrowserDiagnosticExport, recordBrowserDiagnosticFailure } from "../diagnostics/runtime";
 import { triggerDownload } from "../browser/files";
@@ -61,13 +61,6 @@ export function getExportCapabilities(chapters: ExportSnapshot["chapters"]): {
     };
 }
 
-/**
- * 读取原任务的插图设置，旧结果缺少该信息时回退到当前设置
- */
-export function getExportImageSetting(data: CachedData): boolean {
-    return data.exportContext?.imageEnabled ?? getImageDownloadSetting();
-}
-
 function recordFailedExport(
     data: CachedData,
     format: ExportFormat,
@@ -76,30 +69,27 @@ function recordFailedExport(
     view: ExportView
 ): void {
     const details = getExportErrorDetails(error);
-    // 旧快照没有来源身份时，不把导出归到后来任务
-    const taskId = data.exportContext?.taskId;
-    if (taskId) {
-        recordBrowserDiagnosticExport(
-            {
-                scope: "full",
-                format,
-                outcome: "failed",
-                generated: stage === "download",
-                downloadTriggered: false,
-                failureStage: stage
-            },
-            taskId
-        );
-        recordBrowserDiagnosticFailure(
-            {
-                scope: "export",
-                stage: `${format}-${stage}`,
-                code: error instanceof Error ? error.name || "export-failed" : "export-failed",
-                message: details
-            },
-            taskId
-        );
-    }
+    const taskId = data.exportContext.taskId;
+    recordBrowserDiagnosticExport(
+        {
+            scope: "full",
+            format,
+            outcome: "failed",
+            generated: stage === "download",
+            downloadTriggered: false,
+            failureStage: stage
+        },
+        taskId
+    );
+    recordBrowserDiagnosticFailure(
+        {
+            scope: "export",
+            stage: `${format}-${stage}`,
+            code: error instanceof Error ? error.name || "export-failed" : "export-failed",
+            message: details
+        },
+        taskId
+    );
     view.failed(format, stage, details);
 }
 
@@ -171,12 +161,9 @@ export async function exportBookRich(data: CachedData, format: "epub" | "html", 
     }
 }
 
-// 成功/取消共用原任务身份检查；缺少身份的旧结果只导出，不借用当前任务诊断
+// 成功和取消都记录到快照的原任务
 function recordExportOutcome(data: CachedData, format: ExportFormat, outcome: "success" | "cancelled"): void {
-    const taskId = data.exportContext?.taskId;
-    if (!taskId) {
-        return;
-    }
+    const taskId = data.exportContext.taskId;
     const triggered = outcome === "success";
     recordBrowserDiagnosticExport(
         { scope: "full", format, outcome, generated: triggered, downloadTriggered: triggered, failureStage: null },
@@ -192,23 +179,19 @@ function recordBookExport(data: CachedData, format: "txt" | "epub" | "html"): Pr
         format === "txt"
             ? undefined
             : {
-                  enabled: context?.imageEnabled || false,
+                  enabled: context.imageEnabled,
                   successCount: imageSuccessCount,
                   failureCount: imageFailureCount
               };
     return addDownloadHistory({
-        ...(context?.bookId === undefined ? {} : { bookId: context.bookId }),
-        bookName: context?.rawBookName || data.metadata.title || "未命名小说",
+        bookId: context.bookId,
+        bookName: context.rawBookName,
         author: data.metadata.author || "",
         format,
-        sourcePageType: context?.sourcePageType || "detail",
-        chapterSummary: context?.chapterSummary || {
-            totalCount: data.chapters.length,
-            missingCount: data.chapters.filter((chapter) => chapter.content.includes('class="esj-missing-chapter"'))
-                .length
-        },
-        ...(context?.selection === undefined ? {} : { selection: context.selection }),
+        sourcePageType: context.sourcePageType,
+        chapterSummary: context.chapterSummary,
+        selection: context.selection,
         ...(imageInfo === undefined ? {} : { imageInfo }),
-        pageUrl: context?.pageUrl || location.href
+        pageUrl: context.pageUrl
     });
 }

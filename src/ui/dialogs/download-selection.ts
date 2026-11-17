@@ -1,5 +1,5 @@
 import type { BookDirectorySnapshot } from "../../site/book-directory";
-import type { DownloadSelection, DownloadSelectionInput, StoredDownloadSelectionSummary } from "../../download/plan";
+import type { DownloadSelection, ChapterSelection, ChapterSelectionSummary } from "../../download/plan";
 import type { LocaleKey } from "../../locale/catalog";
 import type { DownloadTask } from "../../download/contracts";
 import {
@@ -18,7 +18,7 @@ import { createChapterSearchView } from "./chapter-search";
 import DOWNLOAD_SELECTION_STYLES from "./download-selection.css?inline";
 
 export type DownloadSelectionDecision =
-    | { action: "download"; selection: DownloadSelectionInput; filename?: string }
+    | { action: "download"; selection: ChapterSelection; filename?: string }
     | { action: "open-existing" }
     | { action: "cancel" };
 
@@ -34,7 +34,7 @@ export interface DownloadSelectionPreview {
     cachedIndexes: ReadonlySet<number>;
     cacheWillBeInvalidated: boolean;
     cacheCount: number;
-    initialSelection?: DownloadSelectionInput;
+    initialSelection?: ChapterSelection;
     initialFilename?: string;
     preparationErrorKey?: LocaleKey;
 }
@@ -45,7 +45,7 @@ export interface DownloadSelectionPreview {
 export interface DownloadSelectionPopupOptions extends DownloadSelectionPreview {
     hasExistingExport: boolean;
     imageEnabled: boolean;
-    existingSelection?: StoredDownloadSelectionSummary;
+    existingSelection?: ChapterSelectionSummary;
     preparationStage?: DownloadPreparationStage;
 }
 
@@ -88,7 +88,7 @@ export function createDownloadSelectionPopup(options: DownloadSelectionPopupOpti
     let directoryView: ChapterDirectoryView | undefined;
     let selected = new Set<number>();
 
-    const restoreSelection = (selection?: DownloadSelectionInput) => {
+    const restoreSelection = (selection?: ChapterSelection) => {
         selected = new Set(
             (selection ? selectDownloadTasks(preview.tasks, selection) : preview.tasks).map((task) => task.index)
         );
