@@ -81,14 +81,6 @@ export function parseBookMetadata(doc: Document, pageUrl: string) {
     const descContainer = doc.querySelector("#details .description") || doc.querySelector(".description");
 
     if (descContainer) {
-        const clone = descContainer.cloneNode(true) as HTMLElement;
-
-        // 换行
-        const brs = clone.querySelectorAll("br");
-        brs.forEach((br) => {
-            br.replaceWith("\n");
-        });
-
         const paragraphs = Array.from(descContainer.querySelectorAll("p"));
         if (paragraphs.length > 0) {
             descText = paragraphs.map((p) => p.textContent?.trim()).join("\n");

@@ -13,100 +13,65 @@ subscribeInterfaceLocaleChange(() => refreshUiLogTruncationText());
     installRuntimeInterfaceLocaleSync();
     const url = location.href;
 
-    // 路由
-    const isDetailPage = url.includes("/detail/");
-    const isForumPage = url.includes("/forum/") && !url.endsWith(".html");
-    const isSinglePage = url.includes("/forum/") && url.endsWith(".html");
+    const route = [
+        {
+            matches: url.includes("/detail/"),
+            selector: ".sp-buttons",
+            buttonId: "#btn-download-book",
+            inject: injectDetailButton
+        },
+        {
+            matches: url.includes("/forum/") && url.endsWith(".html"),
+            selector: ".entry-navigation",
+            buttonId: "#btn-download-single",
+            inject: injectSinglePageButton
+        },
+        {
+            matches: url.includes("/forum/"),
+            selector: ".forum-list-page",
+            buttonId: "#btn-download-forum",
+            inject: injectForumButton
+        }
+    ].find((candidate) => candidate.matches);
+    if (!route) {
+        return;
+    }
 
-    // 按页面类型检查挂载容器，存在时注入对应下载入口
+    // 初次检查、目录替换与轮询共用当前页面的挂载规则
     const tryInject = () => {
-        if (isDetailPage) {
-            if (document.querySelector(".sp-buttons")) {
-                injectDetailButton();
-            }
-        } else if (isSinglePage) {
-            if (document.querySelector(".entry-navigation")) {
-                injectSinglePageButton();
-            }
-        } else if (isForumPage) {
-            if (document.querySelector(".forum-list-page")) {
-                injectForumButton();
-            }
+        if (document.querySelector(route.selector)) {
+            route.inject();
         }
     };
-
-    // 立即尝试一次
     tryInject();
 
-    // 此时 body 可能还没生成，所以监听 documentElement 也就是 html 根节点
     const observer = new MutationObserver((mutations) => {
         for (const mutation of mutations) {
             for (const node of Array.from(mutation.addedNodes)) {
-                if (node.nodeType === 1) {
-                    const el = node as HTMLElement;
-
-                    if (isDetailPage) {
-                        // 详情页监听 .sp-buttons
-                        if (
-                            (el.classList && el.classList.contains("sp-buttons")) ||
-                            (el.querySelector && el.querySelector(".sp-buttons"))
-                        ) {
-                            injectDetailButton();
-                            return;
-                        }
-                    } else if (isSinglePage) {
-                        // 单页监听 .entry-navigation
-                        if (
-                            (el.classList && el.classList.contains("entry-navigation")) ||
-                            (el.querySelector && el.querySelector(".entry-navigation"))
-                        ) {
-                            injectSinglePageButton();
-                            return;
-                        }
-                    } else if (isForumPage) {
-                        // 论坛页监听 .forum-list-page
-                        if (
-                            (el.classList && el.classList.contains("forum-list-page")) ||
-                            (el.querySelector && el.querySelector(".forum-list-page"))
-                        ) {
-                            injectForumButton();
-                            return;
-                        }
-                    }
+                if (node.nodeType !== Node.ELEMENT_NODE) {
+                    continue;
+                }
+                const element = node as Element;
+                if (element.matches(route.selector) || element.querySelector(route.selector)) {
+                    route.inject();
+                    return;
                 }
             }
         }
     });
-
     observer.observe(document.documentElement, {
         childList: true,
         subtree: true
     });
 
-    // 兜底定时器，防止 observer 没扫到
+    // 保留挂载点未产生新增节点时的兜底，已有下载按钮时不重复注入
     const timer = setInterval(() => {
-        if (isDetailPage) {
-            if (document.querySelector(".sp-buttons") && !document.querySelector("#btn-download-book")) {
-                injectDetailButton();
-            }
-        } else if (isSinglePage) {
-            if (document.querySelector(".entry-navigation") && !document.querySelector("#btn-download-single")) {
-                injectSinglePageButton();
-            }
-        } else if (isForumPage) {
-            if (document.querySelector(".forum-list-page") && !document.querySelector("#btn-download-forum")) {
-                injectForumButton();
-            }
+        if (!document.querySelector(route.buttonId)) {
+            tryInject();
         }
     }, 1000);
-
-    // 超时自动清除
     setTimeout(() => {
-        if (observer) {
-            observer.disconnect();
-        }
-        if (timer) {
-            clearInterval(timer);
-        }
+        observer.disconnect();
+        clearInterval(timer);
     }, 30000);
 })();
