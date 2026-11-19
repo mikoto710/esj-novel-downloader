@@ -6,6 +6,4 @@ beforeEach(() => {
     resetTestEnvironment();
 });
 
-afterEach(async () => {
-    await cleanupTestEnvironment();
-});
+afterEach(cleanupTestEnvironment);
