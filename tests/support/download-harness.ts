@@ -16,13 +16,20 @@ import type {
 } from "../../src/download/contracts";
 import type { Chapter } from "../../src/content/model";
 import { createChapter } from "./factories";
-import { FakeChapterFetcher, RecordingDownloadEvents } from "./fakes";
+import { RecordingDownloadEvents } from "./fakes";
 
-export function createDownloadHarness(tasks: DownloadTask[], chapters = new Map<number, Chapter>()) {
-    const fetcher = new FakeChapterFetcher();
-    for (const task of tasks) {
-        fetcher.succeed(task.url, `<p>${task.title}</p>`);
-    }
+export function createDownloadHarness(chapters = new Map<number, Chapter>()) {
+    const fetched: DownloadTask[] = [];
+    const fetcher = {
+        calls: fetched,
+        async fetch(task: DownloadTask, signal?: AbortSignal) {
+            fetched.push({ ...task });
+            if (signal?.aborted) {
+                throw new DOMException("Aborted", "AbortError");
+            }
+            return `<p>${task.title}</p>`;
+        }
+    };
     const events = new RecordingDownloadEvents<DownloadEvent>();
     const processedIndexes: number[] = [];
     const cacheClears: Array<{ bookId: string; taskId: string }> = [];

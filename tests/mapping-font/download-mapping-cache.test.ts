@@ -24,7 +24,7 @@ describe("mapped font cache normalization", () => {
         const task = createDownloadTask();
         const chapters = new Map<number, Chapter>([[0, createChapter(0, { content: createLegacyMappedContent() })]]);
         const writes: Map<number, Chapter>[] = [];
-        const harness = createDownloadHarness([task], chapters);
+        const harness = createDownloadHarness(chapters);
         const { ui, dependencies } = harness;
         dependencies.chapterFetcher = { fetch: vi.fn(async () => "") };
         dependencies.cache.putBatch = async (_bookId, _taskId, entries) => {
@@ -59,7 +59,7 @@ describe("mapped font cache normalization", () => {
             [1, createChapter(1, { content: createLegacyMappedContent("2") })]
         ]);
         const fetchedIndexes: number[] = [];
-        const harness = createDownloadHarness(tasks, chapters);
+        const harness = createDownloadHarness(chapters);
         const { ui, dependencies } = harness;
         dependencies.chapterFetcher = {
             fetch: vi.fn(async (task) => {

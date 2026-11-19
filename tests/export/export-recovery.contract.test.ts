@@ -215,7 +215,7 @@ describe("full-book export recovery contracts", () => {
         await vi.waitFor(() => expect(mocks.buildEpub).toHaveBeenCalledOnce());
         click("#esj-format .esj-common-header button");
         const { activateDownload } = await import("../../src/app/page-session");
-        activateDownload("200", "new-task", createDownloadHarness([]).dependencies.cancellation);
+        activateDownload("200", "new-task", createDownloadHarness().dependencies.cancellation);
         state.cachedData = createCachedData({ exportFilename: "后来任务" });
         document.title = "[1/3] new task";
         pending.resolve(new Blob(["epub"]));
@@ -308,7 +308,7 @@ describe("full-book export recovery contracts", () => {
 
     it("keeps an unnamed book visible in history without changing its default filename", async () => {
         const tasks = [createDownloadTask()];
-        const result = await createDownloadHarness(tasks).run({
+        const result = await createDownloadHarness().run({
             bookId: "100",
             taskId: "untitled-export",
             bookName: "",

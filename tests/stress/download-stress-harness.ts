@@ -1,152 +1,48 @@
-import { normalizeChapterMappingFont } from "../../src/content/mapping-font";
-import { runDownload } from "../../src/download/run";
 import { vi } from "vitest";
-import type {
-    DownloadDependencies,
-    DownloadOptions,
-    DownloadResult,
-    DownloadEvent,
-    DownloadSnapshot,
-    DownloadTask
-} from "../../src/download/contracts";
-import type { DownloadCancellationMode } from "../../src/download/contracts";
+import type { DownloadTask } from "../../src/download/contracts";
 import type { Chapter } from "../../src/content/model";
-import { createChapter, RecordingDownloadEvents } from "../support";
+import { createDownloadHarness } from "../support/download-harness";
 
 interface StressDownloadHarnessOptions {
-    tasks: DownloadTask[];
     chapters?: Map<number, Chapter>;
-    imageEnabled?: boolean;
     concurrency?: number;
     processChapter?: (task: DownloadTask) => Promise<Chapter> | Chapter;
     putBatch?: (entries: ReadonlyMap<number, Chapter>, signal?: AbortSignal) => Promise<boolean>;
-    finishForTask?: (signal?: AbortSignal) => Promise<boolean>;
-    clearForTask?: (signal?: AbortSignal) => Promise<boolean>;
 }
 
 export function createStressDownloadHarness(options: StressDownloadHarnessOptions) {
-    const chapters = options.chapters ?? new Map<number, Chapter>();
-    const fetchedIndexes: number[] = [];
-    const processedIndexes: number[] = [];
-    const persistedIndexes: number[] = [];
+    const harness = createDownloadHarness(options.chapters);
+    const { dependencies } = harness;
+    dependencies.concurrency = options.concurrency ?? 5;
+    dependencies.fallbackPageUrl = "https://www.esjzone.cc/detail/3000.html";
+    dependencies.lock.shouldDiscardCache = async () => dependencies.cancellation.mode === "discard";
+    const processChapter = options.processChapter;
+    if (processChapter) {
+        dependencies.chapterProcessor.process = async (_html, task) => {
+            harness.processedIndexes.push(task.index);
+            return processChapter(task);
+        };
+    }
     const persistedBatches: number[][] = [];
-    const snapshots: DownloadSnapshot[] = [];
-    const events = new RecordingDownloadEvents<DownloadEvent>();
-    const controller = new AbortController();
-    const cancellationListeners = new Set<(mode: DownloadCancellationMode) => void>();
-    let requestedAt: number | null = null;
-    let cancellationMode: DownloadCancellationMode | null = null;
-    let result: DownloadResult | null = null;
-
-    const requestCancellation = vi.fn((mode: DownloadCancellationMode = "flush") => {
-        if (cancellationMode === "discard" || (cancellationMode === "flush" && mode === "flush")) {
-            return;
-        }
-        requestedAt ??= Date.now();
-        cancellationMode = mode;
-        controller.abort();
-        for (const listener of cancellationListeners) {
-            listener(mode);
-        }
-    });
-
-    const dependencies: DownloadDependencies = {
-        cancellation: {
-            signal: controller.signal,
-            get mode() {
-                return cancellationMode ?? "flush";
-            },
-            get requestedAt() {
-                return requestedAt;
-            },
-            isCancellationRequested: () => cancellationMode !== null,
-            requestCancellation,
-            subscribeCancellation(listener) {
-                cancellationListeners.add(listener);
-                if (cancellationMode !== null) listener(cancellationMode);
-                return () => cancellationListeners.delete(listener);
-            }
-        },
-        ui: {
-            update(snapshot) {
-                snapshots.push(snapshot);
-            },
-            confirmMappingFontDownload: vi.fn(async () => true),
-            confirmIncompleteChapters: vi.fn(async () => "export-with-placeholders" as const),
-            promptProtectedChapterPassword: vi.fn(async () => ({ action: "skip-current" }) as const),
-            closeProtectedChapterPrompt: vi.fn(),
-            updateMappingFontWarning: vi.fn()
-        },
-        chapterFetcher: {
-            async fetch(task) {
-                fetchedIndexes.push(task.index);
-                return `<p>${task.title}</p>`;
-            }
-        },
-        chapterProcessor: {
-            normalizeCached: normalizeChapterMappingFont,
-            async process(_html, task) {
-                processedIndexes.push(task.index);
-                return options.processChapter?.(task) ?? createChapter(task.index);
-            }
-        },
-        protectedChapterDetector: { isProtected: () => false },
-        protectedChapterAuth: {
-            unlock: async () => ({ kind: "protocol-error", code: "response-invalid", message: "unused" })
-        },
-        coverFetcher: { fetch: async () => null },
-        coverCache: { load: async () => null, put: async () => true },
-        cache: {
-            async putBatch(_bookId, _taskId, entries, _meta, signal) {
-                const indexes = Array.from(entries.keys());
-                persistedIndexes.push(...indexes);
-                persistedBatches.push(indexes);
-                return options.putBatch?.(entries, signal) ?? true;
-            },
-            finishForTask: vi.fn(async (_bookId, _taskId, _meta, signal) => {
-                return options.finishForTask?.(signal) ?? true;
-            }),
-            clearForTask: vi.fn(async (_bookId, _taskId, signal) => {
-                return options.clearForTask?.(signal) ?? true;
-            })
-        },
-        lock: {
-            owns: async () => true,
-            shouldDiscardCache: async () => cancellationMode === "discard"
-        },
-        events,
-        scheduler: {
-            sleep: async () => undefined,
-            sleepWithAbort: async () => undefined,
-            randomDelay: () => 0,
-            schedule: () => () => undefined
-        },
-        concurrency: options.concurrency ?? 5,
-        fallbackPageUrl: "https://www.esjzone.cc/detail/3000.html",
-        startedAt: Date.parse("2026-01-01T00:00:00.000Z"),
-        log: vi.fn()
+    dependencies.cache.putBatch = async (_bookId, _taskId, entries, _meta, signal) => {
+        persistedBatches.push([...entries.keys()]);
+        return options.putBatch?.(entries, signal) ?? true;
     };
-
+    vi.spyOn(dependencies.cache, "finishForTask");
+    vi.spyOn(dependencies.cache, "clearForTask");
     return {
         dependencies,
-        initialChapters: chapters,
-        events,
-        fetchedIndexes,
-        processedIndexes,
-        persistedIndexes,
         persistedBatches,
-        snapshots,
-        requestCancellation,
-        async run(options: DownloadOptions) {
-            options.initialChapters ??= chapters;
-            result = await runDownload(options, dependencies);
-            return result;
+        get persistedIndexes() {
+            return persistedBatches.flat();
         },
-        get result() {
-            return result;
+        get fetchedIndexes() {
+            return harness.fetcher.calls.map((task) => task.index);
         },
+        processedIndexes: harness.processedIndexes,
+        run: harness.run,
         get exportData() {
-            return result?.status === "ready" ? result.data : null;
+            return harness.exportData;
         }
     };
 }

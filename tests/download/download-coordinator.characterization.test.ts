@@ -21,7 +21,7 @@ describe("runDownload characterization", () => {
             [2, createChapter(2)],
             [3, createChapter(3)]
         ]);
-        const harness = createHarness(tasks, chapters);
+        const harness = createHarness(chapters);
         await harness.run(
             createOptions(tasks, { selection: { mode: "selected", sourceTotalChapters: 5, indexes: [0, 2, 4] } })
         );
@@ -36,7 +36,7 @@ describe("runDownload characterization", () => {
 
     it("removes cache cancellation listeners even when prompt teardown fails", async () => {
         const tasks = [createDownloadTask()];
-        const harness = createHarness(tasks);
+        const harness = createHarness();
         const unsubscribe = vi.fn();
         harness.dependencies.cancellation.subscribeCancellation = () => unsubscribe;
         harness.ui.closeProtectedChapterPrompt.mockImplementationOnce(() => {
@@ -52,7 +52,7 @@ describe("runDownload characterization", () => {
 
     it("stops and joins chapter, password, and cover work after the first worker failure", async () => {
         const tasks = [createDownloadTask(0), createDownloadTask(1), createDownloadTask(2)];
-        const harness = createHarness(tasks);
+        const harness = createHarness();
         harness.dependencies.concurrency = 3;
         const promptStarted = createDeferred<void>();
         const fetchStarted = createDeferred<void>();
@@ -117,7 +117,7 @@ describe("runDownload characterization", () => {
 
     it("exports chapter content when the optional cover fetch rejects", async () => {
         const tasks = [createDownloadTask()];
-        const harness = createHarness(tasks);
+        const harness = createHarness();
         harness.dependencies.coverFetcher.fetch = async () => {
             throw new Error("cover unavailable");
         };
@@ -129,7 +129,7 @@ describe("runDownload characterization", () => {
 
     it("keeps observer failures from changing chapter success", async () => {
         const tasks = [createDownloadTask()];
-        const harness = createHarness(tasks);
+        const harness = createHarness();
         const observerFailure = () => {
             throw new Error("observer failed");
         };
@@ -150,7 +150,7 @@ describe("runDownload characterization", () => {
         "returns a %s decision error without user intent even when failure observers throw",
         async (name) => {
             const tasks = [createDownloadTask()];
-            const harness = createHarness(tasks);
+            const harness = createHarness();
             harness.dependencies.chapterFetcher.fetch = async () => {
                 throw new Error("offline");
             };
@@ -169,7 +169,7 @@ describe("runDownload characterization", () => {
 
     it("stops a pending password decision when a scheduled cache write fails", async () => {
         const tasks = [createDownloadTask(0), createDownloadTask(1)];
-        const harness = createHarness(tasks);
+        const harness = createHarness();
         harness.dependencies.concurrency = 2;
         const promptStarted = createDeferred<void>();
         let flushPending = () => {};
@@ -215,7 +215,7 @@ describe("runDownload characterization", () => {
 
     it("stops backpressured writes when a font decision rejects", async () => {
         const tasks = Array.from({ length: 25 }, (_, index) => createDownloadTask(index));
-        const harness = createHarness(tasks);
+        const harness = createHarness();
         const writeStarted = createDeferred<void>();
         let writeSignal: AbortSignal | undefined;
         harness.dependencies.chapterProcessor.process = async (_html, task) =>
@@ -253,7 +253,7 @@ describe("runDownload characterization", () => {
 
     it("returns the export snapshot only after the cache writer finishes", async () => {
         const tasks = [createDownloadTask()];
-        const harness = createHarness(tasks);
+        const harness = createHarness();
         const started = createDeferred<void>();
         const finish = createDeferred<boolean>();
         harness.dependencies.cache.clearForTask = async () => {
@@ -273,7 +273,7 @@ describe("runDownload characterization", () => {
 
     it("does not clear cached progress when export assembly fails", async () => {
         const tasks = [createDownloadTask()];
-        const harness = createHarness(tasks);
+        const harness = createHarness();
         const options = createOptions(tasks);
         Object.defineProperty(options, "tags", {
             get() {
@@ -291,7 +291,7 @@ describe("runDownload characterization", () => {
 
     it("returns cancellation explicitly without an export snapshot", async () => {
         const tasks = [createDownloadTask()];
-        const harness = createHarness(tasks);
+        const harness = createHarness();
         harness.dependencies.cancellation.requestCancellation("flush");
         expect(await harness.run(createOptions(tasks))).toMatchObject({ status: "cancelled", outcome: "saved" });
         expect(harness.cacheClears).toEqual([]);
@@ -304,7 +304,7 @@ describe("runDownload characterization", () => {
             [100, createChapter(100)],
             [101, createChapter(101)]
         ]);
-        const harness = createHarness(tasks, chapters);
+        const harness = createHarness(chapters);
 
         await harness.run(
             createOptions(tasks, {
@@ -341,7 +341,7 @@ describe("runDownload characterization", () => {
 
     it("retries an uncertain range writer close once before publishing export data", async () => {
         const tasks = [createDownloadTask(10), createDownloadTask(11)];
-        const harness = createHarness(tasks);
+        const harness = createHarness();
         const finishForTask = vi
             .fn()
             .mockRejectedValueOnce(new DOMException("transaction aborted", "AbortError"))
@@ -361,7 +361,7 @@ describe("runDownload characterization", () => {
 
     it("waits for the protected queue before entering export preparation", async () => {
         const tasks = [createDownloadTask(0)];
-        const harness = createHarness(tasks);
+        const harness = createHarness();
         const unlock = createDeferred<Awaited<ReturnType<typeof harness.dependencies.protectedChapterAuth.unlock>>>();
         harness.dependencies.chapterFetcher.fetch = vi.fn(async () => "<protected>password form</protected>");
         harness.dependencies.protectedChapterDetector.isProtected = () => true;
@@ -399,7 +399,7 @@ describe("runDownload characterization", () => {
 
     it("retries one technical failure automatically, then requires an explicit reconnect decision", async () => {
         const tasks = [createDownloadTask(0)];
-        const harness = createHarness(tasks);
+        const harness = createHarness();
         harness.dependencies.chapterFetcher.fetch = vi.fn(async () => "<protected>password form</protected>");
         harness.dependencies.protectedChapterDetector.isProtected = () => true;
         harness.ui.promptProtectedChapterPassword
@@ -427,7 +427,7 @@ describe("runDownload characterization", () => {
 
     it("does not automatically retry password rejection or protocol failures", async () => {
         const tasks = [createDownloadTask(0)];
-        const harness = createHarness(tasks);
+        const harness = createHarness();
         harness.dependencies.chapterFetcher.fetch = vi.fn(async () => "<protected>password form</protected>");
         harness.dependencies.protectedChapterDetector.isProtected = () => true;
         harness.ui.promptProtectedChapterPassword
@@ -459,7 +459,7 @@ describe("runDownload characterization", () => {
 
     it("re-prompts a skipped protected chapter during automatic retry", async () => {
         const tasks = [createDownloadTask(0)];
-        const harness = createHarness(tasks);
+        const harness = createHarness();
         harness.dependencies.chapterFetcher.fetch = vi.fn(async () => "<protected>password form</protected>");
         harness.dependencies.protectedChapterDetector.isProtected = () => true;
         harness.ui.promptProtectedChapterPassword
@@ -494,7 +494,7 @@ describe("runDownload characterization", () => {
 
     it("keeps skip-all scoped to the current protected retry round", async () => {
         const tasks = [createDownloadTask(0), createDownloadTask(1)];
-        const harness = createHarness(tasks);
+        const harness = createHarness();
         harness.dependencies.chapterFetcher.fetch = vi.fn(async () => "<protected>password form</protected>");
         harness.dependencies.protectedChapterDetector.isProtected = () => true;
         harness.ui.promptProtectedChapterPassword.mockResolvedValue({ action: "skip-all" });
@@ -515,7 +515,7 @@ describe("runDownload characterization", () => {
 
     it("re-prompts after an explicit missing-chapter retry starts a new round", async () => {
         const tasks = [createDownloadTask(0)];
-        const harness = createHarness(tasks);
+        const harness = createHarness();
         harness.dependencies.chapterFetcher.fetch = vi.fn(async () => "<protected>password form</protected>");
         harness.dependencies.protectedChapterDetector.isProtected = () => true;
         harness.ui.promptProtectedChapterPassword
@@ -547,7 +547,7 @@ describe("runDownload characterization", () => {
 
     it("cancels cleanly while a protected retry prompt is pending", async () => {
         const tasks = [createDownloadTask(0)];
-        const harness = createHarness(tasks);
+        const harness = createHarness();
         harness.dependencies.chapterFetcher.fetch = vi.fn(async () => "<protected>password form</protected>");
         harness.dependencies.protectedChapterDetector.isProtected = () => true;
         harness.ui.promptProtectedChapterPassword
@@ -579,7 +579,7 @@ describe("runDownload characterization", () => {
 
     it("aborts protected authorization when its task is cancelled", async () => {
         const tasks = [createDownloadTask(0)];
-        const harness = createHarness(tasks);
+        const harness = createHarness();
         harness.dependencies.chapterFetcher.fetch = vi.fn(async () => "<protected>password form</protected>");
         harness.dependencies.protectedChapterDetector.isProtected = () => true;
         let cancelPendingAuthorization: (() => void) | undefined;
@@ -612,7 +612,6 @@ describe("runDownload characterization", () => {
     it("starts resumed progress from valid cached chapters and only schedules missing chapters", async () => {
         const tasks = [createDownloadTask(0), createDownloadTask(1), createDownloadTask(2)];
         const harness = createHarness(
-            tasks,
             new Map([
                 [0, createChapter(0)],
                 [1, createChapter(1)]
@@ -635,7 +634,7 @@ describe("runDownload characterization", () => {
     it("honors cancellation after yielding during cache validation", async () => {
         const tasks = Array.from({ length: 30 }, (_, index) => createDownloadTask(index));
         const chapters = new Map(tasks.map((task) => [task.index, createChapter(task.index)]));
-        const harness = createHarness(tasks, chapters);
+        const harness = createHarness(chapters);
         harness.dependencies.scheduler.sleepWithAbort = vi.fn(async () => {
             harness.dependencies.cancellation.requestCancellation();
         });
@@ -649,7 +648,7 @@ describe("runDownload characterization", () => {
 
     it("asks for consent once and publishes a persistent summary for mapped chapters", async () => {
         const tasks = [createDownloadTask(0), createDownloadTask(1)];
-        const harness = createHarness(tasks);
+        const harness = createHarness();
         harness.dependencies.chapterProcessor.process = async (_html, task) =>
             createMappedChapter(task.index, String(task.index + 1));
 
@@ -666,7 +665,7 @@ describe("runDownload characterization", () => {
 
     it("stops without publishing export data when mapped chapter consent is rejected", async () => {
         const tasks = [createDownloadTask(0), createDownloadTask(1)];
-        const harness = createHarness(tasks);
+        const harness = createHarness();
         harness.dependencies.chapterProcessor.process = async (_html, task) =>
             createMappedChapter(task.index, String(task.index + 1));
         harness.ui.confirmMappingFontDownload.mockResolvedValue(false);
@@ -680,7 +679,7 @@ describe("runDownload characterization", () => {
 
     it("blocks export and reports chapters whose mapped font remains invalid after retry", async () => {
         const tasks = [createDownloadTask(0)];
-        const harness = createHarness(tasks);
+        const harness = createHarness();
         harness.dependencies.chapterProcessor.process = async () => {
             throw new MappingFontError("woff2-invalid", "woff2-signature-invalid");
         };
@@ -711,7 +710,7 @@ describe("runDownload characterization", () => {
 
     it("retries an unexpected storage abort once and still completes", async () => {
         const tasks = [createDownloadTask(0)];
-        const harness = createHarness(tasks);
+        const harness = createHarness();
         const putBatch = vi
             .fn()
             .mockRejectedValueOnce(new DOMException("transaction aborted", "AbortError"))
@@ -727,7 +726,7 @@ describe("runDownload characterization", () => {
 
     it("propagates a classified storage failure without turning it into user cancellation", async () => {
         const tasks = [createDownloadTask(0)];
-        const harness = createHarness(tasks);
+        const harness = createHarness();
         harness.dependencies.cache.putBatch = vi.fn(async () => false);
 
         await expect(harness.run(createOptions(tasks))).resolves.toMatchObject({
@@ -763,7 +762,7 @@ describe("runDownload characterization", () => {
                 url: "https://www.esjzone.cc/forum/100/1.html?from=<unsafe>"
             })
         ];
-        const harness = createHarness(tasks);
+        const harness = createHarness();
         harness.dependencies.chapterFetcher.fetch = vi.fn(async () => {
             throw new Error("offline");
         });
@@ -793,7 +792,7 @@ describe("runDownload characterization", () => {
 
     it("recovers a missing chapter after the user requests another retry", async () => {
         const tasks = [createDownloadTask(0)];
-        const harness = createHarness(tasks);
+        const harness = createHarness();
         const fetch = vi
             .fn()
             .mockRejectedValueOnce(new Error("main 1"))
@@ -817,7 +816,7 @@ describe("runDownload characterization", () => {
 
     it("offers another decision when an explicit retry still fails", async () => {
         const tasks = [createDownloadTask(0)];
-        const harness = createHarness(tasks);
+        const harness = createHarness();
         harness.dependencies.chapterFetcher.fetch = vi.fn(async () => {
             throw new Error("offline");
         });
@@ -837,7 +836,7 @@ describe("runDownload characterization", () => {
 
     it("keeps mapping font failures blocking after an explicit missing chapter retry", async () => {
         const tasks = [createDownloadTask(0)];
-        const harness = createHarness(tasks);
+        const harness = createHarness();
         harness.dependencies.chapterFetcher.fetch = vi
             .fn()
             .mockRejectedValueOnce(new Error("main 1"))
@@ -877,7 +876,7 @@ describe("runDownload characterization", () => {
 
     it("cancels and preserves the current cache when the user declines incomplete export", async () => {
         const tasks = [createDownloadTask(0)];
-        const harness = createHarness(tasks);
+        const harness = createHarness();
         harness.dependencies.chapterFetcher.fetch = vi.fn(async () => {
             throw new Error("offline");
         });
@@ -897,7 +896,7 @@ describe("runDownload characterization", () => {
 
     it("settles an open incomplete chapter decision when cancellation wins the race", async () => {
         const tasks = [createDownloadTask(0)];
-        const harness = createHarness(tasks);
+        const harness = createHarness();
         harness.dependencies.chapterFetcher.fetch = vi.fn(async () => {
             throw new Error("offline");
         });
@@ -919,7 +918,7 @@ describe("runDownload characterization", () => {
 
     it("does not prompt for chapters that only retain image failures", async () => {
         const tasks = [createDownloadTask(0)];
-        const harness = createHarness(tasks);
+        const harness = createHarness();
         harness.dependencies.chapterProcessor.process = async () => createChapter(0, { imageErrors: 1 });
 
         await harness.run(createOptions(tasks, { imageEnabled: true }));

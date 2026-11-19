@@ -43,9 +43,7 @@ export function createDeferred<T>(): Deferred<T> {
  * 测试时钟控制接口
  */
 export interface FakeClock {
-    now(): number;
     advanceBy(milliseconds: number): Promise<void>;
-    runAll(): Promise<void>;
     restore(): void;
 }
 
@@ -61,12 +59,8 @@ export function useFakeClock(
     let restored = false;
 
     return {
-        now: () => Date.now(),
         advanceBy: async (milliseconds) => {
             await vi.advanceTimersByTimeAsync(milliseconds);
-        },
-        runAll: async () => {
-            await vi.runAllTimersAsync();
         },
         restore: () => {
             if (restored) {
@@ -77,11 +71,4 @@ export function useFakeClock(
             vi.useRealTimers();
         }
     };
-}
-
-/**
- * 创建与浏览器请求中止语义一致的异常
- */
-export function createAbortError(message = "Aborted"): DOMException {
-    return new DOMException(message, "AbortError");
 }

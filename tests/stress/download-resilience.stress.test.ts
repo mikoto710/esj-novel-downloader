@@ -17,9 +17,7 @@ describe("download resilience pressure", () => {
         );
         const selectedTasks = indexes.map((index) => sourceTasks[index]);
         const harness = createStressDownloadHarness({
-            tasks: selectedTasks,
-            chapters,
-            imageEnabled: true
+            chapters
         });
 
         await harness.run({
@@ -42,7 +40,6 @@ describe("download resilience pressure", () => {
         const releaseFirstWrite = createDeferred<boolean>();
         let writeCount = 0;
         const harness = createStressDownloadHarness({
-            tasks,
             concurrency: 5,
             putBatch: async () => {
                 writeCount += 1;

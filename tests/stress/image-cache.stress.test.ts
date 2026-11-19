@@ -8,8 +8,6 @@ describe("image cache pressure", () => {
         const tasks = Array.from({ length: 12 }, (_, index) => createDownloadTask(index));
         const blobBytes = 1024 * 1024;
         const harness = createStressDownloadHarness({
-            tasks,
-            imageEnabled: true,
             processChapter: (task) => {
                 const bytes = new Uint8Array(blobBytes);
                 bytes.set([0xff, 0xd8, 0xff, 0xe0]);
@@ -60,9 +58,7 @@ describe("image cache pressure", () => {
             ])
         );
         const harness = createStressDownloadHarness({
-            tasks,
             chapters,
-            imageEnabled: true,
             processChapter: (task) =>
                 createChapter(task.index, {
                     images: [createChapterImage(task.index)],
