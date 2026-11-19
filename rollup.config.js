@@ -1,5 +1,4 @@
 import resolve from "@rollup/plugin-node-resolve";
-import commonjs from "@rollup/plugin-commonjs";
 import esbuild from "rollup-plugin-esbuild";
 import { transform } from "esbuild";
 import { readFile } from "node:fs/promises";
@@ -80,7 +79,6 @@ export default {
             browser: true,
             preferBuiltins: false
         }),
-        commonjs(),
         esbuild({
             minify: !isWatchMode,
             charset: "utf8",
