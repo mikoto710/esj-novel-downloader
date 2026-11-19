@@ -60,13 +60,10 @@ export function showFormatChoice(data: CachedData): void {
     const header = createCommonHeader(t("export.title"), closeAction);
 
     // 信息区展示当前导出快照的封面、插图和字体情况
-    const coverStatus = data.metadata.coverBlob
-        ? el("div", { id: "esj-format-cover-status", style: "color:green;font-size:12px;margin-top:4px;" }, [
-              t("export.coverReady")
-          ])
-        : el("div", { id: "esj-format-cover-status", style: "color:red;font-size:12px;margin-top:4px;" }, [
-              t("export.coverMissing")
-          ]);
+    const coverStatus = el("div", {
+        id: "esj-format-cover-status",
+        style: `color:${data.metadata.coverBlob ? "green" : "red"};font-size:12px;margin-top:4px;`
+    });
 
     const imageSuccessCount = data.chapters.reduce((count, chapter) => count + (chapter.images?.length || 0), 0);
     const imageFailureCount = data.chapters.reduce((count, chapter) => count + (chapter.imageErrors || 0), 0);
@@ -80,82 +77,52 @@ export function showFormatChoice(data: CachedData): void {
         : "";
 
     // 自选结果显示实际区间摘要，全本结果显示总章数
+    const bookStatus = el("div", { id: "esj-format-book-status" });
+    const partial = isPartialSelectionSummary(data.exportContext.selection);
+    const chapterStatus = partial
+        ? el("div", { id: "esj-format-range", style: "color:#2b6f9f;font-size:12px;margin-top:4px;" })
+        : el("div", { id: "esj-format-chapter-count", style: "color:#666;font-size:12px;margin-top:4px;" });
+    const mappingWarning = hasMappedChapters
+        ? el("div", {
+              id: "esj-format-mapping-warning",
+              style: "margin-top:10px;padding:10px;border:1px solid #e6a23c;background:#fff7e6;color:#8a5a00;border-radius:6px;font-size:12px;line-height:1.6;"
+          })
+        : "";
     const infoBody = el("div", { className: "esj-format-info" }, [
-        el("div", { id: "esj-format-book-status" }, [t("export.bookReady", { title: data.metadata.title })]),
-        isPartialSelectionSummary(data.exportContext.selection)
-            ? el("div", { id: "esj-format-range", style: "color:#2b6f9f;font-size:12px;margin-top:4px;" }, [
-                  formatSelectionSummary(data.exportContext.selection)
-              ])
-            : el("div", { id: "esj-format-chapter-count", style: "color:#666;font-size:12px;margin-top:4px;" }, [
-                  t("export.chapterCount", { count: data.chapters.length })
-              ]),
+        bookStatus,
+        chapterStatus,
         coverStatus,
         imageStatus,
-        hasMappedChapters
-            ? el(
-                  "div",
-                  {
-                      id: "esj-format-mapping-warning",
-                      style: "margin-top:10px;padding:10px;border:1px solid #e6a23c;background:#fff7e6;color:#8a5a00;border-radius:6px;font-size:12px;line-height:1.6;"
-                  },
-                  [
-                      t("export.mappingWarning", {
-                          count: mappingSummary.chapterCount,
-                          bytes: formatMappingFontBytes(mappingSummary.fontBytes)
-                      })
-                  ]
-              )
-            : ""
+        mappingWarning
     ]);
 
     // 每种格式独立防重，弹窗持有的结果不跟随后续任务变化
     const exporting = new Set<"epub" | "html">();
 
     // TXT 无法携带映射字体；EPUB 和 HTML 在各自按钮中生成富文本产物
-    const btnTxt = el(
-        "button",
-        {
-            id: "esj-txt",
-            disabled: hasMappedChapters,
-            "aria-disabled": hasMappedChapters ? "true" : "false",
-            title: hasMappedChapters ? t("export.txtBlocked") : t("export.downloadTxt"),
-            style: `flex:1;padding:10px 0;border:1px solid #ccc;background:#f0f0f0;border-radius:6px;cursor:${hasMappedChapters ? "not-allowed" : "pointer"};font-weight:bold;color:${hasMappedChapters ? "#999" : "#333"};`,
-            onclick: hasMappedChapters ? undefined : () => exportBookTxt(data, { failed: showExportFailure })
-        },
-        [hasMappedChapters ? t("export.txtDisabled") : t("export.downloadTxt")]
-    );
+    const btnTxt = el("button", {
+        id: "esj-txt",
+        disabled: hasMappedChapters,
+        "aria-disabled": hasMappedChapters ? "true" : "false",
+        style: `flex:1;padding:10px 0;border:1px solid #ccc;background:#f0f0f0;border-radius:6px;cursor:${hasMappedChapters ? "not-allowed" : "pointer"};font-weight:bold;color:${hasMappedChapters ? "#999" : "#333"};`,
+        onclick: hasMappedChapters ? undefined : () => exportBookTxt(data, { failed: showExportFailure })
+    });
 
-    const btnEpub = el(
-        "button",
-        {
-            id: "esj-epub",
-            style: "flex:1;padding:10px 0;border:none;background:#2b9bd7;color:#fff;border-radius:6px;cursor:pointer;font-weight:bold;",
-            onclick: () => handleRichDownload("epub", btnEpub)
-        },
-        [t("export.downloadEpub")]
-    );
+    const btnEpub = el("button", {
+        id: "esj-epub",
+        style: "flex:1;padding:10px 0;border:none;background:#2b9bd7;color:#fff;border-radius:6px;cursor:pointer;font-weight:bold;",
+        onclick: () => handleRichDownload("epub", btnEpub)
+    });
 
-    const btnHtml = el(
-        "button",
-        {
-            id: "esj-html",
-            style: "flex:1;padding:10px 0;border:none;background:#999;color:#fff;border-radius:6px;cursor:pointer;font-weight:bold;",
-            onclick: () => handleRichDownload("html", btnHtml)
-        },
-        [t("export.downloadHtml")]
-    );
+    const btnHtml = el("button", {
+        id: "esj-html",
+        style: "flex:1;padding:10px 0;border:none;background:#999;color:#fff;border-radius:6px;cursor:pointer;font-weight:bold;",
+        onclick: () => handleRichDownload("html", btnHtml)
+    });
 
     // 三种格式并列展示，TXT 不可用的原因另放在按钮下方
     const footer = el("div", { className: "esj-format-actions" }, [btnTxt, btnEpub, btnHtml]);
-    const txtDisabledReason = hasMappedChapters
-        ? el(
-              "div",
-              {
-                  id: "esj-format-txt-disabled-reason"
-              },
-              [t("download.export.txtDisabled")]
-          )
-        : "";
+    const txtDisabledReason = hasMappedChapters ? el("div", { id: "esj-format-txt-disabled-reason" }) : "";
 
     const popup = el("div", { id: "esj-format" }, [
         el("style", {}, [FORMAT_CHOICE_STYLES]),
@@ -176,18 +143,10 @@ export function showFormatChoice(data: CachedData): void {
             headerLabel.textContent = t("export.title");
         }
         coverStatus.textContent = t(data.metadata.coverBlob ? "export.coverReady" : "export.coverMissing");
-        const bookStatus = popup.querySelector("#esj-format-book-status");
-        const chapterCount = popup.querySelector("#esj-format-chapter-count");
-        const rangeStatus = popup.querySelector("#esj-format-range");
-        if (bookStatus) {
-            bookStatus.textContent = t("export.bookReady", { title: data.metadata.title });
-        }
-        if (chapterCount) {
-            chapterCount.textContent = t("export.chapterCount", { count: data.chapters.length });
-        }
-        if (rangeStatus) {
-            rangeStatus.textContent = formatSelectionSummary(data.exportContext.selection);
-        }
+        bookStatus.textContent = t("export.bookReady", { title: data.metadata.title });
+        chapterStatus.textContent = partial
+            ? formatSelectionSummary(data.exportContext.selection)
+            : t("export.chapterCount", { count: data.chapters.length });
         if (imageStatus instanceof HTMLElement) {
             imageStatus.textContent =
                 imageTotalCount > 0
@@ -196,7 +155,6 @@ export function showFormatChoice(data: CachedData): void {
                       }`
                     : t("export.imagesNone");
         }
-        const mappingWarning = popup.querySelector("#esj-format-mapping-warning");
         if (mappingWarning) {
             mappingWarning.textContent = t("export.mappingWarning", {
                 count: mappingSummary.chapterCount,

@@ -93,16 +93,14 @@ async function updateSinglePageMappingUi(version: number): Promise<void> {
     if (!elements) {
         return;
     }
+    const isCurrent = () =>
+        version === mappingUiRefreshVersion && elements.txtButton.isConnected && elements.htmlButton.isConnected;
     try {
         if (!document.querySelector(".forum-content")) {
             throw new Error(t("single.bodyMissing.message"));
         }
         if (isProtectedChapterHtml(document.documentElement.outerHTML)) {
-            if (
-                version !== mappingUiRefreshVersion ||
-                !elements.txtButton.isConnected ||
-                !elements.htmlButton.isConnected
-            ) {
+            if (!isCurrent()) {
                 return;
             }
             guideSingleProtectedExport(elements);
@@ -112,11 +110,7 @@ async function updateSinglePageMappingUi(version: number): Promise<void> {
         const normalized = await normalizeParsedChapter(parsed);
 
         // 正文或语言可能在预检期间变化，旧结果不再更新当前工具栏
-        if (
-            version !== mappingUiRefreshVersion ||
-            !elements.txtButton.isConnected ||
-            !elements.htmlButton.isConnected
-        ) {
+        if (!isCurrent()) {
             return;
         }
         enableSingleExport(elements.txtButton, t("mapping.single.txtTitle"));
@@ -128,11 +122,7 @@ async function updateSinglePageMappingUi(version: number): Promise<void> {
         disableSingleExport(elements.txtButton, t("mapping.single.txtDisabled"));
         replaceSingleMappingNotice(elements.container, t("mapping.single.warning"), "#a45b00");
     } catch (error) {
-        if (
-            version !== mappingUiRefreshVersion ||
-            !elements.txtButton.isConnected ||
-            !elements.htmlButton.isConnected
-        ) {
+        if (!isCurrent()) {
             return;
         }
         if (error instanceof MappingFontError) {
@@ -230,6 +220,33 @@ function handleProtectedSingleExport(button: HTMLElement): boolean {
     return true;
 }
 
+function createSingleExportButton(format: "txt" | "html"): HTMLElement {
+    const isText = format === "txt";
+    const titleKey = isText ? "mapping.single.txtTitle" : "mapping.single.htmlTitle";
+    const button = el(
+        "a",
+        {
+            id: isText ? "btn-download-single" : "btn-download-single-html",
+            className: "btn btn-outline-secondary view-all",
+            style: `margin-left: ${isText ? 5 : 10}px; cursor: pointer;`,
+            onclick: (event: Event) => {
+                event.preventDefault();
+                if (handleProtectedSingleExport(button)) {
+                    return;
+                }
+                if (button.getAttribute("aria-disabled") === "true") {
+                    const title = t(isText ? "mapping.single.txtUnavailable" : "mapping.single.htmlUnavailable");
+                    showMessagePopup({ tone: "warning", title, message: button.getAttribute("title") || title });
+                    return;
+                }
+                downloadCurrentPage(format);
+            }
+        },
+        [el("i", { className: isText ? "icon-download" : "icon-code" })]
+    );
+    return bindInterfaceAttribute(button, "title", titleKey);
+}
+
 /**
  * 在单章阅读页注入 TXT、HTML 按钮与预检提示
  */
@@ -250,65 +267,8 @@ export function injectSinglePageButton(): void {
         return;
     }
 
-    // TXT 按钮受正文与字体预检约束，不可用时展示当前原因
-    const btnTxt = el(
-        "a",
-        {
-            id: "btn-download-single",
-            className: "btn btn-outline-secondary view-all",
-            style: "margin-left: 5px; cursor: pointer;",
-            title: t("mapping.single.txtTitle"),
-            onclick: (e: Event) => {
-                e.preventDefault();
-                if (handleProtectedSingleExport(btnTxt)) {
-                    return;
-                }
-                if (btnTxt.getAttribute("aria-disabled") === "true") {
-                    showMessagePopup({
-                        tone: "warning",
-                        title: t("mapping.single.txtUnavailable"),
-                        message: btnTxt.getAttribute("title") || t("mapping.single.txtUnavailable")
-                    });
-                    return;
-                }
-                downloadCurrentPage("txt");
-            }
-        },
-        [el("i", { className: "icon-download" })]
-    );
-
-    // HTML 使用独立入口，映射字体可由富文本格式携带
-    const btnHtml = el(
-        "a",
-        {
-            id: "btn-download-single-html",
-            className: "btn btn-outline-secondary view-all",
-            style: "margin-left: 10px; cursor: pointer;",
-            title: t("mapping.single.htmlTitle"),
-            onclick: (e: Event) => {
-                e.preventDefault();
-                if (handleProtectedSingleExport(btnHtml)) {
-                    return;
-                }
-                if (btnHtml.getAttribute("aria-disabled") === "true") {
-                    showMessagePopup({
-                        tone: "warning",
-                        title: t("mapping.single.htmlUnavailable"),
-                        message: btnHtml.getAttribute("title") || t("mapping.single.htmlUnavailable")
-                    });
-                    return;
-                }
-                downloadCurrentPage("html");
-            }
-        },
-        [el("i", { className: "icon-code" })]
-    );
-    bindInterfaceAttribute(btnTxt, "title", "mapping.single.txtTitle");
-    bindInterfaceAttribute(btnHtml, "title", "mapping.single.htmlTitle");
-
     // 按 TXT、HTML 顺序挂载，再启动预检同步按钮状态
-    container.appendChild(btnTxt);
-    container.appendChild(btnHtml);
+    container.append(createSingleExportButton("txt"), createSingleExportButton("html"));
     installSinglePageMappingUiLifecycle();
     scheduleSinglePageMappingUiRefresh();
 }

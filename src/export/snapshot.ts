@@ -56,20 +56,6 @@ export function createMissingChapterPlaceholder(task: DownloadTask): Chapter {
     };
 }
 
-function assembleExportChapters(tasks: readonly DownloadTask[], source: ReadonlyMap<number, Chapter>): Chapter[] {
-    const chapters: Chapter[] = [];
-    for (const task of tasks) {
-        const chapter = source.get(task.index);
-        if (chapter) {
-            chapters.push(chapter);
-        } else {
-            const placeholder = createMissingChapterPlaceholder(task);
-            chapters.push(placeholder);
-        }
-    }
-    return chapters;
-}
-
 /**
  * 按固定计划组装原任务快照，复用已有章节，缺章占位仅用于输出
  */
@@ -81,7 +67,7 @@ export function createExportData(
     cover: BookCover | null,
     missingCount: number
 ): ExportSnapshot {
-    const assembled = assembleExportChapters(plan.tasks, chapters);
+    const assembled = plan.tasks.map((task) => chapters.get(task.index) || createMissingChapterPlaceholder(task));
     return {
         txt: assembleBookTxt(options.introTxt, assembled),
         chapters: assembled,
