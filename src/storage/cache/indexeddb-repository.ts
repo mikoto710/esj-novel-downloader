@@ -364,6 +364,10 @@ export async function claimCacheV3(
     }, signal);
 }
 
+function isOpenWriter(manifest: CacheManifestV3 | undefined, taskId: string): manifest is CacheManifestV3 {
+    return !!manifest && manifest.writerTaskId === taskId && !manifest.cleared && manifest.writerClosedAt === undefined;
+}
+
 /**
  * 在同一事务中校验 writer、写入章节并更新清单
  */
@@ -378,12 +382,7 @@ export async function putCacheBatchV3(
         const request = store.get(getManifestKey(bookId));
         request.onsuccess = () => {
             const current = request.result as CacheManifestV3 | undefined;
-            if (
-                !current ||
-                current.writerTaskId !== taskId ||
-                current.cleared ||
-                current.writerClosedAt !== undefined
-            ) {
+            if (!isOpenWriter(current, taskId)) {
                 setResult(false);
                 return;
             }
@@ -427,12 +426,7 @@ export async function putCacheCoverV3ForTask(
         const request = store.get(getManifestKey(bookId));
         request.onsuccess = () => {
             const current = request.result as CacheManifestV3 | undefined;
-            if (
-                !current ||
-                current.writerTaskId !== taskId ||
-                current.cleared ||
-                current.writerClosedAt !== undefined
-            ) {
+            if (!isOpenWriter(current, taskId)) {
                 setResult(false);
                 return;
             }
@@ -496,6 +490,22 @@ export async function finishCacheV3ForTask(
     }, signal);
 }
 
+function writeClearedCache(store: IDBObjectStore, bookId: string, writerTaskId: string): void {
+    store.delete(getChapterRange(bookId));
+    store.delete(getCoverRange(bookId));
+    store.put(
+        {
+            version: 3,
+            bookId,
+            ts: Date.now(),
+            chapterCount: 0,
+            writerTaskId,
+            cleared: true
+        } satisfies CacheManifestV3,
+        getManifestKey(bookId)
+    );
+}
+
 /**
  * 仅允许当前 writer 清理章节和封面，并写入 cleared 清单
  */
@@ -508,19 +518,7 @@ export async function clearCacheV3ForTask(bookId: string, taskId: string, signal
                 setResult(false);
                 return;
             }
-            store.delete(getChapterRange(bookId));
-            store.delete(getCoverRange(bookId));
-            store.put(
-                {
-                    version: 3,
-                    bookId,
-                    ts: Date.now(),
-                    chapterCount: 0,
-                    writerTaskId: taskId,
-                    cleared: true
-                } satisfies CacheManifestV3,
-                getManifestKey(bookId)
-            );
+            writeClearedCache(store, bookId, taskId);
             setResult(true);
         };
     }, signal);
@@ -538,19 +536,7 @@ export async function clearCacheV3(bookId: string, isWriterActive: (taskId: stri
                 setResult(false);
                 return;
             }
-            store.delete(getChapterRange(bookId));
-            store.delete(getCoverRange(bookId));
-            store.put(
-                {
-                    version: 3,
-                    bookId,
-                    ts: Date.now(),
-                    chapterCount: 0,
-                    writerTaskId: current?.writerTaskId || "cleared",
-                    cleared: true
-                } satisfies CacheManifestV3,
-                getManifestKey(bookId)
-            );
+            writeClearedCache(store, bookId, current?.writerTaskId || "cleared");
             setResult(true);
         };
     });
