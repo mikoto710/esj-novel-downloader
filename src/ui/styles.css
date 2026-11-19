@@ -16,20 +16,6 @@
     font-family: sans-serif;
 }
 
-/* 头部 */
-#esj-header,
-#esj-format-header,
-#esj-settings-header {
-    padding: 10px;
-    background: #2b9bd7;
-    color: #fff;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    cursor: move;
-    border-radius: 8px 8px 0 0;
-}
-
 /* 按钮通用 */
 .btn {
     cursor: pointer;
@@ -233,16 +219,6 @@
 
 .esj-cache-action-default:hover {
     background: #ececec;
-}
-
-.esj-cache-action-primary {
-    background: #2b9bd7;
-    color: #fff;
-    border: 1px solid #2388bd;
-}
-
-.esj-cache-action-primary:hover {
-    background: #2388bd;
 }
 
 .esj-cache-action-danger {

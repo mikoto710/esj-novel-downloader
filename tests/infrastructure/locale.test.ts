@@ -22,6 +22,6 @@ describe("locale infrastructure", () => {
     });
 
     it("fails clearly when an interpolation parameter is missing", () => {
-        expect(() => translate("zh-CN", "download.progress", { completed: 2 })).toThrow(MissingLocaleParameterError);
+        expect(() => translate("zh-CN", "download.status.running", { ready: 2 })).toThrow(MissingLocaleParameterError);
     });
 });

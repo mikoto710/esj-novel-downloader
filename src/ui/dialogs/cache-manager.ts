@@ -55,11 +55,7 @@ function createBadge(text: string, className = ""): HTMLElement {
     return el("span", { className: `esj-cache-badge ${className}`.trim() }, [text]);
 }
 
-function createActionButton(
-    text: string,
-    onClick: () => Promise<void> | void,
-    tone: "default" | "primary" | "danger" = "default"
-) {
+function createActionButton(text: string, onClick: () => Promise<void> | void, tone: "default" | "danger" = "default") {
     return el(
         "button",
         {
@@ -71,12 +67,9 @@ function createActionButton(
 }
 
 // 确认缓存清理操作，关闭视为取消
-function showCacheConfirm(
-    owner: HTMLElement,
-    options: { title?: string; message: string; danger?: boolean }
-): Promise<boolean> {
+function showCacheConfirm(owner: HTMLElement, options: { title: string; message: string }): Promise<boolean> {
     return showDecisionDialog({ dismissed: false, owner }, (finish) => {
-        const header = createCommonHeader(options.title || t("cache.confirm.title"), () => finish(false));
+        const header = createCommonHeader(options.title, () => finish(false));
 
         const body = el("div", { style: "padding:16px;font-size:14px;line-height:1.7;color:#333;" }, [options.message]);
 
@@ -94,9 +87,7 @@ function showCacheConfirm(
             "button",
             {
                 id: "esj-cache-confirm-ok",
-                style: `padding:8px 12px;${
-                    options.danger ? "background:#d9534f;" : "background:#2b9bd7;"
-                }color:#fff;border:none;border-radius:6px;cursor:pointer;`,
+                style: "padding:8px 12px;background:#d9534f;color:#fff;border:none;border-radius:6px;cursor:pointer;",
                 onclick: () => finish(true)
             },
             [t("cache.action.clear")]
@@ -205,8 +196,7 @@ export function createCacheManagerPopup(): void {
     async function clearCaches(includeRuntime: boolean): Promise<void> {
         const confirmed = await showCacheConfirm(popup, {
             title: `🗑️ ${t("cache.action.clear")}${t("common.confirm")}`,
-            message: t(includeRuntime ? "cache.confirm.clearAll" : "cache.confirm.clearPersistent"),
-            danger: true
+            message: t(includeRuntime ? "cache.confirm.clearAll" : "cache.confirm.clearPersistent")
         });
         if (!confirmed) {
             return;
@@ -409,8 +399,7 @@ function createCacheItemActions(item: CacheListItem, popup: HTMLElement, rerende
         } as const;
         const confirmed = await showCacheConfirm(popup, {
             title: `🗑️ ${t("cache.action.clear")}${t("common.confirm")}`,
-            message: t(messageKeys[scope], { book: item.bookName }),
-            danger: true
+            message: t(messageKeys[scope], { book: item.bookName })
         });
         if (!confirmed) {
             return;
@@ -435,8 +424,7 @@ function createCacheItemActions(item: CacheListItem, popup: HTMLElement, rerende
     async function stopAndClearItem(): Promise<void> {
         const confirmed = await showCacheConfirm(popup, {
             title: `🛑 ${t("cache.action.stopClear")}`,
-            message: t("cache.confirm.stopClear", { book: item.bookName }),
-            danger: true
+            message: t("cache.confirm.stopClear", { book: item.bookName })
         });
         if (!confirmed) {
             return;
