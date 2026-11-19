@@ -5,26 +5,11 @@ description: Develop, review, document, validate, or release ESJ Novel Downloade
 
 # ESJ Project Workflow
 
-## Establish scope
+Check the requested scope, branch, worktree, and relevant callers and exit paths. Preserve unrelated edits. Compare exact fetched commits when asked for current upstream source.
 
-Inspect the request, branch/commit, `git status --short`, scoped diff, and relevant source/tests. Preserve unrelated edits. When current upstream source is requested, fetch and compare exact commits before assessing or integrating it.
+Read [代码与注释](../../../CONTRIBUTING.md#代码与注释) before source, test, UI text, or template work. Use [Architecture](../../../docs/architecture.md) for data ownership, cancellation, and compatibility, [Testing](../../../docs/testing.md) for verification and real-page acceptance, and [Contributing](../../../CONTRIBUTING.md) for documentation, commits, and publication. When persisted data changes, state compatibility or invalidation.
 
-Before editing or reviewing source, tests, UI text, or template prompts, read [代码与注释](../../../CONTRIBUTING.md#代码与注释). Use the following guides as the rule owners; keep implementation details in source.
-
-| Task                         | Read and apply                                                                                                                                       |
-| ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Implementation or review     | [Architecture](../../../docs/architecture.md) for ownership, call chains, and affected business contracts; inspect the actual callers and exit paths |
-| Verification or test changes | [Testing](../../../docs/testing.md) for existing evidence, fault injection, stress coverage, and real-page acceptance                                |
-| Documentation                | Check the described behavior against source; update both READMEs for user-visible changes                                                            |
-| Commit or contribution       | [Contributing](../../../CONTRIBUTING.md) for branch, commit-message, PR, and publication conventions                                                 |
-| Release                      | Apply the release steps below and the relevant testing guide scenarios                                                                               |
-
-## Preserve boundaries
-
-- Preserve task ownership, atomic cache claims/writes, cancellation saving and discard upgrades, stale-result isolation, and persisted-data migration contracts in the architecture guide. State compatibility or invalidation before changing persisted formats or behavior.
-- Current in-memory selections and export snapshots use their canonical types and original task identity. Legacy compatibility belongs at persisted-data read boundaries.
-- Reuse existing verification for affected behavior. Add automation only for an uncovered, reproducible data or asynchronous boundary; ordinary page behavior uses real ESJZone/browser/userscript-manager checks. Report unavailable acceptance separately.
-- Commit, push, version changes, tags, releases, and committing `dist/` have separate authorization scopes. Continue operations already authorized; builds may regenerate ignored `dist/`.
+Commit, push, version, tag, release, and committing `dist/` each need authorization. Continue operations already authorized.
 
 ## Release tasks
 
