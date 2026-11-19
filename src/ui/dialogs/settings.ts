@@ -16,7 +16,7 @@ import { fullCleanup, enableDrag, el, removeElement } from "../dom";
 import { log } from "../../ui/log-view";
 import { bindInterfaceAttribute, bindInterfaceText, publishInterfaceLocaleChange, t } from "../locale";
 import { acquirePageActionGroupLockForPopup } from "../page-action-lock";
-import { createCommonHeader, showDecisionDialog } from "./common";
+import { createCommonHeader, createConfirmationPopup, showDecisionDialog } from "./common";
 import { createCacheManagerPopup } from "./cache-manager";
 import { createDownloadHistoryPopup } from "./download-history";
 import { createDiagnosticPopup } from "./diagnostics";
@@ -42,43 +42,15 @@ function saveSettingsChange(save: () => void, restore: () => void): boolean {
 
 function confirmImageSettingChange(activeTaskCount: number, owner: Element): Promise<boolean> {
     const options = { dismissed: false, owner, focus: "#esj-image-setting-task-confirm-cancel" };
-    return showDecisionDialog(options, (finish) => {
-        return el(
-            "div",
-            {
-                id: "esj-image-setting-task-confirm",
-                role: "dialog",
-                "aria-modal": "true",
-                style: "position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:440px;max-width:calc(100vw - 32px);background:#fff;border:1px solid #aaa;border-radius:8px;box-shadow:0 0 18px rgba(0,0,0,.28);z-index:1000001;display:flex;flex-direction:column;"
-            },
-            [
-                createCommonHeader(t("confirm.imageSettings.title"), () => finish(false)),
-                el("div", { style: "padding:16px;font-size:14px;line-height:1.7;color:#333;" }, [
-                    t("confirm.imageSettings.message", { count: activeTaskCount })
-                ]),
-                el("div", { style: "padding:12px;display:flex;justify-content:flex-end;gap:8px;" }, [
-                    el(
-                        "button",
-                        {
-                            id: "esj-image-setting-task-confirm-cancel",
-                            style: "padding:8px 12px;background:#eee;border:1px solid #ccc;border-radius:6px;cursor:pointer;",
-                            onclick: () => finish(false)
-                        },
-                        [t("common.cancel")]
-                    ),
-                    el(
-                        "button",
-                        {
-                            id: "esj-image-setting-task-confirm-continue",
-                            style: "padding:8px 12px;background:#2b9bd7;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:bold;",
-                            onclick: () => finish(true)
-                        },
-                        [t("confirm.imageSettings.continue")]
-                    )
-                ])
-            ]
-        );
-    });
+    return showDecisionDialog(options, (finish) =>
+        createConfirmationPopup(finish, {
+            id: "esj-image-setting-task-confirm",
+            title: t("confirm.imageSettings.title"),
+            body: [t("confirm.imageSettings.message", { count: activeTaskCount })],
+            cancel: { id: "esj-image-setting-task-confirm-cancel", text: t("common.cancel") },
+            confirm: { id: "esj-image-setting-task-confirm-continue", text: t("confirm.imageSettings.continue") }
+        })
+    );
 }
 
 function createInterfaceLanguageRow(initialPreference: InterfaceLocalePreference): HTMLElement {

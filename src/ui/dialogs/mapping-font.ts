@@ -1,7 +1,7 @@
 import type { MappingFontDetection, MappingFontFailure, MappingFontSummary } from "../../download/contracts";
 import { el } from "../dom";
 import { showMessagePopup } from "./message";
-import { createCommonHeader, showDecisionDialog } from "./common";
+import { createConfirmationPopup, showDecisionDialog } from "./common";
 import { t } from "../locale";
 import { formatMappingFontError } from "../messages/mapping-font";
 
@@ -41,61 +41,34 @@ export function updateMappingFontWarning(summary: MappingFontSummary): void {
  */
 export function confirmMappingFontDownload(detection: MappingFontDetection, signal?: AbortSignal): Promise<boolean> {
     return showDecisionDialog({ dismissed: false, signal, focus: "#esj-mapping-continue" }, (finish) => {
-        const header = createCommonHeader(t("mapping.detected.title"), () => finish(false));
-
-        // 说明字体限制和当前并发请求情况，用户在底部决定是否继续
-        const body = el("div", { style: "padding:16px;font-size:14px;line-height:1.7;color:#333;" }, [
-            el("div", { style: "font-weight:bold;margin-bottom:8px;" }, [detection.task.title]),
-            t("mapping.detected.message"),
-            el("div", { style: "margin-top:8px;color:#8a5a00;font-size:13px;" }, [
-                t("mapping.detected.summary", {
-                    count: detection.chapterCount,
-                    bytes: formatMappingFontBytes(detection.fontBytes)
-                })
-            ]),
-            el(
-                "div",
-                {
-                    id: "esj-mapping-inflight-warning",
-                    style: "margin-top:10px;padding:8px 10px;border:1px solid #f0c36d;background:#fff8e5;color:#7a5200;border-radius:5px;font-size:13px;"
-                },
-                [
-                    detection.inFlightLimit > 0
-                        ? t("mapping.detected.inflight", { count: detection.inFlightLimit })
-                        : t("mapping.detected.paused")
-                ]
-            )
-        ]);
-        const footer = el("div", { style: "padding:12px;display:flex;justify-content:flex-end;gap:8px;" }, [
-            el(
-                "button",
-                {
-                    id: "esj-mapping-stop",
-                    style: "padding:8px 12px;background:#eee;border:1px solid #ccc;border-radius:6px;cursor:pointer;",
-                    onclick: () => finish(false)
-                },
-                [t("mapping.stop")]
-            ),
-            el(
-                "button",
-                {
-                    id: "esj-mapping-continue",
-                    style: "padding:8px 12px;background:#2b9bd7;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:bold;",
-                    onclick: () => finish(true)
-                },
-                [t("mapping.continue")]
-            )
-        ]);
-        return el(
-            "div",
-            {
-                id: "esj-mapping-confirm",
-                role: "dialog",
-                "aria-modal": "true",
-                style: "position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:440px;max-width:calc(100vw - 32px);background:#fff;border:1px solid #aaa;border-radius:8px;box-shadow:0 0 18px rgba(0,0,0,.28);z-index:1000001;display:flex;flex-direction:column;"
-            },
-            [header, body, footer]
-        );
+        return createConfirmationPopup(finish, {
+            id: "esj-mapping-confirm",
+            title: t("mapping.detected.title"),
+            body: [
+                el("div", { style: "font-weight:bold;margin-bottom:8px;" }, [detection.task.title]),
+                t("mapping.detected.message"),
+                el("div", { style: "margin-top:8px;color:#8a5a00;font-size:13px;" }, [
+                    t("mapping.detected.summary", {
+                        count: detection.chapterCount,
+                        bytes: formatMappingFontBytes(detection.fontBytes)
+                    })
+                ]),
+                el(
+                    "div",
+                    {
+                        id: "esj-mapping-inflight-warning",
+                        style: "margin-top:10px;padding:8px 10px;border:1px solid #f0c36d;background:#fff8e5;color:#7a5200;border-radius:5px;font-size:13px;"
+                    },
+                    [
+                        detection.inFlightLimit > 0
+                            ? t("mapping.detected.inflight", { count: detection.inFlightLimit })
+                            : t("mapping.detected.paused")
+                    ]
+                )
+            ],
+            cancel: { id: "esj-mapping-stop", text: t("mapping.stop") },
+            confirm: { id: "esj-mapping-continue", text: t("mapping.continue") }
+        });
     });
 }
 
@@ -125,44 +98,18 @@ export function confirmMappingFontExport(
     owner?: Element
 ): Promise<boolean> {
     return showDecisionDialog({ dismissed: false, owner, focus: "#esj-mapping-export-continue" }, (finish) => {
-        // 导出确认只影响本次格式生成，不重新开始下载任务
-        return el(
-            "div",
-            {
-                id: "esj-mapping-export-confirm",
-                role: "dialog",
-                "aria-modal": "true",
-                style: "position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:440px;max-width:calc(100vw - 32px);background:#fff;border:1px solid #aaa;border-radius:8px;box-shadow:0 0 18px rgba(0,0,0,.28);z-index:1000001;display:flex;flex-direction:column;"
-            },
-            [
-                createCommonHeader(t("mapping.export.title", { format }), () => finish(false)),
-                el("div", { style: "padding:16px;font-size:14px;line-height:1.7;color:#333;" }, [
-                    t("mapping.export.message", {
-                        count: summary.chapterCount,
-                        bytes: formatMappingFontBytes(summary.fontBytes),
-                        format
-                    })
-                ]),
-                el("div", { style: "padding:12px;display:flex;justify-content:flex-end;gap:8px;" }, [
-                    el(
-                        "button",
-                        {
-                            style: "padding:8px 12px;background:#eee;border:1px solid #ccc;border-radius:6px;cursor:pointer;",
-                            onclick: () => finish(false)
-                        },
-                        [t("mapping.export.back")]
-                    ),
-                    el(
-                        "button",
-                        {
-                            id: "esj-mapping-export-continue",
-                            style: "padding:8px 12px;background:#2b9bd7;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:bold;",
-                            onclick: () => finish(true)
-                        },
-                        [t("mapping.export.continue", { format })]
-                    )
-                ])
-            ]
-        );
+        return createConfirmationPopup(finish, {
+            id: "esj-mapping-export-confirm",
+            title: t("mapping.export.title", { format }),
+            body: [
+                t("mapping.export.message", {
+                    count: summary.chapterCount,
+                    bytes: formatMappingFontBytes(summary.fontBytes),
+                    format
+                })
+            ],
+            cancel: { text: t("mapping.export.back") },
+            confirm: { id: "esj-mapping-export-continue", text: t("mapping.export.continue", { format }) }
+        });
     });
 }

@@ -4,11 +4,7 @@ export {
     showMappingFontFailure,
     confirmMappingFontExport
 } from "./dialogs/mapping-font";
-export {
-    closeProtectedChapterPrompt,
-    setProtectedChapterPromptBusy,
-    promptProtectedChapterPassword
-} from "./dialogs/protected-chapter";
+export { closeProtectedChapterPrompt, promptProtectedChapterPassword } from "./dialogs/protected-chapter";
 export { confirmIncompleteChapters } from "./dialogs/incomplete-chapters";
 export { showBookDownloadInProgressPopup, createDownloadPopup } from "./dialogs/download-progress";
 export { showFormatChoice } from "./dialogs/format-choice";

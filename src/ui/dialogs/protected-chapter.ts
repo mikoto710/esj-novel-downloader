@@ -14,43 +14,6 @@ export function closeProtectedChapterPrompt(): void {
     removeElement(document.getElementById("esj-protected-chapter"));
 }
 
-/**
- * 将密码弹窗切换为处理中状态，保留取消与关闭操作
- */
-export function setProtectedChapterPromptBusy(message = t("protected.busy")): void {
-    const popup = document.querySelector("#esj-protected-chapter") as HTMLElement | null;
-    if (!popup) {
-        return;
-    }
-    popup.dataset.esjProtectedMessageState = "busy";
-    const passwordInput = popup.querySelector("#esj-protected-password") as HTMLInputElement | null;
-    const remember = popup.querySelector("#esj-protected-remember") as HTMLInputElement | null;
-    const submit = popup.querySelector("#esj-protected-submit") as HTMLButtonElement | null;
-    const skip = popup.querySelector("#esj-protected-skip") as HTMLButtonElement | null;
-    const skipAll = popup.querySelector("#esj-protected-skip-all") as HTMLButtonElement | null;
-    const error = popup.querySelector("#esj-protected-error") as HTMLElement | null;
-    if (passwordInput) {
-        passwordInput.disabled = true;
-    }
-    if (remember) {
-        remember.disabled = true;
-    }
-    if (submit) {
-        submit.disabled = true;
-        submit.textContent = t("protected.busyShort");
-    }
-    if (skip) {
-        skip.disabled = true;
-    }
-    if (skipAll) {
-        skipAll.disabled = true;
-    }
-    if (error) {
-        error.style.color = "#666";
-        error.textContent = message;
-    }
-}
-
 function formatProtectedPromptMessage(prompt: ProtectedChapterPrompt): string {
     if (prompt.message) {
         return prompt.message;
@@ -121,19 +84,18 @@ export function promptProtectedChapterPassword(
         id: "esj-protected-error",
         style: `min-height:20px;margin-top:8px;color:${hasFailureMessage ? "#c62828" : "#666"};font-size:13px;`
     });
-    error.textContent = formatProtectedPromptMessage(prompt);
     const passwordInput = el("input", {
         id: "esj-protected-password",
         type: "text",
         autocomplete: "off",
         value: prompt.initialPassword || "",
         style: "width:100%;box-sizing:border-box;padding:9px;border:1px solid #bbb;border-radius:5px;"
-    }) as HTMLInputElement;
+    });
     const remember = el("input", {
         id: "esj-protected-remember",
         type: "checkbox",
         checked: prompt.rememberPassword === true
-    }) as HTMLInputElement;
+    });
 
     function submitPassword(): void {
         if (!popup.isConnected || passwordInput.disabled) {
@@ -147,7 +109,13 @@ export function promptProtectedChapterPassword(
             passwordInput.focus();
             return;
         }
-        setProtectedChapterPromptBusy();
+        popup.dataset.esjProtectedMessageState = "busy";
+        for (const control of [passwordInput, remember, skip, skipAll, submit]) {
+            control.disabled = true;
+        }
+        submit.textContent = t("protected.busyShort");
+        error.style.color = "#666";
+        error.textContent = t("protected.busy");
         finish({ action: "submit", password, rememberPassword: remember.checked });
     }
 
@@ -157,87 +125,52 @@ export function promptProtectedChapterPassword(
             submitPassword();
         }
     };
-    const header = createCommonHeader(t("protected.required"), () => finishOrNotify({ action: "cancel" }));
+    const header = createCommonHeader("", () => finishOrNotify({ action: "cancel" }));
 
     // 正文先定位受保护章节，再提供原页链接、密码输入和反馈
+    const headerLabel = header.querySelector("span");
+    const position = el("div", { id: "esj-protected-position", style: "margin:4px 0 10px;color:#666;" });
+    const openChapter = el("a", {
+        href: prompt.task.url,
+        target: "_blank",
+        rel: "noopener noreferrer",
+        id: "esj-protected-open-chapter",
+        style: "display:inline-block;margin-bottom:10px;"
+    });
+    const rememberLabel = el("span", { id: "esj-protected-remember-label" });
     const body = el("div", { style: "padding:16px;font-size:14px;line-height:1.6;color:#333;" }, [
         el("div", { style: "font-weight:bold;" }, [prompt.task.title]),
-        el("div", { id: "esj-protected-position", style: "margin:4px 0 10px;color:#666;" }, [
-            t(prompt.selectionMode === "selected" ? "protected.positionRange" : "protected.position", {
-                index: prompt.taskOrder ?? prompt.task.index + 1,
-                total: prompt.totalChapters,
-                sourceIndex: prompt.task.index + 1,
-                pending: prompt.pendingCount
-            })
-        ]),
-        el(
-            "a",
-            {
-                href: prompt.task.url,
-                target: "_blank",
-                rel: "noopener noreferrer",
-                id: "esj-protected-open-chapter",
-                style: "display:inline-block;margin-bottom:10px;"
-            },
-            [t("protected.openChapter")]
-        ),
+        position,
+        openChapter,
         passwordInput,
         el("label", { style: "display:flex;gap:7px;align-items:flex-start;margin-top:10px;cursor:pointer;" }, [
             remember,
-            el("span", { id: "esj-protected-remember-label" }, [t("protected.remember")])
+            rememberLabel
         ]),
         error
     ]);
 
     // 取消作用于整个任务，跳过区分当前章与剩余密码章
+    function actionButton(id: string, tone: "default" | "primary", onclick: () => void): HTMLButtonElement {
+        return el("button", {
+            id,
+            type: "button",
+            className: `esj-protected-action esj-protected-action-${tone}`,
+            onclick
+        });
+    }
+
+    const cancel = actionButton("esj-protected-cancel", "default", () => finishOrNotify({ action: "cancel" }));
+    const skipAll = actionButton("esj-protected-skip-all", "default", () => finishOrNotify({ action: "skip-all" }));
+    const skip = actionButton("esj-protected-skip", "default", () => finishOrNotify({ action: "skip-current" }));
+    const submit = actionButton("esj-protected-submit", "primary", submitPassword);
     const footer = el(
         "div",
         {
             id: "esj-protected-actions",
             style: "padding:12px;display:flex;justify-content:flex-end;gap:8px;"
         },
-        [
-            el(
-                "button",
-                {
-                    id: "esj-protected-cancel",
-                    type: "button",
-                    className: "esj-protected-action esj-protected-action-default",
-                    onclick: () => finishOrNotify({ action: "cancel" })
-                },
-                [t("download.action.cancelTask")]
-            ),
-            el(
-                "button",
-                {
-                    id: "esj-protected-skip-all",
-                    type: "button",
-                    className: "esj-protected-action esj-protected-action-default",
-                    onclick: () => finishOrNotify({ action: "skip-all" })
-                },
-                [t("protected.skipRemaining")]
-            ),
-            el(
-                "button",
-                {
-                    id: "esj-protected-skip",
-                    type: "button",
-                    className: "esj-protected-action esj-protected-action-default",
-                    onclick: () => finishOrNotify({ action: "skip-current" })
-                },
-                [t("download.action.skipChapter")]
-            ),
-            el(
-                "button",
-                {
-                    id: "esj-protected-submit",
-                    type: "button",
-                    className: "esj-protected-action esj-protected-action-primary",
-                    onclick: submitPassword
-                },
-                [t(prompt.retryConnection ? "protected.retryConnection" : "protected.submit")]
-            )
-        ]
+        [cancel, skipAll, skip, submit]
     );
     const popup = el(
         "div",
@@ -260,53 +193,31 @@ export function promptProtectedChapterPassword(
     popup.dataset.esjProtectedMessageState = "prompt";
 
     function refreshPromptText(): void {
-        const headerLabel = popup.querySelector(".esj-common-header span");
-        const position = popup.querySelector("#esj-protected-position");
-        const openChapter = popup.querySelector("#esj-protected-open-chapter");
-        const rememberLabel = popup.querySelector("#esj-protected-remember-label");
-        const cancel = popup.querySelector("#esj-protected-cancel");
-        const skipAll = popup.querySelector("#esj-protected-skip-all");
-        const skip = popup.querySelector("#esj-protected-skip");
-        const submitButton = popup.querySelector("#esj-protected-submit") as HTMLButtonElement | null;
         if (headerLabel) {
             headerLabel.textContent = t("protected.required");
         }
-        if (position) {
-            position.textContent = t(
-                prompt.selectionMode === "selected" ? "protected.positionRange" : "protected.position",
-                {
-                    index: prompt.taskOrder ?? prompt.task.index + 1,
-                    total: prompt.totalChapters,
-                    sourceIndex: prompt.task.index + 1,
-                    pending: prompt.pendingCount
-                }
-            );
-        }
-        if (openChapter) {
-            openChapter.textContent = t("protected.openChapter");
-        }
-        if (rememberLabel) {
-            rememberLabel.textContent = t("protected.remember");
-        }
-        if (cancel) {
-            cancel.textContent = t("download.action.cancelTask");
-        }
-        if (skipAll) {
-            skipAll.textContent = t("protected.skipRemaining");
-        }
-        if (skip) {
-            skip.textContent = t("download.action.skipChapter");
-        }
+        position.textContent = t(
+            prompt.selectionMode === "selected" ? "protected.positionRange" : "protected.position",
+            {
+                index: prompt.taskOrder ?? prompt.task.index + 1,
+                total: prompt.totalChapters,
+                sourceIndex: prompt.task.index + 1,
+                pending: prompt.pendingCount
+            }
+        );
+        openChapter.textContent = t("protected.openChapter");
+        rememberLabel.textContent = t("protected.remember");
+        cancel.textContent = t("download.action.cancelTask");
+        skipAll.textContent = t("protected.skipRemaining");
+        skip.textContent = t("download.action.skipChapter");
         const messageState = popup.dataset.esjProtectedMessageState;
-        if (submitButton) {
-            submitButton.textContent = t(
-                messageState === "busy"
-                    ? "protected.busyShort"
-                    : prompt.retryConnection
-                      ? "protected.retryConnection"
-                      : "protected.submit"
-            );
-        }
+        submit.textContent = t(
+            messageState === "busy"
+                ? "protected.busyShort"
+                : prompt.retryConnection
+                  ? "protected.retryConnection"
+                  : "protected.submit"
+        );
         if (messageState === "busy") {
             error.textContent = t("protected.busy");
         } else if (messageState === "required") {
@@ -316,6 +227,7 @@ export function promptProtectedChapterPassword(
         }
     }
 
+    refreshPromptText();
     const unsubscribeLocale = subscribeInterfaceLocaleChange(refreshPromptText);
     registerElementCleanup(popup, () => {
         signal?.removeEventListener("abort", onAbort);

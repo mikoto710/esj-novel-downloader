@@ -88,3 +88,51 @@ export function showDecisionDialog<T>(
         }
     });
 }
+
+/**
+ * 组装含取消和继续按钮的确认框，关闭与结算由 showDecisionDialog 管理
+ */
+export function createConfirmationPopup(
+    finish: (choice: boolean) => void,
+    options: {
+        id: string;
+        title: string;
+        body: (string | Node)[];
+        cancel: { text: string; id?: string };
+        confirm: { text: string; id: string };
+    }
+): HTMLElement {
+    const cancel = el(
+        "button",
+        {
+            ...(options.cancel.id ? { id: options.cancel.id } : {}),
+            style: "padding:8px 12px;background:#eee;border:1px solid #ccc;border-radius:6px;cursor:pointer;",
+            onclick: () => finish(false)
+        },
+        [options.cancel.text]
+    );
+    const confirm = el(
+        "button",
+        {
+            id: options.confirm.id,
+            style: "padding:8px 12px;background:#2b9bd7;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:bold;",
+            onclick: () => finish(true)
+        },
+        [options.confirm.text]
+    );
+
+    return el(
+        "div",
+        {
+            id: options.id,
+            role: "dialog",
+            "aria-modal": "true",
+            style: "position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:440px;max-width:calc(100vw - 32px);background:#fff;border:1px solid #aaa;border-radius:8px;box-shadow:0 0 18px rgba(0,0,0,.28);z-index:1000001;display:flex;flex-direction:column;"
+        },
+        [
+            createCommonHeader(options.title, () => finish(false)),
+            el("div", { style: "padding:16px;font-size:14px;line-height:1.7;color:#333;" }, options.body),
+            el("div", { style: "padding:12px;display:flex;justify-content:flex-end;gap:8px;" }, [cancel, confirm])
+        ]
+    );
+}
