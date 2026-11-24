@@ -54,9 +54,14 @@ function formatPresentation(presentation: DiagnosticSessionPresentation): string
     return presentation;
 }
 
-function formatDiagnosticFailureMessage(failure: DiagnosticSession["failures"][number]): string {
+function formatDiagnosticFailureMessage(
+    failure: DiagnosticSession["failures"][number],
+    sourcePageType: string
+): string {
     const keys: Partial<Record<string, Parameters<typeof t>[0]>> = {
-        "chapter-content-missing": "single.bodyMissing.message",
+        "chapter-login-page": "diagnostics.failure.chapterLoginPage",
+        "chapter-content-missing":
+            sourcePageType === "single" ? "single.bodyMissing.message" : "diagnostics.failure.chapterContentMissing",
         "detail-chapter-list-missing": "page.structureChanged",
         "book-detail-chapters-missing": "page.chaptersMissing.message",
         "chapter-list-missing": "page.chaptersMissing.message",
@@ -92,7 +97,7 @@ export function formatDiagnosticSummary(
             failure.imageFailureCount === undefined
                 ? ""
                 : t("diagnostics.summary.imageFailure", { count: failure.imageFailureCount });
-        return `- [${failure.code}] ${formatDiagnosticFailureMessage(failure)}${imageCount}${chapter}`;
+        return `- [${failure.code}] ${formatDiagnosticFailureMessage(failure, session.book.sourcePageType)}${imageCount}${chapter}`;
     });
     const logLines = session.logs.slice(-20).map((entry) => `- [${entry.level}] ${formatDiagnosticLog(entry)}`);
     const exportLines = (session.exports || []).map((item) => {

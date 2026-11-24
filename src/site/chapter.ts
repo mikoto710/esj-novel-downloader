@@ -1,5 +1,5 @@
 import type { Chapter } from "../content/model";
-import type { ChapterFetcherPort, DownloadTask } from "../download/contracts";
+import type { ChapterFetcherPort, ChapterPageFailureCode, DownloadTask } from "../download/contracts";
 import { normalizeChapterMappingFont } from "../content/mapping-font";
 import { fetchWithTimeout } from "../browser/request";
 import { processHtmlImages, type ImageProcessingFailure } from "./images";
@@ -17,7 +17,16 @@ export function parseChapterHtml(html: string, defaultTitle: string) {
 
     const author = (doc.querySelector(".single-post-meta div") as HTMLElement)?.innerText.trim() || "";
 
-    const contentEl = doc.querySelector(".forum-content") as HTMLElement;
+    const contentEl = doc.querySelector<HTMLElement>(".forum-content");
+    let pageFailure: ChapterPageFailureCode | undefined;
+    if (!contentEl) {
+        const loginForm = doc.querySelector("form.login-box");
+        pageFailure =
+            loginForm?.querySelector('input[type="email"][name="email"]') &&
+            loginForm.querySelector('input[type="password"][name="pwd"]')
+                ? "chapter-login-page"
+                : "chapter-content-missing";
+    }
 
     // HTML 与 EPUB 共用原始正文 HTML，插图和字体随后处理
     const contentHtml = contentEl ? contentEl.innerHTML : "";
@@ -37,7 +46,8 @@ export function parseChapterHtml(html: string, defaultTitle: string) {
         author,
         contentHtml,
         contentText,
-        bookName
+        bookName,
+        ...(pageFailure ? { pageFailure } : {})
     };
 }
 

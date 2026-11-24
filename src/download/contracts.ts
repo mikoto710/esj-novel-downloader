@@ -31,6 +31,7 @@ export type DownloadLogCode =
     | "cache-restored-with-invalidated"
     | "cache-write-retry"
     | "chapter-fetch-failed"
+    | "chapter-page-invalid"
     | "chapter-mapping-font-failed"
     | "chapter-processed"
     | "chapter-processed-with-images"
@@ -69,6 +70,8 @@ export type DownloadLogCode =
 export type DownloadLog = DomainMessage<DownloadLogCode>;
 
 export type DownloadChapterFailureCode = string;
+
+export type ChapterPageFailureCode = "chapter-login-page" | "chapter-content-missing";
 
 export type ProtectedChapterProtocolErrorCode =
     | "token-invalid"
@@ -268,7 +271,7 @@ export type DownloadEvent =
     | {
           type: "chapter-failed";
           task: DownloadTask;
-          stage: "fetch" | "mapping-font" | "protected-auth";
+          stage: "fetch" | "parse" | "mapping-font" | "protected-auth";
           code: DownloadChapterFailureCode;
           params: DomainMessageParams;
           retry: boolean;
@@ -337,7 +340,12 @@ export interface ChapterFetcherPort {
  */
 export interface ChapterProcessorPort {
     normalizeCached(chapter: Chapter, signal?: AbortSignal): Promise<NormalizedChapterMapping>;
-    process(html: string, task: DownloadTask, imageEnabled: boolean, signal?: AbortSignal): Promise<Chapter>;
+    process(
+        html: string,
+        task: DownloadTask,
+        imageEnabled: boolean,
+        signal?: AbortSignal
+    ): Promise<Chapter | { pageFailure: ChapterPageFailureCode }>;
 }
 
 /**

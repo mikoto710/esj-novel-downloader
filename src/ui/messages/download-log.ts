@@ -152,6 +152,15 @@ export function formatDownloadLog(message: DownloadLog): string {
             });
         case "cache-write-retry":
             return t("download.log.cacheWriteRetry", { detail: storageFailureText(message) });
+        case "chapter-page-invalid":
+            return t("download.log.chapterPageInvalid", {
+                chapter: chapterTitle(message),
+                reason: t(
+                    message.params?.reason === "chapter-login-page"
+                        ? "diagnostics.failure.chapterLoginPage"
+                        : "diagnostics.failure.chapterContentMissing"
+                )
+            });
         case "chapter-processed":
         case "chapter-processed-with-images":
         case "chapter-processed-with-image-failures":

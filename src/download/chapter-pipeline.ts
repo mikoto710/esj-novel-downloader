@@ -276,10 +276,30 @@ export function createChapterPipeline(
     ): Promise<ChapterTaskResult> {
         let chapter: Chapter;
         try {
-            chapter = await ports.chapterProcessor.process(html, task, imageEnabled, ports.workSignal);
+            const processed = await ports.chapterProcessor.process(html, task, imageEnabled, ports.workSignal);
             if (ports.workSignal.aborted) {
                 return "cancelled";
             }
+            if ("pageFailure" in processed) {
+                const params = { ...plan.position(task), title: task.title };
+                ports.log({
+                    code: "chapter-page-invalid",
+                    params: { ...params, reason: processed.pageFailure, retry: isRetry }
+                });
+                ports.events.emit({
+                    type: "chapter-failed",
+                    task,
+                    stage: "parse",
+                    code: processed.pageFailure,
+                    params,
+                    retry: isRetry
+                });
+                if (!isRetry) {
+                    progress.recordInitialFailure();
+                }
+                return "failed";
+            }
+            chapter = processed;
             mappingFailures.delete(task.index);
         } catch (error) {
             if (ports.workSignal.aborted) {
@@ -395,7 +415,7 @@ export function createChapterPipeline(
         }
 
         const html = await downloadChapterHtml(task, isRetry);
-        if (!html || ports.workSignal.aborted) {
+        if (html === null || ports.workSignal.aborted) {
             if (!isRetry && !ports.workSignal.aborted) {
                 progress.recordInitialFailure();
             }

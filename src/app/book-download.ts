@@ -618,12 +618,11 @@ function createChapterProcessor(taskId: string): ChapterProcessorPort {
         }
     };
     const processChapterHtml: ChapterProcessorPort["process"] = async (html, task, imageEnabled, signal) => {
-        const processed = await processParsedChapter(
-            parseChapterHtml(html, task.title),
-            task.index,
-            imageEnabled,
-            signal
-        );
+        const parsed = parseChapterHtml(html, task.title);
+        if (parsed.pageFailure) {
+            return { pageFailure: parsed.pageFailure };
+        }
+        const processed = await processParsedChapter(parsed, task.index, imageEnabled, signal);
         if (!signal?.aborted) {
             recordInlineImageFailures(
                 task,

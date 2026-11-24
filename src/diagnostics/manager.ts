@@ -949,6 +949,7 @@ const WARNING_LOG_CODES = new Set<DownloadLogCode>([
     "restored-mapping-font-invalid",
     "cache-write-retry",
     "chapter-fetch-failed",
+    "chapter-page-invalid",
     "chapter-skipped-non-site",
     "protected-chapter-retry-skipped",
     "protected-chapter-redetected",
