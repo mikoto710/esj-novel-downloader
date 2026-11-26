@@ -36,7 +36,8 @@
 ## 界面、设置与诊断
 
 - [选择窗口](../src/ui/dialogs/download-selection.ts)持有勾选、搜索和文件名，[任务视图](../src/ui/download-view.ts)按任务刷新进度。全局[样式](../src/ui/styles.css)和局部 CSS 在构建时内联。
-- [下载设置](../src/storage/settings.ts)持久化偏好。插图开关在预览前固定，并发数在任务装配时读取，EPUB 设置在生成时读取。[界面语言](../src/ui/locale.ts)依次使用手动偏好、站点提示和浏览器语言。新增文案同时维护[简体](../src/locale/locales/zh-CN.ts)和[繁体](../src/locale/locales/zh-TW.ts)。
+- [下载设置](../src/storage/settings.ts)持久化偏好。插图开关在预览前固定，并发数和批量下载兼容模式在任务装配时读取，EPUB 设置在生成时读取。[界面语言](../src/ui/locale.ts)依次使用手动偏好、站点提示和浏览器语言。新增文案同时维护[简体](../src/locale/locales/zh-CN.ts)和[繁体](../src/locale/locales/zh-TW.ts)。
+- 批量下载兼容模式默认关闭。[章节请求](../src/site/chapter.ts)默认使用脚本管理器的 GM 请求，开启后用浏览器的同源 `fetch` 读取章节页面。密码授权和图片分别沿用各自的请求方式。
 - [历史](../src/storage/history.ts)和[诊断](../src/diagnostics/manager.ts)兼容旧选择摘要。诊断按站点来源和任务写入 IndexedDB，读取、复制及导出时也处理旧日志中的认证信息。诊断故障不阻断下载，已删除的会话不会写入后续任务。[诊断存储](../src/storage/diagnostics.ts) · [诊断导出](../src/diagnostics/export.ts)
 
 下载内核通过[能力接口](../src/download/contracts.ts)访问应用提供的站点、存储与交互能力。内核和快照的依赖边界由 ESLint 检查。测试选择和实页验收见[测试指南](testing.md)。
