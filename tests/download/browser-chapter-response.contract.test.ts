@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 
+import { Blob as NodeBlob } from "node:buffer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createDiagnosticExport } from "../../src/diagnostics/export";
 import { clearBrowserDiagnosticSessions, listBrowserDiagnosticSessions } from "../../src/diagnostics/runtime";
@@ -23,6 +24,7 @@ let runtime: BrowserDownloadRuntime;
 
 describe("browser chapter response contracts", () => {
     beforeEach(async () => {
+        vi.stubGlobal("Blob", NodeBlob);
         await clearBrowserDiagnosticSessions();
         runtime = await resetBrowserDownloadHarness();
         const { parseChapterHtml } =
