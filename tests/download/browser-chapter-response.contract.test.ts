@@ -3,6 +3,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createDiagnosticExport } from "../../src/diagnostics/export";
 import { clearBrowserDiagnosticSessions, listBrowserDiagnosticSessions } from "../../src/diagnostics/runtime";
+import { setChapterRequestMode } from "../../src/storage/settings";
 import { formatDiagnosticBookTitle, formatDiagnosticLog } from "../../src/ui/messages/diagnostics";
 import {
     type BrowserDownloadRuntime,
@@ -118,22 +119,25 @@ describe("browser chapter response contracts", () => {
         expect(mocks.confirmIncompleteChapters).not.toHaveBeenCalled();
     });
 
-    it("resolves reading links and image requests against the chapter being downloaded", async () => {
+    it("uses browser fetch for chapter HTML while keeping image requests on GM", async () => {
         const { processHtmlImages } =
             await vi.importActual<typeof import("../../src/site/images")>("../../src/site/images");
         mocks.processHtmlImages.mockImplementation(processHtmlImages);
         const [task] = createBrowserDownloadTasks(1);
         const imageUrl = "https://www.esjzone.cc/forum/100/pictures/a.jpg";
+        const externalImageUrl = "https://example.test/pictures/b.jpg";
         expect(new URL("pictures/a.jpg", location.href).href).not.toBe(imageUrl);
         const chapterHtml = createChapterFixture({
             contentHtml: `<p id="notes"><a href="2.html?view=full#end">后记</a>
                 <a href="//example.test/notes">译注</a><a href="#notes">本段</a>
-                <img src="pictures/a.jpg" alt="插图"></p>`
+                <img src="pictures/a.jpg" alt="插图"><img src="${externalImageUrl}" alt="外链插图"></p>`
         });
-        mocks.fetchWithTimeout.mockImplementation(async (url: string) =>
-            url === imageUrl
-                ? new Response(new Uint8Array([0xff, 0xd8, 0xff, 0xe0]), { headers: { "Content-Type": "image/jpeg" } })
-                : new Response(chapterHtml)
+        setChapterRequestMode("fetch");
+        const browserFetch = vi.fn(async () => new Response(chapterHtml));
+        vi.stubGlobal("fetch", browserFetch);
+        mocks.fetchWithTimeout.mockImplementation(
+            async () =>
+                new Response(new Uint8Array([0xff, 0xd8, 0xff, 0xe0]), { headers: { "Content-Type": "image/jpeg" } })
         );
 
         const data = expectReadyDownload(
@@ -142,14 +146,24 @@ describe("browser chapter response contracts", () => {
         const chapter = data.chapters[0];
         const doc = new DOMParser().parseFromString(chapter.content, "text/html");
 
-        expect(mocks.fetchWithTimeout.mock.calls.map(([url]) => url)).toEqual([task.url, imageUrl]);
+        expect(browserFetch).toHaveBeenCalledExactlyOnceWith(
+            task.url,
+            expect.objectContaining({ credentials: "include", mode: "same-origin" })
+        );
+        expect(mocks.fetchWithTimeout.mock.calls.map(([url]) => url)).toEqual([imageUrl, externalImageUrl]);
         expect(Array.from(doc.querySelectorAll("a"), (link) => link.getAttribute("href"))).toEqual([
             "https://www.esjzone.cc/forum/100/2.html?view=full#end",
             "https://example.test/notes",
             "#notes"
         ]);
-        expect(doc.querySelector("img")?.getAttribute("src")).toBe("img_0_0.jpg");
-        expect(chapter.images).toMatchObject([{ id: "img_0_0.jpg", mediaType: "image/jpeg" }]);
+        expect(Array.from(doc.querySelectorAll("img"), (image) => image.getAttribute("src"))).toEqual([
+            "img_0_0.jpg",
+            "img_0_1.jpg"
+        ]);
+        expect(chapter.images).toMatchObject([
+            { id: "img_0_0.jpg", mediaType: "image/jpeg" },
+            { id: "img_0_1.jpg", mediaType: "image/jpeg" }
+        ]);
     });
 
     it("keeps cached chapter content when an image retry returns a login page", async () => {

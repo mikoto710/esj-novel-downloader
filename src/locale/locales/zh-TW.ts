@@ -17,6 +17,7 @@ export const ZH_TW_MESSAGES = Object.freeze({
     "settings.title": "腳本設定",
     "settings.versionUnknown": "版本未知",
     "settings.concurrency": "下載執行緒數（1-{max}）：",
+    "settings.chapterRequestMode": "批次下載相容模式",
     "settings.cache": "下載快取",
     "settings.history": "下載紀錄",
     "settings.diagnostics": "診斷與回饋",
@@ -472,6 +473,7 @@ export const ZH_TW_MESSAGES = Object.freeze({
     "settings.log.image": "內文插圖下載已{state}",
     "settings.storageFailed": "無法讀取或儲存設定，已還原原值，請稍後再試",
     "settings.log.epubTag": "EPUB 標籤頁已{state}",
+    "settings.log.chapterRequestMode": "批次章節請求已設為 {mode}，下次下載生效",
     "settings.log.concurrency": "下載執行緒數已更新為：{count}",
     "settings.log.initialized": "初始化參數：下載執行緒數：{concurrency}；插圖下載：{imageEnabled}"
 } satisfies Readonly<Record<keyof typeof ZH_CN_MESSAGES, string>>);

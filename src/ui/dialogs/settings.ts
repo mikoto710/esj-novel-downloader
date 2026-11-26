@@ -1,7 +1,9 @@
 import { state } from "../../app/page-session";
 import { invalidateCachedEpub } from "../../app/export";
 import {
+    getChapterRequestMode,
     getConcurrency,
+    setChapterRequestMode,
     setConcurrency,
     setImageDownloadSetting,
     getImageDownloadSetting,
@@ -106,6 +108,34 @@ function createInterfaceLanguageRow(initialPreference: InterfaceLocalePreference
     return el("div", { style: SETTINGS_ROW_STYLE }, [
         bindInterfaceText(el("label", { style: "color: #333;" }), "settings.interfaceLanguage"),
         interfaceLocaleSelect
+    ]);
+}
+
+function createChapterCompatibilityRow(): HTMLElement {
+    let enabled = getChapterRequestMode() === "fetch";
+    const id = "esj-settings-chapter-request-mode";
+    const checkbox = el("input", { id, type: "checkbox", role: "switch", checked: enabled });
+    checkbox.onchange = () => {
+        const checked = checkbox.checked;
+        if (
+            saveSettingsChange(
+                () => setChapterRequestMode(checked ? "fetch" : "gm"),
+                () => {
+                    checkbox.checked = enabled;
+                }
+            )
+        ) {
+            enabled = checked;
+            log(t("settings.log.chapterRequestMode", { mode: checked ? "fetch" : "GM" }));
+        }
+    };
+
+    return el("div", { style: SETTINGS_ROW_STYLE }, [
+        bindInterfaceText(el("label", { for: id, style: "color: #333; margin: 0;" }), "settings.chapterRequestMode"),
+        el("label", { className: "esj-switch", style: "margin: 0;" }, [
+            checkbox,
+            el("span", { className: "esj-slider" })
+        ])
     ]);
 }
 
@@ -451,6 +481,8 @@ export function createSettingsPanel(): void {
         rowImage,
         createDivider(),
         rowEpubTagPage,
+        createDivider(),
+        createChapterCompatibilityRow(),
         createDivider(),
 
         // 缓存、历史和诊断管理入口

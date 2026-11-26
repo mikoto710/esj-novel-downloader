@@ -15,6 +15,7 @@ export const ZH_CN_MESSAGES = Object.freeze({
     "settings.title": "脚本设置",
     "settings.versionUnknown": "版本未知",
     "settings.concurrency": "下载线程数（1-{max}）：",
+    "settings.chapterRequestMode": "批量下载兼容模式",
     "settings.cache": "下载缓存",
     "settings.history": "下载记录",
     "settings.diagnostics": "诊断与反馈",
@@ -467,6 +468,7 @@ export const ZH_CN_MESSAGES = Object.freeze({
     "settings.log.image": "正文插图下载已{state}",
     "settings.storageFailed": "无法读取或保存设置，已恢复原值，请稍后重试",
     "settings.log.epubTag": "EPUB 标签页已{state}",
+    "settings.log.chapterRequestMode": "批量章节请求已设为 {mode}，下次下载生效",
     "settings.log.concurrency": "下载线程数已更新为：{count}",
     "settings.log.initialized": "初始化参数：下载线程数：{concurrency}；插图下载：{imageEnabled}"
 });

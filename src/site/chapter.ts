@@ -2,7 +2,7 @@ import type { Chapter } from "../content/model";
 import type { ChapterFetcherPort, ChapterPageFailureCode, DownloadTask } from "../download/contracts";
 import { normalizeChapterMappingFont } from "../content/mapping-font";
 import { isReadingElement } from "../content/reading-markup";
-import { fetchWithTimeout } from "../browser/request";
+import { fetchPageText, fetchWithTimeout } from "../browser/request";
 import { parseInertHtml } from "../browser/html";
 import { processHtmlImages, type ImageProcessingFailure } from "./images";
 import { RequestGate } from "./request-gate";
@@ -196,7 +196,7 @@ export function findChapterBookLink(root: ParentNode): HTMLAnchorElement | null 
 /**
  * 普通章节请求与授权使用本任务同一个 gate，授权开始前等待普通请求完成
  */
-export function createChapterFetcher(requestGate: RequestGate): ChapterFetcherPort {
+export function createChapterFetcher(requestGate: RequestGate, useBrowserFetch: boolean): ChapterFetcherPort {
     const origin = location.origin;
     return {
         isSiteChapter: (task) => isCurrentSiteChapter(task.url, origin),
@@ -205,6 +205,13 @@ export function createChapterFetcher(requestGate: RequestGate): ChapterFetcherPo
                 const url = task.url;
                 if (!isCurrentSiteChapter(url, origin)) {
                     throw new Error("Invalid chapter target");
+                }
+                if (useBrowserFetch) {
+                    return fetchPageText(url, {
+                        credentials: "include",
+                        mode: "same-origin",
+                        signal: signal ?? null
+                    });
                 }
                 const response = await fetchWithTimeout(url, { credentials: "include" }, 15000, signal);
                 if (response.url && new URL(response.url).origin !== origin) {

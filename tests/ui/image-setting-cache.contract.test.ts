@@ -37,7 +37,7 @@ describe("image setting cache contracts", () => {
         );
         const { createSettingsPanel } = await import("../../src/ui/popups");
         createSettingsPanel();
-        const imageSetting = document.querySelector("#esj-settings .esj-switch input") as HTMLInputElement;
+        const imageSetting = document.querySelector("#esj-settings-images") as HTMLInputElement;
 
         imageSetting.checked = true;
         imageSetting.dispatchEvent(new Event("change", { bubbles: true }));
@@ -54,7 +54,7 @@ describe("image setting cache contracts", () => {
         listActiveBookDownloadLocks.mockResolvedValue([{ bookId: "701" }, { bookId: "702" }]);
         const { createSettingsPanel } = await import("../../src/ui/popups");
         createSettingsPanel();
-        const imageSetting = document.querySelector("#esj-settings .esj-switch input") as HTMLInputElement;
+        const imageSetting = document.querySelector("#esj-settings-images") as HTMLInputElement;
 
         imageSetting.checked = true;
         imageSetting.dispatchEvent(new Event("change", { bubbles: true }));

@@ -22,6 +22,7 @@ describe("settings storage failures", () => {
 
     it.each([
         { id: "esj-interface-language", key: "interface_locale_preference", previous: "auto", next: "zh-TW" },
+        { id: "esj-settings-chapter-request-mode", key: "chapter_request_mode", previous: "gm", next: true },
         { id: "esj-settings-concurrency", key: "concurrency", previous: 5, next: 3 },
         { id: "esj-settings-images", key: "enable_image_download", previous: false, next: true },
         { id: "esj-settings-epub-tag-page", key: "enable_epub_tag_page", previous: false, next: true }
@@ -35,13 +36,14 @@ describe("settings storage failures", () => {
             gm.values.set(storedKey, value);
         });
         const control = document.getElementById(id) as HTMLInputElement | HTMLSelectElement;
+        const previousChecked = control instanceof HTMLInputElement && control.checked;
         if (typeof next === "boolean" && control instanceof HTMLInputElement) control.checked = next;
         else control.value = String(next);
         control.dispatchEvent(new Event(id === "esj-settings-concurrency" ? "input" : "change", { bubbles: true }));
 
         await vi.waitFor(() => {
-            if (typeof previous === "boolean" && control instanceof HTMLInputElement) {
-                expect(control.checked).toBe(previous);
+            if (typeof next === "boolean" && control instanceof HTMLInputElement) {
+                expect(control.checked).toBe(previousChecked);
             } else {
                 expect(control.value).toBe(String(previous));
             }

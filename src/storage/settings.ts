@@ -9,6 +9,9 @@ const DEFAULT_CONFIG = {
 
 export const INTERFACE_LOCALE_PREFERENCE_KEY = "interface_locale_preference";
 const DEFAULT_INTERFACE_LOCALE_PREFERENCE: InterfaceLocalePreference = "auto";
+const CHAPTER_REQUEST_MODE_KEY = "chapter_request_mode";
+
+type ChapterRequestMode = "gm" | "fetch";
 
 /**
  * 获取并发数
@@ -33,6 +36,20 @@ export function setConcurrency(num: number): void {
         num = 1;
     }
     GM_setValue("concurrency", num);
+}
+
+/**
+ * 读取批量章节请求方式，旧安装默认使用 GM
+ */
+export function getChapterRequestMode(): ChapterRequestMode {
+    return GM_getValue<unknown>(CHAPTER_REQUEST_MODE_KEY, "gm") === "fetch" ? "fetch" : "gm";
+}
+
+/**
+ * 保存后续批量下载使用的章节请求方式
+ */
+export function setChapterRequestMode(mode: ChapterRequestMode): void {
+    GM_setValue(CHAPTER_REQUEST_MODE_KEY, mode);
 }
 
 /**

@@ -70,7 +70,7 @@ import {
 } from "../storage/cache/storage-error";
 import { createChapterCacheSources, type ChapterCacheSources } from "../storage/cache/chapter-source";
 import { publishCacheSyncEvent } from "../storage/cache/sync";
-import { getConcurrency, getImageDownloadSetting } from "../storage/settings";
+import { getChapterRequestMode, getConcurrency, getImageDownloadSetting } from "../storage/settings";
 import type { DownloadCancellationMode } from "../download/contracts";
 import type { SourcePageType } from "../content/model";
 import { createDownloadSelectionPopup } from "../ui/dialogs/download-selection";
@@ -758,7 +758,7 @@ function createDownloadDependencies(task: BrowserDownloadTask): DownloadDependen
         owns: () => ownsActiveBookDownloadLock(activeLock),
         shouldDiscardCache: () => shouldDiscardBookDownloadCache(activeLock)
     };
-    const chapterFetcher = createChapterFetcher(requestGate);
+    const chapterFetcher = createChapterFetcher(requestGate, getChapterRequestMode() === "fetch");
     const protectedChapterAuth = createProtectedChapterAuth(requestGate);
 
     function observeDownloadEvent(event: DownloadEvent): void {
