@@ -1,16 +1,12 @@
 import type { DownloadCancellationMode, DownloadCancellationPort } from "./contracts";
 import type { Chapter } from "../content/model";
+import { CANCELLATION_CACHE_FLUSH_TIMEOUT_MS } from "./cancellation-deadline";
 import {
     createStorageError,
     normalizeStorageError,
     toStorageFailure,
     type StorageFailure
 } from "../storage/cache/storage-error";
-
-/**
- * 普通取消等待缓存落盘的最长时间
- */
-export const CANCELLATION_CACHE_FLUSH_TIMEOUT_MS = 5_000;
 
 /**
  * 取消收尾时的缓存处理结果

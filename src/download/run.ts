@@ -1,10 +1,11 @@
-import type { DownloadDependencies, DownloadOptions, DownloadResult } from "./contracts";
+import type { DownloadCancellationOutcome, DownloadDependencies, DownloadOptions, DownloadResult } from "./contracts";
 import { StorageError, toStorageFailure, createStorageError } from "../storage/cache/storage-error";
 import { MappingFontError } from "../content/mapping-font";
 import { createDownloadPlan } from "./plan";
 import type { CacheMeta } from "../storage/cache/model";
 import { DownloadProgress } from "./progress";
 import { createTaskCacheWriter, type TaskCacheWriter } from "./cache-writer";
+import { createCancellationDeadline, type CancellationDeadline } from "./cancellation-deadline";
 import { createChapterPipeline, type ChapterPipeline } from "./chapter-pipeline";
 import { createExportData } from "../export/snapshot";
 import type { BookCover } from "../content/model";
@@ -100,6 +101,7 @@ export async function runDownload(
     };
     const progress = new DownloadProgress(plan, chapters, events, ui);
     const cache = createTaskCacheWriter(ports, options, plan, meta, progress);
+    const deadline = createCancellationDeadline(cancellation, dependencies.scheduler.schedule);
 
     // 字体、密码和缺章选择共享任务内唯一的决策队列
     const decisions = new UserDecisionGate();
@@ -129,7 +131,7 @@ export async function runDownload(
     ): Promise<void> {
         progress.transition("flushing-cache");
         log({ code });
-        const committed = await cache.flush();
+        const committed = await deadline.wait(cache.flush());
         checkActive();
         if (!committed) {
             throw createStorageError("ownership-lost", "write");
@@ -151,7 +153,7 @@ export async function runDownload(
         }
 
         progress.transition("restoring-cache");
-        const restored = await pipeline.restore();
+        const restored = await deadline.wait(pipeline.restore());
         checkActive();
         if (!restored) {
             throw createStorageError("ownership-lost", "write");
@@ -160,7 +162,7 @@ export async function runDownload(
         cover = prepareCover(options, ports, work.signal).catch(() => null);
 
         progress.transition("downloading");
-        await pipeline.download();
+        await deadline.wait(pipeline.download());
         checkActive();
 
         // 每轮补抓都先落盘，再决定是否还需补章
@@ -175,7 +177,7 @@ export async function runDownload(
                 : { code: "integrity-check-passed" }
         );
         if (issues.length) {
-            await pipeline.retry(issues);
+            await deadline.wait(pipeline.retry(issues));
             checkActive();
         }
         await flush("download-integrity-flush-started");
@@ -230,9 +232,11 @@ export async function runDownload(
                 break;
             }
             log({ code: "missing-chapter-retry-started", params: { count: missingTasks.length } });
-            await pipeline.retry(
-                missingTasks.map((task) => ({ task, reason: "missing" })),
-                true
+            await deadline.wait(
+                pipeline.retry(
+                    missingTasks.map((task) => ({ task, reason: "missing" })),
+                    true
+                )
             );
             checkActive();
 
@@ -243,12 +247,12 @@ export async function runDownload(
 
         progress.transition("preparing-export");
         log({ code: "export-preparation-started" });
-        const bookCover = await cover;
+        const bookCover = await deadline.wait(cover);
         checkActive();
 
         // 构造快照后完成缓存收尾，再返回导出结果，避免成功后仍有后台写入
         const data = createExportData(options, plan, meta.pageUrl, chapters, bookCover, progress.snapshot.failedCount);
-        const cacheCleanupFailure = await cache.finish();
+        const cacheCleanupFailure = await deadline.wait(cache.finish());
         checkActive();
         progress.recordExportReady();
         progress.transition("export-ready");
@@ -258,10 +262,11 @@ export async function runDownload(
         if (
             !failed &&
             (error instanceof DownloadCancelled ||
-                (cancellation.isCancellationRequested() && isCancellationError(error)))
+                (cancellation.isCancellationRequested() &&
+                    (isCancellationError(error) || error === deadline.signal.reason)))
         ) {
             try {
-                result = await finishCancellation(ports, progress, cache);
+                result = await finishCancellation(ports, progress, cache, deadline, cover);
             } catch (cancellationError) {
                 result = reportFailure(cancellationError, ports, progress, cache, pipeline);
             }
@@ -270,12 +275,18 @@ export async function runDownload(
             result = reportFailure(firstFailure, ports, progress, cache, pipeline);
         }
     } finally {
-        // 所有终态都等待封面与活动事务，不遗弃仍可能回写状态的 Promise
         work.abort();
-        await cover;
-        await cache.flush();
         cancellation.signal?.removeEventListener("abort", abortWork);
         try {
+            // 取消分支已在同一期限内结算封面和写入
+            if (result?.status !== "cancelled") {
+                await deadline.wait(Promise.all([cover, cache.flush()])).catch((error) => {
+                    if (error !== deadline.signal.reason) {
+                        throw error;
+                    }
+                    cache.discard();
+                });
+            }
             pipeline.dispose();
         } catch (error) {
             // 资源结束失败也交接给应用，已确定的原失败保留优先权
@@ -283,6 +294,7 @@ export async function runDownload(
                 result = reportFailure(error, ports, progress, cache, pipeline);
             }
         } finally {
+            deadline.dispose();
             cache.dispose();
         }
     }
@@ -291,15 +303,30 @@ export async function runDownload(
 
 // 取消只在此收尾一次，缓存处理结果决定最终提示
 async function finishCancellation(
-    dependencies: Pick<DownloadDependencies, "log" | "scheduler">,
+    dependencies: Pick<DownloadDependencies, "log">,
     progress: DownloadProgress,
-    cache: TaskCacheWriter
+    cache: TaskCacheWriter,
+    deadline: CancellationDeadline,
+    cover: Promise<BookCover | null>
 ): Promise<DownloadResult> {
     const { log } = dependencies;
     progress.recordCancellationRequested();
     progress.transition("cancelling");
-    const outcome = await cache.cancel();
-    const storageFailure = cache.failure;
+    let outcome: DownloadCancellationOutcome;
+    let storageFailure;
+    try {
+        outcome = await cache.cancel(deadline);
+        await deadline.wait(Promise.all([cover, cache.flush()]));
+        storageFailure = cache.failure;
+    } catch (error) {
+        if (!(error instanceof StorageError) || error !== deadline.signal.reason) {
+            throw error;
+        }
+        // 中止在途写入并丢弃尚未提交的缓冲，已提交批次留在数据库
+        cache.discard();
+        outcome = "save-timed-out";
+        storageFailure = toStorageFailure(error);
+    }
     progress.recordCancellationFinished(outcome, storageFailure);
     progress.transition("cancelled");
     log({
@@ -315,7 +342,6 @@ async function finishCancellation(
                 : {})
         }
     });
-    await dependencies.scheduler.sleep(800);
     return { status: "cancelled", outcome, storageFailure };
 }
 

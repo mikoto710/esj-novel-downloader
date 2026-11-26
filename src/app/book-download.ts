@@ -34,6 +34,7 @@ import type {
 } from "../download/contracts";
 import type { ChapterSelection } from "../download/plan";
 import { createDownloadPlan, selectDownloadTasks } from "../download/plan";
+import { createCancellationDeadline, type CancellationDeadline } from "../download/cancellation-deadline";
 import { runDownload } from "../download/run";
 import { BookPreflightError, type PreparedBook } from "../site/book";
 import { createChapterFetcher, parseChapterHtml, processParsedChapter } from "../site/chapter";
@@ -282,6 +283,7 @@ async function executeBookDownload(
     }
 
     const lock = lockResult.lock;
+    const deadline = createCancellationDeadline(cancellation, scheduleDownloadCallback);
     const log = (message: Parameters<typeof browserDiagnosticLog>[0]) =>
         browserDiagnosticLog(message, lock.taskId, isCurrentDownload(lock.taskId));
     let ui: ReturnType<typeof createDownloadView> | undefined;
@@ -320,10 +322,12 @@ async function executeBookDownload(
         );
         diagnosticStarted = true;
         log(t("page.cachePreparing"));
-        const claimedCache = await claimBookCache(bookId, lock.taskId, imageEnabled, cancellation.signal, {
-            allowInvalidation,
-            chapterSources
-        });
+        const claimedCache = await deadline.wait(
+            claimBookCache(bookId, lock.taskId, imageEnabled, cancellation.signal, {
+                allowInvalidation,
+                chapterSources
+            })
+        );
         if (claimedCache.status === "needs-confirmation") {
             cleanup();
             return claimedCache;
@@ -341,8 +345,8 @@ async function executeBookDownload(
             return;
         }
 
-        await updateBookDownloadLockTitle(lock, plan.meta.rawBookName || plan.meta.bookName);
-        if (cancellation.isCancellationRequested() || !(await markBookDownloadRunning(lock))) {
+        await deadline.wait(updateBookDownloadLockTitle(lock, plan.meta.rawBookName || plan.meta.bookName));
+        if (cancellation.isCancellationRequested() || !(await deadline.wait(markBookDownloadRunning(lock)))) {
             if (!cancellation.isCancellationRequested()) {
                 recordBrowserDiagnosticFailure(
                     {
@@ -433,7 +437,15 @@ async function executeBookDownload(
             });
         }
     } finally {
-        const finalization = await finalizeBookDownloadTask(lock, stopHeartbeat, cancellation);
+        const finalization = await finalizeBookDownloadTask(lock, stopHeartbeat, cancellation, deadline);
+        deadline.dispose();
+        if (deadline.signal.aborted && result?.status !== "failed") {
+            result = {
+                status: "cancelled",
+                outcome: "save-timed-out",
+                storageFailure: toStorageFailure(deadline.signal.reason)
+            };
+        }
         if (diagnosticStarted) {
             if (exportReadyDiagnostic && result?.status === "ready") {
                 // 锁释放还可能接到远程清理或发现所有权丢失，终态与最终交付的结果一致
@@ -540,7 +552,8 @@ interface BookDownloadFinalizationResult {
 async function finalizeBookDownloadTask(
     lock: BookDownloadLock,
     stopHeartbeat: () => void,
-    cancellation: DownloadCancellationPort
+    cancellation: DownloadCancellationPort,
+    deadline: CancellationDeadline
 ): Promise<BookDownloadFinalizationResult> {
     const result: BookDownloadFinalizationResult = {
         discardRequested: cancellation.mode === "discard",
@@ -559,19 +572,26 @@ async function finalizeBookDownloadTask(
 
     try {
         // 未处理的远程清理意图与普通释放在锁事务内结算
-        let releaseResult = result.discardRequested ? "discard-requested" : await releaseBookDownloadLock(lock);
+        // 已排队的普通释放仍只认旧任务 ID，允许在界面超时退出后完成
+        let releaseResult = result.discardRequested
+            ? "discard-requested"
+            : await deadline.wait(releaseBookDownloadLock(lock));
         result.discardRequested = releaseResult === "discard-requested";
         if (result.discardRequested) {
             let cacheDiscarded = false;
             try {
-                cacheDiscarded = await clearBookCacheForTask(lock.bookId, lock.taskId);
+                deadline.signal.throwIfAborted();
+                cacheDiscarded = await deadline.wait(clearBookCacheForTask(lock.bookId, lock.taskId, deadline.signal));
                 if (!cacheDiscarded) {
                     throw createStorageError("ownership-lost", "clear");
                 }
             } catch (error) {
+                if (error === deadline.signal.reason) {
+                    throw error;
+                }
                 recordFailure(error, "clear", "cache-discard");
             }
-            releaseResult = await releaseBookDownloadLock(lock, { cacheDiscarded });
+            releaseResult = await deadline.wait(releaseBookDownloadLock(lock, { cacheDiscarded }));
         }
         if (releaseResult === "ownership-lost") {
             result.ownershipLost = true;
@@ -622,6 +642,11 @@ function createDownloadCancellation(): DownloadCancellationPort {
             return () => listeners.delete(listener);
         }
     };
+}
+
+function scheduleDownloadCallback(delayMs: number, callback: () => void): () => void {
+    const timer = window.setTimeout(callback, delayMs);
+    return () => window.clearTimeout(timer);
 }
 
 function getErrorMessage(error: unknown): string {
@@ -819,10 +844,7 @@ function createDownloadDependencies(task: BrowserDownloadTask): DownloadDependen
             sleepWithAbort,
             randomDelay: (minInclusive, maxInclusive) =>
                 Math.floor(Math.random() * (maxInclusive - minInclusive + 1)) + minInclusive,
-            schedule: (delayMs, callback) => {
-                const timer = window.setTimeout(callback, delayMs);
-                return () => window.clearTimeout(timer);
-            }
+            schedule: scheduleDownloadCallback
         },
         concurrency,
         fallbackPageUrl,

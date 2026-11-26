@@ -124,30 +124,53 @@ describe("browser download cancellation contracts", () => {
         expect(result).toMatchObject({ status: "cancelled", outcome: "saved" });
     });
 
-    it("bounds cancellation while a cache write is pending", async () => {
+    it.each(["write", "ownership check", "lock release"])("bounds cancellation during a pending %s", async (stage) => {
         const clock = useFakeClock();
         const saveStarted = createDeferred<void>();
-        const blockedSave = createDeferred<boolean>();
-        mocks.saveCache
-            .mockImplementationOnce((_bookId, _taskId, _entries, _meta, signal?: AbortSignal) => {
-                saveStarted.resolve();
-                signal?.addEventListener("abort", () => blockedSave.resolve(false), { once: true });
-                return blockedSave.promise;
-            })
-            .mockResolvedValue(true);
+        const save = createDeferred<boolean>();
+        const owns = createDeferred<boolean>();
+        const release = createDeferred<"released">();
+        const writeAborted = vi.fn();
+        mocks.saveCache.mockImplementationOnce((_bookId, _taskId, _entries, _meta, signal?: AbortSignal) => {
+            signal?.addEventListener("abort", writeAborted, { once: true });
+            saveStarted.resolve();
+            return save.promise;
+        });
+        if (stage === "ownership check") {
+            mocks.ownsLock.mockImplementationOnce(() => owns.promise);
+        }
+        if (stage === "lock release") {
+            mocks.release.mockImplementationOnce(() => release.promise);
+        }
         const downloadPromise = runtime.runBookDownload(createBrowserDownloadOptions(createBrowserDownloadTasks(5)));
         await saveStarted.promise;
         runtime.abortActiveDownload();
-        runtime.abortActiveDownload();
+        if (stage !== "write") {
+            // 锁操作只剩首次取消期限内的时间
+            await clock.advanceBy(1_000);
+            save.resolve(true);
+        }
 
         try {
-            const outcome = Promise.race([
-                downloadPromise.then(() => "settled" as const),
-                new Promise<"timeout">((resolve) => setTimeout(() => resolve("timeout"), 6_000))
-            ]);
-            await clock.advanceBy(6_000);
-            await expect(outcome).resolves.toBe("settled");
+            const finished = vi.fn();
+            void downloadPromise.then(finished);
+            await clock.advanceBy(stage === "write" ? 4_999 : 3_999);
+            expect(finished).not.toHaveBeenCalled();
+            if (stage === "ownership check") {
+                expect(mocks.ownsLock).toHaveBeenCalledOnce();
+            }
+            if (stage === "lock release") {
+                expect(mocks.release).toHaveBeenCalledOnce();
+            }
+            await clock.advanceBy(1);
+            expect(finished).toHaveBeenCalledOnce();
+            if (stage === "write") {
+                expect(writeAborted).toHaveBeenCalledOnce();
+            }
+            expect(mocks.clearCache).not.toHaveBeenCalled();
             expect(mocks.saveCache).toHaveBeenCalledOnce();
+            expect(mocks.stopHeartbeat).toHaveBeenCalledOnce();
+            expect(runtime.state.activeDownload).toBeNull();
             expect(mocks.fullCleanup).toHaveBeenCalledOnce();
             expect(mocks.showTerminalFailure).toHaveBeenCalledOnce();
             expect(mocks.showTerminalFailure).toHaveBeenCalledWith(
@@ -157,9 +180,15 @@ describe("browser download cancellation contracts", () => {
                 mocks.showTerminalFailure.mock.invocationCallOrder[0]
             );
         } finally {
-            blockedSave.resolve(true);
-            await downloadPromise;
-            clock.restore();
+            save.resolve(true);
+            owns.resolve(true);
+            release.resolve("released");
+            try {
+                await clock.advanceBy(1_000);
+                await downloadPromise;
+            } finally {
+                clock.restore();
+            }
         }
     });
 

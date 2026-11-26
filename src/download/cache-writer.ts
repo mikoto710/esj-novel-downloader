@@ -2,6 +2,7 @@ import type { CacheMeta } from "../storage/cache/model";
 import type { Chapter } from "../content/model";
 import type { DownloadCancellationOutcome, DownloadDependencies, DownloadOptions } from "./contracts";
 import { ChapterCacheWriteBuffer } from "./cache-write-buffer";
+import type { CancellationDeadline } from "./cancellation-deadline";
 import {
     createStorageError,
     normalizeStorageError,
@@ -155,9 +156,12 @@ export function createTaskCacheWriter(
                 throw failure;
             }
         },
-        async cancel(): Promise<DownloadCancellationOutcome> {
-            const owned = await ports.lock.owns();
-            const discard = await ports.lock.shouldDiscardCache();
+        async cancel(deadline: CancellationDeadline): Promise<DownloadCancellationOutcome> {
+            if (deadline.signal.aborted) {
+                throw deadline.signal.reason;
+            }
+            const owned = await deadline.wait(ports.lock.owns());
+            const discard = await deadline.wait(ports.lock.shouldDiscardCache());
             if (!owned || discard) {
                 buffer.discard();
                 ports.log({
@@ -166,7 +170,7 @@ export function createTaskCacheWriter(
                 return owned ? "discarded" : "ownership-lost";
             }
             ports.log({ code: "cancellation-cache-write-started" });
-            const result = await buffer.flushForCancellation();
+            const result = await deadline.wait(buffer.flushForCancellation());
             // 保存等待中仍可能升级为丢弃，以缓冲区最终结果为准
             return result === "saved" || result === "discarded"
                 ? result
