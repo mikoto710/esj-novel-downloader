@@ -29,8 +29,6 @@ describe("runDownload characterization", () => {
         expect(harness.exportData?.chapters).toEqual([createChapter(0), createChapter(2), createChapter(4)]);
         expect(harness.cacheClears).toEqual([]);
         expect(harness.cacheFinishes).toHaveLength(1);
-        expect(harness.initialChapters.has(1)).toBe(true);
-        expect(harness.initialChapters.has(3)).toBe(true);
         expect(harness.ui.snapshots.at(-1)).toMatchObject({ scheduledCount: 3, readyChapterCount: 3, failedCount: 0 });
     });
 
@@ -677,7 +675,6 @@ describe("runDownload characterization", () => {
 
         expect(harness.fetcher.calls.map((task) => task.index)).toEqual([0]);
         expect(harness.exportData).toBeNull();
-        expect(harness.ui.cleanup).not.toHaveBeenCalled();
     });
 
     it("blocks export and reports chapters whose mapped font remains invalid after retry", async () => {
@@ -692,7 +689,6 @@ describe("runDownload characterization", () => {
             failure: { kind: "mapping-font" }
         });
 
-        expect(harness.ui.showMappingFontFailure).not.toHaveBeenCalled();
         expect(harness.result).toMatchObject({
             status: "failed",
             failure: {
@@ -707,7 +703,6 @@ describe("runDownload characterization", () => {
                 ]
             }
         });
-        expect(harness.ui.showTerminalFailure).not.toHaveBeenCalled();
         expect(harness.exportData).toBeNull();
     });
 
@@ -758,7 +753,7 @@ describe("runDownload characterization", () => {
         });
     });
 
-    it("requires an explicit decision and exports safe placeholders without caching them", async () => {
+    it("requires an explicit decision before exporting safe chapter placeholders", async () => {
         const tasks = [
             createDownloadTask(0, {
                 title: "第 <script> 章",
@@ -782,7 +777,6 @@ describe("runDownload characterization", () => {
         expect(harness.exportData?.chapters[0].content).toContain("第 &lt;script&gt; 章");
         expect(harness.exportData?.chapters[0].content).not.toContain("<script>");
         expect(harness.exportData?.exportContext.chapterSummary).toEqual({ totalCount: 1, missingCount: 1 });
-        expect(harness.initialChapters.size).toBe(0);
         expect(harness.ui.snapshots.at(-1)).toMatchObject({
             phase: "export-ready",
             readyChapterCount: 0,

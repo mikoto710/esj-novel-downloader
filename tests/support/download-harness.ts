@@ -37,7 +37,6 @@ export function createDownloadHarness(chapters = new Map<number, Chapter>()) {
     const cacheFinishes: Array<{ bookId: string; taskId: string; totalChapters: number }> = [];
     const ui = {
         snapshots: [] as DownloadSnapshot[],
-        prepare: vi.fn(),
         update(snapshot: DownloadSnapshot) {
             this.snapshots.push(snapshot);
         },
@@ -51,10 +50,7 @@ export function createDownloadHarness(chapters = new Map<number, Chapter>()) {
             })
         ),
         closeProtectedChapterPrompt: vi.fn(),
-        updateMappingFontWarning: vi.fn(),
-        showMappingFontFailure: vi.fn(),
-        showTerminalFailure: vi.fn(),
-        cleanup: vi.fn()
+        updateMappingFontWarning: vi.fn()
     };
     const protectedChapterDetector = { isProtected: vi.fn(() => false) };
     const protectedChapterAuth = {
@@ -140,7 +136,6 @@ export function createDownloadHarness(chapters = new Map<number, Chapter>()) {
 
     return {
         dependencies,
-        initialChapters: chapters,
         events,
         fetcher,
         processedIndexes,

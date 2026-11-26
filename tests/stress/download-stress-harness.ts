@@ -5,17 +5,14 @@ import { createDownloadHarness } from "../support/download-harness";
 
 interface StressDownloadHarnessOptions {
     chapters?: Map<number, Chapter>;
-    concurrency?: number;
     processChapter?: (task: DownloadTask) => Promise<Chapter> | Chapter;
-    putBatch?: (entries: ReadonlyMap<number, Chapter>, signal?: AbortSignal) => Promise<boolean>;
+    putBatch?: () => Promise<boolean>;
 }
 
 export function createStressDownloadHarness(options: StressDownloadHarnessOptions) {
     const harness = createDownloadHarness(options.chapters);
     const { dependencies } = harness;
-    dependencies.concurrency = options.concurrency ?? 5;
-    dependencies.fallbackPageUrl = "https://www.esjzone.cc/detail/3000.html";
-    dependencies.lock.shouldDiscardCache = async () => dependencies.cancellation.mode === "discard";
+    dependencies.concurrency = 5;
     const processChapter = options.processChapter;
     if (processChapter) {
         dependencies.chapterProcessor.process = async (_html, task) => {
@@ -24,9 +21,9 @@ export function createStressDownloadHarness(options: StressDownloadHarnessOption
         };
     }
     const persistedBatches: number[][] = [];
-    dependencies.cache.putBatch = async (_bookId, _taskId, entries, _meta, signal) => {
+    dependencies.cache.putBatch = async (_bookId, _taskId, entries) => {
         persistedBatches.push([...entries.keys()]);
-        return options.putBatch?.(entries, signal) ?? true;
+        return options.putBatch?.() ?? true;
     };
     vi.spyOn(dependencies.cache, "finishForTask");
     vi.spyOn(dependencies.cache, "clearForTask");

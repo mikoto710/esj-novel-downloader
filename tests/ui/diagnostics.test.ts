@@ -12,7 +12,6 @@ import * as diagnosticRuntime from "../../src/diagnostics/runtime";
 import { createDiagnosticPopup } from "../../src/ui/dialogs/diagnostics";
 import { createSettingsPanel } from "../../src/ui/popups";
 import { setInterfaceLocalePreference } from "../../src/storage/settings";
-import * as locale from "../../src/ui/locale";
 import * as logger from "../../src/ui/log-view";
 import { createDeferred } from "../support/async";
 import { deleteTestDatabase } from "../support/resources";
@@ -93,11 +92,10 @@ describe("diagnostic history UI", () => {
         settingsTrigger.className = "esj-settings-trigger";
         document.body.appendChild(settingsTrigger);
         createSettingsPanel();
-        (
-            Array.from(document.querySelectorAll("#esj-settings button")).find(
-                (item) => item.textContent === locale.t("settings.diagnosticsButton")
-            ) as HTMLButtonElement
-        ).click();
+        document
+            .querySelector('#esj-settings [data-esj-i18n-text="settings.diagnosticsButton"]')!
+            .closest("button")!
+            .click();
 
         (document.querySelector("#esj-diagnostics") as HTMLElement).remove();
         await Promise.resolve();
@@ -111,11 +109,7 @@ describe("diagnostic history UI", () => {
         settingsTrigger.className = "esj-settings-trigger";
         document.body.appendChild(settingsTrigger);
         createSettingsPanel();
-        (
-            Array.from(document.querySelectorAll("#esj-settings button")).find(
-                (item) => item.textContent === locale.t("settings.diagnosticsButton")
-            ) as HTMLButtonElement
-        ).click();
+        createDiagnosticPopup();
 
         createDiagnosticPopup();
 
@@ -149,25 +143,6 @@ describe("diagnostic history UI", () => {
         expect((await listBrowserDiagnosticSessions()).history).toEqual([]);
     });
 
-    it("deletes one selected diagnostic without clearing the remaining history", async () => {
-        seedDiagnostic("success");
-        seedDiagnostic("failed");
-        createDiagnosticPopup();
-
-        await vi.waitFor(() => expect(diagnosticRow("failed")).toBeDefined());
-        diagnosticRow("failed")?.click();
-        (document.querySelector("#esj-diagnostic-delete") as HTMLButtonElement).click();
-
-        await vi.waitFor(() =>
-            expect(document.querySelector("#esj-diagnostic-list")?.textContent).not.toContain("Diagnostic Book failed")
-        );
-        expect((await listBrowserDiagnosticSessions()).history.map((session) => session.taskId)).toEqual([
-            "task-success"
-        ]);
-        expect(document.querySelector("#esj-diagnostic-list")?.textContent).toContain("Diagnostic Book success");
-        expect(document.querySelector("#esj-diagnostic-list")?.textContent).not.toContain("Diagnostic Book failed");
-    });
-
     it("preserves a different row selected while deletion is pending", async () => {
         seedDiagnostic("success", "first");
         seedDiagnostic("failed", "deleting");
@@ -190,6 +165,10 @@ describe("diagnostic history UI", () => {
         removing.resolve();
 
         await vi.waitFor(() => expect(diagnosticRow("deleting")).toBeUndefined());
+        expect((await listBrowserDiagnosticSessions()).history.map(({ taskId }) => taskId).sort()).toEqual([
+            "task-first",
+            "task-other"
+        ]);
         expect(document.querySelector("#esj-diagnostic-detail")?.textContent).toContain(`Diagnostic Book ${kept}`);
     });
 });

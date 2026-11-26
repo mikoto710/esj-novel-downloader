@@ -40,7 +40,6 @@ describe("download resilience pressure", () => {
         const releaseFirstWrite = createDeferred<boolean>();
         let writeCount = 0;
         const harness = createStressDownloadHarness({
-            concurrency: 5,
             putBatch: async () => {
                 writeCount += 1;
                 if (writeCount === 1) {
