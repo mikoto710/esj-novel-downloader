@@ -1,91 +1,42 @@
 # 代码结构与维护入口
 
-先按下面的表找到要改的职责，再读对应文件及附近测试。具体参数和分支约定放在源码注释中，验证选择见[测试指南](testing.md)。
+## 书籍下载
 
-## 改动入口
-
-以下路径均相对于 `src/`，类型跟随维护它的规则，不集中到全局 `types` 或混合上下文中。
-
-| 要修改的内容       | 主要文件                                                                                                                                                                                                                                                       | 职责                                                                                              |
-| ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
-| 页面按钮与单章预检 | [ui/pages/](../src/ui/pages/)、[index.ts](../src/index.ts)                                                                                                                                                                                                     | 页面识别、注入、入口状态                                                                          |
-| 书籍下载生命周期   | [app/book-download.ts](../src/app/book-download.ts)                                                                                                                                                                                                            | 选择、缓存确认、取得锁、装配能力、最终收尾                                                        |
-| 章节选择与阶段     | [download/plan.ts](../src/download/plan.ts)、[run.ts](../src/download/run.ts)、[progress.ts](../src/download/progress.ts)                                                                                                                                      | 索引集合、摘要兼容、执行顺序、进度                                                                |
-| 原目录与选择视图   | [site/book-directory.ts](../src/site/book-directory.ts)、[ui/dialogs/chapter-directory.ts](../src/ui/dialogs/chapter-directory.ts)、[chapter-search.ts](../src/ui/dialogs/chapter-search.ts)、[download-selection.ts](../src/ui/dialogs/download-selection.ts) | 被动展示副本、固定索引、目录勾选、搜索与跳转                                                      |
-| 章节抓取与决策     | [download/chapter-pipeline.ts](../src/download/chapter-pipeline.ts)、[protected-chapters.ts](../src/download/protected-chapters.ts)                                                                                                                            | restoreCachedChapters 恢复和字体确认；processChapterTask 抓取/补抓；密码规则在 protected-chapters |
-| 任务内缓存写入     | [download/cache-writer.ts](../src/download/cache-writer.ts)、[cache-write-buffer.ts](../src/download/cache-write-buffer.ts)                                                                                                                                    | 批量写入、等待写入、取消保存                                                                      |
-| 站点内容与资源规则 | [site/](../src/site/)、[content/](../src/content/)                                                                                                                                                                                                             | 书籍/正文解析、请求授权、图片处理；共享模型与字体/图片校验                                        |
-| 持久缓存与书籍锁   | [storage/cache/](../src/storage/cache/)、[book-lock.ts](../src/storage/book-lock.ts)                                                                                                                                                                           | 缓存兼容、事务、写入者保护、跨页锁与通知                                                          |
-| 页面会话与缓存管理 | [app/page-session.ts](../src/app/page-session.ts)、[cache-management.ts](../src/app/cache-management.ts)                                                                                                                                                       | 当前操作、显示摘要、最近结果、缓存列表与用户清理                                                  |
-| 导出与当前单章流程 | [app/export.ts](../src/app/export.ts)、[single-download.ts](../src/app/single-download.ts)、[export/](../src/export/)                                                                                                                                          | 应用层确认/下载/历史；快照、文件名、TXT/HTML/EPUB 生成                                            |
-| 弹窗与呈现         | [ui/dialogs/](../src/ui/dialogs/)、[download-view.ts](../src/ui/download-view.ts)、[dom.ts](../src/ui/dom.ts)、[log-view.ts](../src/ui/log-view.ts)                                                                                                            | 交互、任务进度、节点清理与日志显示                                                                |
-| 设置与历史         | [storage/settings.ts](../src/storage/settings.ts)、[history.ts](../src/storage/history.ts)                                                                                                                                                                     | 偏好和下载记录读写                                                                                |
-| 诊断               | [diagnostics/manager.ts](../src/diagnostics/manager.ts)、[runtime.ts](../src/diagnostics/runtime.ts)、[export.ts](../src/diagnostics/export.ts)                                                                                                                | 记录规则、任务接入、JSON 生成；存储在 `storage/diagnostics.ts`，展示在 `ui/messages/`             |
-| 界面语言           | [locale/](../src/locale/)、[site/locale.ts](../src/site/locale.ts)、[ui/locale.ts](../src/ui/locale.ts)                                                                                                                                                        | 纯语言目录、站点转换提示、偏好解析与界面刷新                                                      |
-| 浏览器能力         | [browser/](../src/browser/)                                                                                                                                                                                                                                    | 请求、等待、脚本加载、文件触发与剪贴板                                                            |
-
-## 按具体业务定位函数
-
-先在对应文件中找函数；进入实际请求、队列、事务或字体算法时，可以在其契约处停止阅读，只有修改算法时再深入。
-
-| 维护问题                | 主要函数                                                                                                                                    | 主要验证入口                                                             |
-| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
-| 网络重试次数/等待       | `download/retry-policy.ts`：`DEFAULT_CHAPTER_RETRY_POLICY`、`runWithRetry`                                                                  | `tests/download/download-retry-policy.test.ts`                           |
-| 标题与正文去重          | `site/chapter.ts`：`parseChapterHtml`                                                                                                       | 真实单章页面的标题重复/不重复正文验收                                    |
-| 缓存恢复/字体确认       | `download/chapter-pipeline.ts`：`restoreCachedChapters`、`ensureMappingConsent`                                                             | `tests/mapping-font/download-mapping-cache.test.ts`                      |
-| 处理/就绪/落盘计数      | `download/progress.ts`：`recordProcessed`、`recordCommitted`、`recordIntegrityScan`                                                         | `tests/download/download-progress.test.ts`、coordinator characterization |
-| 密码拒绝/重连/轮次      | `download/protected-chapters.ts`：`resolveProtectedChapter`、`beginProtectedRetryRound`                                                     | `tests/download/download-coordinator.characterization.test.ts`           |
-| 取消保存/丢弃/首错      | `app/book-download.ts`：`createDownloadCancellation`；`download/run.ts`：`stopOnFailure`、`finishCancellation`；`cache-writer.ts`：`cancel` | browser cancellation、cache-write-buffer、book-lock-cache contracts      |
-| 自选缺章/补抓/占位      | `download/run.ts`：`runDownload` 的显式循环；`export/snapshot.ts`：`createExportData`                                                       | coordinator characterization、range lifecycle                            |
-| EPUB 元信息/文件名/复用 | `export/epub.ts`：`buildEpub`；`export/filename.ts`：`createBookExportFilename`；`app/export.ts`：`exportBookRich`                          | `tests/export/export-isolation.contract.test.ts`、export recovery        |
-| 新增双语文案            | `locale/locales/zh-CN.ts`、`zh-TW.ts` 与实际控件；键从基础字典推导                                                                          | `tests/infrastructure/locale.test.ts`                                    |
-
-## 主要调用链
-
-弹窗交互和状态由各自模块维护。全局样式见 [ui/styles.css](../src/ui/styles.css)，局部样式见[章节选择](../src/ui/dialogs/download-selection.css)和[格式导出](../src/ui/dialogs/format-choice.css)。CSS 通过 `?inline` 导入，由构建工具压缩后内联到脚本，watch 模式保留可读格式。
-
-设置窗口的语言、并发、插图和 EPUB 设置行各自维护控件、最后保存值与失败恢复，父窗口负责排列和管理入口。缓存卡片的徽标、进度与操作区在同文件内组装。普通清理在 `clearItem` 中按来源确认，停止清理由 `stopAndClearItem` 处理实际结果。`app/cache-management` 检查活动书籍锁并保护对应的页面会话和导出结果，持久缓存在各版本的删除事务中复核写入者，旧版的两个缓存键一起保留或删除。`download-view` 的 `update` 统一检查任务归属并分派阶段显示，快照、取消状态和语言订阅归同一个任务视图。
-
-历史窗口持有完整记录、筛选和存储操作，[download-history-table](../src/ui/dialogs/download-history-table.ts) 负责列定义、记录行、列宽拖拽及其清理，通过记录 ID 将删除交回窗口；刷新记录只替换表体。诊断窗口持有当前选择、导出操作、可见性轮询和订阅，[diagnostic-session-view](../src/ui/dialogs/diagnostic-session-view.ts) 只根据传入会话生成行与详情节点。章节选择的控件、摘要和动作提示分别刷新，选择集合、准备阶段、文件名编辑状态和最终决策仍由选择会话统一维护，子视图不另存一份业务状态。
-
-书籍下载入口先读 `runBookDownload` 的准备/选择，再读同文件 `executeBookDownload` 的持锁执行及其后 `finalizeBookDownloadTask` 的统一收尾。核心 `runDownload` 直接保留完整性补抓和缺正文决策循环；选择窗口 `showReady` 保留文件名和勾选，目录 `searchChapters/revealChapter` 保留搜索与导航规则，搜索键盘行为在 `handleSearchKeydown`，格式窗口的 `handleRichDownload` 管理按钮和标题，HTML / EPUB 由 `app/export` 的 `exportBookRich` 生成或复用。密码弹窗的布局、`submitPassword`、`refreshPromptText` 与一次决策接线在同一函数内顺序排列。
-
-书籍下载的成功路径：
+从 [runBookDownload](../src/app/book-download.ts) 进入。详情页读取当前文档，论坛列表页限时取得详情页。准备窗口同时支持取消和再次导出。用户确认选择后，应用才取得书籍锁并认领缓存。
 
 ```text
-ui/pages/detail 或 forum
-  → app/book-download：打开准备窗口 → 冲突预检 → site/book 读取目录
-                       → 缓存预览 → 窗口就绪 → 确认选择 → 取得锁、认领缓存
-  → download/run：恢复 → 抓取 → 落盘 → 完整性检查与补抓
-                  → 缺章决策 → 导出快照 → 缓存收尾
-  → app/book-download 的 finally：处理清除请求、停心跳、释放锁
-  → app/page-session：检查归属、发布 ready、释放句柄（同步结算）
-  → app：按 ready/cancelled/failed 呈现格式窗口或完整失败原因
-
-用户选择格式 → app/export → export 格式生成 → browser/files 触发下载
+目录与只读预览 → 确认所选章节 → 取得锁、认领缓存
+→ 恢复可用章节 → 抓取与批量保存 → 检查完整性、补抓或确认占位
+→ 生成导出快照 → 结算缓存与书籍锁 → 发布本次结果 → 按所选格式下载
 ```
 
-单章流程：`ui/pages/single → app/single-download → site/chapter（解析和字体规范化）→ export → browser/files`。`downloadCurrentPage` 顺序调用 `readCurrentBookMetadata`、正文/字体确认、`prepareCurrentChapterImages`，再生成、触发与等待历史；下载触发标记在触发回调中固定，后续失败不能撤销它。它使用当前文档和原站解锁，不取得书籍锁，也不替换书籍下载结果。
+| 维护问题             | 代码入口                                                                                                                                                                                                                                 |
+| -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 页面挂载、目录与选择 | [页面入口](../src/index.ts)识别页面类型，30 秒内补查下载按钮。[原站目录](../src/site/book-directory.ts)与[选择视图](../src/ui/dialogs/chapter-directory.ts)共用绝对索引。[选择计划](../src/download/plan.ts)负责全选、自选和旧摘要兼容。 |
+| 网络请求与重试       | [站点路由](../src/site/routes.ts)判定当前镜像的章节地址。[章节请求](../src/site/chapter.ts)与[密码授权](../src/site/protected-chapter.ts)共用请求门控。[重试策略](../src/download/retry-policy.ts)维护次数与等待。                       |
+| 恢复、密码与缺章     | [章节流程](../src/download/chapter-pipeline.ts)恢复缓存、确认字体、抓取和补抓。[密码处理](../src/download/protected-chapters.ts)负责拒绝与重连。[runDownload](../src/download/run.ts)决定重试、占位或取消。                              |
+| 进度、缓存与清理     | [DownloadProgress](../src/download/progress.ts)区分本次就绪、整书库存与已提交章节。[批量写入](../src/download/cache-writer.ts)负责背压、提交和取消保存。[缓存管理](../src/app/cache-management.ts)合并持久缓存、活动任务及当前页结果。   |
+| 页面会话与导出       | [页面会话](../src/app/page-session.ts)按任务保存操作句柄、进度摘要和最近结果。[导出快照](../src/export/snapshot.ts)固定选择、正文和原任务身份。[格式导出](../src/app/export.ts)处理文件、历史与再次导出。                                |
 
-`download/contracts.ts` 描述输入、结果和能力；具体实现由应用层传入。`DownloadUiPort` 只提供进度与明确决策，`DownloadView.prepare/cleanup` 由应用统一持有。密码消费者直接等待 `resolveProtectedChapter` 的授权结果，随后结束专用窗口并处理正文；不通过事件或正文反向回调控制流程。核心终态直接返回失败原因，事件只供诊断和摘要观察。
+### 断点与写入权
 
-下载内核与快照模块不直接读取页面状态、浏览器 API 或持久化实现，ESLint 检查这些边界。审查依赖时区分运行时 import 与仅类型引用。
+- 全本和自选共用一本书的缓存。章节按原目录位置保存，站内章另存书号和章号，站外占位另存完整目标地址。预览与恢复都校验位置及来源。插章、调序或旧缓存缺少标识时，只重新抓取本次选中的不匹配项。其余位置留到下次选择。[章节来源](../src/storage/cache/chapter-source.ts)
+- v3 预览读取清单、索引和来源，不读取正文或 Blob。旧版整块记录在认领时迁移。已有的 v3 清单及清除标记优先于旧键。插图设置不兼容时先确认，再持锁复核许可。[缓存入口](../src/storage/cache/book-cache.ts)
+- 每书的锁、写入者和章节记录共用 v3 的 IndexedDB 对象存储。认领、每批写入、关闭和清理都在事务内核对任务及锁有效期。接管后旧任务失去写入权。缓存管理发出的停止请求绑定窗口显示的任务，释放事务结算已接受的清理请求并记录清理结果。[书籍锁](../src/storage/book-lock.ts) · [缓存事务](../src/storage/cache/indexeddb-repository.ts)
+- 全本成功后清理整书缓存，自选成功保留已存章节并关闭写入者。批次提交成功才计入落盘。普通取消和 `pagehide` 中止网络、保留写入权并尝试保存，在首次请求后的五秒内收尾。浏览器强制结束时，续传从最后成功提交的批次开始。[写入缓冲](../src/download/cache-write-buffer.ts)
+- 成功抓完的全本遇到普通清理或释放错误时仍可导出，界面另行提示。显式丢弃、失去所有权或新任务失败时保留此前的导出结果。缓存列表遇到局部读取失败时展示可确认的条目，支持刷新重试。[任务收尾](../src/app/book-download.ts) · [缓存窗口](../src/ui/dialogs/cache-manager.ts)
 
-## 修改流程时要保留的边界
+### 正文与输出
 
-- **准备与确认**：detail 读取当前文档，forum 限时请求详情正文。准备期间不取得锁或认领缓存。窗口支持取消和打开旧导出。关闭后中止请求，忽略晚到的目录、缓存和错误。
-- **选择与目录**：`download/plan` 用 `ChapterSelection` 表示所选章节的绝对索引，校验后生成固定任务，只有选齐目录才按全本处理。`site/book` 同时生成任务和静态目录副本，两者共用绝对索引。UI 保留原目录结构，映射不完整时回退到任务列表。
-- **选择与缓存**：全本和自选共用书籍锁与缓存。全本成功清缓存，部分选择成功关闭写入者并保留缓存。`previewBookCache` 只读：v3 读索引和元数据，旧版整块读取但不迁移。持锁后由 `claimBookCache` 在事务中复核兼容性和清除许可，认领成功才向任务交付正文。重新确认前释放锁，保留选择、目录和文件名。
-- **摘要兼容**：导出快照和新记录使用 `ChapterSelectionSummary`；读取已保存的历史和诊断时，由 `normalizeChapterSelectionSummary` 兼容旧区间格式。无法识别的摘要保留原记录并归入自选。展示时可省略区间，实际选择保持完整。
-- **缓存写入**：`cache-writer.enqueue` 接收和背压不等于提交；`flush` 确认提交后才增加唯一所选索引的落盘数。解释 false 前先复核取消，成功 `finish` 才关闭 writer 或清除全本。
-- **取消与收尾**：普通取消中断请求和等待，再用独立信号保存缓存；五秒期限从取消实例 `requestedAt` 首次时间开始，重复请求、保存入口延后或升级 discard 不重新计时。取消可升级为停止清除，由当前写入者清理。致命失败固定首错，用核心私有工作 signal 停止其他 worker、密码决策和封面，不请求用户取消。`download/worker-pool.ts` 的 `runWorkerPool` 在首错或取消后不再领取章节。已领取的工作和在途缓存写入结束后，核心才返回，应用再停心跳、释放锁。定时缓存写入耗尽重试或字体确认拒绝异常时也立即固定首错并中止其他等待；纯 AbortError 只有对应工作 signal 已中止才视为中止结果，不能伪造用户取消。封面普通失败降级为无封面。所有退出路径都要停心跳、释放锁。密码、字体和缺章决策在任务内串行，密码只留在内存。
-- **任务状态**：章节 Map、取消能力和锁归属具体任务。初始库存由 `DownloadOptions.initialChapters` 只读交接，核心复制 Map 容器后由章节流程写入；页面只保留入口、摘要和最近结果。回调按 `taskId` 校验归属，失败或取消保留旧导出。`readyChapterCount` 计本次选择的已有记录，`bookChapterCount` 计整书库存快照，`persistedCount` 计确认保存的唯一所选索引。计数增减只在 `DownloadProgress` 的具名方法，密码模块只提交自己的汇总。
-- **输出与资源**：按固定计划恢复、补抓和组装。未选章节不参与缺章判断或占位，占位只进入导出快照。书籍 HTML 有封面和目录，单章使用独立布局。图片按发起页面地址解析。字体先规范化和校验，映射字体禁用 TXT。
-- **再次导出**：导出使用原任务快照，自定义文件名只影响下载文件。书名和自定义名都为空时，历史记为“未命名小说”，文件名使用 `book` 加格式扩展名。EPUB 按生成设置和失效版本复用。关闭格式弹窗不取消生成，旧生成不能改写新任务标题。插图设置在缓存预览前固定，并发数在装配时读取，EPUB 设置在生成时读取。
-- **设置**：图片设置在 `changeImageDownloadSetting` 连续执行读取、跨页确认、保存和失败恢复。
-- **管理视图**：缓存弹窗分别展示活动任务保护和存储失败。批量清理等待各书操作结束，重试时重新枚举尚未清除的书籍和残留旧键。v3 清除标记阻止旧章节再次导入。历史 `createHistoryRow` 维护行操作，诊断 `downloadSelectedDiagnostic/copySelectedDiagnostic` 明确作用于当前选择，刷新保留筛选与滚动。
-- **装配**：`createDownloadDependencies` 直接绑定站点、存储和计时能力。`createChapterProcessor` 保留解析/图片采集与原任务诊断职责，`createCoverFetcher` 保留封面采集事实的本地化；`observeDownloadEvent` 只更新页面摘要和记录诊断。
-- **诊断**：`storage/diagnostics` 按站点来源隔离，在 IndexedDB 中按 `taskId` 事务更新。书籍和单章的失败、导出及收尾都显式指定原任务；来源会话已删除时不写入后来任务。旧 GM 记录按来源一次性导入，清空后不再导入。诊断故障不阻断下载，关闭观察不改变任务终态。
-- **语言**：`LocaleKey` 从简体基础字典派生，繁体字典声明处检查同键；新增文案只改两份字典和使用它的控件。依次采用手动偏好、站点提示和浏览器语言。界面刷新不改小说内容、元数据、URL 或站点协议原文。
+- 单章从[当前页导出](../src/app/single-download.ts)，使用原站解锁，不占用书籍锁。批量、解锁后重取和单章共用[正文解析](../src/site/chapter.ts)。登录页、缺少正文容器和空壳分别走现有失败处理。TXT 保留段落和换行，只去掉开头独占一行的重复章名。
+- 书籍抓取只请求当前官方镜像的章节。站外章节保留链接占位。密码仅保存在当前任务内存，授权请求限制在同源。作者的相对链接和插图按目标章节地址解析。单章 TXT 跳过插图采集，富文本采集和缓存共用[图片规则](../src/content/image-format.ts)。
+- HTML 与 EPUB 从[静态正文](../src/export/chapter-body.ts)生成，保留阅读链接、常见排版、表格、注音和插图，移除页面脚本、表单及嵌入内容。[映射字体](../src/content/mapping-font.ts)与正文一起校验和保存，含映射字体的选择支持 HTML 和 EPUB。
+- 缺章占位只进入本次选中的导出快照。原始书名用于元数据及历史，自定义名只影响[下载文件名](../src/export/filename.ts)。[EPUB](../src/export/epub.ts)写入 UTC 修改时间，按生成设置复用；旧任务的生成结果仍归原任务。
 
-一般改动直接运行对应测试；涉及取消、锁或缓存写入时，连同相邻退出路径与压力场景检查。测试目录、隔离要求和真实页面清单统一见[测试指南](testing.md)。
+## 界面、设置与诊断
+
+- [选择窗口](../src/ui/dialogs/download-selection.ts)持有勾选、搜索和文件名，[任务视图](../src/ui/download-view.ts)按任务刷新进度。全局[样式](../src/ui/styles.css)和局部 CSS 在构建时内联。
+- [下载设置](../src/storage/settings.ts)持久化偏好。插图开关在预览前固定，并发数在任务装配时读取，EPUB 设置在生成时读取。[界面语言](../src/ui/locale.ts)依次使用手动偏好、站点提示和浏览器语言。新增文案同时维护[简体](../src/locale/locales/zh-CN.ts)和[繁体](../src/locale/locales/zh-TW.ts)。
+- [历史](../src/storage/history.ts)和[诊断](../src/diagnostics/manager.ts)兼容旧选择摘要。诊断按站点来源和任务写入 IndexedDB，读取、复制及导出时也处理旧日志中的认证信息。诊断故障不阻断下载，已删除的会话不会写入后续任务。[诊断存储](../src/storage/diagnostics.ts) · [诊断导出](../src/diagnostics/export.ts)
+
+下载内核通过[能力接口](../src/download/contracts.ts)访问应用提供的站点、存储与交互能力。内核和快照的依赖边界由 ESLint 检查。测试选择和实页验收见[测试指南](testing.md)。

@@ -1,6 +1,6 @@
 # 贡献指南
 
-安装与构建见 [README](README.md#开发与构建)。修改代码时，按[结构文档](docs/architecture.md)的业务问题和函数索引定位主要规则；业务知识应能从普通指南与源码获得，测试选择见[测试指南](docs/testing.md)。
+安装与构建见 [README](README.md#开发与构建)，按业务定位源码见[架构指南](docs/architecture.md)。
 
 ## 开发与提交
 
@@ -9,9 +9,7 @@
 3. 复用已有测试；只为尚未覆盖、能够可靠重现的业务边界增加用例。更新受影响的文档，用户可见变化同时核对两份 README；维护入口变化时更新相关 `.codex/skills`。
 4. 执行适用检查，按职责拆分提交。PR 默认指向 `dev`，只有经维护者确认的发布或紧急修复 PR 可以指向 `main`。PR 写明问题、改动、验证方式和未验证范围；较大的行为或缓存格式调整先通过 Issue 讨论。
 
-本地迭代：`npm run watch` 监听构建，`npm run build:fast` 做类型检查后构建；两者均不能替代提交前检查。`npm run format` 会修改文件，执行后检查差异。
-
-提交前运行 `npm run build`。涉及下载生命周期、缓存、迁移、锁、并发或取消时加跑 `npm run test:stress`。页面和导出改动按[测试指南](docs/testing.md)验收，并在 PR 中写明实际浏览器、脚本管理器和文件验证范围。
+本地迭代可用 `npm run watch`。`npm run format` 会修改文件，执行后检查差异。提交前的构建、压力测试和实页验收按[测试指南](docs/testing.md)执行。
 
 ## 代码与注释
 
@@ -29,8 +27,6 @@
 
 测试使用合成数据与模拟 API，不访问实时站点、网络或生产 IndexedDB。不要提交完整小说正文、章节 HTML、认证信息、二进制或编码资源、原始缓存及未清理调用栈。分享诊断记录前确认书名、链接和失败章节信息可以公开。
 
-测试隔离、故障注入与新增用例的要求统一见[测试指南](docs/testing.md)。仓库指南只保留通用规则，验证结果记录在任务或 PR 中。
-
 ## 提交信息与发布
 
 Commit message 只保留一行 `type: subject`，不加 scope、body 或 footer。PR 标题沿用同一格式，例如：
@@ -40,9 +36,9 @@ fix: prevent stale task cache writes
 docs: clarify contribution workflow
 ```
 
-提交说明应概括最终改动；验证结果和提交整理的 SHA 映射记录在任务或 PR 中。PR 正文用于说明问题、改动、验证与未验证范围。
+提交说明应概括最终改动。需要记录提交整理的 SHA 映射时，写入任务或 PR。
 
 - 普通改动不修改版本，不提交 `dist/`；版本、标签、推送与发布由维护者明确授权。
 - `alpha`、`beta`、`rc` 从 `dev` 发布，稳定版从 `main` 发布。标签必须与 `package.json` 版本一致，并位于对应分支。
-- 发布资源从标签源码重新构建，完成 `build`、压力测试和适用的真实页面/阅读器验证。当前发布验收使用 Chrome + Tampermonkey，只报告实际验证的组合与限制。
+- 发布资源从标签源码重新构建。当前发布验收使用 Chrome + Tampermonkey。
 - 项目开发、审查、回归与发布检查统一使用 [`esj-downloader-dev`](.codex/skills/esj-downloader-dev/SKILL.md)。修改该 skill 后校验结构并同步 `agents/openai.yaml`；默认格式检查不含 `.codex/skills`，需显式检查改动的 Markdown / YAML。
