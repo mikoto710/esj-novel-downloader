@@ -1,7 +1,6 @@
 import { createStore, get, keys } from "idb-keyval";
 import type { CacheMeta } from "./model";
 import type { Chapter } from "../../content/model";
-import { hasBookDownloadTaskPresence } from "../book-lock";
 
 /**
  * v2 及更早版本的整本缓存记录
@@ -65,10 +64,17 @@ export async function readLegacyCache(bookId: string): Promise<LegacyCacheRecord
 }
 
 /**
+ * 列出旧缓存键，批量清理不需要加载正文
+ */
+export async function listLegacyCacheKeys(): Promise<string[]> {
+    return (await keys<IDBValidKey>(legacyStore)).map(String).filter(isLegacyCacheKey);
+}
+
+/**
  * 列出默认存储中的全部旧缓存记录
  */
 export async function listLegacyCacheRecords(): Promise<LegacyCacheRecord[]> {
-    const targetKeys = (await keys<IDBValidKey>(legacyStore)).map(String).filter(isLegacyCacheKey);
+    const targetKeys = await listLegacyCacheKeys();
     const records = await Promise.all(
         targetKeys.map(async (key) => {
             const data = await get<LegacyStoredCache>(key, legacyStore);
@@ -79,46 +85,25 @@ export async function listLegacyCacheRecords(): Promise<LegacyCacheRecord[]> {
 }
 
 /**
- * 仅在两个旧键均无其他活动写入者时允许清理，删除前在同一事务内复核
+ * 在同一个旧库事务中删除该书的两个旧缓存键
  */
-export function clearLegacyCacheIfInactive(
-    bookId: string,
-    action: "check" | "clear",
-    ownTaskId?: string
-): Promise<boolean> {
+export function clearLegacyCache(bookId: string): Promise<void> {
     return legacyStore(
-        action === "check" ? "readonly" : "readwrite",
+        "readwrite",
         (store) =>
-            new Promise<boolean>((resolve, reject) => {
+            new Promise<void>((resolve, reject) => {
                 const transaction = store.transaction;
-                const cacheKeys = [getCacheKey(bookId), getLegacyCacheKey(bookId)];
-                let allowed = false;
                 let operationError: unknown;
-                transaction.oncomplete = () => resolve(allowed);
+                transaction.oncomplete = () => resolve();
                 transaction.onabort = () =>
                     reject(operationError ?? transaction.error ?? new DOMException("旧缓存事务已中止", "AbortError"));
-                const requests = cacheKeys.map((key): IDBRequest<LegacyStoredCache | undefined> => store.get(key));
-
-                // 同一事务的请求按入队顺序执行，最后一次读成功后才能决定两个键是否一起删除
-                requests[1].onsuccess = () => {
-                    try {
-                        for (const request of requests) {
-                            const writer = request.result?.writerTaskId;
-                            if (writer && writer !== ownTaskId && hasBookDownloadTaskPresence(writer)) {
-                                return;
-                            }
-                        }
-                        if (action === "clear") {
-                            for (const key of cacheKeys) {
-                                store.delete(key);
-                            }
-                        }
-                        allowed = true;
-                    } catch (error) {
-                        operationError = error;
-                        transaction.abort();
-                    }
-                };
+                try {
+                    store.delete(getCacheKey(bookId));
+                    store.delete(getLegacyCacheKey(bookId));
+                } catch (error) {
+                    operationError = error;
+                    transaction.abort();
+                }
             })
     );
 }

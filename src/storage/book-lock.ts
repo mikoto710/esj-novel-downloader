@@ -1,21 +1,18 @@
-import { createStore, entries, get, update } from "idb-keyval";
+import { get, promisifyRequest } from "idb-keyval";
 import type { DownloadCancellationMode } from "../download/contracts";
 import type { SourcePageType } from "../content/model";
+import { cacheV3Store, getBookLockKey, runWriteTransaction } from "./cache/database";
 
-/**
- * 书籍下载任务锁状态，全本与范围共用
- */
 export type BookDownloadLockStatus = "preparing" | "running" | "released";
 
 /**
- * 跨页面的书籍下载任务锁，全本与范围共用，当前单章导出不使用
+ * 跨页面的书籍下载任务锁，全本与自选共用
  */
 export interface BookDownloadLock {
     bookId: string;
     bookName?: string;
     taskId: string;
-    presenceKey?: string;
-    sourcePageType: Extract<SourcePageType, "detail" | "forum">;
+    sourcePageType: FullBookSourcePageType;
     status: BookDownloadLockStatus;
     startedAt: number;
     heartbeatAt: number;
@@ -25,157 +22,114 @@ export interface BookDownloadLock {
     discardCacheCompletedAt?: number;
 }
 
-const LOCK_TTL_MS = 60 * 1000;
-const HEARTBEAT_INTERVAL_MS = 3 * 1000;
-const CANCELLATION_GRACE_MS = 10 * 1000;
-const PRESENCE_KEY_PREFIX = "esj_download_lock_presence_";
-const lockStore = createStore("esj-novel-downloader", "book-download-locks");
-
-function createPresenceKey(taskId: string): string {
-    return `${PRESENCE_KEY_PREFIX}${taskId}`;
-}
-
-function registerLockPresence(lock: BookDownloadLock): void {
-    if (!lock.presenceKey) {
-        return;
-    }
-    try {
-        localStorage.setItem(lock.presenceKey, lock.taskId);
-    } catch {
-        // localStorage 不可用时继续依靠心跳 TTL
-    }
-}
-
-function clearLockPresence(lock: BookDownloadLock): void {
-    if (!lock.presenceKey) {
-        return;
-    }
-    try {
-        if (localStorage.getItem(lock.presenceKey) === lock.taskId) {
-            localStorage.removeItem(lock.presenceKey);
-        }
-    } catch {
-        // localStorage 不可用时继续依靠心跳 TTL
-    }
-}
-
-function hasLockPresence(lock: BookDownloadLock): boolean {
-    if (!lock.presenceKey) {
-        return true;
-    }
-    try {
-        return localStorage.getItem(lock.presenceKey) === lock.taskId;
-    } catch {
-        return true;
-    }
-}
-
-/**
- * 查询任务页面 presence，读取不可用时保守视为仍在线
- */
-export function hasBookDownloadTaskPresence(taskId: string): boolean {
-    try {
-        return localStorage.getItem(createPresenceKey(taskId)) === taskId;
-    } catch {
-        return true;
-    }
-}
-
-/**
- * 支持启动书籍下载的页面类型
- */
 export type FullBookSourcePageType = Extract<SourcePageType, "detail" | "forum">;
 
-/**
- * 获取任务锁的结果
- */
 export type AcquireBookLockResult =
     | { acquired: true; lock: BookDownloadLock }
     | { acquired: false; lock: BookDownloadLock };
 
-/**
- * 请求取消任务的结果
- */
-export type RequestBookDownloadCancellationResult = { requested: true; taskId: string } | { requested: false };
+export type RequestBookDownloadCancellationResult =
+    | { requested: true; taskId: string }
+    | { requested: false; status: "not-active" | "replaced" };
 
-/**
- * 等待远程取消完成的结果
- */
+export type ReleaseBookDownloadLockResult = "released" | "discard-requested" | "ownership-lost";
+
 export type WaitForBookDownloadCancellationResult =
     | { status: "released"; cacheCleared: boolean }
     | { status: "replaced" | "stale" | "timeout" };
 
+const LOCK_TTL_MS = 60 * 1000;
+const HEARTBEAT_INTERVAL_MS = 3 * 1000;
+const CANCELLATION_GRACE_MS = 10 * 1000;
+
 /**
- * 获取指定书籍仍有效的下载任务锁
+ * 锁和持久缓存写入使用相同的有效期判定
  */
-export async function getActiveBookDownloadLock(bookId: string): Promise<BookDownloadLock | null> {
-    const lock = await get<BookDownloadLock>(bookId, lockStore);
-    return isLockActive(lock) ? lock : null;
+export function isBookDownloadLockActive(lock: BookDownloadLock | undefined): lock is BookDownloadLock {
+    return lock !== undefined && lock.status !== "released" && Date.now() - lock.heartbeatAt < LOCK_TTL_MS;
+}
+
+function readLock(bookId: string): Promise<BookDownloadLock | undefined> {
+    return get<BookDownloadLock>(getBookLockKey(bookId), cacheV3Store);
+}
+
+function updateLock<T>(
+    bookId: string,
+    update: (current: BookDownloadLock | undefined) => { result: T; next?: BookDownloadLock }
+): Promise<T> {
+    return runWriteTransaction<T>((store, setResult) => {
+        const key = getBookLockKey(bookId);
+        const request: IDBRequest<BookDownloadLock | undefined> = store.get(key);
+        request.onsuccess = () => {
+            const { result, next } = update(request.result);
+            if (next) {
+                store.put(next, key);
+            }
+            setResult(result);
+        };
+    });
+}
+
+function updateActiveLock(
+    lock: BookDownloadLock,
+    update: (current: BookDownloadLock) => BookDownloadLock | undefined
+): Promise<boolean> {
+    return updateLock(lock.bookId, (current) => {
+        const next = isBookDownloadLockActive(current) && current.taskId === lock.taskId ? update(current) : undefined;
+        return next ? { result: true, next } : { result: false };
+    });
 }
 
 /**
- * 获取会阻止当前页面启动下载的冲突任务锁
+ * 获取指定书籍仍有效的任务锁
  */
-export async function getConflictingBookDownloadLock(bookId: string): Promise<BookDownloadLock | null> {
-    return getActiveBookDownloadLock(bookId);
+export async function getActiveBookDownloadLock(bookId: string): Promise<BookDownloadLock | null> {
+    const lock = await readLock(bookId);
+    return isBookDownloadLockActive(lock) ? lock : null;
 }
+
+export { getActiveBookDownloadLock as getConflictingBookDownloadLock };
 
 /**
  * 判断任务是否仍拥有对应书籍的有效锁
  */
 export async function ownsActiveBookDownloadLock(lock: BookDownloadLock | null): Promise<boolean> {
-    if (!lock) {
-        return false;
-    }
-    const current = await get<BookDownloadLock>(lock.bookId, lockStore);
-    return Boolean(current && current.taskId === lock.taskId && isLockActive(current));
+    return lock !== null && (await getActiveBookDownloadLock(lock.bookId))?.taskId === lock.taskId;
 }
 
 /**
- * 列出全部仍有效的书籍下载任务锁
+ * 列出所有有效的书籍锁
  */
 export async function listActiveBookDownloadLocks(): Promise<BookDownloadLock[]> {
-    const allEntries = await entries<string, BookDownloadLock>(lockStore);
-    return allEntries.map(([, lock]) => lock).filter((lock): lock is BookDownloadLock => isLockActive(lock));
+    const range = IDBKeyRange.bound(["lock", ""], ["lock", "\uffff"]);
+    const locks = await cacheV3Store("readonly", (store) => promisifyRequest<BookDownloadLock[]>(store.getAll(range)));
+    return locks.filter(isBookDownloadLockActive);
 }
 
 /**
- * 向指定书籍的活动任务写入取消请求
+ * 仅向确认时对应的活动任务提交取消请求
  */
 export async function requestBookDownloadCancellation(
     bookId: string,
+    expectedTaskId: string,
     discardCache: boolean
 ): Promise<RequestBookDownloadCancellationResult> {
-    let result: RequestBookDownloadCancellationResult = { requested: false };
-
-    await update<BookDownloadLock>(
-        bookId,
-        (current) => {
-            if (!isLockActive(current)) {
-                return (
-                    current || {
-                        bookId,
-                        taskId: "released",
-                        sourcePageType: "detail",
-                        status: "released",
-                        startedAt: Date.now(),
-                        heartbeatAt: Date.now(),
-                        releasedAt: Date.now()
-                    }
-                );
-            }
-
-            result = { requested: true, taskId: current.taskId };
-            return {
+    return updateLock<RequestBookDownloadCancellationResult>(bookId, (current) => {
+        if (current && current.taskId !== expectedTaskId) {
+            return { result: { requested: false, status: "replaced" } };
+        }
+        if (!isBookDownloadLockActive(current)) {
+            return { result: { requested: false, status: "not-active" } };
+        }
+        return {
+            result: { requested: true, taskId: current.taskId },
+            next: {
                 ...current,
-                cancelRequestedAt: Date.now(),
-                discardCacheOnCancel: discardCache
-            };
-        },
-        lockStore
-    );
-
-    return result;
+                cancelRequestedAt: current.cancelRequestedAt ?? Date.now(),
+                discardCacheOnCancel: current.discardCacheOnCancel || discardCache
+            }
+        };
+    });
 }
 
 /**
@@ -187,7 +141,7 @@ export async function waitForBookDownloadCancellation(
 ): Promise<WaitForBookDownloadCancellationResult> {
     const deadline = Date.now() + CANCELLATION_GRACE_MS + 1000;
     while (Date.now() < deadline) {
-        const current = await get<BookDownloadLock>(bookId, lockStore);
+        const current = await readLock(bookId);
         if (!current) {
             return { status: "stale" };
         }
@@ -195,9 +149,9 @@ export async function waitForBookDownloadCancellation(
             return { status: "replaced" };
         }
         if (current.status === "released") {
-            return { status: "released", cacheCleared: Boolean(current.discardCacheCompletedAt) };
+            return { status: "released", cacheCleared: current.discardCacheCompletedAt !== undefined };
         }
-        if (!isLockActive(current)) {
+        if (!isBookDownloadLockActive(current)) {
             return { status: "stale" };
         }
         await new Promise<void>((resolve) => window.setTimeout(resolve, 250));
@@ -205,46 +159,26 @@ export async function waitForBookDownloadCancellation(
     return { status: "timeout" };
 }
 
-/**
- * 判断当前任务是否收到取消并清理缓存的请求
- */
-export async function shouldDiscardBookDownloadCache(lock: BookDownloadLock | null): Promise<boolean> {
-    if (!lock) {
-        return false;
-    }
-
-    const current = await get<BookDownloadLock>(lock.bookId, lockStore);
-    return Boolean(
-        current && current.taskId === lock.taskId && current.cancelRequestedAt && current.discardCacheOnCancel
-    );
-}
-
 async function getBookDownloadCancellationMode(lock: BookDownloadLock): Promise<DownloadCancellationMode | null> {
-    const current = await get<BookDownloadLock>(lock.bookId, lockStore);
-    if (!current || current.taskId !== lock.taskId || !current.cancelRequestedAt) {
+    const current = await getActiveBookDownloadLock(lock.bookId);
+    if (!current || current.taskId !== lock.taskId || current.cancelRequestedAt === undefined) {
         return null;
     }
     return current.discardCacheOnCancel ? "discard" : "flush";
 }
 
 /**
+ * 判断当前任务是否收到取消并清理缓存的请求
+ */
+export async function shouldDiscardBookDownloadCache(lock: BookDownloadLock | null): Promise<boolean> {
+    return lock !== null && (await getBookDownloadCancellationMode(lock)) === "discard";
+}
+
+/**
  * 更新当前任务锁中的书名和心跳时间
  */
 export async function updateBookDownloadLockTitle(lock: BookDownloadLock, bookName: string): Promise<void> {
-    await update<BookDownloadLock>(
-        lock.bookId,
-        (current) => {
-            if (!current || current.taskId !== lock.taskId || !isLockActive(current)) {
-                return current || createReleasedLock(lock);
-            }
-            return { ...current, bookName, heartbeatAt: Date.now() };
-        },
-        lockStore
-    );
-}
-
-function isLockActive(lock: BookDownloadLock | undefined, now = Date.now()): lock is BookDownloadLock {
-    return Boolean(lock && lock.status !== "released" && hasLockPresence(lock) && now - lock.heartbeatAt < LOCK_TTL_MS);
+    await updateActiveLock(lock, (current) => ({ ...current, bookName, heartbeatAt: Date.now() }));
 }
 
 function createTaskId(): string {
@@ -254,138 +188,65 @@ function createTaskId(): string {
     return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
-function createReleasedLock(lock: BookDownloadLock): BookDownloadLock {
-    const releasedAt = Date.now();
-    return { ...lock, status: "released", releasedAt, heartbeatAt: releasedAt };
-}
-
 /**
- * 原子获取书籍锁，有效冲突存在时返回原所有者而不覆盖
+ * 原子获取书籍锁，有效冲突存在时返回其所有者
  */
 export async function acquireBookDownloadLock(
     bookId: string,
     sourcePageType: FullBookSourcePageType
 ): Promise<AcquireBookLockResult> {
-    const now = Date.now();
-    const candidate: BookDownloadLock = {
-        bookId,
-        taskId: createTaskId(),
-        sourcePageType,
-        status: "preparing",
-        startedAt: now,
-        heartbeatAt: now
-    };
-    candidate.presenceKey = createPresenceKey(candidate.taskId);
-    registerLockPresence(candidate);
-    let result: AcquireBookLockResult | null = null;
-    let replacedLock: BookDownloadLock | null = null;
-
-    try {
-        await update<BookDownloadLock>(
+    return updateLock<AcquireBookLockResult>(bookId, (current) => {
+        if (isBookDownloadLockActive(current)) {
+            return { result: { acquired: false, lock: current } };
+        }
+        const now = Date.now();
+        const lock: BookDownloadLock = {
             bookId,
-            (current) => {
-                if (isLockActive(current, now)) {
-                    result = { acquired: false, lock: current };
-                    return current;
-                }
-                replacedLock = current || null;
-                result = { acquired: true, lock: candidate };
-                return candidate;
-            },
-            lockStore
-        );
-    } catch (error) {
-        clearLockPresence(candidate);
-        throw error;
-    }
-
-    const finalResult = result as AcquireBookLockResult | null;
-    const previousLock = replacedLock as BookDownloadLock | null;
-    if (!finalResult) {
-        clearLockPresence(candidate);
-        throw new Error("无法创建下载任务锁");
-    }
-    if (!finalResult.acquired) {
-        clearLockPresence(candidate);
-    } else if (previousLock) {
-        clearLockPresence(previousLock);
-    }
-    return finalResult;
+            taskId: createTaskId(),
+            sourcePageType,
+            status: "preparing",
+            startedAt: now,
+            heartbeatAt: now
+        };
+        return { result: { acquired: true, lock }, next: lock };
+    });
 }
 
 /**
- * 将已取得的任务锁标记为运行中
+ * 将已取得且未取消的任务锁标记为运行中
  */
 export async function markBookDownloadRunning(lock: BookDownloadLock): Promise<boolean> {
-    let updated = false;
-    await update<BookDownloadLock>(
-        lock.bookId,
-        (current) => {
-            if (
-                !current ||
-                current.taskId !== lock.taskId ||
-                !isLockActive(current) ||
-                Boolean(current.cancelRequestedAt)
-            ) {
-                return current || createReleasedLock(lock);
-            }
-            updated = true;
-            return { ...current, status: "running", heartbeatAt: Date.now() };
-        },
-        lockStore
+    return updateActiveLock(lock, (current) =>
+        current.cancelRequestedAt === undefined ? { ...current, status: "running", heartbeatAt: Date.now() } : undefined
     );
-    return updated;
 }
 
 /**
  * 刷新当前任务锁的心跳时间
  */
 export async function heartbeatBookDownloadLock(lock: BookDownloadLock): Promise<boolean> {
-    let updated = false;
-    await update<BookDownloadLock>(
-        lock.bookId,
-        (current) => {
-            if (!current || current.taskId !== lock.taskId || !isLockActive(current)) {
-                return current || createReleasedLock(lock);
-            }
-            updated = true;
-            return { ...current, heartbeatAt: Date.now() };
-        },
-        lockStore
-    );
-    return updated;
+    return updateActiveLock(lock, (current) => ({ ...current, heartbeatAt: Date.now() }));
 }
 
 /**
- * 启动任务心跳与页面关闭监听，返回停止定时器及监听的清理函数
+ * 启动任务心跳与离页保存监听，锁由任务收尾释放
  */
 export function startBookDownloadLockHeartbeat(
     lock: BookDownloadLock,
     onCancellationRequested?: (mode: DownloadCancellationMode) => void,
     intervalMs = HEARTBEAT_INTERVAL_MS
 ): () => void {
-    let stopped = false;
     let refreshing = false;
-    const releaseOnPageHide = () => {
-        onCancellationRequested?.("flush");
-        clearLockPresence(lock);
-        void releaseBookDownloadLock(lock).catch((error) => {
-            console.error("页面关闭时释放下载任务锁失败", error);
-        });
-    };
-    window.addEventListener("pagehide", releaseOnPageHide, { once: true });
+    const flushOnPageHide = () => onCancellationRequested?.("flush");
+    window.addEventListener("pagehide", flushOnPageHide, { once: true });
     const timer = window.setInterval(() => {
-        if (stopped || refreshing) {
+        if (refreshing) {
             return;
         }
         refreshing = true;
         void heartbeatBookDownloadLock(lock)
             .then(async (owned) => {
-                if (!owned) {
-                    onCancellationRequested?.("discard");
-                    return;
-                }
-                const cancellationMode = await getBookDownloadCancellationMode(lock);
+                const cancellationMode = owned ? await getBookDownloadCancellationMode(lock) : "discard";
                 if (cancellationMode) {
                     onCancellationRequested?.(cancellationMode);
                 }
@@ -399,39 +260,41 @@ export function startBookDownloadLockHeartbeat(
     }, intervalMs);
 
     return () => {
-        stopped = true;
         window.clearInterval(timer);
-        window.removeEventListener("pagehide", releaseOnPageHide);
+        window.removeEventListener("pagehide", flushOnPageHide);
     };
 }
 
 /**
- * 释放当前任务锁并保留 released 状态供远程页面观察
+ * 释放当前任务锁或交还尚未处理的清理请求，保留远程等待所需的回执
  */
 export async function releaseBookDownloadLock(
     lock: BookDownloadLock,
-    options: { cacheDiscarded?: boolean } = {}
-): Promise<void> {
-    clearLockPresence(lock);
-    await update<BookDownloadLock>(
-        lock.bookId,
-        (current) => {
-            if (!current || current.taskId !== lock.taskId) {
-                return current || createReleasedLock(lock);
-            }
-            const releasedAt = Date.now();
-            return {
+    options?: { cacheDiscarded: boolean }
+): Promise<ReleaseBookDownloadLockResult> {
+    return updateLock<ReleaseBookDownloadLockResult>(lock.bookId, (current) => {
+        if (!current || current.taskId !== lock.taskId) {
+            return { result: "ownership-lost" };
+        }
+        if (current.status === "released") {
+            return { result: "released" };
+        }
+        if (!isBookDownloadLockActive(current)) {
+            return { result: "ownership-lost" };
+        }
+        if (current.discardCacheOnCancel && options === undefined) {
+            return { result: "discard-requested" };
+        }
+        const releasedAt = Date.now();
+        return {
+            result: "released",
+            next: {
                 ...current,
                 status: "released",
                 releasedAt,
                 heartbeatAt: releasedAt,
-                ...(options.cacheDiscarded
-                    ? { discardCacheCompletedAt: releasedAt }
-                    : current.discardCacheCompletedAt === undefined
-                      ? {}
-                      : { discardCacheCompletedAt: current.discardCacheCompletedAt })
-            };
-        },
-        lockStore
-    );
+                ...(options?.cacheDiscarded ? { discardCacheCompletedAt: releasedAt } : {})
+            }
+        };
+    });
 }

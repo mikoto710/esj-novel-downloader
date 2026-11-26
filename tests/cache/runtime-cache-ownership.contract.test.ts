@@ -61,7 +61,7 @@ describe("runtime cache ownership", () => {
         mocks.readManifest.mockResolvedValue(undefined);
         mocks.activeLock.mockResolvedValue(null);
         mocks.activeLocks.mockResolvedValue([]);
-        mocks.listCaches.mockResolvedValue([]);
+        mocks.listCaches.mockResolvedValue({ entries: [], incomplete: false });
         mocks.clearCache.mockResolvedValue(true);
         mocks.clearAll.mockResolvedValue([]);
         mocks.shouldDiscard.mockResolvedValue(true);
@@ -69,7 +69,7 @@ describe("runtime cache ownership", () => {
         runtime = await import("../../src/app/page-session");
         manager = await import("../../src/app/cache-management");
         runtime.state.cachedData = createCachedData();
-        chapters = new Map([[0, createChapter()]]);
+        chapters = new Map([[0, createChapter(0, { content: "retained body" })]]);
         runtime.startRuntimeCacheSession(createCacheMeta(), "new-task", 1);
     });
 
@@ -135,7 +135,7 @@ describe("runtime cache ownership", () => {
 
     it("lists the previous export separately while another book downloads", async () => {
         runtime.startRuntimeCacheSession(createCacheMeta({ bookId: "200" }), "task-200", 1);
-        const items = await manager.listManagedCaches();
+        const { items } = await manager.listManagedCaches();
         expect(items.find((item) => item.bookId === "100")).toMatchObject({
             hasExportData: true,
             sources: ["runtime"]
@@ -148,22 +148,13 @@ describe("runtime cache ownership", () => {
             chapters: [createChapter(0), createChapter(1), createChapter(2)]
         });
         runtime.startRuntimeCacheSession(createCacheMeta({ imageEnabled: true }), "new-task", 1);
-        const items = await manager.listManagedCaches();
+        const { items } = await manager.listManagedCaches();
         expect(items[0]).toMatchObject({
             runtimeChapterCount: 1,
             progressCount: 1,
             imageEnabled: true,
             hasExportData: true
         });
-    });
-
-    it("requests task cancellation on ownership loss while preserving the previous export", async () => {
-        const cancellation = createDownloadHarness().dependencies.cancellation;
-        runtime.activateDownload("100", "new-task", cancellation);
-        mocks.readManifest.mockResolvedValue({ writerTaskId: "remote-task", cleared: false });
-        await send({ type: "cache-claimed", bookId: "100", taskId: "remote-task" });
-        expect(cancellation.isCancellationRequested()).toBe(true);
-        expect(runtime.state.cachedData).not.toBeNull();
     });
 
     it("lets the running core finalize ownership loss while retaining the previous export", async () => {
@@ -193,9 +184,10 @@ describe("runtime cache ownership", () => {
         await started.promise;
         mocks.readManifest.mockResolvedValue({ writerTaskId: "remote-task", cleared: false });
         await send({ type: "cache-claimed", bookId: "100", taskId: "remote-task" });
+        expect(cancellation.isCancellationRequested()).toBe(true);
         response.resolve("<p>late chapter</p>");
         expect(await download).toMatchObject({ status: "cancelled", outcome: "ownership-lost" });
-        expect(harness.initialChapters).toBe(chapters);
+        expect(chapters.get(0)?.content).toBe("retained body");
         expect(chapters.size).toBe(1);
         expect(harness.cacheClears).toEqual([]);
         expect(runtime.state.cachedData).toBe(previous);

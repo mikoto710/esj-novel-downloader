@@ -4,6 +4,7 @@ import { IDBFactory } from "fake-indexeddb";
 import { Blob as NodeBlob } from "node:buffer";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { BookCover } from "../../src/content/model";
+import { acquireCacheLock } from "../support/book-cache";
 
 function createCover(format: "jpg" | "png" = "jpg"): BookCover {
     const bytes = new Uint8Array(1_200);
@@ -27,10 +28,11 @@ describe("independent cover cache contracts", () => {
     it("stores a cover outside the manifest and reuses the exact URL", async () => {
         const storage = await import("../../src/storage/cache/book-cache");
         const cover = createCover("png");
-        await storage.claimBookCache("400", "task-400", false);
+        const lock = await acquireCacheLock("400");
+        await storage.claimBookCache("400", lock.taskId, false);
 
         await expect(
-            storage.putBookCoverForTask("400", "task-400", "https://img.example/cover.png", cover)
+            storage.putBookCoverForTask("400", lock.taskId, "https://img.example/cover.png", cover)
         ).resolves.toBe(true);
 
         await expect(storage.loadBookCover("400", "https://img.example/cover.png")).resolves.toMatchObject({
@@ -42,9 +44,10 @@ describe("independent cover cache contracts", () => {
 
     it("atomically replaces an old URL without reusing its Blob", async () => {
         const storage = await import("../../src/storage/cache/book-cache");
-        await storage.claimBookCache("401", "task-401", false);
-        await storage.putBookCoverForTask("401", "task-401", "https://img.example/old.jpg", createCover("jpg"));
-        await storage.putBookCoverForTask("401", "task-401", "https://img.example/new.png", createCover("png"));
+        const lock = await acquireCacheLock("401");
+        await storage.claimBookCache("401", lock.taskId, false);
+        await storage.putBookCoverForTask("401", lock.taskId, "https://img.example/old.jpg", createCover("jpg"));
+        await storage.putBookCoverForTask("401", lock.taskId, "https://img.example/new.png", createCover("png"));
 
         await expect(storage.loadBookCover("401", "https://img.example/old.jpg")).resolves.toBeNull();
         await expect(storage.loadBookCover("401", "https://img.example/new.png")).resolves.toMatchObject({
@@ -54,45 +57,52 @@ describe("independent cover cache contracts", () => {
 
     it("prevents a stale writer from replacing a newer task cover", async () => {
         const storage = await import("../../src/storage/cache/book-cache");
-        await storage.claimBookCache("402", "task-old", false);
-        await storage.putBookCoverForTask("402", "task-old", "https://img.example/current.jpg", createCover("jpg"));
-        await storage.claimBookCache("402", "task-new", false);
+        const lock = await acquireCacheLock("402");
+        await storage.claimBookCache("402", lock.taskId, false);
+        await storage.putBookCoverForTask("402", lock.taskId, "https://img.example/current.jpg", createCover("jpg"));
+        await (await import("../../src/storage/book-lock")).releaseBookDownloadLock(lock);
+        const nextLock = await acquireCacheLock("402");
 
         await expect(
-            storage.putBookCoverForTask("402", "task-old", "https://img.example/stale.png", createCover("png"))
+            storage.putBookCoverForTask("402", lock.taskId, "https://img.example/stale.png", createCover("png"))
         ).resolves.toBe(false);
+        await storage.claimBookCache("402", nextLock.taskId, false);
         await expect(storage.loadBookCover("402", "https://img.example/current.jpg")).resolves.not.toBeNull();
         await expect(storage.loadBookCover("402", "https://img.example/stale.png")).resolves.toBeNull();
     });
 
     it("clears the cover in the same task-owned book cleanup", async () => {
         const storage = await import("../../src/storage/cache/book-cache");
-        await storage.claimBookCache("403", "task-403", false);
-        await storage.putBookCoverForTask("403", "task-403", "https://img.example/cover.jpg", createCover("jpg"));
+        const lock = await acquireCacheLock("403");
+        await storage.claimBookCache("403", lock.taskId, false);
+        await storage.putBookCoverForTask("403", lock.taskId, "https://img.example/cover.jpg", createCover("jpg"));
 
-        await expect(storage.clearBookCacheForTask("403", "task-403")).resolves.toBe(true);
+        await expect(storage.clearBookCacheForTask("403", lock.taskId)).resolves.toBe(true);
         await expect(storage.loadBookCover("403", "https://img.example/cover.jpg")).resolves.toBeNull();
     });
 
     it("clears the cover through the cache manager book cleanup", async () => {
         const storage = await import("../../src/storage/cache/book-cache");
-        await storage.claimBookCache("405", "task-405", false);
-        await storage.putBookCoverForTask("405", "task-405", "https://img.example/cover.jpg", createCover("jpg"));
+        const lock = await acquireCacheLock("405");
+        await storage.claimBookCache("405", lock.taskId, false);
+        await storage.putBookCoverForTask("405", lock.taskId, "https://img.example/cover.jpg", createCover("jpg"));
 
+        await (await import("../../src/storage/book-lock")).releaseBookDownloadLock(lock);
         await expect(storage.clearBookCache("405")).resolves.toBe(true);
         await expect(storage.loadBookCover("405", "https://img.example/cover.jpg")).resolves.toBeNull();
     });
 
     it("does not write a cover after its transaction signal is cancelled", async () => {
         const storage = await import("../../src/storage/cache/book-cache");
-        await storage.claimBookCache("404", "task-404", false);
+        const lock = await acquireCacheLock("404");
+        await storage.claimBookCache("404", lock.taskId, false);
         const controller = new AbortController();
         controller.abort();
 
         await expect(
             storage.putBookCoverForTask(
                 "404",
-                "task-404",
+                lock.taskId,
                 "https://img.example/cover.jpg",
                 createCover("jpg"),
                 controller.signal

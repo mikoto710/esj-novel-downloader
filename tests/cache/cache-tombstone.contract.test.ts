@@ -4,6 +4,7 @@ import { IDBFactory } from "fake-indexeddb";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createCacheMeta, createChapter } from "../support";
 import { openLegacyCacheFixture } from "../support/legacy-cache";
+import { acquireCacheLock } from "../support/book-cache";
 
 describe("cache tombstone cleanup contracts", () => {
     beforeEach(() => {
@@ -13,97 +14,42 @@ describe("cache tombstone cleanup contracts", () => {
         localStorage.clear();
     });
 
-    it("preserves an active legacy writer after a failed read and clears it after release", async () => {
+    it("preserves legacy cache when the v3 authority cannot be checked", async () => {
         const { get, set } = openLegacyCacheFixture();
-        const locks = await import("../../src/storage/book-lock");
         const storage = await import("../../src/storage/cache/book-cache");
-        const acquired = await locks.acquireBookDownloadLock("600", "detail");
-        if (!acquired.acquired) {
-            throw new Error("expected lock");
-        }
         const key = "esj_down_600";
-        await set("esj_down_book_600", { ts: Date.now(), chapters: [] });
-        const cached = { ts: Date.now(), chapters: [[0, createChapter(0)]], writerTaskId: acquired.lock.taskId };
+        const cached = { ts: Date.now(), chapters: [[0, createChapter(0)]] };
         await set(key, cached);
 
         const read = IDBObjectStore.prototype.get;
-        vi.spyOn(IDBObjectStore.prototype, "get").mockImplementationOnce(function (this: IDBObjectStore, key) {
+        const fault = vi.spyOn(IDBObjectStore.prototype, "get").mockImplementationOnce(function (
+            this: IDBObjectStore,
+            key
+        ) {
             const request = read.call(this, key);
             request.addEventListener("success", () => this.transaction.abort(), { once: true });
             return request;
         });
-        try {
-            await expect(storage.clearBookCache("600")).rejects.toMatchObject({
-                operation: "clear",
-                reason: "transaction-aborted"
-            });
-            await expect(storage.clearBookCache("600")).resolves.toBe(false);
-            expect(await get(key)).toEqual(cached);
-            const repository = await import("../../src/storage/cache/indexeddb-repository");
-            await expect(repository.readCacheManifestV3("600")).resolves.toBeUndefined();
-        } finally {
-            await locks.releaseBookDownloadLock(acquired.lock);
-        }
+        await expect(storage.clearBookCache("600")).rejects.toMatchObject({
+            operation: "clear",
+            reason: "transaction-aborted"
+        });
+        fault.mockRestore();
+        expect(await get(key)).toEqual(cached);
+        expect((await storage.previewBookCache("600", false)).size).toBe(1);
+
         await expect(storage.clearBookCache("600")).resolves.toBe(true);
         expect(await get(key)).toBeUndefined();
-    });
-
-    it.each(["manager", "task"] as const)("protects a late legacy writer during %s cleanup", async (entry) => {
-        const { get, set } = openLegacyCacheFixture();
-        const storage = await import("../../src/storage/cache/book-cache");
-        const locks = await import("../../src/storage/book-lock");
-        const ownerBookId = entry === "manager" ? "605" : "606";
-        const acquired = await locks.acquireBookDownloadLock(ownerBookId, "detail");
-        if (!acquired.acquired) {
-            throw new Error("expected lock");
-        }
-        const ownTaskId = entry === "task" ? acquired.lock.taskId : "old-task";
-        const currentKey = `esj_down_book_${ownerBookId}`;
-        const olderKey = `esj_down_${ownerBookId}`;
-        const original = { ts: Date.now(), chapters: [[0, createChapter(0)]], writerTaskId: ownTaskId };
-        const foreign = { ...original, writerTaskId: `late-${entry}` };
-        localStorage.setItem(`esj_download_lock_presence_${foreign.writerTaskId}`, foreign.writerTaskId);
-        try {
-            await storage.claimBookCache(ownerBookId, ownTaskId, false);
-            await set(currentKey, original);
-
-            // v3 清除标记提交前排入另一页的旧库认领，旧库删除事务必须读到新 writer
-            const put = IDBObjectStore.prototype.put;
-            vi.spyOn(IDBObjectStore.prototype, "put").mockImplementationOnce(function (
-                this: IDBObjectStore,
-                value,
-                key
-            ) {
-                const request = put.call(this, value, key);
-                request.addEventListener("success", () => {
-                    void set(olderKey, foreign);
-                });
-                return request;
-            });
-            const clear = () =>
-                entry === "manager"
-                    ? storage.clearBookCache(ownerBookId)
-                    : storage.clearBookCacheForTask(ownerBookId, ownTaskId);
-            await expect(clear()).resolves.toBe(false);
-            expect(await get(currentKey)).toEqual(original);
-            expect(await get(olderKey)).toEqual(foreign);
-            expect((await storage.previewBookCache(ownerBookId, false)).size).toBe(0);
-
-            localStorage.removeItem(`esj_download_lock_presence_${foreign.writerTaskId}`);
-            await expect(clear()).resolves.toBe(true);
-            expect(await get(currentKey)).toBeUndefined();
-            expect(await get(olderKey)).toBeUndefined();
-        } finally {
-            await locks.releaseBookDownloadLock(acquired.lock);
-        }
     });
 
     it("keeps v3 chapters available when the clear transaction fails", async () => {
         const storage = await import("../../src/storage/cache/book-cache");
         const repository = await import("../../src/storage/cache/indexeddb-repository");
         const chapter = createChapter(0);
-        await storage.claimBookCache("602", "task-602", false);
-        await storage.putBookCacheBatchForTask("602", "task-602", new Map([[0, chapter]]));
+        const lock = await acquireCacheLock("602");
+        await storage.claimBookCache("602", lock.taskId, false);
+        await storage.putBookCacheBatchForTask("602", lock.taskId, new Map([[0, chapter]]));
+        await (await import("../../src/storage/book-lock")).releaseBookDownloadLock(lock);
 
         // 写入清除标记时抛错，先前排队的章节删除也应在同一事务中回滚
         vi.spyOn(IDBObjectStore.prototype, "put").mockImplementationOnce(() => {
@@ -179,9 +125,10 @@ describe("cache tombstone cleanup contracts", () => {
             return remove.call(this, target);
         });
 
-        await expect(storage.claimBookCache("604", "task-604", false)).resolves.toMatchObject({ status: "claimed" });
+        const lock = await acquireCacheLock("604");
+        await expect(storage.claimBookCache("604", lock.taskId, false)).resolves.toMatchObject({ status: "claimed" });
         expect((await repository.readCacheChaptersV3("604")).get(0)).toEqual(chapter);
-        await expect(storage.clearBookCacheForTask("604", "task-604")).rejects.toMatchObject({
+        await expect(storage.clearBookCacheForTask("604", lock.taskId)).rejects.toMatchObject({
             reason: "database-unavailable",
             operation: "clear"
         });
@@ -189,7 +136,7 @@ describe("cache tombstone cleanup contracts", () => {
         expect((await storage.previewBookCache("604", false)).size).toBe(0);
 
         fault.mockRestore();
-        await expect(storage.clearBookCacheForTask("604", "task-604")).resolves.toBe(true);
+        await expect(storage.clearBookCacheForTask("604", lock.taskId)).resolves.toBe(true);
         expect(await get(key)).toBeUndefined();
     });
 });

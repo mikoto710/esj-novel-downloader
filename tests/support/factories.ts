@@ -87,7 +87,6 @@ export function createBookLock(overrides: Partial<BookDownloadLock> = {}): BookD
         bookId: "100",
         bookName: "测试小说",
         taskId: "task-100",
-        presenceKey: "esj_download_lock_presence_task-100",
         sourcePageType: "detail",
         status: "preparing",
         startedAt: BASE_TIME,

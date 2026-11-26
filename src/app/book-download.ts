@@ -62,6 +62,7 @@ import {
     putBookCoverForTask,
     type BookCachePreviewResult
 } from "../storage/cache/book-cache";
+import { createChapterCacheSources, type ChapterCacheSources } from "../storage/cache/chapter-source";
 import {
     createStorageError,
     normalizeStorageError,
@@ -170,7 +171,11 @@ export async function runBookDownload(options: RunBookDownloadOptions): Promise<
                 throw new BookPreflightError("chapter-list-missing", "chapter-list");
             }
             popup.showPreparing("checking-cache");
-            preview = await previewBookCache(bookId, imageEnabled);
+            preview = await previewBookCache(
+                bookId,
+                imageEnabled,
+                createChapterCacheSources(plan.tasks, location.origin)
+            );
             if (isPreparing()) {
                 popup.showReady(selectionPreview());
             }
@@ -266,6 +271,7 @@ async function executeBookDownload(
     });
     const selection = downloadPlan.selection;
     const selectedTasks = [...downloadPlan.tasks];
+    const chapterSources = createChapterCacheSources(selectedTasks, location.origin);
     const cancellation = createDownloadCancellation();
     const lockResult = await acquireBookDownloadLock(bookId, sourcePageType);
     if (!lockResult.acquired) {
@@ -314,7 +320,8 @@ async function executeBookDownload(
         diagnosticStarted = true;
         log(t("page.cachePreparing"));
         const claimedCache = await claimBookCache(bookId, lock.taskId, imageEnabled, cancellation.signal, {
-            allowInvalidation
+            allowInvalidation,
+            chapterSources
         });
         if (claimedCache.status === "needs-confirmation") {
             cleanup();
@@ -378,7 +385,7 @@ async function executeBookDownload(
         } as const;
         updateBrowserDiagnosticSession(downloadOptions);
         downloadStarted = true;
-        const dependencies = createDownloadDependencies({ lock, cancellation, ui });
+        const dependencies = createDownloadDependencies({ lock, cancellation, ui, chapterSources });
         result = await runDownload(downloadOptions, dependencies);
     } catch (error) {
         const details = error instanceof Error ? error : new Error(String(error));
@@ -605,6 +612,7 @@ interface BrowserDownloadTask {
     lock: BookDownloadLock;
     cancellation: DownloadCancellationPort;
     ui: DownloadUiPort;
+    chapterSources: ChapterCacheSources;
 }
 
 const protectedChapterDetector = { isProtected: isProtectedChapterHtml };
@@ -689,13 +697,6 @@ const coverCache: CoverCacheRepository = {
     put: putBookCoverForTask
 };
 
-// IndexedDB 适配层只接收本批发生变化的章节
-const cache: ChapterCacheRepository = {
-    putBatch: putBookCacheBatchForTask,
-    finishForTask: finishBookCacheForTask,
-    clearForTask: clearBookCacheForTask
-};
-
 // 装配本任务的站点、浏览器、存储和视图能力，保持原任务身份
 function createDownloadDependencies(task: BrowserDownloadTask): DownloadDependencies {
     const concurrency = getConcurrency();
@@ -703,7 +704,13 @@ function createDownloadDependencies(task: BrowserDownloadTask): DownloadDependen
     const startedAt = Date.now();
     const requestGate = new RequestGate();
     let taskStarted = false;
-    const { lock: activeLock, cancellation } = task;
+    const { lock: activeLock, cancellation, chapterSources } = task;
+    const cache: ChapterCacheRepository = {
+        putBatch: (bookId, taskId, entries, meta, signal) =>
+            putBookCacheBatchForTask(bookId, taskId, entries, meta, signal, chapterSources),
+        finishForTask: finishBookCacheForTask,
+        clearForTask: clearBookCacheForTask
+    };
     const { ui } = task;
     const lock: BookLockService = {
         owns: () => ownsActiveBookDownloadLock(activeLock),

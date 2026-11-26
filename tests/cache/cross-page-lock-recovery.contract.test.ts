@@ -3,6 +3,7 @@
 import { IDBFactory } from "fake-indexeddb";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createCacheMeta, createChapter } from "../support";
+import { acquireCacheLock } from "../support/book-cache";
 
 describe("cross-page lock recovery contracts", () => {
     beforeEach(() => {
@@ -18,11 +19,12 @@ describe("cross-page lock recovery contracts", () => {
         const unsubscribe = sync.subscribeCacheSync(vi.fn());
 
         expect(() => sync.publishCacheSyncEvent({ type: "cache-cleared", bookId: "700" })).not.toThrow();
-        await storage.claimBookCache("700", "task-700", false);
+        const lock = await acquireCacheLock("700");
+        await storage.claimBookCache("700", lock.taskId, false);
         expect(
             await storage.putBookCacheBatchForTask(
                 "700",
-                "task-700",
+                lock.taskId,
                 new Map([[0, createChapter(0)]]),
                 createCacheMeta({ bookId: "700", imageEnabled: false })
             )
@@ -96,27 +98,29 @@ describe("cross-page lock recovery contracts", () => {
         await Promise.all([locks.releaseBookDownloadLock(first.lock), locks.releaseBookDownloadLock(second.lock)]);
     });
 
-    it("requests cancellation and releases the lock best-effort on pagehide", async () => {
-        const { createStore, get } = await import("idb-keyval");
+    it("requests a pagehide flush and leaves ownership available for the last batch", async () => {
         const locks = await import("../../src/storage/book-lock");
-        const acquired = await locks.acquireBookDownloadLock("720", "detail");
-        if (!acquired.acquired) {
-            throw new Error("expected lock");
-        }
+        const storage = await import("../../src/storage/cache/book-cache");
+        const lock = await acquireCacheLock("720");
+        await storage.claimBookCache("720", lock.taskId, false);
         const onCancellationRequested = vi.fn();
-        const stopHeartbeat = locks.startBookDownloadLockHeartbeat(acquired.lock, onCancellationRequested);
+        const stopHeartbeat = locks.startBookDownloadLockHeartbeat(lock, onCancellationRequested);
 
-        window.dispatchEvent(new Event("pagehide"));
+        try {
+            window.dispatchEvent(new Event("pagehide"));
+            expect(onCancellationRequested).toHaveBeenCalledExactlyOnceWith("flush");
+            expect(await locks.ownsActiveBookDownloadLock(lock)).toBe(true);
+            expect((await locks.acquireBookDownloadLock("720", "forum")).acquired).toBe(false);
+            expect(await storage.putBookCacheBatchForTask("720", lock.taskId, new Map([[0, createChapter(0)]]))).toBe(
+                true
+            );
+        } finally {
+            stopHeartbeat();
+            await locks.releaseBookDownloadLock(lock);
+        }
 
-        await vi.waitFor(async () => {
-            const stored = await get("720", createStore("esj-novel-downloader", "book-download-locks"));
-            expect(stored).toMatchObject({ taskId: acquired.lock.taskId, status: "released" });
-        });
-        expect(onCancellationRequested).toHaveBeenCalledOnce();
-        expect(onCancellationRequested).toHaveBeenCalledWith("flush");
         expect(await locks.getActiveBookDownloadLock("720")).toBeNull();
-
-        stopHeartbeat();
+        expect((await storage.previewBookCache("720", false)).size).toBe(1);
     });
 
     it("lets a new task take over an expired lock without granting the stale writer cache access", async () => {
@@ -140,19 +144,20 @@ describe("cross-page lock recovery contracts", () => {
         if (!replacement.acquired) {
             throw new Error("expected expired lock takeover");
         }
+        const staleBatch = new Map([[0, createChapter(0, { content: "stale overwrite" })]]);
+        expect(await storage.putBookCacheBatchForTask("730", first.lock.taskId, staleBatch)).toBe(false);
+        expect(await storage.clearBookCache("730")).toBe(false);
+        expect(await storage.clearBookCacheForTask("730", first.lock.taskId)).toBe(false);
+        await expect(
+            storage.claimBookCache("730", first.lock.taskId, true, undefined, { allowInvalidation: true })
+        ).rejects.toMatchObject({ reason: "ownership-lost" });
         const claimed = await storage.claimBookCache("730", replacement.lock.taskId, false);
 
         if (claimed.status !== "claimed") throw new Error("expected compatible cache claim");
         expect(claimed.map?.get(0)?.content).toBe("recoverable chapter");
         expect(await locks.ownsActiveBookDownloadLock(first.lock)).toBe(false);
         expect(await locks.heartbeatBookDownloadLock(first.lock)).toBe(false);
-        expect(
-            await storage.putBookCacheBatchForTask(
-                "730",
-                first.lock.taskId,
-                new Map([[0, createChapter(0, { content: "stale overwrite" })]])
-            )
-        ).toBe(false);
+        expect(await storage.putBookCacheBatchForTask("730", first.lock.taskId, staleBatch)).toBe(false);
         expect(await storage.clearBookCacheForTask("730", first.lock.taskId)).toBe(false);
         expect(
             await storage.putBookCacheBatchForTask(
@@ -168,5 +173,8 @@ describe("cross-page lock recovery contracts", () => {
         expect(restored.get(0)?.content).toBe("recoverable chapter");
         expect(restored.get(1)?.content).toBe("replacement chapter");
         await locks.releaseBookDownloadLock(replacement.lock);
+        await expect(storage.claimBookCache("730", first.lock.taskId, false)).rejects.toMatchObject({
+            reason: "ownership-lost"
+        });
     });
 });

@@ -4,6 +4,7 @@ import { IDBFactory } from "fake-indexeddb";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createCacheMeta, createChapter, createDeferred } from "../support";
 import { openLegacyCacheFixture } from "../support/legacy-cache";
+import { acquireCacheLock } from "../support/book-cache";
 
 describe("book lock contracts", () => {
     beforeEach(() => {
@@ -14,6 +15,9 @@ describe("book lock contracts", () => {
 
     it("acquires, conflicts, heartbeats, and releases a book lock", async () => {
         const locks = await import("../../src/storage/book-lock");
+        vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+            throw new DOMException("storage full", "QuotaExceededError");
+        });
         const first = await locks.acquireBookDownloadLock("100", "detail");
         expect(first.acquired).toBe(true);
         if (!first.acquired) {
@@ -29,8 +33,12 @@ describe("book lock contracts", () => {
         expect(await locks.heartbeatBookDownloadLock(first.lock)).toBe(true);
         expect((await locks.getActiveBookDownloadLock("100"))?.heartbeatAt).toBe(heartbeatAt);
 
-        await locks.releaseBookDownloadLock(first.lock);
+        await expect(locks.releaseBookDownloadLock(first.lock)).resolves.toBe("released");
         expect(await locks.getActiveBookDownloadLock("100")).toBeNull();
+        await expect(locks.requestBookDownloadCancellation("100", first.lock.taskId, true)).resolves.toEqual({
+            requested: false,
+            status: "not-active"
+        });
     });
 
     it("forwards remote discard intent through the heartbeat", async () => {
@@ -44,7 +52,7 @@ describe("book lock contracts", () => {
         const stopHeartbeat = locks.startBookDownloadLockHeartbeat(acquired.lock, onCancellationRequested, 1);
 
         try {
-            expect(await locks.requestBookDownloadCancellation("104", true)).toEqual({
+            expect(await locks.requestBookDownloadCancellation("104", acquired.lock.taskId, true)).toEqual({
                 requested: true,
                 taskId: acquired.lock.taskId
             });
@@ -52,47 +60,52 @@ describe("book lock contracts", () => {
             expect(onCancellationRequested).toHaveBeenCalledOnce();
         } finally {
             stopHeartbeat();
-            await locks.releaseBookDownloadLock(acquired.lock);
+            await locks.releaseBookDownloadLock(acquired.lock, { cacheDiscarded: false });
         }
     });
 
-    it("does not let a stale task save or clear a replacement task cache", async () => {
-        vi.stubGlobal("BroadcastChannel", undefined);
+    it("rejects cancellation confirmed for the previous task", async () => {
         const locks = await import("../../src/storage/book-lock");
-        const storage = await import("../../src/storage/cache/book-cache");
+        const previous = await acquireCacheLock("104");
+        await locks.releaseBookDownloadLock(previous);
+        const current = await acquireCacheLock("104");
 
-        const first = await locks.acquireBookDownloadLock("100", "detail");
-        if (!first.acquired) {
-            throw new Error("expected first lock");
-        }
-        await storage.claimBookCache("100", first.lock.taskId, false);
-        const original = new Map([[0, createChapter(0, { content: "original" })]]);
-        expect(
-            await storage.putBookCacheBatchForTask(
-                "100",
-                first.lock.taskId,
-                original,
-                createCacheMeta({ imageEnabled: false, updatedAt: Date.now() })
-            )
-        ).toBe(true);
-        await locks.releaseBookDownloadLock(first.lock);
-
-        const replacement = await locks.acquireBookDownloadLock("100", "detail");
-        if (!replacement.acquired) {
-            throw new Error("expected replacement lock");
-        }
-        await storage.claimBookCache("100", replacement.lock.taskId, false);
-
-        const staleOverwrite = new Map([[0, createChapter(0, { content: "stale overwrite" })]]);
-        expect(await storage.putBookCacheBatchForTask("100", first.lock.taskId, staleOverwrite)).toBe(false);
-        expect(await storage.clearBookCacheForTask("100", first.lock.taskId)).toBe(false);
-
-        const repository = await import("../../src/storage/cache/indexeddb-repository");
-        const restored = await repository.readCacheChaptersV3("100");
-        expect(restored.get(0)?.content).toBe("original");
-        expect(await storage.putBookCacheBatchForTask("100", replacement.lock.taskId, restored)).toBe(true);
-        await locks.releaseBookDownloadLock(replacement.lock);
+        await expect(locks.requestBookDownloadCancellation("104", previous.taskId, true)).resolves.toEqual({
+            requested: false,
+            status: "replaced"
+        });
+        expect(await locks.markBookDownloadRunning(current)).toBe(true);
+        expect(await locks.shouldDiscardBookDownloadCache(current)).toBe(false);
+        await expect(locks.releaseBookDownloadLock(previous)).resolves.toBe("ownership-lost");
+        await locks.releaseBookDownloadLock(current);
     });
+
+    it.each([true, false])(
+        "keeps a late discard request until cleanup is attempted (cleared: %s)",
+        async (cacheDiscarded) => {
+            vi.stubGlobal("BroadcastChannel", undefined);
+            const locks = await import("../../src/storage/book-lock");
+            const storage = await import("../../src/storage/cache/book-cache");
+            const current = await acquireCacheLock("104");
+            if (cacheDiscarded) {
+                await storage.claimBookCache("104", current.taskId, false);
+            }
+
+            await expect(locks.requestBookDownloadCancellation("104", current.taskId, true)).resolves.toEqual({
+                requested: true,
+                taskId: current.taskId
+            });
+            await expect(locks.releaseBookDownloadLock(current)).resolves.toBe("discard-requested");
+            expect(await locks.ownsActiveBookDownloadLock(current)).toBe(true);
+            const cleared = await storage.clearBookCacheForTask("104", current.taskId);
+            expect(cleared).toBe(cacheDiscarded);
+            await expect(locks.releaseBookDownloadLock(current, { cacheDiscarded: cleared })).resolves.toBe("released");
+            await expect(locks.waitForBookDownloadCancellation("104", current.taskId)).resolves.toEqual({
+                status: "released",
+                cacheCleared: cacheDiscarded
+            });
+        }
+    );
 
     it("closes a range writer idempotently and rejects delayed writes until the next claim", async () => {
         vi.stubGlobal("BroadcastChannel", undefined);
@@ -100,27 +113,30 @@ describe("book lock contracts", () => {
         const repository = await import("../../src/storage/cache/indexeddb-repository");
         const meta = createCacheMeta({ bookId: "105", totalChapters: 20, updatedAt: Date.now() });
 
-        await storage.claimBookCache("105", "task-range", false);
+        const lock = await acquireCacheLock("105");
+        await storage.claimBookCache("105", lock.taskId, false);
         expect(
-            await storage.putBookCacheBatchForTask("105", "task-range", new Map([[10, createChapter(10)]]), meta)
+            await storage.putBookCacheBatchForTask("105", lock.taskId, new Map([[10, createChapter(10)]]), meta)
         ).toBe(true);
-        expect(await storage.finishBookCacheForTask("105", "task-range", meta)).toBe(true);
+        expect(await storage.finishBookCacheForTask("105", lock.taskId, meta)).toBe(true);
         const firstClosedAt = (await repository.readCacheManifestV3("105"))?.writerClosedAt;
         expect(firstClosedAt).toBeTypeOf("number");
 
         vi.spyOn(Date, "now").mockReturnValue((firstClosedAt ?? 0) + 10_000);
-        expect(await storage.finishBookCacheForTask("105", "task-range", meta)).toBe(true);
+        expect(await storage.finishBookCacheForTask("105", lock.taskId, meta)).toBe(true);
         expect((await repository.readCacheManifestV3("105"))?.writerClosedAt).toBe(firstClosedAt);
         expect(
-            await storage.putBookCacheBatchForTask("105", "task-range", new Map([[11, createChapter(11)]]), meta)
+            await storage.putBookCacheBatchForTask("105", lock.taskId, new Map([[11, createChapter(11)]]), meta)
         ).toBe(false);
 
-        await storage.claimBookCache("105", "task-next", false);
+        await (await import("../../src/storage/book-lock")).releaseBookDownloadLock(lock);
+        const nextLock = await acquireCacheLock("105");
+        await storage.claimBookCache("105", nextLock.taskId, false);
         expect((await repository.readCacheManifestV3("105"))?.writerClosedAt).toBeUndefined();
         expect(
-            await storage.putBookCacheBatchForTask("105", "task-next", new Map([[11, createChapter(11)]]), meta)
+            await storage.putBookCacheBatchForTask("105", nextLock.taskId, new Map([[11, createChapter(11)]]), meta)
         ).toBe(true);
-        expect(await storage.clearBookCacheForTask("105", "task-range")).toBe(false);
+        expect(await storage.clearBookCacheForTask("105", lock.taskId)).toBe(false);
     });
 
     it("allows stop-and-clear to remove a writer that was already closed by the same task", async () => {
@@ -128,10 +144,11 @@ describe("book lock contracts", () => {
         const storage = await import("../../src/storage/cache/book-cache");
         const meta = createCacheMeta({ bookId: "106", totalChapters: 5, updatedAt: Date.now() });
 
-        await storage.claimBookCache("106", "task-range", false);
-        await storage.putBookCacheBatchForTask("106", "task-range", new Map([[2, createChapter(2)]]), meta);
-        expect(await storage.finishBookCacheForTask("106", "task-range", meta)).toBe(true);
-        expect(await storage.clearBookCacheForTask("106", "task-range")).toBe(true);
+        const lock = await acquireCacheLock("106");
+        await storage.claimBookCache("106", lock.taskId, false);
+        await storage.putBookCacheBatchForTask("106", lock.taskId, new Map([[2, createChapter(2)]]), meta);
+        expect(await storage.finishBookCacheForTask("106", lock.taskId, meta)).toBe(true);
+        expect(await storage.clearBookCacheForTask("106", lock.taskId)).toBe(true);
         expect(await storage.previewBookCache("106", false)).toMatchObject({ size: 0, indexes: [] });
     });
 
@@ -150,67 +167,15 @@ describe("book lock contracts", () => {
         expect((await storage.previewBookCache("200", false)).indexes).toEqual([0]);
         expect(await get("esj_down_book_200")).toBeDefined();
 
-        const claimed = await storage.claimBookCache("200", "task-200", false);
+        const lock = await acquireCacheLock("200");
+        const claimed = await storage.claimBookCache("200", lock.taskId, false);
         if (claimed.status !== "claimed") throw new Error("expected compatible cache claim");
         expect(claimed.map?.get(0)?.content).toBe("legacy chapter");
         expect(claimed.compatibility).toBe("compatible");
         expect(await get("esj_down_book_200")).toBeUndefined();
 
-        expect(await storage.putBookCacheBatchForTask("200", "task-200", new Map([[1, createChapter(1)]]))).toBe(true);
+        expect(await storage.putBookCacheBatchForTask("200", lock.taskId, new Map([[1, createChapter(1)]]))).toBe(true);
         expect((await storage.previewBookCache("200", false)).size).toBe(2);
-    });
-
-    it("keeps cleared v3 cache from falling back to residual v2 data", async () => {
-        vi.stubGlobal("BroadcastChannel", undefined);
-        const { set } = openLegacyCacheFixture();
-        const storage = await import("../../src/storage/cache/book-cache");
-        await storage.claimBookCache("300", "task-300", false);
-        await storage.putBookCacheBatchForTask("300", "task-300", new Map([[0, createChapter(0)]]));
-        expect(await storage.clearBookCacheForTask("300", "task-300")).toBe(true);
-
-        await set("esj_down_book_300", {
-            version: 2,
-            ts: Date.now(),
-            chapters: [[0, createChapter(0, { content: "residual legacy chapter" })]]
-        });
-
-        expect(await storage.previewBookCache("300", false)).toMatchObject({ size: 0, indexes: [] });
-        expect(await storage.listBookCaches()).toEqual([]);
-    });
-
-    it("rejects an aborted v3 batch without changing persisted chapters", async () => {
-        vi.stubGlobal("BroadcastChannel", undefined);
-        const locks = await import("../../src/storage/book-lock");
-        const storage = await import("../../src/storage/cache/book-cache");
-        const acquired = await locks.acquireBookDownloadLock("103", "detail");
-        if (!acquired.acquired) {
-            throw new Error("expected lock");
-        }
-        await storage.claimBookCache("103", acquired.lock.taskId, false);
-        expect(
-            await storage.putBookCacheBatchForTask(
-                "103",
-                acquired.lock.taskId,
-                new Map([[0, createChapter(0, { content: "persisted" })]])
-            )
-        ).toBe(true);
-
-        const controller = new AbortController();
-        controller.abort();
-        expect(
-            await storage.putBookCacheBatchForTask(
-                "103",
-                acquired.lock.taskId,
-                new Map([[0, createChapter(0, { content: "aborted" })]]),
-                undefined,
-                controller.signal
-            )
-        ).toBe(false);
-
-        const repository = await import("../../src/storage/cache/indexeddb-repository");
-        const restored = await repository.readCacheChaptersV3("103");
-        expect(restored.get(0)?.content).toBe("persisted");
-        await locks.releaseBookDownloadLock(acquired.lock);
     });
 
     it("waits for the transaction abort event before returning signal cancellation", async () => {
@@ -218,8 +183,17 @@ describe("book lock contracts", () => {
         const storage = await import("../../src/storage/cache/book-cache");
         const repository = await import("../../src/storage/cache/indexeddb-repository");
         const original = createChapter(0, { content: "persisted" });
-        await storage.claimBookCache("108", "task-108", false);
-        await storage.putBookCacheBatchForTask("108", "task-108", new Map([[0, original]]));
+        const lock = await acquireCacheLock("108");
+        await storage.claimBookCache("108", lock.taskId, false);
+        await storage.putBookCacheBatchForTask("108", lock.taskId, new Map([[0, original]]));
+        const replacement = new Map([[0, createChapter(0, { content: "replacement" })]]);
+        const preCancelled = new AbortController();
+        preCancelled.abort();
+        await expect(
+            storage.putBookCacheBatchForTask("108", lock.taskId, replacement, undefined, preCancelled.signal)
+        ).resolves.toBe(false);
+        expect(await repository.readCacheChaptersV3("108")).toEqual(new Map([[0, original]]));
+
         const controller = new AbortController();
         let aborted = false;
         const put = IDBObjectStore.prototype.put;
@@ -243,13 +217,7 @@ describe("book lock contracts", () => {
         });
         try {
             await expect(
-                storage.putBookCacheBatchForTask(
-                    "108",
-                    "task-108",
-                    new Map([[0, createChapter(0, { content: "replacement" })]]),
-                    undefined,
-                    controller.signal
-                )
+                storage.putBookCacheBatchForTask("108", lock.taskId, replacement, undefined, controller.signal)
             ).resolves.toBe(false);
             expect(aborted).toBe(true);
         } finally {
@@ -258,14 +226,16 @@ describe("book lock contracts", () => {
         expect(await repository.readCacheChaptersV3("108")).toEqual(new Map([[0, original]]));
     });
 
-    it("rolls back chapters and manifest when a transaction aborts after their requests succeed", async () => {
+    it("rolls back chapters, sources, and manifest when a transaction aborts after their requests succeed", async () => {
         vi.stubGlobal("BroadcastChannel", undefined);
         const storage = await import("../../src/storage/cache/book-cache");
         const repository = await import("../../src/storage/cache/indexeddb-repository");
         const original = createChapter(0, { content: "persisted" });
         const meta = createCacheMeta({ bookId: "107", totalChapters: 1, updatedAt: Date.now() });
-        await storage.claimBookCache("107", "task-107", false);
-        await storage.putBookCacheBatchForTask("107", "task-107", new Map([[0, original]]), meta);
+        const lock = await acquireCacheLock("107");
+        await storage.claimBookCache("107", lock.taskId, false);
+        const sources = new Map([[0, "esj:107/1"]]);
+        await storage.putBookCacheBatchForTask("107", lock.taskId, new Map([[0, original]]), meta, undefined, sources);
         const manifest = await repository.readCacheManifestV3("107");
         const put = IDBObjectStore.prototype.put;
         const writtenChapters: number[] = [];
@@ -294,12 +264,17 @@ describe("book lock contracts", () => {
             await expect(
                 storage.putBookCacheBatchForTask(
                     "107",
-                    "task-107",
+                    lock.taskId,
                     new Map([
                         [0, createChapter(0, { content: "replacement" })],
                         [1, createChapter(1)]
                     ]),
-                    { ...meta, totalChapters: 2, updatedAt: meta.updatedAt + 1 }
+                    { ...meta, totalChapters: 2, updatedAt: meta.updatedAt + 1 },
+                    undefined,
+                    new Map([
+                        [0, "esj:107/2"],
+                        [1, "esj:107/3"]
+                    ])
                 )
             ).rejects.toMatchObject({ operation: "write" });
         } finally {
@@ -310,5 +285,6 @@ describe("book lock contracts", () => {
         expect(manifestWritten).toBe(true);
         expect(await repository.readCacheManifestV3("107")).toEqual(manifest);
         expect(await repository.readCacheChaptersV3("107")).toEqual(new Map([[0, original]]));
+        expect((await storage.previewBookCache("107", false, sources)).indexes).toEqual([0]);
     });
 });

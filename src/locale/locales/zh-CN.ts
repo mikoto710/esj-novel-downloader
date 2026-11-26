@@ -271,6 +271,7 @@ export const ZH_CN_MESSAGES = Object.freeze({
     "cache.confirm.clearAll": "确定清理全部缓存吗？这会同时移除当前页会话缓存",
     "cache.protectedCount": "已保留 {count} 本下载中的书籍缓存",
     "cache.empty": "当前没有可管理的缓存",
+    "cache.listIncomplete": "部分缓存或任务状态读取失败，可点击刷新重试",
     "cache.badge.runtime": "会话内存",
     "cache.badge.crossPage": "跨页面任务",
     "cache.badge.reexport": "可重复导出",

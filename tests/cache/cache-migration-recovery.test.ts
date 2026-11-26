@@ -3,6 +3,7 @@ import { createCacheMeta, createChapter } from "../support";
 
 const mocks = vi.hoisted(() => ({
     preview: vi.fn(),
+    readManifest: vi.fn(),
     readChapters: vi.fn(),
     claim: vi.fn(),
     clear: vi.fn(),
@@ -19,6 +20,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("../../src/storage/cache/indexeddb-repository", () => ({
     previewCacheV3: mocks.preview,
+    readCacheManifestV3: mocks.readManifest,
     readCacheChaptersV3: mocks.readChapters,
     claimCacheV3: mocks.claim,
     clearCacheV3: mocks.clear,
@@ -30,17 +32,13 @@ vi.mock("../../src/storage/cache/indexeddb-repository", () => ({
 }));
 vi.mock("../../src/storage/cache/legacy-cache", () => ({
     readLegacyCache: mocks.readLegacy,
-    clearLegacyCacheIfInactive: mocks.deleteLegacy,
+    clearLegacyCache: mocks.deleteLegacy,
     listLegacyCacheRecords: mocks.listLegacy,
     getLegacyCacheBookId: (key: string) => key.replace(/^esj_down_(?:book_)?/, "")
 }));
 vi.mock("../../src/storage/cache/sync", () => ({
     publishCacheSyncEvent: mocks.publish,
     subscribeCacheSync: vi.fn(() => vi.fn())
-}));
-vi.mock("../../src/storage/book-lock", () => ({
-    hasBookDownloadTaskPresence: vi.fn(() => false),
-    listActiveBookDownloadLocks: vi.fn(async () => [])
 }));
 
 describe("v2 cache migration recovery", () => {
@@ -57,7 +55,8 @@ describe("v2 cache migration recovery", () => {
 
     beforeEach(() => {
         vi.clearAllMocks();
-        mocks.preview.mockResolvedValue({ manifest: undefined, indexes: [] });
+        mocks.preview.mockResolvedValue({ manifest: undefined, indexes: [], size: 0 });
+        mocks.readManifest.mockResolvedValue(undefined);
         mocks.readChapters.mockResolvedValue(new Map([[0, chapter]]));
         mocks.claim.mockResolvedValue({ status: "claimed", compatibility: "compatible", invalidatedCount: 0 });
         mocks.readLegacy.mockResolvedValue(legacyRecord);
@@ -81,7 +80,7 @@ describe("v2 cache migration recovery", () => {
 
         expect(mocks.claim).toHaveBeenCalledTimes(2);
         expect(mocks.deleteLegacy).toHaveBeenCalledOnce();
-        expect(mocks.deleteLegacy).toHaveBeenCalledWith("200", "clear", "task-200");
+        expect(mocks.deleteLegacy).toHaveBeenCalledWith("200");
     });
 
     it("keeps v2 readable after migration retry fails and succeeds on a later attempt", async () => {

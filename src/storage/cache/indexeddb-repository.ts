@@ -1,4 +1,8 @@
-import { createStore, get, promisifyRequest } from "idb-keyval";
+import { get, promisifyRequest } from "idb-keyval";
+import { cacheV3Store, getBookLockKey, runWriteTransaction } from "./database";
+import { isBookDownloadLockActive, type BookDownloadLock } from "../book-lock";
+import type { ChapterCacheSources } from "./chapter-source";
+import { createStorageError } from "./storage-error";
 import type { CacheMeta } from "./model";
 import type { BookCover, Chapter } from "../../content/model";
 import { evaluateImageCacheCompatibility, type ImageCacheCompatibility } from "./compatibility";
@@ -26,6 +30,7 @@ export interface CacheMigrationSource {
 }
 
 export type CacheClaimV3Result =
+    | { status: "ownership-lost" }
     | { status: "claimed"; compatibility: ImageCacheCompatibility; invalidatedCount: number }
     | {
           status: "needs-confirmation";
@@ -41,6 +46,11 @@ interface StoredChapterV3 {
     chapter: Chapter;
 }
 
+interface StoredChapterSourceV3 {
+    index: number;
+    source: string;
+}
+
 interface StoredCoverV3 extends BookCover {
     version: 3;
     bookId: string;
@@ -48,18 +58,16 @@ interface StoredCoverV3 extends BookCover {
     updatedAt: number;
 }
 
-type CacheTransactionResult<T> = (value: T) => void;
-
-const CACHE_V3_DATABASE = "esj-novel-downloader-cache-v3";
-const CACHE_V3_STORE = "records";
-const cacheV3Store = createStore(CACHE_V3_DATABASE, CACHE_V3_STORE);
-
 function getManifestKey(bookId: string): IDBValidKey {
     return ["manifest", bookId];
 }
 
 function getChapterKey(bookId: string, index: number): IDBValidKey {
     return ["chapter", bookId, index];
+}
+
+function getChapterSourceKey(bookId: string, index: number): IDBValidKey {
+    return ["chapter-source", bookId, index];
 }
 
 function getCoverKey(bookId: string, coverUrl: string): IDBValidKey {
@@ -72,6 +80,15 @@ function getManifestRange(): IDBKeyRange {
 
 function getChapterRange(bookId: string): IDBKeyRange {
     return IDBKeyRange.bound(["chapter", bookId, 0], ["chapter", bookId, Number.MAX_SAFE_INTEGER]);
+}
+
+function getChapterSourceRange(bookId: string): IDBKeyRange {
+    return IDBKeyRange.bound(getChapterSourceKey(bookId, 0), getChapterSourceKey(bookId, Number.MAX_SAFE_INTEGER));
+}
+
+function deleteBookChapters(store: IDBObjectStore, bookId: string): void {
+    store.delete(getChapterRange(bookId));
+    store.delete(getChapterSourceRange(bookId));
 }
 
 function getCoverRange(bookId: string): IDBKeyRange {
@@ -116,83 +133,6 @@ function normalizeMeta(bookId: string, meta?: CacheMeta): CacheMeta | undefined 
     return { ...meta, bookId, updatedAt: Date.now() };
 }
 
-function createCacheAbortError(): DOMException {
-    return new DOMException("缓存事务已中止", "AbortError");
-}
-
-// 在事务提交后返回已登记的业务结果，同步回调只负责安排 IDB 请求
-function runWriteTransaction<T>(
-    operation: (store: IDBObjectStore, setResult: CacheTransactionResult<T>) => void,
-    signal?: AbortSignal
-): Promise<T> {
-    return cacheV3Store(
-        "readwrite",
-        (store) =>
-            new Promise<T>((resolve, reject) => {
-                let result: T;
-                let hasResult = false;
-                let operationFailed = false;
-                let operationError: unknown;
-                const transaction = store.transaction;
-                const cleanupAbortListener = () => signal?.removeEventListener("abort", onSignalAbort);
-                const onSignalAbort = () => {
-                    try {
-                        transaction.abort();
-                    } catch {
-                        // 事务已经完成时无需重复中止
-                        cleanupAbortListener();
-                        reject(createCacheAbortError());
-                    }
-                    // abort() 只发起中止，等待 onabort 后才能向调用方交还 writer
-                };
-
-                // 请求回调只登记结果，事务提交后才向上层确认；回调中不插入非 IDB 异步等待
-                transaction.oncomplete = () => {
-                    cleanupAbortListener();
-                    if (!hasResult) {
-                        reject(new Error("缓存事务未返回结果"));
-                        return;
-                    }
-                    resolve(result);
-                };
-                // 请求错误默认中止事务，统一在 onabort 结束等待，避免错误事件先于回滚完成
-                transaction.onabort = () => {
-                    cleanupAbortListener();
-                    reject(
-                        operationFailed
-                            ? operationError
-                            : signal?.aborted
-                              ? createCacheAbortError()
-                              : transaction.error || new Error("缓存事务已中止")
-                    );
-                };
-
-                if (signal?.aborted) {
-                    onSignalAbort();
-                    return;
-                }
-                signal?.addEventListener("abort", onSignalAbort, { once: true });
-
-                try {
-                    operation(store, (value) => {
-                        result = value;
-                        hasResult = true;
-                    });
-                } catch (error) {
-                    operationFailed = true;
-                    operationError = error;
-                    try {
-                        transaction.abort();
-                    } catch {
-                        // 同步异常发生在事务完成边界时无需重复中止
-                        cleanupAbortListener();
-                        reject(error);
-                    }
-                }
-            })
-    );
-}
-
 /**
  * 读取指定书籍的 v3 缓存清单
  */
@@ -207,31 +147,78 @@ function getChapterIndexes(keys: IDBValidKey[]): number[] {
     });
 }
 
+function readChapterSources(
+    store: IDBObjectStore,
+    bookId: string,
+    requested: ChapterCacheSources | undefined
+): Promise<Map<number, string> | undefined> {
+    if (!requested) {
+        return Promise.resolve(undefined);
+    }
+    return promisifyRequest<StoredChapterSourceV3[]>(store.getAll(getChapterSourceRange(bookId))).then(
+        (records) => new Map(records.map(({ index, source }) => [index, source]))
+    );
+}
+
+function matchesChapterSource(
+    index: number,
+    current: ChapterCacheSources | undefined,
+    stored: ReadonlyMap<number, string> | undefined
+): boolean {
+    const source = current?.get(index);
+    return source !== undefined && source === stored?.get(index);
+}
+
 /**
- * 在同一只读快照中读取清单和章节索引，不加载正文或 Blob
+ * 在同一只读快照中读取清单、章节索引和来源，不加载正文或 Blob
  */
 export async function previewCacheV3(
-    bookId: string
-): Promise<{ manifest: CacheManifestV3 | undefined; indexes: number[] }> {
+    bookId: string,
+    requested?: ChapterCacheSources
+): Promise<{ manifest: CacheManifestV3 | undefined; indexes: number[]; size: number }> {
     return cacheV3Store("readonly", async (store) => {
-        const [manifest, keys] = await Promise.all([
+        const [manifest, keys, sources] = await Promise.all([
             promisifyRequest<CacheManifestV3 | undefined>(store.get(getManifestKey(bookId))),
-            promisifyRequest<IDBValidKey[]>(store.getAllKeys(getChapterRange(bookId)))
+            promisifyRequest<IDBValidKey[]>(store.getAllKeys(getChapterRange(bookId))),
+            readChapterSources(store, bookId, requested)
         ]);
-        return { manifest, indexes: getChapterIndexes(keys) };
+        const indexes = getChapterIndexes(keys);
+        return {
+            manifest,
+            size: indexes.length,
+            indexes: requested ? indexes.filter((index) => matchesChapterSource(index, requested, sources)) : indexes
+        };
     });
 }
 
 /**
- * 读取指定书籍的全部 v3 章节
+ * 读取 v3 章节，按当前快照复核任务所有权及被选章节的来源
  */
-export async function readCacheChaptersV3(bookId: string): Promise<Map<number, Chapter>> {
-    const records = await cacheV3Store("readonly", (store) => promisifyRequest(store.getAll(getChapterRange(bookId))));
-    return new Map(
-        (records as StoredChapterV3[])
-            .filter((record) => record.version === 3 && record.bookId === bookId)
-            .map((record) => [record.index, record.chapter])
-    );
+export async function readCacheChaptersV3(
+    bookId: string,
+    requested?: ChapterCacheSources,
+    taskId?: string
+): Promise<Map<number, Chapter>> {
+    return cacheV3Store("readonly", async (store) => {
+        const [records, sources, lock] = await Promise.all([
+            promisifyRequest<StoredChapterV3[]>(store.getAll(getChapterRange(bookId))),
+            readChapterSources(store, bookId, requested),
+            taskId ? promisifyRequest<BookDownloadLock | undefined>(store.get(getBookLockKey(bookId))) : undefined
+        ]);
+        if (taskId && (!isBookDownloadLockActive(lock) || lock.taskId !== taskId)) {
+            throw createStorageError("ownership-lost", "claim");
+        }
+        return new Map(
+            records
+                .filter(
+                    ({ version, bookId: recordBookId, index }) =>
+                        version === 3 &&
+                        recordBookId === bookId &&
+                        (!requested?.has(index) || matchesChapterSource(index, requested, sources))
+                )
+                .map(({ index, chapter }) => [index, chapter])
+        );
+    });
 }
 
 /**
@@ -253,6 +240,29 @@ export async function listCacheManifestsV3(): Promise<CacheManifestV3[]> {
     return (records as CacheManifestV3[]).filter((record) => record.version === 3);
 }
 
+// 锁和缓存清单共用一个写事务，事务提交前其他页面不能更换所有者
+function writeBookCache<T>(
+    bookId: string,
+    taskId: string | null,
+    denied: T,
+    write: (store: IDBObjectStore, current: CacheManifestV3 | undefined, setResult: (result: T) => void) => void,
+    signal?: AbortSignal
+): Promise<T> {
+    return runWriteTransaction<T>((store, setResult) => {
+        const lockRequest: IDBRequest<BookDownloadLock | undefined> = store.get(getBookLockKey(bookId));
+        const manifestRequest: IDBRequest<CacheManifestV3 | undefined> = store.get(getManifestKey(bookId));
+        manifestRequest.onsuccess = () => {
+            const lock = lockRequest.result;
+            const authorized = isBookDownloadLockActive(lock) ? lock.taskId === taskId : taskId === null;
+            if (authorized) {
+                write(store, manifestRequest.result, setResult);
+            } else {
+                setResult(denied);
+            }
+        };
+    }, signal);
+}
+
 /**
  * 原子认领 v3 缓存写入权，并按需导入旧缓存
  */
@@ -265,10 +275,11 @@ export async function claimCacheV3(
     signal?: AbortSignal,
     allowInvalidation = false
 ): Promise<CacheClaimV3Result> {
-    return runWriteTransaction<CacheClaimV3Result>((store, setResult) => {
-        const request = store.get(getManifestKey(bookId));
-        request.onsuccess = () => {
-            const current = request.result as CacheManifestV3 | undefined;
+    return writeBookCache<CacheClaimV3Result>(
+        bookId,
+        taskId,
+        { status: "ownership-lost" },
+        (store, current, setResult) => {
             const reusable = Boolean(
                 current && !current.cleared && current.version === 3 && Date.now() - current.ts <= maxAgeMs
             );
@@ -279,7 +290,7 @@ export async function claimCacheV3(
                 );
                 const claimCurrent = () => {
                     if (compatibility !== "compatible") {
-                        store.delete(getChapterRange(bookId));
+                        deleteBookChapters(store, bookId);
                     }
                     const claimedManifest: CacheManifestV3 = {
                         ...current,
@@ -335,7 +346,7 @@ export async function claimCacheV3(
                 });
                 return;
             }
-            store.delete(getChapterRange(bookId));
+            deleteBookChapters(store, bookId);
             const migratedEntries = source && migrationCompatibility === "compatible" ? source.chapters : [];
             for (const [index, chapter] of migratedEntries) {
                 store.put(
@@ -360,8 +371,9 @@ export async function claimCacheV3(
                 compatibility: migrationCompatibility,
                 invalidatedCount: source && migrationCompatibility !== "compatible" ? source.chapters.length : 0
             });
-        };
-    }, signal);
+        },
+        signal
+    );
 }
 
 function isOpenWriter(manifest: CacheManifestV3 | undefined, taskId: string): manifest is CacheManifestV3 {
@@ -376,18 +388,27 @@ export async function putCacheBatchV3(
     taskId: string,
     entries: ReadonlyMap<number, Chapter>,
     meta?: CacheMeta,
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    sources?: ChapterCacheSources
 ): Promise<boolean> {
-    return runWriteTransaction<boolean>((store, setResult) => {
-        const request = store.get(getManifestKey(bookId));
-        request.onsuccess = () => {
-            const current = request.result as CacheManifestV3 | undefined;
+    return writeBookCache(
+        bookId,
+        taskId,
+        false,
+        (store, current, setResult) => {
             if (!isOpenWriter(current, taskId)) {
                 setResult(false);
                 return;
             }
 
             for (const [index, chapter] of entries) {
+                const source = sources?.get(index);
+                const sourceKey = getChapterSourceKey(bookId, index);
+                if (source === undefined) {
+                    store.delete(sourceKey);
+                } else {
+                    store.put({ index, source } satisfies StoredChapterSourceV3, sourceKey);
+                }
                 store.put(
                     { version: 3, bookId, index, chapter } satisfies StoredChapterV3,
                     getChapterKey(bookId, index)
@@ -408,8 +429,9 @@ export async function putCacheBatchV3(
                 );
                 setResult(true);
             };
-        };
-    }, signal);
+        },
+        signal
+    );
 }
 
 /**
@@ -422,10 +444,11 @@ export async function putCacheCoverV3ForTask(
     cover: BookCover,
     signal?: AbortSignal
 ): Promise<boolean> {
-    return runWriteTransaction<boolean>((store, setResult) => {
-        const request = store.get(getManifestKey(bookId));
-        request.onsuccess = () => {
-            const current = request.result as CacheManifestV3 | undefined;
+    return writeBookCache(
+        bookId,
+        taskId,
+        false,
+        (store, current, setResult) => {
             if (!isOpenWriter(current, taskId)) {
                 setResult(false);
                 return;
@@ -444,8 +467,9 @@ export async function putCacheCoverV3ForTask(
                 getCoverKey(bookId, coverUrl)
             );
             setResult(true);
-        };
-    }, signal);
+        },
+        signal
+    );
 }
 
 /**
@@ -457,10 +481,11 @@ export async function finishCacheV3ForTask(
     meta: CacheMeta,
     signal?: AbortSignal
 ): Promise<boolean> {
-    return runWriteTransaction<boolean>((store, setResult) => {
-        const request = store.get(getManifestKey(bookId));
-        request.onsuccess = () => {
-            const current = request.result as CacheManifestV3 | undefined;
+    return writeBookCache(
+        bookId,
+        taskId,
+        false,
+        (store, current, setResult) => {
             if (!current || current.writerTaskId !== taskId || current.cleared) {
                 setResult(false);
                 return;
@@ -486,12 +511,13 @@ export async function finishCacheV3ForTask(
                 );
                 setResult(true);
             };
-        };
-    }, signal);
+        },
+        signal
+    );
 }
 
 function writeClearedCache(store: IDBObjectStore, bookId: string, writerTaskId: string): void {
-    store.delete(getChapterRange(bookId));
+    deleteBookChapters(store, bookId);
     store.delete(getCoverRange(bookId));
     store.put(
         {
@@ -510,34 +536,28 @@ function writeClearedCache(store: IDBObjectStore, bookId: string, writerTaskId: 
  * 仅允许当前 writer 清理章节和封面，并写入 cleared 清单
  */
 export async function clearCacheV3ForTask(bookId: string, taskId: string, signal?: AbortSignal): Promise<boolean> {
-    return runWriteTransaction<boolean>((store, setResult) => {
-        const request = store.get(getManifestKey(bookId));
-        request.onsuccess = () => {
-            const current = request.result as CacheManifestV3 | undefined;
+    return writeBookCache(
+        bookId,
+        taskId,
+        false,
+        (store, current, setResult) => {
             if (!current || current.writerTaskId !== taskId) {
                 setResult(false);
                 return;
             }
             writeClearedCache(store, bookId, taskId);
             setResult(true);
-        };
-    }, signal);
+        },
+        signal
+    );
 }
 
 /**
- * 清理未受活动 writer 保护的章节和封面，并写入 cleared 清单
+ * 书籍无活动锁时清理章节和封面，并写入 cleared 清单
  */
-export async function clearCacheV3(bookId: string, isWriterActive: (taskId: string) => boolean): Promise<boolean> {
-    return runWriteTransaction<boolean>((store, setResult) => {
-        const request = store.get(getManifestKey(bookId));
-        request.onsuccess = () => {
-            const current = request.result as CacheManifestV3 | undefined;
-            if (current?.writerTaskId && isWriterActive(current.writerTaskId)) {
-                setResult(false);
-                return;
-            }
-            writeClearedCache(store, bookId, current?.writerTaskId || "cleared");
-            setResult(true);
-        };
+export async function clearCacheV3(bookId: string): Promise<boolean> {
+    return writeBookCache(bookId, null, false, (store, current, setResult) => {
+        writeClearedCache(store, bookId, current?.writerTaskId || "cleared");
+        setResult(true);
     });
 }

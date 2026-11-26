@@ -36,7 +36,7 @@ export interface CacheListItem {
     status: CacheStatus;
     hasExportData: boolean;
     isLegacy: boolean;
-    activeTask: boolean;
+    activeTaskId: string | null;
 }
 
 /**
@@ -79,7 +79,7 @@ function createCacheListItem(bookId: string, entry?: PersistentCacheEntry): Cach
         status: "persisted",
         hasExportData: false,
         isLegacy: entry?.isLegacy ?? false,
-        activeTask: false
+        activeTaskId: null
     };
 }
 
@@ -98,8 +98,10 @@ function mergeStatus(current: CacheStatus, next: CacheStatus): CacheStatus {
 /**
  * 合并持久缓存、当前页任务摘要、保留的导出结果及活动书籍锁
  */
-export async function listManagedCaches(): Promise<CacheListItem[]> {
-    const [persistentEntries, activeLocks] = await Promise.all([listBookCaches(), listActiveBookDownloadLocks()]);
+export async function listManagedCaches(): Promise<{ items: CacheListItem[]; incomplete: boolean }> {
+    const [inventory, locks] = await Promise.allSettled([listBookCaches(), listActiveBookDownloadLocks()]);
+    const persistentEntries = inventory.status === "fulfilled" ? inventory.value.entries : [];
+    const activeLocks = locks.status === "fulfilled" ? locks.value : [];
     const result = new Map<string, CacheListItem>();
     const persistentByBookId = new Map(persistentEntries.map((entry) => [entry.bookId, entry]));
     const activeLockByBookId = new Map(activeLocks.map((lock) => [lock.bookId, lock]));
@@ -181,11 +183,14 @@ export async function listManagedCaches(): Promise<CacheListItem[]> {
             updatedAt: Math.max(existing?.updatedAt || 0, lock.heartbeatAt),
             sourcePageType: existing?.sourcePageType || lock.sourcePageType,
             status: "downloading",
-            activeTask: true
+            activeTaskId: lock.taskId
         });
     });
 
-    return Array.from(result.values()).sort((a, b) => b.updatedAt - a.updatedAt);
+    return {
+        items: Array.from(result.values()).sort((a, b) => b.updatedAt - a.updatedAt),
+        incomplete: inventory.status === "rejected" || inventory.value.incomplete || locks.status === "rejected"
+    };
 }
 
 /**
@@ -237,10 +242,10 @@ export async function clearAllManagedCaches(includeRuntime: boolean): Promise<Ca
 /**
  * 请求活动任务停止并清理其缓存
  */
-export async function stopAndClearManagedCache(bookId: string): Promise<StopAndClearResult> {
-    const request = await requestBookDownloadCancellation(bookId, true);
+export async function stopAndClearManagedCache(bookId: string, taskId: string): Promise<StopAndClearResult> {
+    const request = await requestBookDownloadCancellation(bookId, taskId, true);
     if (!request.requested) {
-        return { requested: false, cleared: false, status: "not-active" };
+        return { requested: false, cleared: false, status: request.status };
     }
 
     const result = await waitForBookDownloadCancellation(bookId, request.taskId);

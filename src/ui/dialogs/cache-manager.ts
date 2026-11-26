@@ -179,15 +179,17 @@ export function createCacheManagerPopup(): void {
     });
 
     const footer = el("div", {
-        style: "padding:12px;display:flex;justify-content:space-between;gap:8px;border-top:1px solid #eee;background:#fff;border-radius:0 0 8px 8px;"
+        style: "padding:12px;display:flex;flex-wrap:wrap;flex-shrink:0;justify-content:space-between;gap:8px;border-top:1px solid #eee;background:#fff;border-radius:0 0 8px 8px;"
     });
 
     const header = createCommonHeader(t("cache.title"), closeAction);
+    header.style.flexShrink = "0";
+    header.querySelector("span")!.style.overflowWrap = "anywhere";
     const popup = el(
         "div",
         {
             id: "esj-cache-manager",
-            style: "position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:620px;height:min(520px,calc(100vh - 32px));background:#fff;border:1px solid #aaa;border-radius:8px;box-shadow:0 0 18px rgba(0,0,0,0.28);z-index:999999;display:flex;flex-direction:column;"
+            style: "position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:min(620px,calc(100% - 16px));height:min(520px,calc(100dvh - 16px));box-sizing:border-box;background:#fff;border:1px solid #aaa;border-radius:8px;box-shadow:0 0 18px rgba(0,0,0,0.28);z-index:999999;display:flex;flex-direction:column;"
         },
         [header, listBox, footer]
     );
@@ -222,7 +224,7 @@ export function createCacheManagerPopup(): void {
 
     // 重新读取合并后的缓存列表并重建操作区域
     async function renderList() {
-        const items = await listManagedCaches();
+        const { items, incomplete } = await listManagedCaches();
 
         // 数据返回时弹窗可能已关闭，旧结果不再更新界面
         if (!popup.isConnected) {
@@ -247,7 +249,9 @@ export function createCacheManagerPopup(): void {
 
         footer.append(leftActions, rightActions);
 
-        if (items.length === 0) {
+        if (incomplete) {
+            listBox.appendChild(el("p", { role: "status" }, [t("cache.listIncomplete")]));
+        } else if (items.length === 0) {
             listBox.appendChild(
                 el(
                     "div",
@@ -359,7 +363,7 @@ function createCacheItemBadges(item: CacheListItem): HTMLElement {
         badges.appendChild(createBadge(t("cache.badge.runtime"), "runtime"));
     }
     badges.appendChild(createBadge(getStatusText(item), "status"));
-    if (item.activeTask) {
+    if (item.activeTaskId) {
         badges.appendChild(createBadge(t("cache.badge.crossPage"), "runtime"));
     }
     if (item.hasExportData) {
@@ -421,7 +425,7 @@ function createCacheItemActions(item: CacheListItem, popup: HTMLElement, rerende
         await rerender();
     }
 
-    async function stopAndClearItem(): Promise<void> {
+    async function stopAndClearItem(taskId: string): Promise<void> {
         const confirmed = await showCacheConfirm(popup, {
             title: `🛑 ${t("cache.action.stopClear")}`,
             message: t("cache.confirm.stopClear", { book: item.bookName })
@@ -431,7 +435,15 @@ function createCacheItemActions(item: CacheListItem, popup: HTMLElement, rerende
         }
 
         // 发出停止请求不等于清理完成，以实际结果展示提示
-        const result = await stopAndClearManagedCache(item.bookId);
+        let result: Awaited<ReturnType<typeof stopAndClearManagedCache>>;
+        try {
+            result = await stopAndClearManagedCache(item.bookId, taskId);
+        } catch (error) {
+            if (popup.isConnected) {
+                showCacheClearFailure(error);
+            }
+            return;
+        }
         const resultMessage: Record<typeof result.status, string> = {
             "not-active": t("cache.stop.notActive"),
             cleared: t("cache.stop.cleared"),
@@ -446,17 +458,20 @@ function createCacheItemActions(item: CacheListItem, popup: HTMLElement, rerende
 
     // 活动任务只提供停止并清除，空闲记录才按持久或本页来源清理
     const actions = el("div", { style: "display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;" });
-    if (item.activeTask) {
-        actions.appendChild(createActionButton(t("cache.action.stopClear"), stopAndClearItem, "danger"));
+    const { activeTaskId } = item;
+    if (activeTaskId) {
+        actions.appendChild(
+            createActionButton(t("cache.action.stopClear"), () => stopAndClearItem(activeTaskId), "danger")
+        );
     } else if (item.sources.includes("indexeddb")) {
         actions.appendChild(createActionButton(t("cache.action.clearIndexedDb"), () => clearItem("indexeddb")));
     }
 
-    if (!item.activeTask && item.sources.includes("runtime")) {
+    if (!activeTaskId && item.sources.includes("runtime")) {
         actions.appendChild(createActionButton(t("cache.action.clearRuntime"), () => clearItem("runtime")));
     }
 
-    if (!item.activeTask && item.sources.length > 1) {
+    if (!activeTaskId && item.sources.length > 1) {
         actions.appendChild(createActionButton(t("cache.action.clearItemAll"), () => clearItem("all"), "danger"));
     }
 

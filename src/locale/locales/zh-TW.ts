@@ -276,6 +276,7 @@ export const ZH_TW_MESSAGES = Object.freeze({
     "cache.confirm.clearAll": "確定清除全部快取嗎？這會同時清除目前頁面的記憶體快取",
     "cache.protectedCount": "已保留 {count} 本下載中書籍的快取",
     "cache.empty": "目前沒有可管理的快取",
+    "cache.listIncomplete": "無法讀取部分快取或工作狀態，可按重新整理再試一次",
     "cache.badge.runtime": "記憶體快取",
     "cache.badge.crossPage": "跨頁任務",
     "cache.badge.reexport": "可重複匯出",

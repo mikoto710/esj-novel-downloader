@@ -3,6 +3,38 @@
 import { expect, it, vi } from "vitest";
 import type { CacheClearResult } from "../../src/app/cache-management";
 import { createDeferred } from "../support";
+import { IDBFactory } from "fake-indexeddb";
+
+it("applies a stop confirmation only to the task displayed on the cache card", async () => {
+    vi.resetModules();
+    vi.stubGlobal("indexedDB", new IDBFactory());
+    vi.stubGlobal("BroadcastChannel", undefined);
+    const locks = await import("../../src/storage/book-lock");
+    const manager = await import("../../src/app/cache-management");
+    const { createCacheManagerPopup } = await import("../../src/ui/dialogs/cache-manager");
+    const { fullCleanup } = await import("../../src/ui/dom");
+    const stop = vi.spyOn(manager, "stopAndClearManagedCache");
+    const first = await locks.acquireBookDownloadLock("100", "detail");
+    let current = first.lock;
+    try {
+        createCacheManagerPopup();
+        const button = await vi.waitFor(() => {
+            const action = document.querySelector<HTMLButtonElement>(".esj-cache-item .esj-cache-action-danger");
+            if (!action) throw new Error("missing stop action");
+            return action;
+        });
+        button.click();
+        await locks.releaseBookDownloadLock(first.lock);
+        current = (await locks.acquireBookDownloadLock("100", "detail")).lock;
+        document.querySelector<HTMLButtonElement>("#esj-cache-confirm-ok")!.click();
+        await vi.waitFor(() => expect(stop).toHaveBeenCalledOnce());
+        await expect(stop.mock.results[0].value).resolves.toMatchObject({ status: "replaced" });
+        expect(await locks.shouldDiscardBookDownloadCache(current)).toBe(false);
+    } finally {
+        fullCleanup();
+        await locks.releaseBookDownloadLock(current);
+    }
+});
 
 it("keeps the current batch clear error when an older cache manager finishes later", async () => {
     vi.stubGlobal("BroadcastChannel", undefined);
@@ -11,7 +43,7 @@ it("keeps the current batch clear error when an older cache manager finishes lat
     const { fullCleanup } = await import("../../src/ui/dom");
     const oldClear = createDeferred<CacheClearResult>();
     const started = createDeferred<void>();
-    vi.spyOn(manager, "listManagedCaches").mockResolvedValue([]);
+    vi.spyOn(manager, "listManagedCaches").mockResolvedValue({ items: [], incomplete: false });
     vi.spyOn(manager, "clearAllManagedCaches")
         .mockImplementationOnce(() => {
             started.resolve();

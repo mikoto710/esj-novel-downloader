@@ -4,6 +4,7 @@ import { IDBFactory } from "fake-indexeddb";
 import { Blob as NodeBlob } from "node:buffer";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createCacheMeta, createChapter } from "../support";
+import { acquireCacheLock } from "../support/book-cache";
 
 describe("image cache reconciliation contracts", () => {
     beforeEach(() => {
@@ -19,10 +20,11 @@ describe("image cache reconciliation contracts", () => {
         [true, false]
     ])("invalidates all chapters when settings differ (%s -> %s)", async (cached, requested) => {
         const storage = await import("../../src/storage/cache/book-cache");
-        await storage.claimBookCache("501", "task-old", cached);
+        const lock = await acquireCacheLock("501");
+        await storage.claimBookCache("501", lock.taskId, cached);
         await storage.putBookCacheBatchForTask(
             "501",
-            "task-old",
+            lock.taskId,
             new Map([
                 [0, createChapter(0)],
                 [1, createChapter(1)]
@@ -30,7 +32,12 @@ describe("image cache reconciliation contracts", () => {
             createCacheMeta({ bookId: "501", imageEnabled: cached })
         );
 
-        const claimed = await storage.claimBookCache("501", "task-new", requested, undefined, {
+        await (await import("../../src/storage/book-lock")).releaseBookDownloadLock(lock);
+        const nextLock = await acquireCacheLock("501");
+        await expect(
+            storage.claimBookCache("501", nextLock.taskId, requested, undefined, { allowInvalidation: false })
+        ).resolves.toMatchObject({ status: "needs-confirmation", size: 2 });
+        const claimed = await storage.claimBookCache("501", nextLock.taskId, requested, undefined, {
             allowInvalidation: true
         });
 
@@ -52,16 +59,19 @@ describe("image cache reconciliation contracts", () => {
             ext: "jpg" as const,
             mediaType: "image/jpeg" as const
         };
-        await storage.claimBookCache("502", "task-old", false);
+        const lock = await acquireCacheLock("502");
+        await storage.claimBookCache("502", lock.taskId, false);
         await storage.putBookCacheBatchForTask(
             "502",
-            "task-old",
+            lock.taskId,
             new Map([[0, createChapter(0)]]),
             createCacheMeta({ bookId: "502", imageEnabled: false })
         );
-        await storage.putBookCoverForTask("502", "task-old", "https://img.example/cover.jpg", cover);
+        await storage.putBookCoverForTask("502", lock.taskId, "https://img.example/cover.jpg", cover);
 
-        await storage.claimBookCache("502", "task-new", true, undefined, { allowInvalidation: true });
+        await (await import("../../src/storage/book-lock")).releaseBookDownloadLock(lock);
+        const nextLock = await acquireCacheLock("502");
+        await storage.claimBookCache("502", nextLock.taskId, true, undefined, { allowInvalidation: true });
 
         expect((await storage.previewBookCache("502", false)).size).toBe(0);
         await expect(storage.loadBookCover("502", "https://img.example/cover.jpg")).resolves.not.toBeNull();
@@ -69,18 +79,21 @@ describe("image cache reconciliation contracts", () => {
 
     it("preserves the old cache when mismatch invalidation is aborted", async () => {
         const storage = await import("../../src/storage/cache/book-cache");
-        await storage.claimBookCache("504", "task-old", false);
+        const lock = await acquireCacheLock("504");
+        await storage.claimBookCache("504", lock.taskId, false);
         await storage.putBookCacheBatchForTask(
             "504",
-            "task-old",
+            lock.taskId,
             new Map([[0, createChapter(0)]]),
             createCacheMeta({ bookId: "504", imageEnabled: false })
         );
         const controller = new AbortController();
         controller.abort();
 
+        await (await import("../../src/storage/book-lock")).releaseBookDownloadLock(lock);
+        const nextLock = await acquireCacheLock("504");
         await expect(
-            storage.claimBookCache("504", "task-new", true, controller.signal, { allowInvalidation: true })
+            storage.claimBookCache("504", nextLock.taskId, true, controller.signal, { allowInvalidation: true })
         ).rejects.toMatchObject({
             name: "AbortError"
         });

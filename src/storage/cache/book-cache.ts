@@ -1,6 +1,6 @@
+import type { ChapterCacheSources } from "./chapter-source";
 import type { CacheMeta, PersistentCacheEntry } from "./model";
 import type { BookCover, Chapter } from "../../content/model";
-import { hasBookDownloadTaskPresence } from "../book-lock";
 import {
     claimCacheV3,
     clearCacheV3,
@@ -12,18 +12,20 @@ import {
     putCacheCoverV3ForTask,
     readCacheChaptersV3,
     readCacheCoverV3,
+    readCacheManifestV3,
     type CacheManifestV3
 } from "./indexeddb-repository";
 import {
-    clearLegacyCacheIfInactive,
+    clearLegacyCache,
     getLegacyCacheBookId,
     listLegacyCacheRecords,
+    listLegacyCacheKeys,
     readLegacyCache,
     type LegacyCacheRecord,
     type LegacyStoredCache
 } from "./legacy-cache";
 import { publishCacheSyncEvent } from "./sync";
-import { isExpectedStorageCancellation, normalizeStorageError } from "./storage-error";
+import { createStorageError, isExpectedStorageCancellation, normalizeStorageError } from "./storage-error";
 import { evaluateImageCacheCompatibility, type ImageCacheCompatibility } from "./compatibility";
 
 const CACHE_EXPIRE_TIME = 24 * 60 * 60 * 1000;
@@ -42,6 +44,7 @@ export interface BookCacheLoadResult {
  */
 export interface BookCachePreviewResult {
     valid: boolean;
+    // size 保留整书缓存量用于插图设置变更确认；indexes 按当前目录匹配
     size: number;
     indexes: number[];
     meta?: CacheMeta;
@@ -57,6 +60,7 @@ export type BookCacheClaimResult =
  */
 export interface BookCacheClaimOptions {
     allowInvalidation?: boolean;
+    chapterSources?: ChapterCacheSources;
 }
 
 function isExpired(data: { ts: number }): boolean {
@@ -71,12 +75,11 @@ function isReusableV3Cache(data: CacheManifestV3 | undefined): data is CacheMani
     return Boolean(data && data.version === 3 && !data.cleared && !isExpired(data));
 }
 
-async function deleteLegacyCacheAfterMigration(bookId: string, taskId: string): Promise<void> {
+async function deleteLegacyCacheAfterMigration(bookId: string): Promise<void> {
     try {
-        await clearLegacyCacheIfInactive(bookId, "clear", taskId);
+        await clearLegacyCache(bookId);
     } catch (error) {
-        // v3 已提交时保留可重复清理的旧缓存，不回滚新缓存
-        console.warn("清理旧版缓存失败，将在后续操作中重试", error);
+        console.warn("清理旧版缓存失败，v3 缓存已保存", error);
     }
 }
 
@@ -99,7 +102,7 @@ function toLegacyPersistentEntry(record: LegacyCacheRecord): PersistentCacheEntr
         return null;
     }
 
-    const bookId = data.meta?.bookId || getLegacyCacheBookId(key);
+    const bookId = getLegacyCacheBookId(key);
     return {
         key,
         bookId,
@@ -117,15 +120,16 @@ function toLegacyPersistentEntry(record: LegacyCacheRecord): PersistentCacheEntr
  */
 export async function previewBookCache(
     bookId: string,
-    requestedImageEnabled: boolean
+    requestedImageEnabled: boolean,
+    chapterSources?: ChapterCacheSources
 ): Promise<BookCachePreviewResult> {
     try {
-        const { manifest, indexes } = await previewCacheV3(bookId);
+        const { manifest, indexes, size } = await previewCacheV3(bookId, chapterSources);
         if (manifest) {
             if (isReusableV3Cache(manifest)) {
                 return {
                     valid: true,
-                    size: indexes.length,
+                    size,
                     indexes,
                     ...(manifest.meta === undefined ? {} : { meta: manifest.meta }),
                     compatibility: evaluateImageCacheCompatibility(manifest.meta?.imageEnabled, requestedImageEnabled)
@@ -139,7 +143,7 @@ export async function previewBookCache(
                 return {
                     valid: true,
                     size: indexes.length,
-                    indexes,
+                    indexes: chapterSources ? [] : indexes,
                     ...(legacy.data.meta === undefined ? {} : { meta: legacy.data.meta }),
                     compatibility: evaluateImageCacheCompatibility(
                         legacy.data.meta?.imageEnabled,
@@ -165,7 +169,8 @@ export async function claimBookCache(
     options: BookCacheClaimOptions = {}
 ): Promise<BookCacheClaimResult> {
     try {
-        const legacy = await readLegacyCache(bookId);
+        const manifest = await readCacheManifestV3(bookId);
+        const legacy = manifest ? null : await readLegacyCache(bookId);
         const migrationSource = isReusableLegacyCache(legacy?.data)
             ? {
                   chapters: legacy.data.chapters,
@@ -203,12 +208,22 @@ export async function claimBookCache(
             throw new Error("缓存认领未返回兼容性结果");
         }
         if (claimResult.status === "needs-confirmation") {
-            return { ...claimResult, valid: true, size: claimResult.indexes.length };
+            return {
+                ...claimResult,
+                valid: true,
+                size: claimResult.indexes.length,
+                indexes: options.chapterSources ? [] : claimResult.indexes
+            };
         }
-        await deleteLegacyCacheAfterMigration(bookId, taskId);
+        if (claimResult.status === "ownership-lost") {
+            throw createStorageError("ownership-lost", "claim");
+        }
+        if (legacy) {
+            await deleteLegacyCacheAfterMigration(bookId);
+        }
         publishCacheSyncEvent({ type: "cache-claimed", bookId, taskId });
 
-        const map = await readCacheChaptersV3(bookId);
+        const map = await readCacheChaptersV3(bookId, options.chapterSources, taskId);
         return {
             status: "claimed",
             size: map.size,
@@ -234,14 +249,15 @@ export async function putBookCacheBatchForTask(
     taskId: string,
     entries: ReadonlyMap<number, Chapter>,
     meta?: CacheMeta,
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    chapterSources?: ChapterCacheSources
 ): Promise<boolean> {
     if (entries.size === 0) {
         return false;
     }
 
     try {
-        const saved = await putCacheBatchV3(bookId, taskId, entries, meta, signal);
+        const saved = await putCacheBatchV3(bookId, taskId, entries, meta, signal, chapterSources);
         if (saved) {
             publishCacheSyncEvent({ type: "cache-saved", bookId, taskId });
         }
@@ -318,10 +334,11 @@ export async function putBookCoverForTask(
 export async function clearBookCacheForTask(bookId: string, taskId: string, signal?: AbortSignal): Promise<boolean> {
     try {
         const cleared = await clearCacheV3ForTask(bookId, taskId, signal);
-        if (!cleared || !(await clearLegacyCacheIfInactive(bookId, "clear", taskId))) {
+        if (!cleared) {
             return false;
         }
         publishCacheSyncEvent({ type: "cache-cleared", bookId });
+        await clearLegacyCache(bookId);
         return true;
     } catch (error) {
         if (isExpectedStorageCancellation(error, signal)) {
@@ -334,63 +351,70 @@ export async function clearBookCacheForTask(bookId: string, taskId: string, sign
 }
 
 /**
- * 列出持久缓存条目，读取失败时回退为空列表
+ * 返回本次读取确认的持久缓存，并标记来源读取失败
  */
-export async function listBookCaches(): Promise<PersistentCacheEntry[]> {
-    try {
-        const [manifests, legacyRecords] = await Promise.all([listCacheManifestsV3(), listLegacyCacheRecords()]);
-        const v3BookIds = new Set(manifests.map((manifest) => manifest.bookId));
-        const v3Entries = manifests.filter(isReusableV3Cache).map(toV3PersistentEntry);
-        const uniqueLegacyEntries = legacyRecords
-            .filter((record) => !v3BookIds.has(getLegacyCacheBookId(record.key)))
-            .map(toLegacyPersistentEntry)
-            .filter((entry): entry is PersistentCacheEntry => Boolean(entry))
-            .reduce((result, entry) => {
-                const existing = result.get(entry.bookId);
-                if (!existing || entry.updatedAt > existing.updatedAt) {
-                    result.set(entry.bookId, entry);
-                }
-                return result;
-            }, new Map<string, PersistentCacheEntry>());
-
-        return [...v3Entries, ...uniqueLegacyEntries.values()].sort((a, b) => b.updatedAt - a.updatedAt);
-    } catch (error) {
-        console.error("读取缓存列表失败", error);
+export async function listBookCaches(): Promise<{ entries: PersistentCacheEntry[]; incomplete: boolean }> {
+    let incomplete = false;
+    // 先列出旧记录，后读取 v3 清单，确保旧记录服从已有清除标记
+    const legacy = await listLegacyCacheRecords().catch((error) => {
+        incomplete = true;
+        console.error("读取旧版缓存列表失败", error);
         return [];
+    });
+    const blockedLegacyBookIds = new Set<string>();
+    let manifests: CacheManifestV3[];
+    try {
+        manifests = await listCacheManifestsV3();
+    } catch (error) {
+        incomplete = true;
+        console.error("读取 v3 缓存列表失败", error);
+        manifests = [];
+        for (const bookId of new Set(legacy.map(({ key }) => getLegacyCacheBookId(key)))) {
+            try {
+                const manifest = await readCacheManifestV3(bookId);
+                if (manifest) {
+                    manifests.push(manifest);
+                }
+            } catch {
+                blockedLegacyBookIds.add(bookId);
+            }
+        }
     }
+
+    const entries = new Map<string, PersistentCacheEntry>();
+    for (const manifest of manifests) {
+        blockedLegacyBookIds.add(manifest.bookId);
+        if (isReusableV3Cache(manifest)) {
+            entries.set(manifest.bookId, toV3PersistentEntry(manifest));
+        }
+    }
+    for (const record of legacy) {
+        const entry = toLegacyPersistentEntry(record);
+        if (
+            entry &&
+            !blockedLegacyBookIds.has(entry.bookId) &&
+            (entries.get(entry.bookId)?.updatedAt ?? 0) < entry.updatedAt
+        ) {
+            entries.set(entry.bookId, entry);
+        }
+    }
+    return { entries: Array.from(entries.values()).sort((a, b) => b.updatedAt - a.updatedAt), incomplete };
 }
 
 /**
- * 清理指定书籍的新旧缓存，遇到受保护的 writer 返回 false，存储失败抛出异常
+ * 清理指定书籍的新旧缓存，存在活动锁时返回 false，存储失败抛出异常
  */
 export async function clearBookCache(bookId: string): Promise<boolean> {
     try {
-        if (!(await clearLegacyCacheIfInactive(bookId, "check"))) {
-            return false;
-        }
-        if (!(await clearCacheV3(bookId, hasBookDownloadTaskPresence))) {
-            return false;
-        }
-
-        if (!(await clearLegacyCacheIfInactive(bookId, "clear"))) {
+        if (!(await clearCacheV3(bookId))) {
             return false;
         }
         publishCacheSyncEvent({ type: "cache-cleared", bookId });
+        await clearLegacyCache(bookId);
         return true;
     } catch (error) {
         throw normalizeStorageError(error, "clear");
     }
-}
-
-async function listStoredBookIds(): Promise<string[]> {
-    const [manifests, legacyRecords] = await Promise.all([listCacheManifestsV3(), listLegacyCacheRecords()]);
-    return Array.from(
-        new Set([
-            // cleared 清单阻止旧缓存重新导入，不应重复作为可清理书籍列举
-            ...manifests.filter((manifest) => !manifest.cleared).map((manifest) => manifest.bookId),
-            ...legacyRecords.map((record) => getLegacyCacheBookId(record.key))
-        ])
-    );
 }
 
 /**
@@ -398,13 +422,23 @@ async function listStoredBookIds(): Promise<string[]> {
  */
 export async function clearAllPersistentCaches(protectedBookIds: ReadonlySet<string> = new Set()): Promise<string[]> {
     try {
-        const targetBookIds = (await listStoredBookIds()).filter((bookId) => !protectedBookIds.has(bookId));
-        const results = await Promise.allSettled(targetBookIds.map(clearBookCache));
-        return results.flatMap((result, index) => {
+        const [manifests, legacy] = await Promise.allSettled([listCacheManifestsV3(), listLegacyCacheKeys()]);
+        const bookIds = new Set([
+            ...(manifests.status === "fulfilled"
+                ? manifests.value.filter((manifest) => !manifest.cleared).map((manifest) => manifest.bookId)
+                : []),
+            ...(legacy.status === "fulfilled" ? legacy.value.map(getLegacyCacheBookId) : [])
+        ]);
+        const targets = Array.from(bookIds).filter((bookId) => !protectedBookIds.has(bookId));
+        const results = await Promise.allSettled(targets.map(clearBookCache));
+        for (const result of [manifests, legacy, ...results]) {
             if (result.status === "rejected") {
                 throw result.reason;
             }
-            return result.value ? [] : [targetBookIds[index]];
+        }
+        return targets.filter((_, index) => {
+            const result = results[index];
+            return result.status === "fulfilled" && !result.value;
         });
     } catch (error) {
         console.error("清理缓存失败", error);

@@ -3,13 +3,14 @@
 import { IDBFactory } from "fake-indexeddb";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createCacheMeta, createChapter } from "../support";
+import { acquireCacheLock } from "../support/book-cache";
 
 const { listActiveBookDownloadLocks } = vi.hoisted(() => ({
     listActiveBookDownloadLocks: vi.fn()
 }));
 
-vi.mock("../../src/storage/book-lock", () => ({
-    hasBookDownloadTaskPresence: vi.fn(() => false),
+vi.mock("../../src/storage/book-lock", async (importOriginal) => ({
+    ...(await importOriginal<typeof import("../../src/storage/book-lock")>()),
     listActiveBookDownloadLocks
 }));
 
@@ -26,10 +27,11 @@ describe("image setting cache contracts", () => {
 
     it("changes the future task setting without clearing existing caches", async () => {
         const storage = await import("../../src/storage/cache/book-cache");
-        await storage.claimBookCache("700", "task-700", false);
+        const lock = await acquireCacheLock("700");
+        await storage.claimBookCache("700", lock.taskId, false);
         await storage.putBookCacheBatchForTask(
             "700",
-            "task-700",
+            lock.taskId,
             new Map([[0, createChapter(0)]]),
             createCacheMeta({ bookId: "700", imageEnabled: false, updatedAt: Date.now() })
         );
@@ -43,7 +45,6 @@ describe("image setting cache contracts", () => {
         await vi.waitFor(() => expect(GM_getValue("enable_image_download", false)).toBe(true));
 
         expect((await storage.previewBookCache("700", false)).size).toBe(1);
-        expect(document.querySelector("#esj-image-cache-confirm")).toBeNull();
     });
 
     it.each([

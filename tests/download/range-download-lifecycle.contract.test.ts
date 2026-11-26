@@ -182,7 +182,11 @@ describe("range download lifecycle", () => {
         expect(mocks.acquire).toHaveBeenCalledWith("100", "detail");
         expect(mocks.createDownloadPopup).toHaveBeenCalledWith("selected", expect.any(Function), "测试小说");
         expect(mocks.claimCache).toHaveBeenCalledWith("100", lock.taskId, false, expect.any(AbortSignal), {
-            allowInvalidation: false
+            allowInvalidation: false,
+            chapterSources: new Map([
+                [1, "esj:100/2"],
+                [2, "esj:100/3"]
+            ])
         });
         expect(mocks.runDownload).toHaveBeenCalledWith(
             expect.objectContaining({
@@ -298,10 +302,12 @@ describe("range download lifecycle", () => {
         });
 
         expect(mocks.claimCache).toHaveBeenNthCalledWith(1, "100", lock.taskId, false, expect.any(AbortSignal), {
-            allowInvalidation: false
+            allowInvalidation: false,
+            chapterSources: expect.any(Map)
         });
         expect(mocks.claimCache).toHaveBeenNthCalledWith(2, "100", lock.taskId, false, expect.any(AbortSignal), {
-            allowInvalidation: true
+            allowInvalidation: true,
+            chapterSources: expect.any(Map)
         });
         expect(mocks.acquire).toHaveBeenCalledTimes(2);
         expect(mocks.release).toHaveBeenCalledTimes(2);
