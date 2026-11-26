@@ -1,4 +1,4 @@
-import { createRangeSelection } from "../../src/download/plan";
+import { createFullSelection } from "../../src/download/plan";
 import { expect, vi } from "vitest";
 import type { DownloadResult, ProtectedChapterDecision } from "../../src/download/contracts";
 import { createBookLock, createDownloadTask } from "./factories";
@@ -213,7 +213,7 @@ export async function resetBrowserDownloadHarness(): Promise<BrowserDownloadRunt
         hoistedBrowserDownloadMocks.getImageDownloadSetting.mockReturnValue(options.imageEnabled);
         hoistedBrowserDownloadMocks.selectionPopup.mockResolvedValue({
             action: "download",
-            selection: options.selection || createRangeSelection(1, options.tasks.length - 1 + 1, options.tasks.length)
+            selection: options.selection || createFullSelection(options.tasks)
         });
         return runBookDownload({
             bookId: options.bookId,

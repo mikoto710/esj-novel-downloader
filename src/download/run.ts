@@ -145,7 +145,7 @@ export async function runDownload(
             taskId: options.taskId,
             bookChapterCount: chapters.size
         });
-        const restoredCount = plan.readyCount(chapters);
+        const restoredCount = progress.snapshot.readyChapterCount;
         if (restoredCount) {
             log({ code: "cache-restore-started", params: { count: restoredCount } });
         }

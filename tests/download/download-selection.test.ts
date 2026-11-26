@@ -5,7 +5,6 @@ import {
     createChapterSelection,
     normalizeChapterSelectionSummary,
     summarizeChapterSelection,
-    createRangeSelection,
     DownloadSelectionError,
     resolveDownloadSelection,
     selectDownloadTasks
@@ -36,7 +35,6 @@ describe("download selection", () => {
             ]
         });
         expect(plan.retainCacheOnSuccess).toBe(true);
-        expect(plan.readyCount(new Set([0, 2, 9, 11]))).toBe(2);
         expect(plan.position(plan.tasks[2])).toEqual({ index: 3, sourceIndex: 5, total: 5 });
         const endpoints = createChapterSelection([0, 11], 12);
         expect(
@@ -87,33 +85,10 @@ describe("download selection", () => {
         ).toBeNull();
     });
 
-    it.each([
-        [1, 1, 5, "selected", [0]],
-        [1, 5, 5, "all", [0, 1, 2, 3, 4]],
-        [5, 5, 5, "selected", [4]],
-        [2, 4, 5, "selected", [1, 2, 3]]
-    ] as const)("converts %s..%s of %s to absolute indexes", (start, end, total, mode, indexes) => {
-        expect(createRangeSelection(start, end, total)).toEqual({ mode, sourceTotalChapters: total, indexes });
-    });
-
-    it.each([
-        [0, 1, 5],
-        [1.5, 2, 5],
-        [3, 2, 5],
-        [1, 6, 5]
-    ])("rejects invalid user range %s..%s of %s", (start, end, total) => {
-        expect(() => createRangeSelection(start, end, total)).toThrowError(
-            expect.objectContaining<Partial<DownloadSelectionError>>({ code: "selection-range-invalid" })
-        );
-    });
-
     it("keeps absolute indexes when selecting a middle range", () => {
-        const tasks = createTasks(120);
-        const selection = createRangeSelection(101, 120, tasks.length);
-
-        expect(selectDownloadTasks(tasks, selection).map((task) => task.index)).toEqual(
-            Array.from({ length: 20 }, (_, index) => index + 100)
-        );
+        const tasks = createTasks(5);
+        const selection = createChapterSelection([2, 3], tasks.length);
+        expect(selectDownloadTasks(tasks, selection)).toEqual([tasks[2], tasks[3]]);
     });
 
     it("treats missing selection as the existing full-book contract", () => {
@@ -154,7 +129,7 @@ describe("download selection", () => {
         expect(() =>
             resolveDownloadSelection({
                 tasks: [createTasks(3)[2], createTasks(3)[1]],
-                selection: createRangeSelection(2, 3, 3)
+                selection: createChapterSelection([1, 2], 3)
             })
         ).toThrowError(
             expect.objectContaining<Partial<DownloadSelectionError>>({ code: "selection-task-order-invalid" })
@@ -163,7 +138,7 @@ describe("download selection", () => {
         expect(() =>
             resolveDownloadSelection({
                 tasks: [createTasks(3)[0], createTasks(3)[2]],
-                selection: createRangeSelection(1, 2, 3)
+                selection: createChapterSelection([0, 1], 3)
             })
         ).toThrowError(expect.objectContaining<Partial<DownloadSelectionError>>({ code: "selection-task-mismatch" }));
     });

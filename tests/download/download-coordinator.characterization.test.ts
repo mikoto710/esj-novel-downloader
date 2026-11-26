@@ -1,4 +1,4 @@
-import { createRangeSelection } from "../../src/download/plan";
+import { createChapterSelection } from "../../src/download/plan";
 import { describe, expect, it, vi } from "vitest";
 import { createDownloadHarness as createHarness } from "../support/download-harness";
 import type {
@@ -308,7 +308,10 @@ describe("runDownload characterization", () => {
 
         await harness.run(
             createOptions(tasks, {
-                selection: createRangeSelection(101, 120, 120)
+                selection: createChapterSelection(
+                    tasks.map((task) => task.index),
+                    120
+                )
             })
         );
 
@@ -350,7 +353,7 @@ describe("runDownload characterization", () => {
 
         await harness.run(
             createOptions(tasks, {
-                selection: createRangeSelection(11, 12, 20)
+                selection: createChapterSelection([10, 11], 20)
             })
         );
 

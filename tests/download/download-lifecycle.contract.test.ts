@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { getBrowserDownloadMocks, resetBrowserDownloadHarness } from "../support/browser-download-harness";
 import { runBookDownload } from "../../src/app/book-download";
 import { state } from "../../src/app/page-session";
-import { createRangeSelection } from "../../src/download/plan";
+import { createChapterSelection } from "../../src/download/plan";
 import { loadDetailBook, loadForumBook } from "../../src/site/book";
 import { setInterfaceLocalePreference } from "../../src/storage/settings";
 import {
@@ -52,7 +52,7 @@ describe("download lifecycle contracts", () => {
         mocks.acquire.mockResolvedValue({ acquired: true, lock });
         mocks.selectionPopup.mockResolvedValue({
             action: "download",
-            selection: createRangeSelection(1, 2, 2)
+            selection: createChapterSelection([0, 1], 2)
         });
         mocks.runDownload.mockResolvedValue({ status: "ready", data: createCachedData() });
     });

@@ -87,22 +87,22 @@ export function createInitialDownloadSnapshot(scheduledCount: number, restoredCo
 }
 
 /**
- * 统一阶段校验和进度写入，本次就绪数从固定任务表计算
+ * 统一阶段校验和进度写入，本次就绪数随已选章节加入或失效更新
  */
 export class DownloadProgress {
     private current: DownloadSnapshot;
     private readonly persistedIndexes: Set<number>;
     constructor(
         private readonly plan: DownloadPlan,
-        private readonly chapters: ReadonlyMap<number, Chapter>,
+        private readonly chapters: Map<number, Chapter>,
         private readonly events: DownloadEventSink,
         private readonly ui: Pick<DownloadUiPort, "update">
     ) {
-        this.current = createInitialDownloadSnapshot(plan.tasks.length, plan.readyCount(chapters));
-        this.current.bookChapterCount = chapters.size;
         this.persistedIndexes = new Set(
             plan.tasks.filter((task) => chapters.has(task.index)).map((task) => task.index)
         );
+        this.current = createInitialDownloadSnapshot(plan.tasks.length, this.persistedIndexes.size);
+        this.current.bookChapterCount = chapters.size;
     }
 
     /**
@@ -131,7 +131,7 @@ export class DownloadProgress {
      * 有效恢复数同时成为初轮完成数和已持久化数
      */
     recordCacheRestored(): void {
-        const restoredCount = this.plan.readyCount(this.chapters);
+        const restoredCount = this.current.readyChapterCount;
         this.update({ restoredCount, completedCount: restoredCount, persistedCount: restoredCount });
     }
 
@@ -145,8 +145,11 @@ export class DownloadProgress {
     /**
      * 初轮处理推进完成数；补抓只增加实际处理数
      */
-    recordProcessed(isRetry = false): void {
+    recordProcessed(index: number, chapter: Chapter, isRetry = false): void {
+        const added = !this.chapters.has(index);
+        this.chapters.set(index, chapter);
         this.update({
+            readyChapterCount: this.current.readyChapterCount + (added && this.plan.indexes.has(index) ? 1 : 0),
             completedCount: this.current.completedCount + (isRetry ? 0 : 1),
             processedCount: this.current.processedCount + 1
         });
@@ -168,8 +171,15 @@ export class DownloadProgress {
         this.update({ persistedCount: this.persistedIndexes.size });
     }
 
-    invalidatePersistedChapter(index: number): void {
-        this.persistedIndexes.delete(index);
+    invalidateChapter(index: number): void {
+        const removed = this.chapters.delete(index);
+        const invalidated = this.persistedIndexes.delete(index);
+        if (removed || invalidated) {
+            this.update({
+                readyChapterCount: this.current.readyChapterCount - (removed && this.plan.indexes.has(index) ? 1 : 0),
+                persistedCount: Math.min(this.current.persistedCount, this.persistedIndexes.size)
+            });
+        }
     }
 
     /**
@@ -218,11 +228,10 @@ export class DownloadProgress {
     }
 
     // 共用合并和发布留在内部，调用者不能任意改写快照
-    private update(values: Partial<Omit<DownloadSnapshot, "phase" | "readyChapterCount" | "bookChapterCount">>): void {
+    private update(values: Partial<Omit<DownloadSnapshot, "phase" | "bookChapterCount">>): void {
         this.current = {
             ...this.current,
             ...values,
-            readyChapterCount: this.plan.readyCount(this.chapters),
             bookChapterCount: this.chapters.size
         };
         this.events.emit({ type: "snapshot-updated", snapshot: this.snapshot });

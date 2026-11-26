@@ -150,14 +150,12 @@
 }
 
 #esj-cache-manager {
-    width: 620px;
-    height: min(520px, calc(100vh - 32px));
-    top: 50%;
-    transform: translate(-50%, -50%);
     font-family: inherit;
 }
 
 #esj-cache-confirm {
+    box-sizing: border-box;
+    max-width: calc(100% - 16px);
     z-index: 1000000;
 }
 

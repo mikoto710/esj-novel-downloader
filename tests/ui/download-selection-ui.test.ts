@@ -1,6 +1,5 @@
 // @vitest-environment jsdom
 
-import { createRangeSelection } from "../../src/download/plan";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createCachedData, createDeferred, createDownloadTask } from "../support";
 import { createDownloadButton, createSettingButton } from "../../src/ui/components";
@@ -49,7 +48,7 @@ describe("unified download selection UI", () => {
         publishInterfaceLocaleChange();
     });
 
-    it("preserves a sparse selection through locale changes and cache reconfirmation", async () => {
+    it("preserves restored selection, search, and filename through locale changes", async () => {
         const selected = { mode: "selected" as const, sourceTotalChapters: 5, indexes: [0, 2, 4] };
         const popup = createDownloadSelectionPopup(
             selectionOptions({
@@ -79,10 +78,6 @@ describe("unified download selection UI", () => {
         expect(
             document.querySelector<HTMLInputElement>('#esj-range-directory input[data-esj-select-index="1"]')!.checked
         ).toBe(false);
-        document.querySelector<HTMLInputElement>("#esj-download-all")!.click();
-        expect(document.querySelector<HTMLButtonElement>("#esj-range-download")!.disabled).toBe(false);
-        document.querySelector<HTMLInputElement>("#esj-download-range")!.click();
-        expect(checkedIndexes()).toEqual([0, 2, 4]);
         document.querySelector<HTMLButtonElement>("#esj-range-download")!.click();
         await expect(popup.decision).resolves.toEqual({
             action: "download",
@@ -120,51 +115,17 @@ describe("unified download selection UI", () => {
         await expect(next.decision).resolves.toEqual({ action: "cancel" });
     });
 
-    it("retains chapter selections when switching download modes", async () => {
-        const { decision } = createDownloadSelectionPopup(selectionOptions());
-        selectChapters(1, 2, 3);
-        expect(checkedIndexes()).toEqual([1, 2, 3]);
-
-        document.querySelector<HTMLInputElement>("#esj-download-all")?.click();
-        document.querySelector<HTMLInputElement>("#esj-download-range")?.click();
-        expect(checkedIndexes()).toEqual([1, 2, 3]);
-        document.querySelector<HTMLButtonElement>("#esj-range-download")?.click();
-        await expect(decision).resolves.toEqual({
-            action: "download",
-            selection: { mode: "selected", sourceTotalChapters: 5, indexes: [1, 2, 3] }
-        });
-    });
-
-    it("previews only selected cached chapters and preserves selection across locale changes", async () => {
-        document.body.innerHTML = '<button class="esj-settings-trigger"></button>';
+    it("preserves the selected cached count and choices across full-book mode", async () => {
         const { decision } = createDownloadSelectionPopup(
             selectionOptions({ cachedIndexes: new Set([0, 1, 3]), cacheCount: 3 })
         );
         selectChapters(1, 2, 3);
 
-        expect(document.querySelector("#esj-range-cache-reuse")?.textContent?.match(/\d+/g)).toEqual(["2"]);
+        document.querySelector<HTMLInputElement>("#esj-download-all")!.click();
+        expect(document.querySelector("#esj-range-cache-reuse strong")?.textContent).toBe("3");
+        document.querySelector<HTMLInputElement>("#esj-download-range")!.click();
+        expect(document.querySelector("#esj-range-cache-reuse strong")?.textContent).toBe("2");
 
-        setInterfaceLocalePreference("zh-TW");
-        publishInterfaceLocaleChange();
-        expect(checkedIndexes()).toEqual([1, 2, 3]);
-        expect(document.querySelector<HTMLInputElement>("#esj-download-range")?.checked).toBe(true);
-
-        document.querySelector<HTMLButtonElement>("#esj-range-download")?.click();
-        await expect(decision).resolves.toEqual({
-            action: "download",
-            selection: { mode: "selected", sourceTotalChapters: 5, indexes: [1, 2, 3] }
-        });
-        expect(document.querySelector<HTMLButtonElement>(".esj-settings-trigger")?.disabled).toBe(false);
-    });
-
-    it("retains the chosen range when a changed cache requires another confirmation", async () => {
-        const selection = createRangeSelection(2, 4, 5);
-        const { decision } = createDownloadSelectionPopup(
-            selectionOptions({ initialSelection: selection, cacheWillBeInvalidated: true })
-        );
-
-        expect(document.querySelector<HTMLInputElement>("#esj-download-range")?.checked).toBe(true);
-        expect(checkedIndexes()).toEqual([1, 2, 3]);
         document.querySelector<HTMLButtonElement>("#esj-range-download")?.click();
         await expect(decision).resolves.toEqual({
             action: "download",

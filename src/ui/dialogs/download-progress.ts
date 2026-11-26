@@ -94,7 +94,10 @@ export function createDownloadPopup(
     const headerLabel = header.querySelector("span");
     if (headerLabel instanceof HTMLElement) {
         bindInterfaceText(headerLabel, titleKey);
+        headerLabel.style.overflowWrap = "anywhere";
     }
+
+    header.style.flexShrink = "0";
 
     // 标题使用固定 ID，供下载阶段和托盘同步更新
     const span = header.querySelector("span");
@@ -110,7 +113,7 @@ export function createDownloadPopup(
 
     const logBox = el("div", {
         id: "esj-log",
-        style: "flex:1;margin:12px;background:#fafafa;border:1px solid #e6e6e6;padding:8px;border-radius:6px;overflow:auto;font-family:Consolas,monospace;font-size:13px;white-space:pre-wrap;"
+        style: "flex:1;min-height:0;margin:12px;background:#fafafa;border:1px solid #e6e6e6;padding:8px;border-radius:6px;overflow:auto;font-family:Consolas,monospace;font-size:13px;white-space:pre-wrap;"
     });
 
     const btnCancel = el(
@@ -129,7 +132,7 @@ export function createDownloadPopup(
         "div",
         {
             id: "esj-popup",
-            style: "position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%); width: 520px; height:min(460px,calc(100vh - 32px)); background: #fff; border-radius: 8px; border: 1px solid #aaa; box-shadow: 0 0 18px rgba(0,0,0,0.28); z-index: 999999; display:flex;flex-direction:column;"
+            style: "position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%); width:min(520px,calc(100% - 16px)); height:min(460px,calc(100dvh - 16px)); box-sizing:border-box; background: #fff; border-radius: 8px; border: 1px solid #aaa; box-shadow: 0 0 18px rgba(0,0,0,0.28); z-index: 999999; display:flex;flex-direction:column;"
         },
         [
             header,

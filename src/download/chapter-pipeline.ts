@@ -165,8 +165,7 @@ export function createChapterPipeline(
             } catch (error) {
                 if (error instanceof MappingFontError) {
                     // 只使当前章节失效，后续重新抓取
-                    chapters.delete(index);
-                    progress.invalidatePersistedChapter(index);
+                    progress.invalidateChapter(index);
                     invalidatedCount++;
                     ports.log({
                         code: "restored-mapping-font-invalid",
@@ -343,10 +342,8 @@ export function createChapterPipeline(
 
         // 确认期间允许已完成的章节落盘，但暂停领取新任务
         const mappingConsent = registerMappedChapter(task, chapter);
-        chapters.set(task.index, chapter);
+        progress.recordProcessed(task.index, chapter, isRetry);
         ports.events.emit({ type: "chapter-processed", task, retry: isRetry });
-
-        progress.recordProcessed(isRetry);
 
         const accepted = await cache.enqueue(task.index, chapter);
         if (!accepted) {
@@ -391,13 +388,13 @@ export function createChapterPipeline(
         // 非站内章节保留占位内容，维持原有章节顺序和导出数量
         if (!ports.chapterFetcher.isSiteChapter(task)) {
             const message = `${task.url} {非站内链接}`;
-            chapters.set(task.index, {
+            const chapter = {
                 title: task.title,
                 content: message,
                 txtSegment: `${task.title}\n${message}\n\n`
-            });
-            progress.recordProcessed();
-            const accepted = await cache.enqueue(task.index, chapters.get(task.index)!);
+            };
+            progress.recordProcessed(task.index, chapter, isRetry);
+            const accepted = await cache.enqueue(task.index, chapter);
             if (!accepted) {
                 return ports.workSignal.aborted ? "cancelled" : "failed";
             }

@@ -27,10 +27,19 @@ export interface ChapterDirectoryMatch {
  */
 export interface ChapterDirectoryView {
     element: HTMLElement;
-    setSelection(indexes: ReadonlySet<number>): void;
+    setSelection(indexes: ReadonlySet<number>, changedIndexes?: Iterable<number>): void;
+    refreshLabels(): void;
     search(query: string): readonly ChapterDirectoryMatch[];
     reveal(index: number): void;
     dispose(): void;
+}
+
+interface DirectoryGroup {
+    input: HTMLInputElement;
+    indexes: readonly number[];
+    count: HTMLElement;
+    title: string;
+    selectedCount: number;
 }
 
 /**
@@ -56,7 +65,9 @@ export function createChapterDirectoryView(options: ChapterDirectoryOptions): Ch
     }
 
     const rows = new Map<number, { label: HTMLLabelElement; input: HTMLInputElement; title: string }>();
-    const groups = new Map<HTMLInputElement, { indexes: readonly number[]; count: HTMLElement; title: string }>();
+    const groups = new Map<HTMLInputElement, DirectoryGroup>();
+    const groupNodes = new Map<HTMLDetailsElement, DirectoryGroup>();
+    const groupsByIndex = new Map<number, DirectoryGroup[]>();
     const groupTitles = new Map<HTMLDetailsElement, string>();
 
     let disposed = false;
@@ -105,19 +116,27 @@ export function createChapterDirectoryView(options: ChapterDirectoryOptions): Ch
         input.addEventListener("click", (event) => event.stopPropagation());
         summary.prepend(input);
         summary.append(count);
-        groups.set(input, { indexes, count, title });
+        const group = { input, indexes, count, title, selectedCount: 0 };
+        groups.set(input, group);
+        groupNodes.set(details, group);
     }
 
     const entries = Array.from(rows, ([index, row]) => {
         const context: string[] = [];
+        const ancestors: DirectoryGroup[] = [];
         for (let parent = row.label.parentElement; parent && parent !== root; parent = parent.parentElement) {
             if (parent instanceof HTMLDetailsElement) {
                 const title = groupTitles.get(parent);
+                const group = groupNodes.get(parent);
+                if (group) {
+                    ancestors.push(group);
+                }
                 if (title) {
                     context.unshift(title);
                 }
             }
         }
+        groupsByIndex.set(index, ancestors);
         return {
             index,
             title: row.title,
@@ -144,28 +163,48 @@ export function createChapterDirectoryView(options: ChapterDirectoryOptions): Ch
     };
     root.addEventListener("change", onChange);
 
-    const setSelection = (indexes: ReadonlySet<number>) => {
+    const setSelection = (indexes: ReadonlySet<number>, changedIndexes?: Iterable<number>) => {
         if (disposed) {
             return;
         }
 
-        root.setAttribute("aria-label", t("selection.directory"));
-        for (const [index, row] of rows) {
-            row.input.checked = indexes.has(index);
-            row.label.toggleAttribute("data-esj-selected", row.input.checked);
-            row.input.setAttribute("aria-label", t("selection.chapterLabel", { index: index + 1, title: row.title }));
+        const affectedGroups = new Set<DirectoryGroup>(changedIndexes ? [] : groups.values());
+        for (const index of changedIndexes ?? rows.keys()) {
+            const row = rows.get(index);
+            if (!row) {
+                continue;
+            }
+            const checked = indexes.has(index);
+            row.input.checked = checked;
+            if (row.label.hasAttribute("data-esj-selected") !== checked) {
+                row.label.toggleAttribute("data-esj-selected", checked);
+                for (const group of groupsByIndex.get(index) ?? []) {
+                    group.selectedCount += checked ? 1 : -1;
+                    affectedGroups.add(group);
+                }
+            }
         }
 
-        for (const [input, group] of groups) {
-            const count = group.indexes.filter((index) => indexes.has(index)).length;
-            input.checked = count === group.indexes.length;
-            input.indeterminate = count > 0 && count < group.indexes.length;
-            input.setAttribute("aria-label", t("selection.selectGroup", { title: group.title }));
-            group.count.textContent = `${count} / ${group.indexes.length}`;
+        for (const group of affectedGroups) {
+            const { input, count, selectedCount, indexes: members } = group;
+            input.checked = selectedCount === members.length;
+            input.indeterminate = selectedCount > 0 && selectedCount < members.length;
+            count.textContent = `${selectedCount} / ${members.length}`;
         }
     };
 
+    function refreshLabels(): void {
+        root.setAttribute("aria-label", t("selection.directory"));
+        for (const [index, { input, title }] of rows) {
+            input.setAttribute("aria-label", t("selection.chapterLabel", { index: index + 1, title }));
+        }
+        for (const { input, title } of groups.values()) {
+            input.setAttribute("aria-label", t("selection.selectGroup", { title }));
+        }
+    }
+
     setSelection(options.selectedIndexes);
+    refreshLabels();
 
     /**
      * 返回带绝对索引的匹配项；精确目录序号优先，不重排原目录
@@ -220,9 +259,10 @@ export function createChapterDirectoryView(options: ChapterDirectoryOptions): Ch
         element: root,
 
         /**
-         * 更新勾选和无障碍名称，保留目录折叠、滚动及当前高亮
+         * 更新对应勾选与祖先组计数，保留目录折叠、滚动及当前高亮
          */
         setSelection,
+        refreshLabels,
 
         search: searchChapters,
         reveal: revealChapter,
@@ -237,6 +277,8 @@ export function createChapterDirectoryView(options: ChapterDirectoryOptions): Ch
 
             rows.clear();
             groups.clear();
+            groupNodes.clear();
+            groupsByIndex.clear();
             groupTitles.clear();
             highlighted = undefined;
         }

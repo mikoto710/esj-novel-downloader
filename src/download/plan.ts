@@ -39,7 +39,6 @@ interface DownloadPlanInput {
 
 export type DownloadSelectionErrorCode =
     | "selection-total-invalid"
-    | "selection-range-invalid"
     | "selection-indexes-invalid"
     | "selection-task-order-invalid"
     | "selection-task-mismatch";
@@ -77,30 +76,8 @@ export function createChapterSelection(indexes: readonly number[], sourceTotalCh
     });
 }
 
-/**
- * 将界面的 1-based 连续闭区间转换为同一章节集合
- */
-export function createRangeSelection(
-    startChapter: number,
-    endChapter: number,
-    sourceTotalChapters: number
-): ChapterSelection {
-    if (!validTotal(sourceTotalChapters)) {
-        throw new DownloadSelectionError("selection-total-invalid");
-    }
-    if (
-        !Number.isSafeInteger(startChapter) ||
-        !Number.isSafeInteger(endChapter) ||
-        startChapter < 1 ||
-        endChapter < startChapter ||
-        endChapter > sourceTotalChapters
-    ) {
-        throw new DownloadSelectionError("selection-range-invalid");
-    }
-    return createChapterSelection(
-        Array.from({ length: endChapter - startChapter + 1 }, (_, offset) => startChapter - 1 + offset),
-        sourceTotalChapters
-    );
+export function createFullSelection(tasks: readonly DownloadTask[]): ChapterSelection {
+    return createChapterSelection(Array.from(tasks.keys()), tasks.length);
 }
 
 /**
@@ -124,7 +101,7 @@ export function selectDownloadTasks(sourceTasks: readonly DownloadTask[], select
 export function resolveDownloadSelection(options: DownloadPlanInput): ChapterSelection {
     const selection = options.selection
         ? createChapterSelection(options.selection.indexes, options.selection.sourceTotalChapters)
-        : createRangeSelection(1, options.tasks.length, options.tasks.length);
+        : createFullSelection(options.tasks);
     if (options.tasks.length !== selection.indexes.length) {
         throw new DownloadSelectionError("selection-task-mismatch");
     }
@@ -244,12 +221,6 @@ export function createDownloadPlan(input: DownloadPlanInput) {
         retainCacheOnSuccess: selection.mode === "selected",
         indexes,
         taskOrderByIndex,
-        /**
-         * 只统计本次选中索引的缓存命中，正文与资源完整性由恢复阶段检查
-         */
-        readyCount(chapters: Pick<ReadonlySet<number>, "has">): number {
-            return tasks.reduce((count, task) => count + Number(chapters.has(task.index)), 0);
-        },
         /**
          * 同时返回本次任务位置与原书目录位置，均从 1 开始
          */

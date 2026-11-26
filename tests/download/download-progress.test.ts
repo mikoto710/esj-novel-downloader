@@ -1,4 +1,4 @@
-import { createRangeSelection } from "../../src/download/plan";
+import { createChapterSelection } from "../../src/download/plan";
 import { describe, expect, it, vi } from "vitest";
 import { DownloadProgress, canTransitionDownloadPhase } from "../../src/download/progress";
 import { createDownloadPlan } from "../../src/download/plan";
@@ -18,7 +18,7 @@ describe("DownloadProgress", () => {
     it("derives readiness from selected chapters after additions and invalidation", () => {
         const plan = createDownloadPlan({
             tasks: [createDownloadTask(10), createDownloadTask(11)],
-            selection: createRangeSelection(11, 12, 20)
+            selection: createChapterSelection([10, 11], 20)
         });
         const chapters = new Map([
             [0, createChapter(0)],
@@ -28,15 +28,24 @@ describe("DownloadProgress", () => {
         const progress = new DownloadProgress(plan, chapters, { emit: vi.fn() }, ui);
         expect(progress.snapshot).toMatchObject({ readyChapterCount: 1 });
 
-        chapters.set(11, createChapter(11));
-        chapters.set(19, createChapter(19));
-        progress.recordProcessed();
-        expect(ui.update).toHaveBeenLastCalledWith(expect.objectContaining({ readyChapterCount: 2 }));
+        progress.recordCacheRestored();
+        progress.recordProcessed(11, createChapter(11));
+        progress.recordProcessed(19, createChapter(19), true);
+        progress.recordProcessed(11, createChapter(11), true);
+        expect(ui.update).toHaveBeenLastCalledWith(
+            expect.objectContaining({ readyChapterCount: 2, bookChapterCount: 4, persistedCount: 1 })
+        );
 
-        chapters.delete(10);
+        progress.invalidateChapter(10);
+        progress.invalidateChapter(10);
         progress.recordIntegrityScan(1);
-        expect(ui.update).toHaveBeenLastCalledWith(expect.objectContaining({ readyChapterCount: 1 }));
-        expect(chapters.size).toBe(3);
+        expect(ui.update).toHaveBeenLastCalledWith(
+            expect.objectContaining({ readyChapterCount: 1, bookChapterCount: 3, persistedCount: 0 })
+        );
+        progress.recordCommitted([11, 11, 19]);
+        expect(ui.update).toHaveBeenLastCalledWith(
+            expect.objectContaining({ readyChapterCount: 1, bookChapterCount: 3, persistedCount: 1 })
+        );
     });
 
     it("allows cancellation and failure only from running states", () => {

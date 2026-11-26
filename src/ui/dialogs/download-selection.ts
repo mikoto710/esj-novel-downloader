@@ -2,12 +2,7 @@ import type { BookDirectorySnapshot } from "../../site/book-directory";
 import type { ChapterSelection, ChapterSelectionSummary } from "../../download/plan";
 import type { LocaleKey } from "../../locale/catalog";
 import type { DownloadTask } from "../../download/contracts";
-import {
-    createChapterSelection,
-    createDownloadPlan,
-    createRangeSelection,
-    selectDownloadTasks
-} from "../../download/plan";
+import { createChapterSelection, createFullSelection, selectDownloadTasks } from "../../download/plan";
 import { enableDrag, el, registerElementCleanup, removeElement } from "../dom";
 import { subscribeInterfaceLocaleChange, t } from "../locale";
 import { acquirePageActionGroupLockForPopup } from "../page-action-lock";
@@ -87,6 +82,22 @@ export function createDownloadSelectionPopup(options: DownloadSelectionPopupOpti
     let unsubscribeLocale: () => void = () => undefined;
     let directoryView: ChapterDirectoryView | undefined;
     let selected = new Set<number>();
+    let cachedCount = 0;
+    let selectedCachedCount = 0;
+
+    const countSelectedCache = () => {
+        selectedCachedCount = 0;
+        for (const index of preview.cachedIndexes) {
+            if (selected.has(index)) {
+                selectedCachedCount++;
+            }
+        }
+    };
+
+    const countAvailableCache = () => {
+        cachedCount = preview.tasks.filter((task) => preview.cachedIndexes.has(task.index)).length;
+        countSelectedCache();
+    };
 
     const restoreSelection = (selection?: ChapterSelection) => {
         selected = new Set(
@@ -94,6 +105,7 @@ export function createDownloadSelectionPopup(options: DownloadSelectionPopupOpti
         );
     };
     restoreSelection(options.initialSelection);
+    countAvailableCache();
 
     // 所有关闭入口共用决策收尾，统一释放订阅与子视图
     const finish = (value: DownloadSelectionDecision) => {
@@ -169,12 +181,12 @@ export function createDownloadSelectionPopup(options: DownloadSelectionPopupOpti
 
     function selectAllChapters(): void {
         selected = new Set(preview.tasks.map((task) => task.index));
-        refresh();
+        refreshBulkSelection();
     }
 
     function invertChapterSelection(): void {
         selected = new Set(preview.tasks.filter((task) => !selected.has(task.index)).map((task) => task.index));
-        refresh();
+        refreshBulkSelection();
     }
 
     const selectAll = el("button", { type: "button", onclick: selectAllChapters });
@@ -187,7 +199,7 @@ export function createDownloadSelectionPopup(options: DownloadSelectionPopupOpti
         type: "button",
         onclick: () => {
             selected.clear();
-            refresh();
+            refreshBulkSelection();
         }
     });
 
@@ -259,7 +271,7 @@ export function createDownloadSelectionPopup(options: DownloadSelectionPopupOpti
             return null;
         }
         return allMode.checked
-            ? createRangeSelection(1, preview.tasks.length, preview.tasks.length)
+            ? createFullSelection(preview.tasks)
             : selected.size
               ? createChapterSelection([...selected], preview.tasks.length)
               : null;
@@ -291,51 +303,48 @@ export function createDownloadSelectionPopup(options: DownloadSelectionPopupOpti
         invertSelection.textContent = t("selection.invert");
         clearSelection.textContent = t("selection.clear");
         selectAll.disabled = invertSelection.disabled = clearSelection.disabled = disabled;
-        directoryView?.setSelection(selected);
     }
 
-    // 章数取自原目录或当前勾选数，缓存复用数按本次选择计划统计
-    function refreshSelectionSummary(disabled: boolean, selection: ChapterSelection | null): void {
-        const plan = selection
-            ? createDownloadPlan({ tasks: selectDownloadTasks(preview.tasks, selection), selection })
-            : null;
+    function refreshSelectionSummary(disabled: boolean): void {
         chapterCount.hidden = disabled;
-        chapterCount.textContent = allMode.checked
-            ? t("range.chapterCount", { count: preview.tasks.length })
-            : t("selection.selectedCount", { count: selected.size });
         totalCount.hidden = disabled || allMode.checked;
         totalCount.textContent = t("selection.directoryTotal", { count: preview.tasks.length });
-
         summary.hidden = disabled;
         imageLabel.textContent = t("range.imagesLabel");
         imageValue.textContent = t(options.imageEnabled ? "range.imagesEnabled" : "range.imagesDisabled");
         imageValue.style.color = options.imageEnabled ? "#217745" : "#666";
         cacheLabel.textContent = t("range.summary") + " ";
-        cacheValue.textContent = String(plan?.readyCount(preview.cachedIndexes) || 0);
         cacheUnit.textContent = " " + t("range.cacheUnit");
         cacheReuse.hidden = preview.cacheWillBeInvalidated;
     }
 
     // 提示和下载操作共用本次选择，旧结果入口独立于准备是否成功
-    function refreshSelectionActions(selection: ChapterSelection | null): void {
+    function refreshActionLabels(): void {
         cacheWarning.hidden = Boolean(stage) || !preview.cacheWillBeInvalidated;
         cacheWarning.textContent = "⚠️ " + t("range.cacheDiscardWarning", { count: preview.cacheCount });
-        validation.textContent = stage
-            ? t(PREPARATION_MESSAGES[stage])
-            : preview.preparationErrorKey
-              ? t(preview.preparationErrorKey)
-              : !selection
-                ? t("selection.empty")
-                : "";
-        validation.hidden = !validation.textContent;
-
         cancelButton.textContent = t("common.cancel");
         if (previousButton) {
             previousButton.textContent = t("range.openPrevious");
             previousButton.title = formatSelectionSummary(options.existingSelection);
             previousButton.setAttribute("aria-label", t("range.openPrevious") + " " + previousButton.title);
         }
-        downloadButton.disabled = !selection;
+    }
+
+    function refreshSelectionCounts(disabled: boolean): void {
+        chapterCount.textContent = allMode.checked
+            ? t("range.chapterCount", { count: preview.tasks.length })
+            : t("selection.selectedCount", { count: selected.size });
+        cacheValue.textContent = String(disabled ? 0 : allMode.checked ? cachedCount : selectedCachedCount);
+        const canDownload = !disabled && (allMode.checked || selected.size > 0);
+        validation.textContent = stage
+            ? t(PREPARATION_MESSAGES[stage])
+            : preview.preparationErrorKey
+              ? t(preview.preparationErrorKey)
+              : !canDownload
+                ? t("selection.empty")
+                : "";
+        validation.hidden = !validation.textContent;
+        downloadButton.disabled = !canDownload;
         downloadButton.textContent = preview.cacheWillBeInvalidated
             ? t("range.clearAndDownload")
             : allMode.checked
@@ -350,10 +359,15 @@ export function createDownloadSelectionPopup(options: DownloadSelectionPopupOpti
 
         const disabled = unavailable();
         refreshSelectionControls(disabled);
-        const selection = getSelection();
-        refreshSelectionSummary(disabled, selection);
-        refreshSelectionActions(selection);
-        searchView.refresh();
+        refreshSelectionSummary(disabled);
+        refreshActionLabels();
+        refreshSelectionCounts(disabled);
+    }
+
+    function refreshBulkSelection(): void {
+        countSelectedCache();
+        directoryView?.setSelection(selected);
+        refreshSelectionCounts(unavailable());
     }
 
     function changeChapterSelection(indexes: readonly number[], checked: boolean): void {
@@ -362,15 +376,22 @@ export function createDownloadSelectionPopup(options: DownloadSelectionPopupOpti
             return;
         }
 
-        indexes.forEach((index) => {
+        for (const index of indexes) {
+            if (selected.has(index) === checked) {
+                continue;
+            }
             if (checked) {
                 selected.add(index);
             } else {
                 selected.delete(index);
             }
-        });
+            if (preview.cachedIndexes.has(index)) {
+                selectedCachedCount += checked ? 1 : -1;
+            }
+        }
 
-        refresh();
+        directoryView?.setSelection(selected, indexes);
+        refreshSelectionCounts(false);
     }
 
     const buildDirectory = () => {
@@ -409,12 +430,17 @@ export function createDownloadSelectionPopup(options: DownloadSelectionPopupOpti
     registerElementCleanup(popup, () => finish({ action: "cancel" }));
     acquirePageActionGroupLockForPopup(popup);
     enableDrag(popup, ".esj-common-header");
-    unsubscribeLocale = subscribeInterfaceLocaleChange(refresh);
+    unsubscribeLocale = subscribeInterfaceLocaleChange(() => {
+        refresh();
+        directoryView?.refreshLabels();
+        searchView.refresh();
+    });
 
     if (!unavailable()) {
         buildDirectory();
     }
     refresh();
+    searchView.refresh();
     (stage
         ? cancelButton
         : preview.preparationErrorKey && previousButton
@@ -447,11 +473,15 @@ export function createDownloadSelectionPopup(options: DownloadSelectionPopupOpti
             rangeMode.checked = !allMode.checked;
         }
 
+        countAvailableCache();
         if (!directoryView || changed) {
             buildDirectory();
+        } else if (next.initialSelection) {
+            directoryView.setSelection(selected);
         }
 
         refresh();
+        searchView.refresh();
     }
 
     return {

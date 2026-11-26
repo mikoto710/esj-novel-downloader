@@ -5,7 +5,7 @@ import { getBrowserDownloadMocks, resetBrowserDownloadHarness } from "../support
 import { runBookDownload } from "../../src/app/book-download";
 import { state } from "../../src/app/page-session";
 import { recordBrowserPreflightDiagnosticFailure, startBrowserDiagnosticSession } from "../../src/diagnostics/runtime";
-import { createRangeSelection } from "../../src/download/plan";
+import { createChapterSelection, createFullSelection, type ChapterSelection } from "../../src/download/plan";
 import { BookPreflightError } from "../../src/site/book";
 import { publishCacheSyncEvent } from "../../src/storage/cache/sync";
 import { createBookLock, createCachedData, createDeferred, createDownloadTask } from "../support";
@@ -56,7 +56,7 @@ describe("range download lifecycle", () => {
         const readConcurrency = vi.spyOn(settings, "getConcurrency").mockReturnValue(2);
         const selectionDecision = createDeferred<{
             action: "download";
-            selection: ReturnType<typeof createRangeSelection>;
+            selection: ChapterSelection;
         }>();
         mocks.selectionPopup.mockReturnValue(selectionDecision.promise);
         const running = runBookDownload({
@@ -75,7 +75,7 @@ describe("range download lifecycle", () => {
 
         selectionDecision.resolve({
             action: "download",
-            selection: createRangeSelection(2, 3, 3)
+            selection: createChapterSelection([1, 2], 3)
         });
         await running;
 
@@ -112,7 +112,7 @@ describe("range download lifecycle", () => {
     it("rejects a task acquired after a clear lock precheck", async () => {
         mocks.selectionPopup.mockResolvedValue({
             action: "download",
-            selection: createRangeSelection(1, 2, 3)
+            selection: createChapterSelection([0, 1], 3)
         });
         mocks.acquire.mockResolvedValueOnce({ acquired: false, lock });
 
@@ -170,7 +170,9 @@ describe("range download lifecycle", () => {
 
         expect(mocks.runDownload).not.toHaveBeenCalled();
         expect(mocks.release).toHaveBeenCalledOnce();
-        expect(mocks.release.mock.invocationCallOrder[0]).toBeLessThan(mocks.selectionPopup.mock.invocationCallOrder[1]);
+        expect(mocks.release.mock.invocationCallOrder[0]).toBeLessThan(
+            mocks.selectionPopup.mock.invocationCallOrder[1]
+        );
         expect(mocks.selectionPopup).toHaveBeenLastCalledWith(
             expect.objectContaining({
                 cacheWillBeInvalidated: true,
@@ -185,7 +187,7 @@ describe("range download lifecycle", () => {
     });
 
     it("claims again with explicit invalidation consent after showing the changed cache", async () => {
-        const selection = createRangeSelection(1, 3, 3);
+        const selection = createFullSelection(tasks);
         mocks.selectionPopup.mockResolvedValue({ action: "download", selection });
         mocks.claimCache.mockResolvedValueOnce({
             status: "needs-confirmation",
@@ -270,7 +272,7 @@ describe("range download lifecycle", () => {
         state.cachedData = old;
         mocks.selectionPopup.mockResolvedValueOnce({
             action: "download",
-            selection: createRangeSelection(1, 3, 3)
+            selection: createFullSelection(tasks)
         });
         if (status === "failed") {
             mocks.runDownload.mockRejectedValueOnce(new Error("download failed"));
