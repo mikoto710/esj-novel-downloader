@@ -301,7 +301,7 @@ export interface DownloadCancellationPort {
  * 成功携带导出快照；取消保留旧结果，持久清除仍由外层收尾确认
  */
 export type DownloadResult =
-    | { status: "ready"; data: ExportSnapshot }
+    | { status: "ready"; data: ExportSnapshot; cacheCleanupFailure?: StorageFailure }
     | { status: "cancelled"; outcome: DownloadCancellationOutcome; storageFailure: StorageFailure | null }
     | { status: "failed"; failure: DownloadTerminalFailure };
 

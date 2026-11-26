@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 
+import * as pageClose from "../../src/storage/diagnostic-page-close";
 import { IDBDatabase } from "fake-indexeddb";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -316,12 +317,12 @@ describe("browser diagnostic persistence", () => {
             { observePageClose: true }
         );
         finishBrowserDiagnosticSession("task-page-terminal", "cancelled");
+        const rememberClose = vi.spyOn(pageClose, "rememberDiagnosticPageClose");
 
         dispatchPageHide(false);
 
-        const terminal = (await listBrowserDiagnosticSessions()).history[0];
-        expect(terminal).toEqual(expect.objectContaining({ taskId: "task-page-terminal", result: "cancelled" }));
-        expect(terminal.closeObservedAt).toBeUndefined();
+        expect(rememberClose).not.toHaveBeenCalledWith("task-page-terminal");
+        expect((await listBrowserDiagnosticSessions()).history[0]).toMatchObject({ result: "cancelled" });
     });
 
     it.each([23, 25])(

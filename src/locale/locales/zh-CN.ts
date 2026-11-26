@@ -162,6 +162,8 @@ export const ZH_CN_MESSAGES = Object.freeze({
     "download.terminal.saveFailed.message":
         "任务已停止，但本次取消时未能确认进度已保存，下次下载会从最后一次成功写入的缓存继续",
     "download.terminal.discardFailed.title": "缓存清理失败",
+    "download.terminal.cleanupWarning.title": "下载任务收尾异常",
+    "download.terminal.cleanupWarning.message": "请稍后在缓存管理中检查任务状态",
     "download.terminal.discardFailed.message": "任务已经停止，但原有下载缓存可能仍然保留，可稍后在缓存管理中重新清理",
     "protected.busy": "正在验证密码，请稍候…",
     "protected.busyShort": "正在验证…",

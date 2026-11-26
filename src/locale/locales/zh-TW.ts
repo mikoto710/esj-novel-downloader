@@ -166,6 +166,8 @@ export const ZH_TW_MESSAGES = Object.freeze({
     "download.terminal.saveFailed.message":
         "任務已停止，但本次取消時未能確認進度已儲存，下次下載會從最後一次成功寫入的快取繼續",
     "download.terminal.discardFailed.title": "快取清除失敗",
+    "download.terminal.cleanupWarning.title": "下載工作收尾異常",
+    "download.terminal.cleanupWarning.message": "請稍後到快取管理檢查工作狀態",
     "download.terminal.discardFailed.message": "任務已經停止，但原有下載快取可能仍然保留，可稍後在快取管理中重新清除",
     "protected.busy": "正在驗證密碼，請稍候…",
     "protected.busyShort": "正在驗證…",

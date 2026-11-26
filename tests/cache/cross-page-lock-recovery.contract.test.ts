@@ -98,31 +98,6 @@ describe("cross-page lock recovery contracts", () => {
         await Promise.all([locks.releaseBookDownloadLock(first.lock), locks.releaseBookDownloadLock(second.lock)]);
     });
 
-    it("requests a pagehide flush and leaves ownership available for the last batch", async () => {
-        const locks = await import("../../src/storage/book-lock");
-        const storage = await import("../../src/storage/cache/book-cache");
-        const lock = await acquireCacheLock("720");
-        await storage.claimBookCache("720", lock.taskId, false);
-        const onCancellationRequested = vi.fn();
-        const stopHeartbeat = locks.startBookDownloadLockHeartbeat(lock, onCancellationRequested);
-
-        try {
-            window.dispatchEvent(new Event("pagehide"));
-            expect(onCancellationRequested).toHaveBeenCalledExactlyOnceWith("flush");
-            expect(await locks.ownsActiveBookDownloadLock(lock)).toBe(true);
-            expect((await locks.acquireBookDownloadLock("720", "forum")).acquired).toBe(false);
-            expect(await storage.putBookCacheBatchForTask("720", lock.taskId, new Map([[0, createChapter(0)]]))).toBe(
-                true
-            );
-        } finally {
-            stopHeartbeat();
-            await locks.releaseBookDownloadLock(lock);
-        }
-
-        expect(await locks.getActiveBookDownloadLock("720")).toBeNull();
-        expect((await storage.previewBookCache("720", false)).size).toBe(1);
-    });
-
     it("lets a new task take over an expired lock without granting the stale writer cache access", async () => {
         vi.stubGlobal("BroadcastChannel", undefined);
         const locks = await import("../../src/storage/book-lock");

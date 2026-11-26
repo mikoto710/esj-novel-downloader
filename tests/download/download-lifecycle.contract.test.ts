@@ -1,9 +1,12 @@
 // @vitest-environment jsdom
 
-import { createRangeSelection } from "../../src/download/plan";
-import { createSelectionPopupFake } from "../support/fakes";
-
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { getBrowserDownloadMocks, resetBrowserDownloadHarness } from "../support/browser-download-harness";
+import { runBookDownload } from "../../src/app/book-download";
+import { state } from "../../src/app/page-session";
+import { createRangeSelection } from "../../src/download/plan";
+import { loadDetailBook, loadForumBook } from "../../src/site/book";
+import { setInterfaceLocalePreference } from "../../src/storage/settings";
 import {
     createBookLock,
     createCachedData,
@@ -11,69 +14,9 @@ import {
     createDetailPageFixture,
     installDocumentFixture
 } from "../support";
-import { setInterfaceLocalePreference } from "../../src/storage/settings";
 
-const mocks = vi.hoisted(() => ({
-    runDownload: vi.fn(),
-    release: vi.fn(),
-    stopHeartbeat: vi.fn(),
-    getConflict: vi.fn(),
-    acquire: vi.fn(),
-    markRunning: vi.fn(),
-    startHeartbeat: vi.fn(),
-    updateTitle: vi.fn(),
-    previewCache: vi.fn(),
-    claimCache: vi.fn(),
-    selectionPopup: vi.fn(),
-    createDownloadPopup: vi.fn(),
-    showConflict: vi.fn(),
-    showTerminalFailure: vi.fn(),
-    fullCleanup: vi.fn(),
-    log: vi.fn()
-}));
+const mocks = getBrowserDownloadMocks();
 
-vi.mock("../../src/storage/cache/sync", () => ({
-    subscribeCacheSync: vi.fn(() => vi.fn()),
-    publishCacheSyncEvent: vi.fn()
-}));
-
-vi.mock("../../src/download/run", () => ({ runDownload: mocks.runDownload }));
-
-vi.mock("../../src/storage/book-lock", () => ({
-    releaseBookDownloadLock: mocks.release,
-    shouldDiscardBookDownloadCache: vi.fn(async () => false),
-    getConflictingBookDownloadLock: mocks.getConflict,
-    acquireBookDownloadLock: mocks.acquire,
-    markBookDownloadRunning: mocks.markRunning,
-    startBookDownloadLockHeartbeat: mocks.startHeartbeat,
-    updateBookDownloadLockTitle: mocks.updateTitle
-}));
-vi.mock("../../src/storage/cache/book-cache", async (importOriginal) => ({
-    ...(await importOriginal<typeof import("../../src/storage/cache/book-cache")>()),
-    previewBookCache: mocks.previewCache,
-    claimBookCache: mocks.claimCache
-}));
-vi.mock("../../src/ui/popups", async (importOriginal) => ({
-    ...(await importOriginal<typeof import("../../src/ui/popups")>()),
-    showFormatChoice: vi.fn(),
-    createDownloadPopup: mocks.createDownloadPopup,
-    showBookDownloadInProgressPopup: mocks.showConflict
-}));
-vi.mock("../../src/ui/dialogs/download-selection", () => ({
-    createDownloadSelectionPopup: (
-        options: import("../../src/ui/dialogs/download-selection").DownloadSelectionPopupOptions
-    ) => createSelectionPopupFake(options, mocks.selectionPopup)
-}));
-vi.mock("../../src/ui/dialogs/message", () => ({ showMessagePopup: vi.fn() }));
-vi.mock("../../src/ui/dom", () => ({ fullCleanup: mocks.fullCleanup }));
-vi.mock("../../src/ui/log-view", () => ({ log: mocks.log }));
-vi.mock("../../src/ui/messages/download-terminal", () => ({
-    showCacheDiscardFailure: vi.fn(),
-    showDownloadTerminalFailure: mocks.showTerminalFailure
-}));
-
-import { runBookDownload } from "../../src/app/book-download";
-import { loadDetailBook, loadForumBook } from "../../src/site/book";
 const scrapeDetail = () =>
     runBookDownload({
         bookId: "100",
@@ -88,21 +31,16 @@ const scrapeForum = () =>
         pageTitle: document.title,
         loadPlan: () => loadForumBook("100", location.origin)
     });
-import { state } from "../../src/app/page-session";
 
 describe("download lifecycle contracts", () => {
     const lock = createBookLock();
 
-    beforeEach(() => {
+    beforeEach(async () => {
+        await resetBrowserDownloadHarness();
         setInterfaceLocalePreference("zh-CN");
-        vi.clearAllMocks();
         window.history.replaceState({}, "", "/detail/100.html");
         installDocumentFixture(createDetailPageFixture({ bookId: "100", chapterCount: 2 }));
-        state.cachedData = null;
-        state.runtimeCacheSession = null;
-        state.activeDownload = null;
 
-        mocks.getConflict.mockResolvedValue(null);
         mocks.previewCache.mockResolvedValue({ valid: false, size: 0, indexes: [], compatibility: "compatible" });
         mocks.claimCache.mockResolvedValue({
             status: "claimed",
@@ -112,15 +50,11 @@ describe("download lifecycle contracts", () => {
             invalidatedCount: 0
         });
         mocks.acquire.mockResolvedValue({ acquired: true, lock });
-        mocks.markRunning.mockResolvedValue(true);
-        mocks.startHeartbeat.mockReturnValue(mocks.stopHeartbeat);
-        mocks.updateTitle.mockResolvedValue(undefined);
         mocks.selectionPopup.mockResolvedValue({
             action: "download",
             selection: createRangeSelection(1, 2, 2)
         });
         mocks.runDownload.mockResolvedValue({ status: "ready", data: createCachedData() });
-        mocks.release.mockResolvedValue(undefined);
     });
 
     it.each([
@@ -170,7 +104,7 @@ describe("download lifecycle contracts", () => {
         await scrapeDetail();
 
         expect(mocks.release).toHaveBeenCalledOnce();
-        expect(mocks.release).toHaveBeenCalledWith(lock, { cacheDiscarded: false });
+        expect(mocks.release).toHaveBeenCalledWith(lock);
         expect(mocks.stopHeartbeat).toHaveBeenCalledOnce();
     });
 
@@ -187,7 +121,7 @@ describe("download lifecycle contracts", () => {
         expect(mocks.claimCache).not.toHaveBeenCalled();
         expect(mocks.runDownload).not.toHaveBeenCalled();
         expect(mocks.release).toHaveBeenCalledOnce();
-        expect(mocks.release).toHaveBeenCalledWith(lock, { cacheDiscarded: false });
+        expect(mocks.release).toHaveBeenCalledWith(lock);
     });
 
     it("presents the core failure once after cleaning its task view", async () => {

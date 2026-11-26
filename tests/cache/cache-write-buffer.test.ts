@@ -208,48 +208,23 @@ describe("ChapterCacheWriteBuffer", () => {
         }
     );
 
-    it("aborts an active write immediately when cancellation discards progress", async () => {
-        const writeStarted = createDeferred<void>();
-        let cancellationListener: (mode: DownloadCancellationMode) => void = () => undefined;
-        let writeSignal: AbortSignal | undefined;
-        const buffer = new ChapterCacheWriteBuffer({
-            policy: { maxChapterCount: 1, maxBytes: Number.MAX_SAFE_INTEGER, maxDelayMs: 60_000 },
-            write: async (_entries, signal) => {
-                writeSignal = signal;
-                writeStarted.resolve();
-                return new Promise<boolean>((resolve) =>
-                    signal.addEventListener("abort", () => resolve(false), { once: true })
-                );
-            },
-            schedule: () => () => undefined,
-            subscribeCancellation: (listener) => {
-                cancellationListener = listener;
-                return () => undefined;
-            }
-        });
-
-        const addPromise = buffer.add(0, createChapter(0));
-        await writeStarted.promise;
-        cancellationListener("discard");
-
-        expect(writeSignal?.aborted).toBe(true);
-        await expect(addPromise).resolves.toBe(false);
-        await expect(buffer.flushForCancellation()).resolves.toBe("discarded");
-        buffer.dispose();
-    });
-
-    it("waits for an aborted write to finish before returning from flush", async () => {
+    it("aborts a discarded write immediately and waits until it settles", async () => {
         const started = createDeferred<void>();
-        const stopped = createDeferred<void>();
         const release = createDeferred<void>();
+        let requestCancellation: (mode: DownloadCancellationMode) => void = () => undefined;
+        let writeSignal: AbortSignal | undefined;
         const buffer = new ChapterCacheWriteBuffer({
             policy: { maxChapterCount: 1, maxBytes: 1_000_000, maxDelayMs: 60_000 },
             schedule: () => () => undefined,
+            subscribeCancellation(listener) {
+                requestCancellation = listener;
+                return () => undefined;
+            },
             write: async (_entries, signal) => {
+                writeSignal = signal;
                 started.resolve();
                 await new Promise<void>((resolve) => signal.addEventListener("abort", () => resolve(), { once: true }));
                 await release.promise;
-                stopped.resolve();
                 return false;
             }
         });
@@ -258,18 +233,22 @@ describe("ChapterCacheWriteBuffer", () => {
             settled = true;
             return result;
         });
-        await started.promise;
-        buffer.discard();
         try {
-            await vi.waitFor(() => expect(settled).toBe(false), { timeout: 50 });
-            // 消耗取消之后的微任务，Promise.race 提前返回会在此暴露
-            for (let i = 0; i < 10; i++) await Promise.resolve();
+            await started.promise;
+            requestCancellation("discard");
+            expect(writeSignal?.aborted).toBe(true);
+            const saving = buffer.flushForCancellation();
+            const saveSettled = vi.fn();
+            void saving.then(saveSettled);
+            await new Promise<void>((resolve) => setImmediate(resolve));
             expect(settled).toBe(false);
+            expect(saveSettled).not.toHaveBeenCalled();
             release.resolve();
             await expect(writing).resolves.toBe(false);
-            await stopped.promise;
+            await expect(saving).resolves.toBe("discarded");
             await expect(buffer.flush()).resolves.toBe(false);
         } finally {
+            buffer.discard();
             release.resolve();
             await writing;
             buffer.dispose();

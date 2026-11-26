@@ -29,7 +29,6 @@ import type {
     DownloadCancellationPort,
     DownloadDependencies,
     DownloadEvent,
-    DownloadLog,
     DownloadResult,
     DownloadUiPort
 } from "../download/contracts";
@@ -62,7 +61,6 @@ import {
     putBookCoverForTask,
     type BookCachePreviewResult
 } from "../storage/cache/book-cache";
-import { createChapterCacheSources, type ChapterCacheSources } from "../storage/cache/chapter-source";
 import {
     createStorageError,
     normalizeStorageError,
@@ -70,6 +68,7 @@ import {
     toStorageFailure,
     type StorageFailure
 } from "../storage/cache/storage-error";
+import { createChapterCacheSources, type ChapterCacheSources } from "../storage/cache/chapter-source";
 import { publishCacheSyncEvent } from "../storage/cache/sync";
 import { getConcurrency, getImageDownloadSetting } from "../storage/settings";
 import type { DownloadCancellationMode } from "../download/contracts";
@@ -86,6 +85,8 @@ import { log } from "../ui/log-view";
 import type { CachedData } from "./export";
 
 type BookSourcePageType = Extract<SourcePageType, "detail" | "forum">;
+
+type DownloadPhaseEvent = Extract<DownloadEvent, { type: "phase-changed" }>;
 
 interface RunBookDownloadOptions {
     bookId: string;
@@ -295,8 +296,8 @@ async function executeBookDownload(
     };
     let stopHeartbeat: () => void = () => undefined;
     let diagnosticStarted = false;
+    let exportReadyDiagnostic: DownloadPhaseEvent | undefined;
     let downloadStarted = false;
-    let exportReady = false;
     let result: DownloadResult | undefined;
 
     try {
@@ -385,7 +386,15 @@ async function executeBookDownload(
         } as const;
         updateBrowserDiagnosticSession(downloadOptions);
         downloadStarted = true;
-        const dependencies = createDownloadDependencies({ lock, cancellation, ui, chapterSources });
+        const dependencies = createDownloadDependencies({
+            lock,
+            cancellation,
+            ui,
+            chapterSources,
+            deferExportReadyDiagnostic(event) {
+                exportReadyDiagnostic = event;
+            }
+        });
         result = await runDownload(downloadOptions, dependencies);
     } catch (error) {
         const details = error instanceof Error ? error : new Error(String(error));
@@ -424,33 +433,59 @@ async function executeBookDownload(
             });
         }
     } finally {
-        // 仅补齐提前退出的诊断，不覆盖核心已记录的终态
+        const finalization = await finalizeBookDownloadTask(lock, stopHeartbeat, cancellation);
         if (diagnosticStarted) {
-            finishBrowserDiagnosticSession(
-                lock.taskId,
-                cancellation.isCancellationRequested() ? "cancelled" : "failed"
-            );
-        }
-        let wasCurrent: boolean;
-        let data: CachedData | undefined;
-        let finalization: BookDownloadFinalizationResult;
-        let finalized = false;
-        try {
-            finalization = await finalizeBookDownloadTask(lock, stopHeartbeat, log);
-            finalized = true;
-        } finally {
-            // 无 await 的结算区段：先检查/发布，最后释放本任务句柄；旧任务只清自己的视图
-            wasCurrent = isCurrentDownload(lock.taskId);
-            try {
-                cleanup();
-                if (finalized && wasCurrent && result?.status === "ready") {
-                    data = filename ? { ...result.data, exportFilename: filename } : result.data;
-                    publishCachedExport(data, lock.taskId);
-                    exportReady = true;
-                }
-            } finally {
-                releaseActiveDownload(lock.taskId);
+            if (exportReadyDiagnostic && result?.status === "ready") {
+                // 锁释放还可能接到远程清理或发现所有权丢失，终态与最终交付的结果一致
+                const current = finalization.ownershipLost
+                    ? "failed"
+                    : finalization.discardRequested
+                      ? "cancelled"
+                      : "export-ready";
+                const { snapshot } = exportReadyDiagnostic;
+                const hasExportData = current === "export-ready";
+                recordBrowserDownloadEvent(lock.taskId, {
+                    ...exportReadyDiagnostic,
+                    current,
+                    snapshot: {
+                        ...snapshot,
+                        phase: current,
+                        hasExportData,
+                        storageFailure: hasExportData ? snapshot.storageFailure : finalization.failure
+                    }
+                });
+            } else {
+                // 补齐提前退出的诊断，保留核心已经记录的失败或取消阶段
+                finishBrowserDiagnosticSession(
+                    lock.taskId,
+                    cancellation.isCancellationRequested() ? "cancelled" : "failed"
+                );
             }
+        }
+        const wasCurrent = isCurrentDownload(lock.taskId);
+        let data: CachedData | undefined;
+        try {
+            cleanup();
+            if (finalization.discardRequested || finalization.ownershipLost || result?.status === "failed") {
+                clearRuntimeCacheSession(bookId, lock.taskId);
+            } else if (wasCurrent && result?.status === "ready") {
+                data = filename ? { ...result.data, exportFilename: filename } : result.data;
+                publishCachedExport(data, lock.taskId);
+            }
+        } finally {
+            releaseActiveDownload(lock.taskId);
+        }
+        const cacheCleanupFailure = result?.status === "ready" ? result.cacheCleanupFailure : undefined;
+        if (cacheCleanupFailure) {
+            recordBrowserDiagnosticFailure(
+                {
+                    scope: "storage",
+                    stage: "cache-clear",
+                    code: cacheCleanupFailure.reason,
+                    message: cacheCleanupFailure.message
+                },
+                lock.taskId
+            );
         }
         if (wasCurrent && !state.activeDownload) {
             if (result?.status === "failed") {
@@ -459,31 +494,36 @@ async function executeBookDownload(
                 } else {
                     showDownloadTerminalFailure(result.failure);
                 }
+            } else if (finalization.ownershipLost) {
+                showDownloadTerminalFailure({
+                    kind: "cancellation",
+                    outcome: "ownership-lost",
+                    storageFailure: finalization.failure
+                });
             } else if (result?.status === "cancelled" && result.outcome !== "saved" && result.outcome !== "discarded") {
                 showDownloadTerminalFailure({
                     kind: "cancellation",
                     outcome: result.outcome,
                     storageFailure: result.storageFailure
                 });
-            } else if (data) {
-                showFormatChoice(data);
+            } else {
+                if (data) {
+                    showFormatChoice(data);
+                }
+                const warning = finalization.failure ?? cacheCleanupFailure;
+                if (warning && finalization.discardRequested && warning.operation === "clear") {
+                    showCacheDiscardFailure(warning);
+                } else if (warning) {
+                    showMessagePopup({
+                        tone: "warning",
+                        title: t("download.terminal.cleanupWarning.title"),
+                        message: t("download.terminal.cleanupWarning.message"),
+                        details: formatStorageFailure(warning)
+                    });
+                }
             }
         }
-        if (finalization.cacheClearFailure) {
-            recordBrowserDiagnosticFailure(
-                {
-                    scope: "storage",
-                    stage: "cache-discard",
-                    code: finalization.cacheClearFailure.reason,
-                    message: finalization.cacheClearFailure.message
-                },
-                lock.taskId
-            );
-            if (wasCurrent && !state.activeDownload) {
-                showCacheDiscardFailure(finalization.cacheClearFailure);
-            }
-        }
-        if (exportReady && downloadPlan.retainCacheOnSuccess && !finalization.cacheDiscarded) {
+        if (data && downloadPlan.retainCacheOnSuccess) {
             publishCacheSyncEvent({ type: "cache-saved", bookId, taskId: lock.taskId });
         }
     }
@@ -491,60 +531,61 @@ async function executeBookDownload(
 
 // 书籍下载收尾时的缓存清理结果
 interface BookDownloadFinalizationResult {
-    cacheDiscarded: boolean;
-    cacheClearFailure: StorageFailure | null;
+    discardRequested: boolean;
+    ownershipLost: boolean;
+    failure: StorageFailure | null;
 }
 
 // 处理缓存清除请求，并在所有退出路径停止心跳、释放锁
 async function finalizeBookDownloadTask(
     lock: BookDownloadLock,
     stopHeartbeat: () => void,
-    logMessage?: (message: DownloadLog) => void
+    cancellation: DownloadCancellationPort
 ): Promise<BookDownloadFinalizationResult> {
-    let cacheDiscarded = false;
-    let cacheClearFailure: StorageFailure | null = null;
+    const result: BookDownloadFinalizationResult = {
+        discardRequested: cancellation.mode === "discard",
+        ownershipLost: false,
+        failure: null
+    };
+
+    function recordFailure(error: unknown, operation: StorageFailure["operation"], stage: string): void {
+        const failure = toStorageFailure(normalizeStorageError(error, operation));
+        result.failure ??= failure;
+        recordBrowserDiagnosticFailure(
+            { scope: "storage", stage, code: failure.reason, message: failure.message },
+            lock.taskId
+        );
+    }
+
     try {
-        // 远程“停止并清除”由锁携带意图，只有当前 writer 可以清除对应缓存
-        if (await shouldDiscardBookDownloadCache(lock)) {
+        // 未处理的远程清理意图与普通释放在锁事务内结算
+        let releaseResult = result.discardRequested ? "discard-requested" : await releaseBookDownloadLock(lock);
+        result.discardRequested = releaseResult === "discard-requested";
+        if (result.discardRequested) {
+            let cacheDiscarded = false;
             try {
                 cacheDiscarded = await clearBookCacheForTask(lock.bookId, lock.taskId);
                 if (!cacheDiscarded) {
-                    cacheClearFailure = toStorageFailure(createStorageError("ownership-lost", "clear"));
-                    logMessage?.({
-                        code: "cache-discard-failed",
-                        params: {
-                            reason: cacheClearFailure.reason,
-                            operation: cacheClearFailure.operation,
-                            detail: cacheClearFailure.params?.detail || cacheClearFailure.message
-                        }
-                    });
+                    throw createStorageError("ownership-lost", "clear");
                 }
             } catch (error) {
-                const failure = normalizeStorageError(error, "clear");
-                cacheClearFailure = toStorageFailure(failure);
-                console.error("停止任务时清理缓存失败", failure);
-                logMessage?.({
-                    code: "cache-discard-failed",
-                    params: {
-                        reason: failure.reason,
-                        operation: failure.operation,
-                        detail: failure.params?.detail || failure.message
-                    }
-                });
+                recordFailure(error, "clear", "cache-discard");
             }
-            if (cacheDiscarded) {
-                clearRuntimeCacheSession(lock.bookId, lock.taskId);
-            }
+            releaseResult = await releaseBookDownloadLock(lock, { cacheDiscarded });
         }
-    } finally {
-        // 即使清理或心跳结束失败也要释放锁，页面句柄由调用方同步结算
-        try {
-            stopHeartbeat();
-        } finally {
-            await releaseBookDownloadLock(lock, { cacheDiscarded });
+        if (releaseResult === "ownership-lost") {
+            result.ownershipLost = true;
+            recordFailure(createStorageError("ownership-lost", "write"), "write", "lock-release");
         }
+    } catch (error) {
+        recordFailure(error, "write", "lock-release");
     }
-    return { cacheDiscarded, cacheClearFailure };
+    try {
+        stopHeartbeat();
+    } catch (error) {
+        recordFailure(error, "write", "lock-heartbeat");
+    }
+    return result;
 }
 
 // 创建任务独立的取消意图和网络信号，discard 只可升级
@@ -613,6 +654,7 @@ interface BrowserDownloadTask {
     cancellation: DownloadCancellationPort;
     ui: DownloadUiPort;
     chapterSources: ChapterCacheSources;
+    deferExportReadyDiagnostic(event: DownloadPhaseEvent): void;
 }
 
 const protectedChapterDetector = { isProtected: isProtectedChapterHtml };
@@ -750,7 +792,11 @@ function createDownloadDependencies(task: BrowserDownloadTask): DownloadDependen
             // 摘要观察失败不阻断诊断
         }
         try {
-            recordBrowserDownloadEvent(activeLock.taskId, event);
+            if (event.type === "phase-changed" && event.current === "export-ready") {
+                task.deferExportReadyDiagnostic(event);
+            } else {
+                recordBrowserDownloadEvent(activeLock.taskId, event);
+            }
         } catch {
             // 诊断观察失败不反向影响下载
         }

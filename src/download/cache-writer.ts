@@ -6,7 +6,8 @@ import {
     createStorageError,
     normalizeStorageError,
     StorageError,
-    toStorageFailure
+    toStorageFailure,
+    type StorageFailure
 } from "../storage/cache/storage-error";
 import type { DownloadProgress } from "./progress";
 import type { DownloadPlan } from "./plan";
@@ -129,9 +130,9 @@ export function createTaskCacheWriter(
         flush: () => buffer.flush(),
         assertHealthy,
         /**
-         * 确认提交后关闭所选 writer 或清除全本缓存；非取消失败抛出原存储分类
+         * 确认写入并关闭自选缓存或清理全本缓存，附带的清理错误随已就绪的结果报告
          */
-        async finish(): Promise<void> {
+        async finish(): Promise<StorageFailure | undefined> {
             if (!(await buffer.seal())) {
                 assertHealthy();
                 throw createStorageError("ownership-lost", "write");
@@ -147,7 +148,11 @@ export function createTaskCacheWriter(
                     throw createStorageError("ownership-lost", operation);
                 }
             } catch (error) {
-                throw normalizeStorageError(error, operation);
+                const failure = normalizeStorageError(error, operation);
+                if (operation === "clear" && failure.reason !== "ownership-lost") {
+                    return toStorageFailure(failure);
+                }
+                throw failure;
             }
         },
         async cancel(): Promise<DownloadCancellationOutcome> {

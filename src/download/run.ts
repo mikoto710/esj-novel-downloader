@@ -248,12 +248,12 @@ export async function runDownload(
 
         // 构造快照后完成缓存收尾，再返回导出结果，避免成功后仍有后台写入
         const data = createExportData(options, plan, meta.pageUrl, chapters, bookCover, progress.snapshot.failedCount);
-        await cache.finish();
+        const cacheCleanupFailure = await cache.finish();
         checkActive();
         progress.recordExportReady();
         progress.transition("export-ready");
         log({ code: "download-completed" });
-        result = { status: "ready", data };
+        result = { status: "ready", data, ...(cacheCleanupFailure ? { cacheCleanupFailure } : {}) };
     } catch (error) {
         if (
             !failed &&

@@ -34,6 +34,7 @@ const hoistedBrowserDownloadMocks = vi.hoisted(() => ({
     release: vi.fn(),
     stopHeartbeat: vi.fn(),
     startHeartbeat: vi.fn(),
+    showConflict: vi.fn(),
     getConflict: vi.fn(),
     acquire: vi.fn(),
     markRunning: vi.fn(),
@@ -76,7 +77,7 @@ vi.mock("../../src/ui/dom", async (importOriginal) => ({
 vi.mock("../../src/ui/popups", () => ({
     createDownloadPopup: hoistedBrowserDownloadMocks.createDownloadPopup,
     showFormatChoice: hoistedBrowserDownloadMocks.showFormatChoice,
-    showBookDownloadInProgressPopup: vi.fn(),
+    showBookDownloadInProgressPopup: hoistedBrowserDownloadMocks.showConflict,
     confirmMappingFontDownload: hoistedBrowserDownloadMocks.confirmMappingFontDownload,
     confirmIncompleteChapters: hoistedBrowserDownloadMocks.confirmIncompleteChapters,
     promptProtectedChapterPassword: hoistedBrowserDownloadMocks.promptProtectedChapterPassword,
@@ -169,7 +170,7 @@ export async function resetBrowserDownloadHarness(): Promise<BrowserDownloadRunt
     hoistedBrowserDownloadMocks.markRunning.mockResolvedValue(true);
     hoistedBrowserDownloadMocks.startHeartbeat.mockReturnValue(hoistedBrowserDownloadMocks.stopHeartbeat);
     hoistedBrowserDownloadMocks.stopHeartbeat.mockReset();
-    hoistedBrowserDownloadMocks.release.mockReset().mockResolvedValue(undefined);
+    hoistedBrowserDownloadMocks.release.mockReset().mockResolvedValue("released");
     hoistedBrowserDownloadMocks.previewCache.mockResolvedValue({
         valid: true,
         size: 0,

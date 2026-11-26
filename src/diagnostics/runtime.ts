@@ -220,7 +220,7 @@ export function browserDiagnosticLog(message: string | DownloadLog, taskId = cur
 export function recordBrowserDownloadEvent(taskId: string, event: DownloadEvent): void {
     observeDiagnosticWrite(manager.recordDownloadEvent(taskId, event));
     if (
-        (event.type === "phase-changed" && ["export-ready", "cancelled"].includes(event.current)) ||
+        (event.type === "phase-changed" && ["export-ready", "cancelled", "failed"].includes(event.current)) ||
         event.type === "download-failed"
     ) {
         stopBrowserDiagnosticCloseObserver(taskId);

@@ -57,35 +57,13 @@ describe("browser download persistence contracts", () => {
         expect(mocks.saveCache).toHaveBeenCalledOnce();
     });
 
-    it("retries an idempotent storage failure once and exposes the final reason", async () => {
-        mocks.saveCache.mockRejectedValue(new DOMException("storage full", "QuotaExceededError"));
-
-        await expect(
-            runtime.runBookDownload(createBrowserDownloadOptions(createBrowserDownloadTasks(5)))
-        ).resolves.toMatchObject({
-            status: "failed",
-            failure: { kind: "download", storageFailure: { reason: "quota-exceeded", operation: "write" } }
-        });
-
-        expect(mocks.saveCache).toHaveBeenCalledTimes(2);
-        expect(mocks.showTerminalFailure).toHaveBeenCalledWith(
-            expect.objectContaining({
-                kind: "download",
-                storageFailure: expect.objectContaining({ reason: "quota-exceeded" })
-            })
-        );
-        expect(runtime.task.cancellation.isCancellationRequested()).toBe(false);
-    });
-
     it.each([
-        { name: "unexpected transaction abort", errorName: "AbortError", reason: "transaction-aborted" },
-        {
-            name: "database becoming unavailable during writing",
-            errorName: "InvalidStateError",
-            reason: "database-unavailable"
-        }
-    ])("fails after $name retries are exhausted without treating it as cancellation", async ({ errorName, reason }) => {
-        mocks.saveCache.mockRejectedValue(new DOMException("storage write failed", errorName));
+        { error: new DOMException("storage full", "QuotaExceededError"), reason: "quota-exceeded" },
+        { error: new DOMException("unexpected abort", "AbortError"), reason: "transaction-aborted" },
+        { error: new DOMException("database disabled", "InvalidStateError"), reason: "database-unavailable" },
+        { error: new Error("unexpected failure"), reason: "unknown-storage-error" }
+    ])("retries $reason once and reports terminal failure without cancelling", async ({ error, reason }) => {
+        mocks.saveCache.mockRejectedValue(error);
 
         await expect(
             runtime.runBookDownload(createBrowserDownloadOptions(createBrowserDownloadTasks(5)))
@@ -93,7 +71,6 @@ describe("browser download persistence contracts", () => {
             status: "failed",
             failure: { kind: "download", storageFailure: { reason, operation: "write" } }
         });
-
         expect(mocks.saveCache).toHaveBeenCalledTimes(2);
         expect(mocks.showTerminalFailure).toHaveBeenCalledWith(
             expect.objectContaining({
@@ -103,19 +80,5 @@ describe("browser download persistence contracts", () => {
         );
         expect(runtime.task.cancellation.isCancellationRequested()).toBe(false);
         expect(mocks.clearCache).not.toHaveBeenCalled();
-    });
-
-    it("propagates an unknown storage error after one safe retry", async () => {
-        mocks.saveCache.mockRejectedValue(new Error("unexpected failure"));
-
-        await expect(
-            runtime.runBookDownload(createBrowserDownloadOptions(createBrowserDownloadTasks(5)))
-        ).resolves.toMatchObject({
-            status: "failed",
-            failure: { kind: "download", storageFailure: { reason: "unknown-storage-error", operation: "write" } }
-        });
-
-        expect(mocks.saveCache).toHaveBeenCalledTimes(2);
-        expect(runtime.task.cancellation.isCancellationRequested()).toBe(false);
     });
 });
