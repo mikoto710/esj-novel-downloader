@@ -389,8 +389,7 @@ export function createChapterPipeline(
         }
 
         // 非站内章节保留占位内容，维持原有章节顺序和导出数量
-        const isValidChapter = /\/forum\/\d+\/\d+\.html/.test(task.url) && task.url.includes("esjzone");
-        if (!isValidChapter) {
+        if (!ports.chapterFetcher.isSiteChapter(task)) {
             const message = `${task.url} {非站内链接}`;
             chapters.set(task.index, {
                 title: task.title,
@@ -423,7 +422,7 @@ export function createChapterPipeline(
         }
         progress.recordFetched();
         if (ports.protectedChapterDetector.isProtected(html)) {
-            const resolution = await protectedChapters.handle(task, html, isRetry);
+            const resolution = await protectedChapters.handle(task, isRetry);
             if (resolution.kind === "deferred") {
                 return "deferred";
             }
@@ -457,7 +456,7 @@ export function createChapterPipeline(
                 return;
             }
             const resolution = await protectedChapters.resolveProtectedChapter(item);
-            await processProtectedChapterResult(item.task, resolution, false);
+            await processProtectedChapterResult(item, resolution, false);
         }
     }
 

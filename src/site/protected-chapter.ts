@@ -1,18 +1,12 @@
 import type {
-    DownloadTask,
     ProtectedChapterAuthPort,
     ProtectedChapterProtocolErrorCode,
     ProtectedChapterUnlockResult
 } from "../download/contracts";
-import { fetchWithTimeout } from "../browser/request";
+import { fetchPageText } from "../browser/request";
+import { parseInertHtml } from "../browser/html";
+import { isCurrentSiteChapter } from "./routes";
 import { RequestGate } from "./request-gate";
-
-type ProtectedChapterRequest = (
-    url: string,
-    options: RequestInit,
-    timeout: number,
-    signal?: AbortSignal
-) => Promise<Response>;
 
 interface PasswordResponsePayload {
     status: number;
@@ -26,7 +20,7 @@ function parseHtml(html: string): Document {
     return new DOMParser().parseFromString(html, "text/html");
 }
 
-function hasProtectedChapterMarkers(document: Document): boolean {
+function hasProtectedChapterMarkers(document: Document | DocumentFragment): boolean {
     // 三个站点标记必须同时位于正文容器内，避免把普通表单或真正的空正文误判为密码章节
     const content = document.querySelector(".forum-content");
     return Boolean(
@@ -40,7 +34,7 @@ function hasProtectedChapterMarkers(document: Document): boolean {
  * 判断页面正文是否显示密码章节交互
  */
 export function isProtectedChapterHtml(html: string): boolean {
-    return hasProtectedChapterMarkers(parseHtml(html));
+    return hasProtectedChapterMarkers(parseInertHtml(html).content);
 }
 
 function protocolError(
@@ -118,60 +112,55 @@ function parsePasswordResponse(text: string): unknown {
 /**
  * 创建独占刷新与密码授权端口，密码和令牌仅留在本次请求上下文
  */
-export function createProtectedChapterAuth(
-    request: ProtectedChapterRequest = fetchWithTimeout,
-    requestGate: RequestGate = new RequestGate()
-): ProtectedChapterAuthPort {
+export function createProtectedChapterAuth(requestGate: RequestGate = new RequestGate()): ProtectedChapterAuthPort {
     return {
-        async unlock(task: DownloadTask, _protectedPageHtml: string, password: string, signal?: AbortSignal) {
+        async unlock(task, password, signal) {
             return requestGate.runExclusive(async () => {
-                // 仅刷新后的目标章节可建立授权上下文
-                const refreshedResponse = await request(
-                    task.url,
-                    { method: "GET", credentials: "include" },
-                    REQUEST_TIMEOUT_MS,
-                    signal
-                );
-                const refreshedPageHtml = await refreshedResponse.text();
+                const chapterUrl = task.url;
+                if (!isCurrentSiteChapter(chapterUrl, location.origin)) {
+                    throw new Error("Invalid protected chapter target");
+                }
+
+                // 由浏览器阻止整个授权链的跳转，密码和令牌只会发给已验证的当前镜像
+                const request = (url: string, options?: RequestInit) =>
+                    fetchPageText(
+                        url,
+                        {
+                            ...options,
+                            credentials: "include",
+                            mode: "same-origin",
+                            redirect: "error",
+                            signal: signal ?? null
+                        },
+                        REQUEST_TIMEOUT_MS
+                    );
+
+                const refreshedPageHtml = await request(chapterUrl, { method: "GET" });
                 if (!isProtectedChapterHtml(refreshedPageHtml)) {
                     return { kind: "unlocked", html: refreshedPageHtml };
                 }
 
-                const tokenResponse = await request(
-                    task.url,
-                    {
+                const token = extractProtectedChapterToken(
+                    await request(chapterUrl, {
                         method: "POST",
-                        credentials: "include",
                         headers: { "Content-Type": "application/x-www-form-urlencoded" },
                         body: new URLSearchParams({ plxf: "getAuthToken" })
-                    },
-                    REQUEST_TIMEOUT_MS,
-                    signal
+                    })
                 );
-                const token = extractProtectedChapterToken(await tokenResponse.text());
                 if (!token) {
                     return protocolError("token-invalid");
                 }
 
-                const passwordResponse = await request(
-                    new URL("/inc/forum_pw.php", task.url).toString(),
-                    {
-                        method: "POST",
-                        credentials: "include",
-                        headers: {
-                            Authorization: token,
-                            "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
-                            "X-Requested-With": "XMLHttpRequest"
-                        },
-                        body: new URLSearchParams({ pw: password })
+                const passwordResponse = await request(new URL("/inc/forum_pw.php", chapterUrl).href, {
+                    method: "POST",
+                    headers: {
+                        Authorization: token,
+                        "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+                        "X-Requested-With": "XMLHttpRequest"
                     },
-                    REQUEST_TIMEOUT_MS,
-                    signal
-                );
-                return classifyProtectedChapterResponse(
-                    refreshedPageHtml,
-                    parsePasswordResponse(await passwordResponse.text())
-                );
+                    body: new URLSearchParams({ pw: password })
+                });
+                return classifyProtectedChapterResponse(refreshedPageHtml, parsePasswordResponse(passwordResponse));
             }, signal);
         }
     };

@@ -44,68 +44,56 @@ export function fetchWithTimeout(
     cancelSignal?: AbortSignal
 ): Promise<Response> {
     return new Promise((resolve, reject) => {
-        // 如果信号开局就已经中断，直接返回
+        const cancelled = () => new Error("User Aborted");
         if (cancelSignal?.aborted) {
-            return reject(new Error("User Aborted"));
+            reject(cancelled());
+            return;
         }
 
-        let requestHandle: { abort: () => void } | null = null;
-
-        // 中止在途 GM 请求，并以取消错误结束等待
-        const onAbort = () => {
-            if (requestHandle) {
-                requestHandle.abort();
-            }
-            reject(new Error("User Aborted"));
-        };
-
-        // 挂载中断监听
-        if (cancelSignal) {
-            cancelSignal.addEventListener("abort", onAbort);
+        function fail(error: unknown): void {
+            cancelSignal?.removeEventListener("abort", onAbort);
+            reject(error);
         }
 
-        // 发起 GM 请求
-        requestHandle = GM_xmlhttpRequest({
-            method: (options.method as "GET" | "POST") || "GET",
-            url: url,
-            headers: options.headers as Record<string, string>,
-            ...(options.body == null ? {} : { data: options.body }),
-            timeout: timeout,
-            responseType: "blob",
-            anonymous: options.credentials === "omit",
+        let requestHandle: { abort: () => void } | undefined;
 
-            onload: (res) => {
-                if (cancelSignal) {
-                    cancelSignal.removeEventListener("abort", onAbort);
-                }
+        function onAbort(): void {
+            fail(cancelled());
+            requestHandle?.abort();
+        }
 
-                if (res.status >= 200 && res.status < 300) {
-                    const response = new Response(res.response, {
-                        status: res.status,
-                        statusText: res.statusText
-                    });
+        cancelSignal?.addEventListener("abort", onAbort, { once: true });
+        try {
+            requestHandle = GM_xmlhttpRequest({
+                method: (options.method as "GET" | "POST") || "GET",
+                url,
+                headers: options.headers as Record<string, string>,
+                ...(options.body == null ? {} : { data: options.body }),
+                timeout,
+                responseType: "blob",
+                anonymous: options.credentials === "omit",
 
-                    Object.defineProperty(response, "url", { value: res.finalUrl });
-
-                    resolve(response);
-                } else {
-                    reject(new Error(`HTTP Error Status ${res.status}`));
-                }
-            },
-
-            ontimeout: () => {
-                if (cancelSignal) {
-                    cancelSignal.removeEventListener("abort", onAbort);
-                }
-                reject(new Error("Timeout"));
-            },
-
-            onerror: () => {
-                if (cancelSignal) {
-                    cancelSignal.removeEventListener("abort", onAbort);
-                }
-                reject(new Error("Network Error"));
-            }
-        });
+                onload: (res) => {
+                    cancelSignal?.removeEventListener("abort", onAbort);
+                    try {
+                        const { status, statusText, finalUrl } = res;
+                        if (status < 200 || status >= 300) {
+                            throw new Error(`HTTP Error Status ${status}`);
+                        }
+                        const body = status === 204 || status === 205 ? null : res.response;
+                        const response = new Response(body, { status, statusText });
+                        Object.defineProperty(response, "url", { value: finalUrl });
+                        resolve(response);
+                    } catch (error) {
+                        reject(error);
+                    }
+                },
+                ontimeout: () => fail(new Error("Timeout")),
+                onerror: () => fail(new Error("Network Error")),
+                onabort: () => fail(cancelled())
+            });
+        } catch (error) {
+            fail(error);
+        }
     });
 }

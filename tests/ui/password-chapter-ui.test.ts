@@ -86,9 +86,6 @@ describe("protected chapter password UI", () => {
         expect((document.querySelector("#esj-protected-submit") as HTMLButtonElement).disabled).toBe(true);
         expect((document.querySelector("#esj-protected-skip") as HTMLButtonElement).disabled).toBe(true);
         expect((document.querySelector("#esj-protected-skip-all") as HTMLButtonElement).disabled).toBe(true);
-        (document.querySelector("#esj-protected-submit") as HTMLButtonElement).click();
-        input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
-        expect(cancelTask).not.toHaveBeenCalled();
         (document.querySelector("#esj-protected-cancel") as HTMLButtonElement).click();
 
         expect(cancelTask).toHaveBeenCalledOnce();

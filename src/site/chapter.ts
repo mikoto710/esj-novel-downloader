@@ -4,6 +4,7 @@ import { normalizeChapterMappingFont } from "../content/mapping-font";
 import { fetchWithTimeout } from "../browser/request";
 import { processHtmlImages, type ImageProcessingFailure } from "./images";
 import { RequestGate } from "./request-gate";
+import { isCurrentSiteChapter } from "./routes";
 
 /**
  * 解析章节 HTML 的标题、作者和正文，书名沿用当前页面标题
@@ -129,10 +130,19 @@ export async function processParsedChapter(
  * 普通章节请求与授权使用本任务同一个 gate，授权开始前等待普通请求完成
  */
 export function createChapterFetcher(requestGate: RequestGate): ChapterFetcherPort {
+    const origin = location.origin;
     return {
+        isSiteChapter: (task) => isCurrentSiteChapter(task.url, origin),
         fetch(task: DownloadTask, signal?: AbortSignal) {
             return requestGate.runShared(async () => {
-                const response = await fetchWithTimeout(task.url, { credentials: "include" }, 15000, signal);
+                const url = task.url;
+                if (!isCurrentSiteChapter(url, origin)) {
+                    throw new Error("Invalid chapter target");
+                }
+                const response = await fetchWithTimeout(url, { credentials: "include" }, 15000, signal);
+                if (response.url && new URL(response.url).origin !== origin) {
+                    throw new Error("Unexpected chapter response origin");
+                }
                 return response.text();
             }, signal);
         }

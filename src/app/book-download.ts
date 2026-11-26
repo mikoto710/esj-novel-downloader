@@ -7,7 +7,6 @@ import {
     startBrowserDiagnosticSession,
     updateBrowserDiagnosticSession
 } from "../diagnostics/runtime";
-import { fetchWithTimeout } from "../browser/request";
 import { sleep, sleepWithAbort } from "../browser/timing";
 import { normalizeChapterMappingFont } from "../content/mapping-font";
 import type { LocaleKey } from "../locale/catalog";
@@ -711,7 +710,7 @@ function createDownloadDependencies(task: BrowserDownloadTask): DownloadDependen
         shouldDiscardCache: () => shouldDiscardBookDownloadCache(activeLock)
     };
     const chapterFetcher = createChapterFetcher(requestGate);
-    const protectedChapterAuth = createProtectedChapterAuth(fetchWithTimeout, requestGate);
+    const protectedChapterAuth = createProtectedChapterAuth(requestGate);
 
     function observeDownloadEvent(event: DownloadEvent): void {
         try {

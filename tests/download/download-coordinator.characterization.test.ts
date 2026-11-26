@@ -419,7 +419,7 @@ describe("runDownload characterization", () => {
             retryConnection: true,
             initialPassword: "never-log-this"
         });
-        expect(harness.log.mock.calls.flat().join("\n")).not.toContain("never-log-this");
+        expect(JSON.stringify(harness.log.mock.calls)).not.toContain("never-log-this");
         expect(harness.events.ofType("chapter-failed")).toContainEqual(
             expect.objectContaining({ stage: "protected-auth", code: "network-error" })
         );
@@ -588,7 +588,7 @@ describe("runDownload characterization", () => {
             return { action: "submit", password: "fictional-password", rememberPassword: false };
         });
         harness.dependencies.protectedChapterAuth.unlock = vi.fn(
-            async (_task: DownloadTask, _html: string, _password: string, signal?: AbortSignal) =>
+            async (_task: DownloadTask, _password: string, signal?: AbortSignal) =>
                 new Promise<ProtectedChapterUnlockResult>((_resolve, reject) => {
                     signal?.addEventListener("abort", () => reject(new DOMException("cancelled", "AbortError")), {
                         once: true

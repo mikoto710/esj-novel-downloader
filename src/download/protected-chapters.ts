@@ -8,7 +8,7 @@ import type {
 import type { DomainMessageParams } from "../messages";
 import type { DownloadProgress } from "./progress";
 import type { DownloadPlan } from "./plan";
-import { ProtectedChapterQueue, type ProtectedChapterWorkItem } from "./protected-chapter-queue";
+import { ProtectedChapterQueue } from "./protected-chapter-queue";
 import { runUserDecision, UserDecisionGate } from "./user-decision-gate";
 
 export type ChapterTaskResult = "completed" | "failed" | "cancelled" | "deferred";
@@ -75,18 +75,18 @@ export function createProtectedChapters(
     }
 
     async function promptForProtectedChapter(
-        item: ProtectedChapterWorkItem,
+        task: DownloadTask,
         message?: string,
         messageCode?: ProtectedChapterPromptMessageCode,
         messageParams?: DomainMessageParams,
         retryConnection = false
     ): Promise<ProtectedChapterDecision> {
         const prompt: ProtectedChapterPrompt = {
-            task: item.task,
+            task,
             totalChapters: plan.tasks.length,
             ...(plan.selection.mode === "selected"
                 ? {
-                      taskOrder: plan.position(item.task).index,
+                      taskOrder: plan.position(task).index,
                       sourceTotalChapters: plan.selection.sourceTotalChapters,
                       selectionMode: plan.selection.mode
                   }
@@ -109,10 +109,7 @@ export function createProtectedChapters(
     }
 
     // 依次处理密码提交、跳过和取消，只重试连接故障
-    async function resolveProtectedChapter(
-        item: ProtectedChapterWorkItem,
-        isRetry = false
-    ): Promise<ProtectedChapterResolution> {
+    async function resolveProtectedChapter(task: DownloadTask, isRetry = false): Promise<ProtectedChapterResolution> {
         let message: string | undefined;
         let messageCode: ProtectedChapterPromptMessageCode | undefined;
         let messageParams: DomainMessageParams | undefined;
@@ -124,7 +121,7 @@ export function createProtectedChapters(
             const decision: ProtectedChapterDecision =
                 useRememberedPassword && rememberedPassword
                     ? { action: "submit", password: rememberedPassword, rememberPassword: true }
-                    : await promptForProtectedChapter(item, message, messageCode, messageParams, retryConnection);
+                    : await promptForProtectedChapter(task, message, messageCode, messageParams, retryConnection);
             useRememberedPassword = false;
 
             if (decision.action === "cancel") {
@@ -141,11 +138,11 @@ export function createProtectedChapters(
                 // 选择跳过全部时，首轮清空密码队列；补抓轮只跳过该轮后续密码章节
                 const skippedItems =
                     decision.action === "skip-all" && !isRetry ? protectedQueue.skipAllRemaining() : [];
-                for (const skipped of [item, ...skippedItems]) {
-                    protectedSkippedIndexes.add(skipped.task.index);
+                for (const skipped of [task, ...skippedItems]) {
+                    protectedSkippedIndexes.add(skipped.index);
                     ports.log({
                         code: "protected-chapter-skipped",
-                        params: { ...plan.position(skipped.task), title: skipped.task.title }
+                        params: { ...plan.position(skipped), title: skipped.title }
                     });
                 }
                 protectedPendingCount = Math.max(0, protectedPendingCount - skippedItems.length - 1);
@@ -161,12 +158,7 @@ export function createProtectedChapters(
             let technicalFailure = false;
             for (let attempt = 0; attempt < 2; attempt++) {
                 try {
-                    result = await ports.protectedChapterAuth.unlock(
-                        item.task,
-                        item.pageHtml,
-                        decision.password,
-                        ports.workSignal
-                    );
+                    result = await ports.protectedChapterAuth.unlock(task, decision.password, ports.workSignal);
                     break;
                 } catch {
                     if (ports.workSignal.aborted) {
@@ -175,7 +167,7 @@ export function createProtectedChapters(
                     if (attempt === 0) {
                         ports.log({
                             code: "protected-chapter-connection-retry",
-                            params: { ...plan.position(item.task), title: item.task.title }
+                            params: { ...plan.position(task), title: task.title }
                         });
                         continue;
                     }
@@ -188,15 +180,15 @@ export function createProtectedChapters(
             if (technicalFailure || !result) {
                 ports.events.emit({
                     type: "chapter-failed",
-                    task: item.task,
+                    task,
                     stage: "protected-auth",
                     code: "network-error",
-                    params: plan.position(item.task),
+                    params: plan.position(task),
                     retry: false
                 });
                 ports.log({
                     code: "protected-chapter-connection-failed",
-                    params: { ...plan.position(item.task), title: item.task.title }
+                    params: { ...plan.position(task), title: task.title }
                 });
                 message = undefined;
                 messageCode = "connection-failed";
@@ -212,21 +204,21 @@ export function createProtectedChapters(
                 messageCode = result.message ? undefined : "password-rejected";
                 messageParams = undefined;
                 retryConnection = false;
-                ports.events.emit({ type: "protected-chapter-password-rejected", task: item.task });
+                ports.events.emit({ type: "protected-chapter-password-rejected", task: task });
                 ports.log({
                     code: "protected-chapter-password-rejected",
-                    params: { ...plan.position(item.task), title: item.task.title }
+                    params: { ...plan.position(task), title: task.title }
                 });
                 continue;
             }
             if (result.kind === "protocol-error") {
                 ports.events.emit({
                     type: "chapter-failed",
-                    task: item.task,
+                    task,
                     stage: "protected-auth",
                     code: result.code,
                     params: {
-                        ...plan.position(item.task),
+                        ...plan.position(task),
                         ...(result.params || {})
                     },
                     retry: false
@@ -234,8 +226,8 @@ export function createProtectedChapters(
                 ports.log({
                     code: "protected-chapter-protocol-failed",
                     params: {
-                        ...plan.position(item.task),
-                        title: item.task.title,
+                        ...plan.position(task),
+                        title: task.title,
                         errorCode: result.code,
                         ...(result.params || {})
                     }
@@ -248,7 +240,7 @@ export function createProtectedChapters(
             }
 
             // 授权成功后回到普通正文处理路径，复用解析与落盘
-            protectedResolvedIndexes.add(item.task.index);
+            protectedResolvedIndexes.add(task.index);
             protectedPendingCount = Math.max(0, protectedPendingCount - 1);
             publishProtectedSummary();
             return { kind: "unlocked", html: result.html };
@@ -261,11 +253,7 @@ export function createProtectedChapters(
         take: () => protectedQueue.take(ports.workSignal),
         resolveProtectedChapter,
         closeProducer: () => protectedQueue.closeProducer(),
-        async handle(
-            task: DownloadTask,
-            html: string,
-            isRetry: boolean
-        ): Promise<ProtectedChapterResolution | { kind: "deferred" }> {
+        async handle(task: DownloadTask, isRetry: boolean): Promise<ProtectedChapterResolution | { kind: "deferred" }> {
             if (isRetry) {
                 if (skipRemainingProtectedRetries) {
                     if (!protectedDetectedIndexes.has(task.index)) {
@@ -282,18 +270,18 @@ export function createProtectedChapters(
                     code: "protected-chapter-redetected",
                     params: { ...plan.position(task), title: task.title }
                 });
-                return resolveProtectedChapter({ task, pageHtml: html }, true);
+                return resolveProtectedChapter(task, true);
             }
-            const queued = protectedQueue.enqueue({ task, pageHtml: html });
-            if (queued.kind !== "duplicate") {
-                registerProtectedDetection(task, queued.kind === "skipped");
+            const queued = protectedQueue.enqueue(task);
+            if (queued !== "duplicate") {
+                registerProtectedDetection(task, queued === "skipped");
             }
-            if (queued.kind === "queued") {
+            if (queued === "queued") {
                 ports.log({
                     code: "protected-chapter-queued",
                     params: { ...plan.position(task), title: task.title }
                 });
-            } else if (queued.kind === "skipped") {
+            } else if (queued === "skipped") {
                 ports.log({
                     code: "protected-chapter-skipped",
                     params: { ...plan.position(task), title: task.title }

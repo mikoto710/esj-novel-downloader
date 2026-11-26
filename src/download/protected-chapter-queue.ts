@@ -1,20 +1,9 @@
 import type { DownloadTask } from "./contracts";
 
-/**
- * 密码交互队列中的章节与抓取页面，不写入章节缓存
- */
-export interface ProtectedChapterWorkItem {
-    task: DownloadTask;
-    pageHtml: string;
-}
-
-export type ProtectedChapterEnqueueResult =
-    | { kind: "queued"; item: ProtectedChapterWorkItem }
-    | { kind: "duplicate"; item: ProtectedChapterWorkItem }
-    | { kind: "skipped"; item: ProtectedChapterWorkItem };
+export type ProtectedChapterEnqueueResult = "queued" | "duplicate" | "skipped";
 
 interface QueueWaiter {
-    resolve(item: ProtectedChapterWorkItem | null): void;
+    resolve(item: DownloadTask | null): void;
     signal?: AbortSignal;
     onAbort?: () => void;
 }
@@ -23,7 +12,7 @@ interface QueueWaiter {
  * 多个普通 worker 负责生产，单个密码交互消费者负责取出；已取出的章节不会被后来入队的较小索引替换
  */
 export class ProtectedChapterQueue {
-    private readonly pending: ProtectedChapterWorkItem[] = [];
+    private readonly pending: DownloadTask[] = [];
     private readonly seenIndexes = new Set<number>();
     private readonly waiters: QueueWaiter[] = [];
     private producerClosed = false;
@@ -40,14 +29,14 @@ export class ProtectedChapterQueue {
     /**
      * 按章节索引去重并加入密码交互队列，返回排队、重复或已跳过状态
      */
-    enqueue(item: ProtectedChapterWorkItem): ProtectedChapterEnqueueResult {
-        if (this.seenIndexes.has(item.task.index)) {
-            return { kind: "duplicate", item };
+    enqueue(item: DownloadTask): ProtectedChapterEnqueueResult {
+        if (this.seenIndexes.has(item.index)) {
+            return "duplicate";
         }
-        this.seenIndexes.add(item.task.index);
+        this.seenIndexes.add(item.index);
 
         if (this.producerClosed || this.skipRemaining) {
-            return { kind: "skipped", item };
+            return "skipped";
         }
 
         const waiter = this.waiters.shift();
@@ -56,15 +45,15 @@ export class ProtectedChapterQueue {
             waiter.resolve(item);
         } else {
             this.pending.push(item);
-            this.pending.sort((left, right) => left.task.index - right.task.index);
+            this.pending.sort((left, right) => left.index - right.index);
         }
-        return { kind: "queued", item };
+        return "queued";
     }
 
     /**
      * 优先取出当前已排队的最小索引项；空队列关闭、跳过剩余或取消等待时返回 null
      */
-    take(signal?: AbortSignal): Promise<ProtectedChapterWorkItem | null> {
+    take(signal?: AbortSignal): Promise<DownloadTask | null> {
         const item = this.pending.shift();
         if (item) {
             return Promise.resolve(item);
@@ -95,7 +84,7 @@ export class ProtectedChapterQueue {
     /**
      * 返回调用时尚未交互的章节供调用方记录跳过；此后 enqueue 的章节直接返回 skipped
      */
-    skipAllRemaining(): ProtectedChapterWorkItem[] {
+    skipAllRemaining(): DownloadTask[] {
         this.skipRemaining = true;
         const skipped = this.pending.splice(0);
         this.resolveWaiters();
@@ -115,7 +104,7 @@ export class ProtectedChapterQueue {
     /**
      * 停止生产并返回尚未交互的项目，同时让全部等待者收到 null
      */
-    cancel(): ProtectedChapterWorkItem[] {
+    cancel(): DownloadTask[] {
         this.producerClosed = true;
         const cancelled = this.pending.splice(0);
         this.resolveWaiters();

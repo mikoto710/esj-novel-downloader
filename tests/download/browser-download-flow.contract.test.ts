@@ -6,6 +6,7 @@ import {
     type BrowserDownloadRuntime,
     createBrowserDownloadOptions,
     createBrowserDownloadTasks,
+    expectReadyDownload,
     getBrowserDownloadMocks,
     resetBrowserDownloadHarness
 } from "../support/browser-download-harness";
@@ -25,36 +26,38 @@ describe("browser download flow contracts", () => {
         const ordinaryStarted = createDeferred<void>();
         const ordinaryFinished = createDeferred<void>();
         const order: string[] = [];
-        let protectedGetCount = 0;
         mocks.getConcurrency.mockReturnValue(2);
         mocks.promptProtectedChapterPassword.mockResolvedValue({
             action: "submit",
             password: "fictional-password",
             rememberPassword: false
         });
-        mocks.fetchWithTimeout.mockImplementation(async (url: string, options: RequestInit = {}) => {
-            const method = options.method || "GET";
-            if (url === tasks[0].url && method === "GET") {
-                protectedGetCount++;
-                order.push(protectedGetCount === 1 ? "protected-detected" : "protected-refreshed");
+        mocks.fetchWithTimeout.mockImplementation(async (url: string) => {
+            if (url === tasks[0].url) {
+                order.push("protected-detected");
                 return { text: vi.fn().mockResolvedValue(createProtectedChapterFixture()) } as unknown as Response;
             }
-            if (url === tasks[1].url && method === "GET") {
-                order.push("ordinary-start");
-                ordinaryStarted.resolve();
-                await ordinaryFinished.promise;
-                order.push("ordinary-end");
-                return { text: vi.fn().mockResolvedValue("<html></html>") } as unknown as Response;
-            }
-            if (url === tasks[0].url && method === "POST") {
-                order.push("token");
-                return { text: vi.fn().mockResolvedValue("<JinJing>fictional-token</JinJing>") } as unknown as Response;
-            }
-            order.push("password");
-            return {
-                text: vi.fn().mockResolvedValue(JSON.stringify({ status: 200, html: "<p>unlocked body</p>" }))
-            } as unknown as Response;
+            order.push("ordinary-start");
+            ordinaryStarted.resolve();
+            await ordinaryFinished.promise;
+            order.push("ordinary-end");
+            return { text: vi.fn().mockResolvedValue("<html></html>") } as unknown as Response;
         });
+        vi.stubGlobal(
+            "fetch",
+            vi.fn(async (url: string, options: RequestInit) => {
+                if (url === tasks[0].url && options.method === "GET") {
+                    order.push("protected-refreshed");
+                    return new Response(createProtectedChapterFixture());
+                }
+                if (url === tasks[0].url) {
+                    order.push("token");
+                    return new Response("<JinJing>fictional-token</JinJing>");
+                }
+                order.push("password");
+                return new Response(JSON.stringify({ status: 200, html: "<p>unlocked body</p>" }));
+            })
+        );
 
         const download = runtime.runBookDownload(createBrowserDownloadOptions(tasks));
         await ordinaryStarted.promise;
@@ -66,6 +69,20 @@ describe("browser download flow contracts", () => {
 
         expect(order.indexOf("ordinary-end")).toBeLessThan(order.indexOf("protected-refreshed"));
         expect(order.slice(order.indexOf("protected-refreshed"))).toEqual(["protected-refreshed", "token", "password"]);
+    });
+
+    it("fetches only current-site chapter paths and keeps links for the other entries", async () => {
+        const tasks = createBrowserDownloadTasks(4);
+        tasks[0].url += "?view=reader#chapter";
+        tasks[1].url = "https://www.esjzone.one/forum/100/2.html";
+        tasks[2].url = "https://www.esjzone.cc/forum/100/";
+        tasks[3].url = "https://example.test/story/4";
+
+        const result = expectReadyDownload(await runtime.runBookDownload(createBrowserDownloadOptions(tasks)));
+        expect(mocks.fetchWithTimeout.mock.calls.map(([url]) => url)).toEqual([tasks[0].url]);
+        for (const task of tasks.slice(1)) {
+            expect(result.txt).toContain(task.url);
+        }
     });
 
     it("binds old callbacks to their task without updating the new page task", async () => {

@@ -45,7 +45,7 @@ describe("browser download cancellation contracts", () => {
         "settles repeated cancellation during the protected chapter %s request",
         async (stage) => {
             const requestStarted = createDeferred<void>();
-            const blockedRequest = (_url: string, _options: RequestInit, _timeout: number, signal?: AbortSignal) => {
+            const blockedRequest = (_url: string, { signal }: RequestInit) => {
                 requestStarted.resolve();
                 return new Promise<never>((_resolve, reject) => {
                     signal?.addEventListener("abort", () => reject(new DOMException("cancelled", "AbortError")), {
@@ -61,15 +61,12 @@ describe("browser download cancellation contracts", () => {
             mocks.fetchWithTimeout.mockResolvedValueOnce({
                 text: vi.fn().mockResolvedValue(createProtectedChapterFixture())
             });
-            mocks.fetchWithTimeout.mockResolvedValueOnce({
-                text: vi.fn().mockResolvedValue(createProtectedChapterFixture())
-            });
+            const authRequest = vi.fn().mockResolvedValueOnce(new Response(createProtectedChapterFixture()));
             if (stage === "password") {
-                mocks.fetchWithTimeout.mockResolvedValueOnce({
-                    text: vi.fn().mockResolvedValue("<JinJing>fictional-token</JinJing>")
-                });
+                authRequest.mockResolvedValueOnce(new Response("<JinJing>fictional-token</JinJing>"));
             }
-            mocks.fetchWithTimeout.mockImplementationOnce(blockedRequest);
+            authRequest.mockImplementationOnce(blockedRequest);
+            vi.stubGlobal("fetch", authRequest);
 
             const download = runtime.runBookDownload(createBrowserDownloadOptions(createBrowserDownloadTasks(1)));
             await requestStarted.promise;
@@ -80,7 +77,7 @@ describe("browser download cancellation contracts", () => {
             expect(result.status).toBe("cancelled");
             expect(mocks.fullCleanup).toHaveBeenCalledOnce();
             expect(mocks.closeProtectedChapterPrompt).toHaveBeenCalled();
-            expect(mocks.log.mock.calls.flat().join("\n")).not.toContain("never-log-this");
+            expect(JSON.stringify(mocks.log.mock.calls)).not.toContain("never-log-this");
         }
     );
 

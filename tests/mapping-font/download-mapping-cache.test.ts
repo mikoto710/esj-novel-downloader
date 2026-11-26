@@ -26,7 +26,7 @@ describe("mapped font cache normalization", () => {
         const writes: Map<number, Chapter>[] = [];
         const harness = createDownloadHarness(chapters);
         const { ui, dependencies } = harness;
-        dependencies.chapterFetcher = { fetch: vi.fn(async () => "") };
+        dependencies.chapterFetcher = { ...dependencies.chapterFetcher, fetch: vi.fn(async () => "") };
         dependencies.cache.putBatch = async (_bookId, _taskId, entries) => {
             writes.push(new Map(entries));
             return true;
@@ -62,6 +62,7 @@ describe("mapped font cache normalization", () => {
         const harness = createDownloadHarness(chapters);
         const { ui, dependencies } = harness;
         dependencies.chapterFetcher = {
+            ...dependencies.chapterFetcher,
             fetch: vi.fn(async (task) => {
                 fetchedIndexes.push(task.index);
                 return `<p>${task.title}</p>`;

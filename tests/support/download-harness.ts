@@ -21,6 +21,7 @@ import { RecordingDownloadEvents } from "./fakes";
 export function createDownloadHarness(chapters = new Map<number, Chapter>()) {
     const fetched: DownloadTask[] = [];
     const fetcher = {
+        isSiteChapter: () => true,
         calls: fetched,
         async fetch(task: DownloadTask, signal?: AbortSignal) {
             fetched.push({ ...task });

@@ -93,12 +93,7 @@ export type ProtectedChapterUnlockResult =
  * 站点密码授权由 site/protected-chapter 实现；核心只编排结构化结果，不接触密码协议和 DOM
  */
 export interface ProtectedChapterAuthPort {
-    unlock(
-        task: DownloadTask,
-        protectedPageHtml: string,
-        password: string,
-        signal?: AbortSignal
-    ): Promise<ProtectedChapterUnlockResult>;
+    unlock(task: DownloadTask, password: string, signal?: AbortSignal): Promise<ProtectedChapterUnlockResult>;
 }
 
 /**
@@ -332,6 +327,7 @@ export interface DownloadUiPort {
  * 章节 HTML 获取接口，单章网络重试策略由 chapter-pipeline 控制
  */
 export interface ChapterFetcherPort {
+    isSiteChapter(task: DownloadTask): boolean;
     fetch(task: DownloadTask, signal?: AbortSignal): Promise<string>;
 }
 

@@ -19,7 +19,7 @@ const task = {
 };
 
 function textResponse(text: string): Response {
-    return { text: vi.fn().mockResolvedValue(text) } as unknown as Response;
+    return { ok: true, text: vi.fn().mockResolvedValue(text) } as unknown as Response;
 }
 
 describe("protected chapter browser protocol", () => {
@@ -84,18 +84,30 @@ describe("protected chapter browser protocol", () => {
             .mockResolvedValueOnce(textResponse(createProtectedChapterFixture()))
             .mockResolvedValueOnce(textResponse("<JinJing>fictional-token</JinJing>"))
             .mockResolvedValueOnce(textResponse(JSON.stringify({ status: 200, html: "<p>正文</p>", text: "meta" })));
-        const auth = createProtectedChapterAuth(request);
+        vi.stubGlobal("fetch", request);
+        const auth = createProtectedChapterAuth();
 
-        const result = await auth.unlock(task, createProtectedChapterFixture(), "R18");
+        const result = await auth.unlock(task, "R18");
 
         expect(result.kind).toBe("unlocked");
         expect(request).toHaveBeenCalledTimes(3);
         expect(request.mock.calls[0][0]).toBe(task.url);
-        expect(request.mock.calls[0][1]).toMatchObject({ method: "GET", credentials: "include" });
+        expect(request.mock.calls[0][1]).toMatchObject({
+            method: "GET",
+            credentials: "include",
+            mode: "same-origin",
+            redirect: "error"
+        });
         expect(request.mock.calls[1][0]).toBe(task.url);
-        expect(request.mock.calls[1][1]).toMatchObject({ method: "POST", credentials: "include" });
+        expect(request.mock.calls[1][1]).toMatchObject({
+            method: "POST",
+            credentials: "include",
+            mode: "same-origin",
+            redirect: "error"
+        });
         expect(String(request.mock.calls[1][1].body)).toBe("plxf=getAuthToken");
         expect(request.mock.calls[2][0]).toBe("https://www.esjzone.cc/inc/forum_pw.php");
+        expect(request.mock.calls[2][1]).toMatchObject({ mode: "same-origin", redirect: "error" });
         expect(request.mock.calls[2][1].headers).toEqual({
             Authorization: "fictional-token",
             "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
@@ -107,9 +119,10 @@ describe("protected chapter browser protocol", () => {
     it("uses a refreshed already-authorized chapter without requesting a token", async () => {
         const refreshedHtml = createChapterFixture({ contentHtml: "<p>账号已授权正文</p>" });
         const request = vi.fn().mockResolvedValue(textResponse(refreshedHtml));
-        const auth = createProtectedChapterAuth(request);
+        vi.stubGlobal("fetch", request);
+        const auth = createProtectedChapterAuth();
 
-        await expect(auth.unlock(task, createProtectedChapterFixture(), "R18")).resolves.toEqual({
+        await expect(auth.unlock(task, "R18")).resolves.toEqual({
             kind: "unlocked",
             html: refreshedHtml
         });
@@ -122,12 +135,24 @@ describe("protected chapter browser protocol", () => {
             .fn()
             .mockResolvedValueOnce(textResponse(createProtectedChapterFixture()))
             .mockResolvedValueOnce(textResponse("<html>unexpected</html>"));
-        const auth = createProtectedChapterAuth(request);
+        vi.stubGlobal("fetch", request);
+        const auth = createProtectedChapterAuth();
 
-        await expect(auth.unlock(task, createProtectedChapterFixture(), "secret")).resolves.toMatchObject({
+        await expect(auth.unlock(task, "secret")).resolves.toMatchObject({
             kind: "protocol-error",
             code: "token-invalid"
         });
         expect(request).toHaveBeenCalledTimes(2);
+    });
+
+    it.each([
+        "https://www.esjzone.one/forum/100/202.html",
+        "https://example.test/forum/100/202.html",
+        "https://www.esjzone.cc/forum/100/"
+    ])("does not authorize a chapter URL outside the current site contract", async (url) => {
+        const request = vi.fn();
+        vi.stubGlobal("fetch", request);
+        await expect(createProtectedChapterAuth().unlock({ ...task, url }, "fictional-password")).rejects.toThrow();
+        expect(request).not.toHaveBeenCalled();
     });
 });

@@ -80,3 +80,29 @@ describe("native page text request", () => {
         expect(fetch).not.toHaveBeenCalled();
     });
 });
+
+describe("GM response adaptation", () => {
+    it.each([204, 205])("settles %s with an empty body", async (status) => {
+        const { fetchWithTimeout } = await import("../../src/browser/request");
+        const pending = fetchWithTimeout("https://example.test/resource");
+        const details = vi.mocked(GM_xmlhttpRequest).mock.calls[0][0];
+        details.onload?.call(
+            {} as never,
+            {
+                status,
+                statusText: "",
+                response: new Blob(["ignored"]),
+                finalUrl: "https://example.test/resource"
+            } as never
+        );
+        await expect(pending.then((value) => value.text())).resolves.toBe("");
+    });
+
+    it("rejects malformed response metadata delivered in a callback", async () => {
+        const { fetchWithTimeout } = await import("../../src/browser/request");
+        const pending = fetchWithTimeout("https://example.test/resource");
+        const details = vi.mocked(GM_xmlhttpRequest).mock.calls[0][0];
+        details.onload?.call({} as never, { status: 200, statusText: "invalid\nstatus" } as never);
+        await expect(pending).rejects.toBeInstanceOf(TypeError);
+    });
+});
