@@ -1,4 +1,10 @@
-import type { DiagnosticSession, DiagnosticLogRecord } from "./manager";
+import {
+    normalizeDiagnosticLogRecord,
+    sanitizeDiagnosticField,
+    sanitizeDiagnosticMessage,
+    type DiagnosticSession,
+    type DiagnosticLogRecord
+} from "./manager";
 
 function safeFilenamePart(value: string): string {
     return (
@@ -18,7 +24,7 @@ export function createDiagnosticFilename(bookTitle: string, updatedAt: number): 
         .toISOString()
         .replace(/[-:]/g, "")
         .replace(/\.\d{3}Z$/, "Z");
-    return `esj-diagnostic-${safeFilenamePart(bookTitle)}-${date}.json`;
+    return `esj-diagnostic-${safeFilenamePart(sanitizeDiagnosticMessage(bookTitle))}-${date}.json`;
 }
 
 /**
@@ -35,10 +41,13 @@ export function createDiagnosticExport(
                 session: {
                     ...session,
                     // 展示日志写入输出副本，不能修改存储中的中性记录
-                    logs: session.logs.map((entry) => ({ ...entry, message: presentation.formatLog(entry) }))
+                    logs: session.logs.map((entry) => {
+                        const sanitized = normalizeDiagnosticLogRecord(entry);
+                        return { ...sanitized, message: presentation.formatLog(sanitized) };
+                    })
                 }
             },
-            null,
+            sanitizeDiagnosticField,
             2
         )
     };

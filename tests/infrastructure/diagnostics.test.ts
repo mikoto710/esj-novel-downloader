@@ -13,6 +13,7 @@ import {
     type DiagnosticSession,
     type StartDiagnosticSessionInput
 } from "../../src/diagnostics/manager";
+import { createDiagnosticExport } from "../../src/diagnostics/export";
 import { createInitialDownloadSnapshot } from "../../src/download/progress";
 
 class MemoryDiagnosticRepository implements DiagnosticRepository {
@@ -431,11 +432,52 @@ describe("diagnostic session retention", () => {
         expect(sanitizeDiagnosticUrl("data:text/html,secret")).toBe("");
         expect(
             sanitizeDiagnosticMessage(
-                "request https://www.esjzone.cc/forum/1/2.html?token=secret Cookie=session Authorization=BearerSecret data:text/plain;base64,secret"
+                "request https://www.esjzone.cc/forum/1/2.html?token=secret Cookie=session\nAuthorization=BearerSecret\ndata:text/plain;base64,secret"
             )
         ).toBe(
-            "request https://www.esjzone.cc/forum/1/2.html Cookie=[已移除] Authorization=[已移除] [data URI 已移除]"
+            "request https://www.esjzone.cc/forum/1/2.html Cookie=[已移除]\nAuthorization=[已移除]\n[data URI 已移除]"
         );
+    });
+
+    it("redacts complete credentials in recorded and legacy text and structured data", async () => {
+        const repository = new MemoryDiagnosticRepository();
+        const manager = new DiagnosticManager(repository, () => 1_000);
+        await manager.start(createInput("headers"));
+        await manager.recordLog("headers", {
+            level: "warning",
+            message: "Authorization: Bearer recorded-auth\nCookie: first=recorded-cookie; second=recorded-value",
+            params: { AUTHORIZATION: "recorded-param", Cookie: "recorded-cookie-param", detail: "safe detail" }
+        });
+
+        expect(JSON.stringify(repository.sessions[0])).not.toMatch(/recorded-/);
+        expect(repository.sessions[0].logs[0].params?.detail).toBe("safe detail");
+
+        await manager.finish("headers", "success");
+        const legacy = repository.sessions[0];
+        legacy.book.title = "Example Authorization: Basic legacy-title";
+        legacy.logs.push({ at: 1, level: "warning", params: { Authorization: "legacy-param" } });
+        legacy.events.push({
+            at: 2,
+            type: "legacy",
+            details: { COOKIE: " legacy-details=1; next=2", context: "usable info" }
+        });
+        legacy.failures.push({
+            at: 3,
+            scope: "chapter",
+            stage: "fetch",
+            code: "network-error",
+            message: "Cookie: legacy-message; other=legacy-more\n  continuation=legacy-fold"
+        });
+
+        const visible = (await manager.list()).history[0];
+        expect(JSON.stringify(visible)).not.toMatch(/legacy-/);
+        expect(visible.events.at(-1)?.details?.context).toBe("usable info");
+        const exported = createDiagnosticExport(legacy, {
+            bookTitle: legacy.book.title,
+            formatLog: (entry) => String(entry.params?.Authorization ?? "Authorization: Bearer legacy-formatted")
+        });
+        expect(exported.json).not.toMatch(/legacy-/);
+        expect(exported.filename).not.toContain("legacy-title");
     });
 
     it("repairs legacy failed records that reached export-ready without failures", async () => {

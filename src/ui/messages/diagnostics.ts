@@ -1,5 +1,11 @@
 import { formatSelectionSummary, isPartialSelectionSummary } from "./selection";
-import type { DiagnosticLogRecord, DiagnosticSession, DiagnosticSessionPresentation } from "../../diagnostics/manager";
+import {
+    normalizeDiagnosticLogRecord,
+    sanitizeDiagnosticMessage,
+    type DiagnosticLogRecord,
+    type DiagnosticSession,
+    type DiagnosticSessionPresentation
+} from "../../diagnostics/manager";
 import type { DownloadLogCode } from "../../download/contracts";
 import { formatDownloadLog } from "./download-log";
 import { t } from "../locale";
@@ -8,17 +14,16 @@ import { t } from "../locale";
  * 将结构化诊断日志按当前界面语言格式化；旧版字符串日志保持原文可读
  */
 export function formatDiagnosticLog(entry: DiagnosticLogRecord): string {
-    if (entry.code) {
-        return formatDownloadLog({
-            code: entry.code as DownloadLogCode,
-            ...(entry.params === undefined ? {} : { params: entry.params })
-        });
-    }
-    return entry.message || entry.code || "";
+    const { code, params, message } = normalizeDiagnosticLogRecord(entry);
+    return code
+        ? sanitizeDiagnosticMessage(
+              formatDownloadLog({ code: code as DownloadLogCode, ...(params === undefined ? {} : { params }) })
+          )
+        : message || "";
 }
 
 export function formatDiagnosticBookTitle(session: DiagnosticSession): string {
-    return session.book.title || t("diagnostics.summary.unknownBook");
+    return sanitizeDiagnosticMessage(session.book.title) || t("diagnostics.summary.unknownBook");
 }
 
 function formatDiagnosticBrowser(session: DiagnosticSession): string {
@@ -119,38 +124,42 @@ export function formatDiagnosticSummary(
                   presentation: formatPresentation(presentation),
                   result: session.result
               });
-    return [
-        `ESJ Novel Downloader ${applicationVersion}`,
-        `${formatDiagnosticBrowser(session)} / ${session.application.userscriptManager}`,
-        t("diagnostics.summary.book", { title: bookTitle, bookId: session.book.bookId }),
-        t("diagnostics.summary.link", { url: session.book.url }),
-        ...(selectionLine ? [selectionLine] : []),
-        ...(presentationLine ? [presentationLine] : []),
-        t("diagnostics.summary.result", { result: session.result, phase: session.task.phase }),
-        t("diagnostics.summary.chapters", {
-            completed: session.task.completedChapters,
-            total: session.task.totalChapters,
-            restored: session.task.restoredChapters,
-            failed: session.task.failedChapters
-        }),
-        t("diagnostics.summary.protected", {
-            detected: session.task.protectedDetectedChapters,
-            pending: session.task.protectedPendingChapters,
-            resolved: session.task.protectedResolvedChapters,
-            skipped: session.task.protectedSkippedChapters
-        }),
-        t("diagnostics.summary.images", {
-            enabled: t(session.settings.imageEnabled ? "diagnostics.summary.enabled" : "diagnostics.summary.disabled"),
-            concurrency: session.settings.concurrency
-        }),
-        t("diagnostics.summary.exports", {
-            records: exportLines.length > 0 ? `\n${exportLines.join("\n")}` : t("diagnostics.summary.none")
-        }),
-        t("diagnostics.summary.logs", {
-            records: logLines.length > 0 ? `\n${logLines.join("\n")}` : t("diagnostics.summary.none")
-        }),
-        t("diagnostics.summary.failures", {
-            records: failureLines.length > 0 ? `\n${failureLines.join("\n")}` : t("diagnostics.summary.none")
-        })
-    ].join("\n");
+    return sanitizeDiagnosticMessage(
+        [
+            `ESJ Novel Downloader ${applicationVersion}`,
+            `${formatDiagnosticBrowser(session)} / ${session.application.userscriptManager}`,
+            t("diagnostics.summary.book", { title: bookTitle, bookId: session.book.bookId }),
+            t("diagnostics.summary.link", { url: session.book.url }),
+            ...(selectionLine ? [selectionLine] : []),
+            ...(presentationLine ? [presentationLine] : []),
+            t("diagnostics.summary.result", { result: session.result, phase: session.task.phase }),
+            t("diagnostics.summary.chapters", {
+                completed: session.task.completedChapters,
+                total: session.task.totalChapters,
+                restored: session.task.restoredChapters,
+                failed: session.task.failedChapters
+            }),
+            t("diagnostics.summary.protected", {
+                detected: session.task.protectedDetectedChapters,
+                pending: session.task.protectedPendingChapters,
+                resolved: session.task.protectedResolvedChapters,
+                skipped: session.task.protectedSkippedChapters
+            }),
+            t("diagnostics.summary.images", {
+                enabled: t(
+                    session.settings.imageEnabled ? "diagnostics.summary.enabled" : "diagnostics.summary.disabled"
+                ),
+                concurrency: session.settings.concurrency
+            }),
+            t("diagnostics.summary.exports", {
+                records: exportLines.length > 0 ? `\n${exportLines.join("\n")}` : t("diagnostics.summary.none")
+            }),
+            t("diagnostics.summary.logs", {
+                records: logLines.length > 0 ? `\n${logLines.join("\n")}` : t("diagnostics.summary.none")
+            }),
+            t("diagnostics.summary.failures", {
+                records: failureLines.length > 0 ? `\n${failureLines.join("\n")}` : t("diagnostics.summary.none")
+            })
+        ].join("\n")
+    );
 }

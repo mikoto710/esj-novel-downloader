@@ -292,24 +292,73 @@ export function sanitizeDiagnosticUrl(value: string): string {
     }
 }
 
+const REDACTED_HEADER = "[已移除]";
+const SENSITIVE_HEADER_NAME = /^(?:(?:proxy-)?authorization|(?:set-)?cookie)$/i;
+
 /**
- * 移除诊断文本中的查询参数、认证字段、data URI 和长编码内容
+ * 移除诊断文本中的查询参数、完整认证头、data URI 和长编码内容
  */
 export function sanitizeDiagnosticMessage(value: string): string {
-    // 保留排障所需 URL 路径，但移除查询参数、认证字段和可能承载正文或二进制的长编码内容
     return value
         .replace(/data:[^\s"']+/gi, "[data URI 已移除]")
-        .replace(/\b(cookie|authorization)\s*[:=]\s*[^\s,;]+/gi, "$1=[已移除]")
         .replace(/https?:\/\/[^\s<>"']+/gi, (url) => sanitizeDiagnosticUrl(url))
+        .replace(
+            /(^|[^\w-])((?:proxy-)?authorization|(?:set-)?cookie)["']?[ \t]*[:=][^\r\n]*(?:(?:\r\n?|\n)[ \t]+[^\r\n]*)*/gim,
+            `$1$2=${REDACTED_HEADER}`
+        )
         .replace(/[A-Za-z0-9+/]{128,}={0,2}/g, "[长编码内容已移除]");
+}
+
+/**
+ * 遮蔽结构化字段中的认证头和值中包含的诊断文本
+ */
+export function sanitizeDiagnosticField(key: string, value: unknown): unknown {
+    return SENSITIVE_HEADER_NAME.test(key.trim())
+        ? REDACTED_HEADER
+        : typeof value === "string"
+          ? sanitizeDiagnosticMessage(value)
+          : value;
+}
+
+function sanitizeDiagnosticFields<T extends Record<string, string | number | boolean | null>>(fields: T): T {
+    return Object.fromEntries(
+        Object.entries(fields).map(([key, value]) => [
+            key,
+            SENSITIVE_HEADER_NAME.test(key.trim())
+                ? REDACTED_HEADER
+                : typeof value === "string"
+                  ? limitText(value)
+                  : value
+        ])
+    ) as T;
 }
 
 function trimSessionToLimit(session: DiagnosticSession): DiagnosticSession {
     const trimmed: DiagnosticSession = {
         ...session,
-        failures: session.failures.map((failure) => ({ ...failure, message: limitText(failure.message) })),
+        book: {
+            ...session.book,
+            title: sanitizeDiagnosticMessage(session.book.title ?? ""),
+            url: sanitizeDiagnosticUrl(session.book.url)
+        },
+        failures: session.failures.map((failure) => ({
+            ...failure,
+            message: limitText(failure.message),
+            ...(failure.chapter
+                ? {
+                      chapter: {
+                          ...failure.chapter,
+                          title: sanitizeDiagnosticMessage(failure.chapter.title ?? ""),
+                          url: sanitizeDiagnosticUrl(failure.chapter.url)
+                      }
+                  }
+                : {})
+        })),
         exports: (session.exports || []).slice(-DIAGNOSTIC_EXPORT_LIMIT),
-        events: session.events.slice(-DIAGNOSTIC_EVENT_LIMIT),
+        events: session.events.slice(-DIAGNOSTIC_EVENT_LIMIT).map((event) => ({
+            ...event,
+            ...(event.details ? { details: sanitizeDiagnosticFields(event.details) } : {})
+        })),
         logs: session.logs.slice(-DIAGNOSTIC_LOG_LIMIT).map((entry) => ({
             ...entry,
             ...(entry.message === undefined ? {} : { message: limitText(entry.message) })
@@ -366,24 +415,15 @@ function repairTerminalResult(session: DiagnosticSession): DiagnosticSession {
     return normalized;
 }
 
-function normalizeDiagnosticLogRecord(entry: DiagnosticLogRecord): DiagnosticLogRecord {
+export function normalizeDiagnosticLogRecord(entry: DiagnosticLogRecord): DiagnosticLogRecord {
     const level = entry.level === "warning" || entry.level === "error" ? entry.level : "info";
     return {
         at: typeof entry.at === "number" ? entry.at : 0,
         level,
         ...(typeof entry.message === "string" ? { message: limitText(entry.message) } : {}),
         ...(typeof entry.code === "string" ? { code: limitText(entry.code) } : {}),
-        ...(entry.params ? { params: sanitizeDiagnosticParams(entry.params) } : {})
+        ...(entry.params ? { params: sanitizeDiagnosticFields(entry.params) } : {})
     };
-}
-
-function sanitizeDiagnosticParams(params: DomainMessageParams): DomainMessageParams {
-    return Object.fromEntries(
-        Object.entries(params).map(([key, value]) => [
-            key,
-            typeof value === "string" ? limitText(sanitizeDiagnosticMessage(value)) : value
-        ])
-    );
 }
 
 /**

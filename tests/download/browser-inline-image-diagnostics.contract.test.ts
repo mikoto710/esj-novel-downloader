@@ -52,15 +52,18 @@ describe("browser inline image diagnostic contracts", () => {
                     {
                         stage: "request",
                         code: "image-request-failed",
-                        message: "图片请求在重试后仍失败",
+                        message: "图片请求在重试后仍失败 data:image/png;base64,AA==",
                         count: 1
                     }
                 ]
             })
             .mockResolvedValueOnce({ processedHtml: "<p>正文</p>", images: [], failCount: 0, failures: [] });
 
+        const tasks = createBrowserDownloadTasks(1);
+        const chapterUrl = tasks[0].url;
+        tasks[0].url += "?cookie=secret";
         const result = await runtime.runBookDownload({
-            ...createBrowserDownloadOptions(createBrowserDownloadTasks(1)),
+            ...createBrowserDownloadOptions(tasks),
             imageEnabled: true
         });
 
@@ -72,9 +75,10 @@ describe("browser inline image diagnostic contracts", () => {
                 scope: "image",
                 stage: "request",
                 imageFailureCount: 1,
-                chapter: expect.objectContaining({ index: 1 })
+                chapter: expect.objectContaining({ index: 1, url: chapterUrl })
             })
         ]);
+        expect(session.failures[0].message).not.toContain("data:image");
     });
 
     it("does not record an image failure when cancellation wins the processing race", async () => {
