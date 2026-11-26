@@ -1,30 +1,17 @@
-import type { Chapter, BookMetadata, ChapterImage } from "../content/model";
+import type { Chapter, BookMetadata } from "../content/model";
 import { blobToBase64 } from "../browser/files";
 import { prepareChapterMappingExport } from "../content/mapping-font";
+import { createStaticChapterBody, getChapterExportImages, readingHref } from "./chapter-body";
+import { escapeXml } from "./text";
 
 /**
  * 构建含封面和目录的整书或自选 HTML
  */
 export async function buildBookHtml(chapters: Chapter[], metadata: BookMetadata): Promise<Blob> {
-    const imgMap = new Map<string, string>();
     const mappingExports = chapters.map((chapter, index) => prepareChapterMappingExport(chapter, index));
     const mappingFontStyles: string[] = [];
-
-    // 处理封面
-    if (metadata.coverBlob) {
-        const b64 = await blobToBase64(metadata.coverBlob);
-        imgMap.set("cover", b64);
-    }
-
-    // 处理章节图片
-    for (const chap of chapters) {
-        if (chap.images && chap.images.length > 0) {
-            for (const img of chap.images) {
-                const b64 = await blobToBase64(img.blob);
-                imgMap.set(img.id, b64);
-            }
-        }
-    }
+    const coverUrl = metadata.coverBlob ? await blobToBase64(metadata.coverBlob) : "";
+    const bookTitle = escapeXml(metadata.title);
 
     for (const mappingExport of mappingExports) {
         if (!mappingExport) {
@@ -70,29 +57,27 @@ export async function buildBookHtml(chapters: Chapter[], metadata: BookMetadata)
     // 目录
     let tocHtml = `<nav class="toc" aria-label="章节导航"><details><summary>章节导航（${chapters.length}）</summary><ol class="toc-list">`;
     chapters.forEach((chap, i) => {
-        tocHtml += `<li><a href="#chap${i}">${chap.title}</a></li>`;
+        tocHtml += `<li><a href="#chap${i}">${escapeXml(chap.title)}</a></li>`;
     });
     tocHtml += `</ol></details></nav>`;
 
     // 封面和元数据
     let metaHtml = "";
-    metaHtml += `<h1>${metadata.title}</h1>`;
-    metaHtml += `<div class="meta-info">${metadata.author ? "作者: " + metadata.author : ""}</div>`;
-    if (imgMap.has("cover")) {
-        metaHtml += `<div class="cover-img"><img src="${imgMap.get("cover")}" alt="Cover" /></div>`;
+    metaHtml += `<h1>${bookTitle}</h1>`;
+    metaHtml += `<div class="meta-info">${metadata.author ? "作者: " + escapeXml(metadata.author) : ""}</div>`;
+    if (coverUrl) {
+        metaHtml += `<div class="cover-img"><img src="${escapeXml(coverUrl)}" alt="Cover" /></div>`;
     }
 
     // 章节内容封装
     let contentHtml = "";
     for (let i = 0; i < chapters.length; i++) {
         const chap = chapters[i];
-        let body = mappingExports[i]?.contentHtml || chap.content;
-
-        body = await embedChapterImages(body, chap.images || [], imgMap);
+        const body = await renderHtmlBody(chap, mappingExports[i]?.contentHtml ?? chap.content, true);
 
         contentHtml += `
             <div id="chap${i}" class="chapter">
-                <h2>${chap.title}</h2>
+                <h2>${escapeXml(chap.title)}</h2>
                 <div class="content">${body}</div>
             </div>
         `;
@@ -105,7 +90,7 @@ export async function buildBookHtml(chapters: Chapter[], metadata: BookMetadata)
         <head>
             <meta charset="UTF-8">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>${metadata.title}</title>
+            <title>${bookTitle}</title>
             ${style}
         </head>
         <body>
@@ -119,21 +104,15 @@ export async function buildBookHtml(chapters: Chapter[], metadata: BookMetadata)
     return new Blob([fullHtml], { type: "text/html;charset=utf-8" });
 }
 
-/**
- * 单章在字体准备前嵌图；整书传入已收集资源，在字体准备后替换引用
- */
-export async function embedChapterImages(
-    content: string,
-    images: readonly ChapterImage[],
-    imageUrls?: ReadonlyMap<string, string>
-): Promise<string> {
-    for (const image of images) {
-        const dataUrl = imageUrls ? imageUrls.get(image.id) : await blobToBase64(image.blob);
-        if (dataUrl) {
-            content = content.split(`src="${image.id}"`).join(`src="${dataUrl}"`);
+async function renderHtmlBody(chapter: Chapter, content: string, imageEnabled: boolean): Promise<string> {
+    const embeddedImages = new Map<string, string>();
+    if (imageEnabled) {
+        for (const image of getChapterExportImages(chapter)) {
+            embeddedImages.set(image.id, await blobToBase64(image.blob));
         }
     }
-    return content;
+    return createStaticChapterBody(content, imageEnabled ? (src) => embeddedImages.get(src) ?? readingHref(src) : null)
+        .innerHTML;
 }
 
 async function embedMappingFont(
@@ -144,19 +123,24 @@ async function embedMappingFont(
 }
 
 /**
- * 构建单章布局与字体样式，正文中的图片地址须由调用方预先准备
+ * 构建单章布局及配套的插图和字体资源
  */
 export async function buildCurrentChapterHtml(
     chapter: Chapter,
-    { title, author, intro, pageUrl }: { title: string; author: string; intro: string; pageUrl: string }
+    {
+        title,
+        author,
+        intro,
+        pageUrl,
+        imageEnabled = true
+    }: { title: string; author: string; intro: string; pageUrl: string; imageEnabled?: boolean }
 ): Promise<Blob> {
-    let contentHtml = chapter.content;
     const mappingExport = prepareChapterMappingExport(chapter, 0);
-    let fontStyle = "";
-    if (mappingExport) {
-        fontStyle = await embedMappingFont(mappingExport);
-        contentHtml = mappingExport.contentHtml;
-    }
+    const fontStyle = mappingExport ? await embedMappingFont(mappingExport) : "";
+    const contentHtml = await renderHtmlBody(chapter, mappingExport?.contentHtml ?? chapter.content, imageEnabled);
+    const safeTitle = escapeXml(title);
+    const safePageUrl = escapeXml(pageUrl);
+    const pageLink = readingHref(pageUrl) ? `<a href="${safePageUrl}">${safePageUrl}</a>` : safePageUrl;
     const style = `
                 <style>
                     ${fontStyle}
@@ -169,21 +153,21 @@ export async function buildCurrentChapterHtml(
                 </style>
             `;
 
-    const metaBlock = intro ? `<div class="meta">${intro}</div>` : "";
+    const metaBlock = intro ? `<div class="meta">${escapeXml(intro)}</div>` : "";
     const finalHtml = `
                 <!DOCTYPE html>
                 <html lang="zh-CN">
                 <head>
                     <meta charset="UTF-8">
                     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                    <title>${title}</title>
+                    <title>${safeTitle}</title>
                     ${style}
                 </head>
                 <body>
                     <div class="chapter-card">
-                        <h1>${title}</h1>
-                        <p>${author}</p>
-                        <p>本章URL: <a href="${pageUrl}">${pageUrl}</a></p>
+                        <h1>${safeTitle}</h1>
+                        <p>${escapeXml(author)}</p>
+                        <p>本章URL: ${pageLink}</p>
                         ${metaBlock}
                         <hr/>
                         <div class="content">

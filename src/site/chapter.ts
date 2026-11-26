@@ -1,24 +1,78 @@
 import type { Chapter } from "../content/model";
 import type { ChapterFetcherPort, ChapterPageFailureCode, DownloadTask } from "../download/contracts";
 import { normalizeChapterMappingFont } from "../content/mapping-font";
+import { isReadingElement } from "../content/reading-markup";
 import { fetchWithTimeout } from "../browser/request";
+import { parseInertHtml } from "../browser/html";
 import { processHtmlImages, type ImageProcessingFailure } from "./images";
 import { RequestGate } from "./request-gate";
 import { isCurrentSiteChapter } from "./routes";
 
-/**
- * 解析章节 HTML 的标题、作者和正文，书名沿用当前页面标题
- */
-export function parseChapterHtml(html: string, defaultTitle: string) {
-    const doc = new DOMParser().parseFromString(html, "text/html");
+const TEXT_BLOCKS = new Set(
+    "ADDRESS ARTICLE ASIDE BLOCKQUOTE DD DETAILS DIV DL DT FIGCAPTION FIGURE FOOTER H1 H2 H3 H4 H5 H6 HEADER HR LI MAIN NAV OL P PRE SECTION SUMMARY TABLE TD TH TR UL".split(
+        " "
+    )
+);
 
-    const h2 = (doc.querySelector("h2") as HTMLElement)?.innerText || defaultTitle;
+function readChapterBody(body: HTMLElement, title: string): { text: string; hasBody: boolean } {
+    const lines: string[] = [];
+    let line = "";
+    let hasImage = false;
+
+    function endLine(explicit = false) {
+        if (explicit || line.trim()) {
+            lines.push(line.trim());
+        }
+        line = "";
+    }
+
+    function visit(node: Node) {
+        if (node.nodeType === Node.TEXT_NODE) {
+            line += node.textContent?.replace(/[\t\n\f\r ]+/g, " ") || "";
+        } else if (isReadingElement(node) && !node.hidden) {
+            const tag = node.tagName;
+            if (tag === "BR") {
+                endLine(true);
+                return;
+            }
+            if (tag === "IMG") {
+                hasImage ||= Boolean(node.getAttribute("src")?.trim());
+                return;
+            }
+            const block = TEXT_BLOCKS.has(tag);
+            if (block) {
+                endLine();
+            }
+            node.childNodes.forEach(visit);
+            if (block) {
+                endLine();
+            }
+        }
+    }
+
+    body.childNodes.forEach(visit);
+    endLine();
+    const first = lines.findIndex(Boolean);
+    if (first >= 0 && lines[first] === title) {
+        lines.splice(first, 1);
+    }
+    return { text: lines.join("\n").trim(), hasBody: first >= 0 || hasImage };
+}
+
+/**
+ * 解析章节标题、作者与正文，按章节页地址还原阅读链接
+ */
+export function parseChapterHtml(html: string, defaultTitle: string, sourceUrl = location.href) {
+    const doc = parseInertHtml(html).content;
+
+    const h2 = doc.querySelector("h2")?.textContent?.trim() || defaultTitle;
 
     const bookName = document.title.split(" - ")[0].trim();
 
-    const author = (doc.querySelector(".single-post-meta div") as HTMLElement)?.innerText.trim() || "";
+    const author = doc.querySelector(".single-post-meta div")?.textContent?.trim() || "";
 
     const contentEl = doc.querySelector<HTMLElement>(".forum-content");
+    const body = contentEl ? readChapterBody(contentEl, h2) : null;
     let pageFailure: ChapterPageFailureCode | undefined;
     if (!contentEl) {
         const loginForm = doc.querySelector("form.login-box");
@@ -27,27 +81,33 @@ export function parseChapterHtml(html: string, defaultTitle: string) {
             loginForm.querySelector('input[type="password"][name="pwd"]')
                 ? "chapter-login-page"
                 : "chapter-content-missing";
+    } else if (!body?.hasBody) {
+        pageFailure = "chapter-content-missing";
     }
 
-    // HTML 与 EPUB 共用原始正文 HTML，插图和字体随后处理
+    contentEl?.querySelectorAll("a[href]").forEach((link) => {
+        const href = link.getAttribute("href")?.trim();
+        if (!href || href.startsWith("#")) {
+            return;
+        }
+        try {
+            const url = new URL(href, sourceUrl);
+            if (url.protocol === "http:" || url.protocol === "https:") {
+                link.setAttribute("href", url.href);
+            }
+        } catch {
+            // 无法解析的地址由导出时的链接校验移除
+        }
+    });
     const contentHtml = contentEl ? contentEl.innerHTML : "";
-
-    // 获取用于 TXT 的纯文本
-    let contentText = contentEl ? contentEl.innerText : "";
-
-    // 检测并移除正文开头重复的标题
-    if (contentEl) {
-        const safeTitle = h2.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-        const titleRegex = new RegExp(`^\\s*${safeTitle}\\s*`, "i");
-        contentText = contentText.replace(titleRegex, "").trim();
-    }
 
     return {
         title: h2,
         author,
         contentHtml,
-        contentText,
+        contentText: body?.text || "",
         bookName,
+        sourceUrl,
         ...(pageFailure ? { pageFailure } : {})
     };
 }
@@ -94,7 +154,7 @@ export async function processParsedChapter(
 
     if (imageEnabled) {
         try {
-            const processed = await processHtmlImages(finalHtml, chapterIndex, signal);
+            const processed = await processHtmlImages(finalHtml, chapterIndex, result.sourceUrl, signal);
             finalHtml = processed.processedHtml;
             images = processed.images;
             imageErrors = processed.failCount;
@@ -127,6 +187,13 @@ export async function processParsedChapter(
 }
 
 /**
+ * 定位单章导航中指向书籍详情的原站链接
+ */
+export function findChapterBookLink(root: ParentNode): HTMLAnchorElement | null {
+    return root.querySelector('.entry-navigation a.view-all[href]:not([href=""])');
+}
+
+/**
  * 普通章节请求与授权使用本任务同一个 gate，授权开始前等待普通请求完成
  */
 export function createChapterFetcher(requestGate: RequestGate): ChapterFetcherPort {
@@ -151,5 +218,10 @@ export function createChapterFetcher(requestGate: RequestGate): ChapterFetcherPo
 
 // 移除 HTML 字符串中的所有 img 标签
 function removeImgTags(html: string): string {
-    return html.replace(/<img[^>]*>/gi, "");
+    if (!/<img\b/i.test(html)) {
+        return html;
+    }
+    const template = parseInertHtml(html);
+    template.content.querySelectorAll("img").forEach((img) => img.remove());
+    return template.innerHTML;
 }

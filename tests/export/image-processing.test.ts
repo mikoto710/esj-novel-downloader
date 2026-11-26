@@ -46,6 +46,7 @@ describe("processHtmlImages", () => {
         expect(result.images).toHaveLength(1);
         expect(result.images[0]).toMatchObject({ id: "img_2_0.jpg", mediaType: "image/jpeg" });
         expect(result.images[0].blob.type).toBe("image/jpeg");
+        expect(result.images[0].blob.size).toBe(jpegBlob.size);
         expect(result.processedHtml).toContain('src="img_2_0.jpg"');
     });
 
@@ -53,7 +54,7 @@ describe("processHtmlImages", () => {
         const htmlBlob = new Blob(["<!doctype html><html></html>"], { type: "text/html" });
         fetchWithTimeoutMock.mockResolvedValue(blobResponse(htmlBlob));
 
-        const result = await processHtmlImages('<img src="https://example.com/image.file" alt="插图">', 0);
+        const result = await processHtmlImages('<img src="https://example.com/image.file" alt="Author caption">', 0);
 
         expect(fetchWithTimeoutMock).toHaveBeenCalledTimes(3);
         expect(result.images).toEqual([]);
@@ -66,7 +67,9 @@ describe("processHtmlImages", () => {
                 count: 1
             }
         ]);
-        expect(result.processedHtml).toContain("图片加载失败");
+        const image = new DOMParser().parseFromString(result.processedHtml, "text/html").querySelector("img");
+        expect(image?.getAttribute("src")).toBe("https://example.com/image.file");
+        expect(image?.alt).toMatch(/^Author caption\s+\S/u);
     });
 
     it("groups request failures without retaining the image URL or response body", async () => {

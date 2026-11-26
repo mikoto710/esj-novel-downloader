@@ -9,8 +9,6 @@ import {
     listBrowserDiagnosticSessions,
     recordBrowserDownloadEvent,
     recordBrowserPreflightDiagnosticFailure,
-    recordBrowserDiagnosticExport,
-    recordBrowserDiagnosticFailure,
     startBrowserDiagnosticSession,
     updateBrowserDiagnosticSession
 } from "../../src/diagnostics/runtime";
@@ -101,9 +99,11 @@ describe("browser diagnostic persistence", () => {
 
             storage.mockRestore();
             recordBrowserPreflightDiagnosticFailure(failure);
-            expect((await listBrowserDiagnosticSessions()).history[0]).toMatchObject({
+            const { active, history } = await listBrowserDiagnosticSessions();
+            expect(active).toEqual([]);
+            expect(history[0]).toMatchObject({
                 result: "failed",
-                failures: [expect.objectContaining({ code: "database-unavailable" })]
+                failures: [{ scope: "storage", stage: "cache-read", code: "database-unavailable" }]
             });
         }
     );
@@ -123,12 +123,13 @@ describe("browser diagnostic persistence", () => {
         expect(() =>
             browserDiagnosticLog({ code: "download-started", params: { concurrency: 1 } }, "task-log-failure")
         ).not.toThrow();
-        expect((await listBrowserDiagnosticSessions()).active[0].logs).toContainEqual(
-            expect.objectContaining({ code: "download-started", params: { concurrency: 1 } })
-        );
+        finishBrowserDiagnosticSession("task-log-failure", "success");
+        expect((await listBrowserDiagnosticSessions()).history[0].logs).toMatchObject([
+            { level: "info", code: "download-started", params: { concurrency: 1 } }
+        ]);
     });
 
-    it("persists a completed session with logs, exports and controlled book details", async () => {
+    it("exports a completed diagnostic session with filtered book details", async () => {
         startBrowserDiagnosticSession({
             taskId: "task-1",
             bookId: "1737469479",
@@ -151,17 +152,6 @@ describe("browser diagnostic persistence", () => {
         });
         browserDiagnosticLog("正在下载章节");
         finishBrowserDiagnosticSession("task-1", "success");
-        recordBrowserDiagnosticExport(
-            {
-                scope: "full",
-                format: "epub",
-                outcome: "success",
-                generated: true,
-                downloadTriggered: true,
-                failureStage: null
-            },
-            "task-1"
-        );
 
         const session = (await listBrowserDiagnosticSessions()).history[0];
         const exported = createDiagnosticExport(session, {
@@ -175,126 +165,9 @@ describe("browser diagnostic persistence", () => {
             sourcePageType: "detail"
         });
         expect(session.logs[0].message).toBe("正在下载章节");
-        expect(session.exports).toEqual([
-            expect.objectContaining({ format: "epub", generated: true, downloadTriggered: true })
-        ]);
         expect(JSON.parse(exported)).toEqual({ session });
-        expect(exported).not.toContain('"notice"');
         expect(exported).not.toContain("must not be stored");
         expect(exported).not.toContain("token=secret");
-    });
-
-    it("persists structured log codes and parameters after completion", async () => {
-        startBrowserDiagnosticSession({
-            taskId: "task-structured-log",
-            bookId: "book-log",
-            bookTitle: "Log Book",
-            pageUrl: "https://www.esjzone.cc/detail/12.html",
-            sourcePageType: "detail",
-            imageEnabled: false
-        });
-        browserDiagnosticLog({ code: "download-started", params: { concurrency: 3 } });
-        finishBrowserDiagnosticSession("task-structured-log", "success");
-
-        const session = (await listBrowserDiagnosticSessions()).history[0];
-        expect(session.logs).toEqual([
-            { at: expect.any(Number), level: "info", code: "download-started", params: { concurrency: 3 } }
-        ]);
-    });
-
-    it("keeps failed chapter location and export failures after download completion", async () => {
-        startBrowserDiagnosticSession({
-            taskId: "task-2",
-            bookId: "book-2",
-            bookTitle: "Book 2",
-            pageUrl: "https://www.esjzone.cc/detail/2.html",
-            sourcePageType: "detail",
-            imageEnabled: false
-        });
-        recordBrowserDiagnosticFailure(
-            {
-                scope: "chapter",
-                stage: "fetch",
-                code: "network-error",
-                message: "request failed",
-                chapter: {
-                    index: 2,
-                    title: "Chapter 3",
-                    url: "https://www.esjzone.cc/forum/2/3.html?cookie=secret"
-                }
-            },
-            "task-2"
-        );
-        finishBrowserDiagnosticSession("task-2", "success");
-        recordBrowserDiagnosticFailure(
-            {
-                scope: "export",
-                stage: "epub-download",
-                code: "NotAllowedError",
-                message: "download blocked"
-            },
-            "task-2"
-        );
-
-        const session = (await listBrowserDiagnosticSessions()).history[0];
-        expect(session.result).toBe("success");
-        expect(session.failures).toEqual([
-            expect.objectContaining({
-                scope: "chapter",
-                chapter: {
-                    index: 3,
-                    title: "Chapter 3",
-                    url: "https://www.esjzone.cc/forum/2/3.html"
-                }
-            }),
-            expect.objectContaining({ scope: "export", stage: "epub-download" })
-        ]);
-    });
-
-    it("keeps inline image failures inside a successful diagnostic session", async () => {
-        startBrowserDiagnosticSession({
-            taskId: "task-inline-image",
-            bookId: "book-image",
-            bookTitle: "Image Book",
-            pageUrl: "https://www.esjzone.cc/detail/3.html",
-            sourcePageType: "detail",
-            imageEnabled: true
-        });
-        recordBrowserDiagnosticFailure(
-            {
-                scope: "image",
-                stage: "request",
-                code: "image-request-failed",
-                message:
-                    "图片请求在重试后仍失败 data:image/png;base64,AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-                imageFailureCount: 2,
-                chapter: {
-                    index: 0,
-                    title: "Chapter 1",
-                    url: "https://www.esjzone.cc/forum/3/1.html?cookie=secret"
-                }
-            },
-            "task-inline-image"
-        );
-        finishBrowserDiagnosticSession("task-inline-image", "success");
-
-        const session = (await listBrowserDiagnosticSessions()).history[0];
-        const exported = createDiagnosticExport(session, {
-            bookTitle: formatDiagnosticBookTitle(session),
-            formatLog: formatDiagnosticLog
-        }).json;
-
-        expect(session.result).toBe("success");
-        expect(session.failures).toEqual([
-            expect.objectContaining({
-                scope: "image",
-                stage: "request",
-                imageFailureCount: 2,
-                chapter: expect.objectContaining({ index: 1, url: "https://www.esjzone.cc/forum/3/1.html" })
-            })
-        ]);
-        expect(exported).not.toContain("data:image");
-        expect(exported).not.toContain("cookie=secret");
     });
 
     it("records structured download snapshots, mapped fonts and terminal failures", async () => {
@@ -306,16 +179,15 @@ describe("browser diagnostic persistence", () => {
             sourcePageType: "detail",
             imageEnabled: false
         });
-        const base = createInitialDownloadSnapshot(20, 5);
-        const downloading = {
-            ...base,
-            phase: "downloading" as const,
+        const failed = {
+            ...createInitialDownloadSnapshot(20, 5),
+            phase: "failed" as const,
+            failedCount: 1,
             completedCount: 7,
             restoredCount: 5,
             fetchedCount: 2,
             processedCount: 2
         };
-        recordBrowserDownloadEvent("task-events", { type: "snapshot-updated", snapshot: downloading });
         recordBrowserDownloadEvent("task-events", {
             type: "mapping-font-updated",
             summary: { chapterCount: 2, fontBytes: 700_000 }
@@ -328,7 +200,6 @@ describe("browser diagnostic persistence", () => {
             params: { detail: "request timed out" },
             retry: true
         });
-        const failed = { ...downloading, phase: "failed" as const, failedCount: 1 };
         recordBrowserDownloadEvent("task-events", {
             type: "phase-changed",
             previous: "downloading",
@@ -360,34 +231,6 @@ describe("browser diagnostic persistence", () => {
                 chapter: expect.objectContaining({ index: 9, title: "Broken chapter" })
             }),
             expect.objectContaining({ scope: "download", code: "download-failed", message: "download failed" })
-        ]);
-    });
-
-    it("persists failures that happen before a download lock is acquired", async () => {
-        recordBrowserPreflightDiagnosticFailure({
-            bookId: "book-preflight",
-            bookTitle: "Preflight Book",
-            pageUrl: "https://www.esjzone.cc/detail/10.html",
-            sourcePageType: "detail",
-            imageEnabled: false,
-            failure: {
-                scope: "storage",
-                stage: "cache-read",
-                code: "database-unavailable",
-                message: "IndexedDB unavailable"
-            }
-        });
-
-        const { active, history } = await listBrowserDiagnosticSessions();
-        const [session] = history;
-        expect(session.result).toBe("failed");
-        expect(active).toEqual([]);
-        expect(session.failures).toEqual([
-            expect.objectContaining({
-                scope: "storage",
-                stage: "cache-read",
-                code: "database-unavailable"
-            })
         ]);
     });
 

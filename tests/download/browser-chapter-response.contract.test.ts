@@ -41,7 +41,7 @@ describe("browser chapter response contracts", () => {
         mocks.fetchWithTimeout
             .mockResolvedValueOnce(new Response(loginForm))
             .mockResolvedValueOnce(new Response(loginForm.replace('name="pwd"', 'name="password"')))
-            .mockResolvedValueOnce(new Response(""))
+            .mockResolvedValueOnce(new Response(createChapterFixture({ contentHtml: "<p> \n <br></p>" })))
             .mockResolvedValueOnce(
                 new Response(createChapterFixture({ contentHtml: normal }).replace("</body>", `${loginForm}</body>`))
             )
@@ -116,6 +116,40 @@ describe("browser chapter response contracts", () => {
         expect(data.chapters[0].content.includes("<img")).toBe(imageEnabled);
         expect(data.chapters[0].images).toHaveLength(imageEnabled ? 1 : 0);
         expect(mocks.confirmIncompleteChapters).not.toHaveBeenCalled();
+    });
+
+    it("resolves reading links and image requests against the chapter being downloaded", async () => {
+        const { processHtmlImages } =
+            await vi.importActual<typeof import("../../src/site/images")>("../../src/site/images");
+        mocks.processHtmlImages.mockImplementation(processHtmlImages);
+        const [task] = createBrowserDownloadTasks(1);
+        const imageUrl = "https://www.esjzone.cc/forum/100/pictures/a.jpg";
+        expect(new URL("pictures/a.jpg", location.href).href).not.toBe(imageUrl);
+        const chapterHtml = createChapterFixture({
+            contentHtml: `<p id="notes"><a href="2.html?view=full#end">后记</a>
+                <a href="//example.test/notes">译注</a><a href="#notes">本段</a>
+                <img src="pictures/a.jpg" alt="插图"></p>`
+        });
+        mocks.fetchWithTimeout.mockImplementation(async (url: string) =>
+            url === imageUrl
+                ? new Response(new Uint8Array([0xff, 0xd8, 0xff, 0xe0]), { headers: { "Content-Type": "image/jpeg" } })
+                : new Response(chapterHtml)
+        );
+
+        const data = expectReadyDownload(
+            await runtime.runBookDownload({ ...createBrowserDownloadOptions([task]), imageEnabled: true })
+        );
+        const chapter = data.chapters[0];
+        const doc = new DOMParser().parseFromString(chapter.content, "text/html");
+
+        expect(mocks.fetchWithTimeout.mock.calls.map(([url]) => url)).toEqual([task.url, imageUrl]);
+        expect(Array.from(doc.querySelectorAll("a"), (link) => link.getAttribute("href"))).toEqual([
+            "https://www.esjzone.cc/forum/100/2.html?view=full#end",
+            "https://example.test/notes",
+            "#notes"
+        ]);
+        expect(doc.querySelector("img")?.getAttribute("src")).toBe("img_0_0.jpg");
+        expect(chapter.images).toMatchObject([{ id: "img_0_0.jpg", mediaType: "image/jpeg" }]);
     });
 
     it("keeps cached chapter content when an image retry returns a login page", async () => {

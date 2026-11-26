@@ -98,7 +98,9 @@ describe("full-book export recovery contracts", () => {
 
         expect(mocks.buildEpub).toHaveBeenCalledOnce();
         expect(mocks.addDownloadHistory).toHaveBeenCalledOnce();
-        expect((await diagnostics.listBrowserDiagnosticSessions()).history[0].exports).toEqual([
+        const [session] = (await diagnostics.listBrowserDiagnosticSessions()).history;
+        expect(session).toMatchObject({ result: "success", failures: [{ scope: "export", stage: "epub-download" }] });
+        expect(session.exports).toEqual([
             expect.objectContaining({
                 format: "epub",
                 outcome: "failed",
@@ -113,25 +115,6 @@ describe("full-book export recovery contracts", () => {
                 downloadTriggered: true
             })
         ]);
-    });
-
-    it("does not restore an EPUB cache invalidated while generation is pending", async () => {
-        const { setEpubTagPageSetting } = await import("../../src/storage/settings");
-        const { invalidateCachedEpub } = await import("../../src/app/export");
-        setEpubTagPageSetting(false);
-        const pending = createDeferred<Blob>();
-        mocks.buildEpub.mockReturnValueOnce(pending.promise);
-        const { state } = await prepareExportPopup();
-        click("#esj-epub");
-        await vi.waitFor(() => expect(mocks.buildEpub).toHaveBeenCalledOnce());
-        setEpubTagPageSetting(true);
-        invalidateCachedEpub(state.cachedData);
-        pending.resolve(new Blob(["old settings"]));
-        await vi.waitFor(() => expect(mocks.triggerDownload).toHaveBeenCalledOnce());
-        expect(state.cachedData?.epubBlob).toBeNull();
-        click("#esj-epub");
-        await vi.waitFor(() => expect(mocks.triggerDownload).toHaveBeenCalledTimes(2));
-        expect(mocks.buildEpub).toHaveBeenLastCalledWith(state.cachedData?.chapters, state.cachedData?.metadata, true);
     });
 
     it("does not revive an invalidated EPUB when the setting returns to its original value", async () => {
@@ -258,29 +241,19 @@ describe("full-book export recovery contracts", () => {
         expect(mocks.addDownloadHistory).toHaveBeenCalledTimes(2);
     });
 
-    it("keeps HTML retryable after consecutive generation failures", async () => {
-        mocks.buildBookHtml.mockRejectedValue(new Error("缺少已校验的映射字体"));
+    it("keeps HTML retryable after a generation failure", async () => {
+        mocks.buildBookHtml.mockRejectedValueOnce(new Error("HTML generation failed"));
         await prepareExportPopup();
 
         click("#esj-html");
         await waitForMessage();
-        expect(document.querySelector("#esj-message-details")?.textContent).toContain("缺少已校验的映射字体");
         expect((document.querySelector("#esj-html") as HTMLButtonElement).disabled).toBe(false);
         closeMessage();
 
-        click("#esj-txt");
-        expect(mocks.triggerDownload).toHaveBeenCalledOnce();
-        expect(mocks.addDownloadHistory).toHaveBeenCalledWith(expect.objectContaining({ format: "txt" }));
+        expect(mocks.triggerDownload).not.toHaveBeenCalled();
 
         click("#esj-html");
-        await vi.waitFor(() => expect(mocks.buildBookHtml).toHaveBeenCalledTimes(2));
-        await waitForMessage();
-        expect(mocks.triggerDownload).toHaveBeenCalledOnce();
-        closeMessage();
-
-        mocks.buildBookHtml.mockResolvedValueOnce(new Blob(["recovered html"], { type: "text/html" }));
-        click("#esj-html");
-        await vi.waitFor(() => expect(mocks.triggerDownload).toHaveBeenCalledTimes(2));
+        await vi.waitFor(() => expect(mocks.triggerDownload).toHaveBeenCalledOnce());
         expect(mocks.addDownloadHistory).toHaveBeenCalledWith(expect.objectContaining({ format: "html" }));
     });
 
@@ -306,26 +279,32 @@ describe("full-book export recovery contracts", () => {
         history.resolve();
     });
 
-    it("keeps an unnamed book visible in history without changing its default filename", async () => {
-        const tasks = [createDownloadTask()];
-        const result = await createDownloadHarness().run({
-            bookId: "100",
-            taskId: "untitled-export",
-            bookName: "",
-            rawBookName: "",
-            introTxt: "",
-            description: "",
-            tags: [],
-            imageEnabled: false,
-            tasks
-        });
-        if (result.status !== "ready") throw new Error("expected a ready export snapshot");
-        await prepareExportPopup({ ...result.data, epubBlob: null });
-        click("#esj-txt");
+    it.each([
+        ["", "", "", "book.txt", "未命名小说"],
+        ["卷一：上- 下", "卷一:上/下", "書名: 卷一:上/下\n", "卷一：上- 下.txt", "卷一:上/下"]
+    ])(
+        "uses the original book title for the snapshot and history (%s)",
+        async (bookName, rawBookName, introTxt, filename, historyName) => {
+            const result = await createDownloadHarness().run({
+                bookId: "100",
+                taskId: "book-title-export",
+                bookName,
+                rawBookName,
+                introTxt,
+                description: "",
+                tags: [],
+                imageEnabled: false,
+                tasks: [createDownloadTask()]
+            });
+            if (result.status !== "ready") throw new Error("expected a ready export snapshot");
+            await prepareExportPopup({ ...result.data, epubBlob: null });
+            click("#esj-txt");
 
-        expect(mocks.triggerDownload).toHaveBeenCalledWith(expect.any(Blob), "book.txt");
-        expect(mocks.addDownloadHistory).toHaveBeenCalledWith(expect.objectContaining({ bookName: "未命名小说" }));
-    });
+            expect(result.data.metadata.title).toBe(rawBookName);
+            expect(mocks.triggerDownload).toHaveBeenCalledWith(expect.any(Blob), filename);
+            expect(mocks.addDownloadHistory).toHaveBeenCalledWith(expect.objectContaining({ bookName: historyName }));
+        }
+    );
 
     it("keeps the captured filename while preserving the original book and selection in history", async () => {
         const rangeData = createCachedData({

@@ -2,7 +2,7 @@
 
 import JSZip from "jszip";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { BookMetadata, Chapter, ChapterImage } from "../../src/content/model";
+import type { Chapter, ChapterImage } from "../../src/content/model";
 
 const { loadScriptMock } = vi.hoisted(() => ({
     loadScriptMock: vi.fn()
@@ -15,23 +15,12 @@ vi.mock("../../src/browser/script-loader", () => ({
 import { buildEpub } from "../../src/export/epub";
 import { createMissingChapterPlaceholder } from "../../src/export/snapshot";
 
-const metadata: BookMetadata = {
-    title: "测试书籍",
-    author: "测试作者",
-    description: "测试简介",
-    tags: [],
-    coverBlob: null,
-    coverExt: "jpg"
-};
+import { createBookMetadata, createChapter, createChapterImage } from "../support";
 
-function createChapter(image: ChapterImage): Chapter {
-    return {
-        title: "测试章节",
-        content: `<p>正文<img src="${image.id}" alt="插图"></p>`,
-        txtSegment: "测试章节\n\n正文\n\n",
-        images: [image],
-        imageErrors: 0
-    };
+const metadata = createBookMetadata({ title: "测试书籍", tags: [] });
+
+function chapterWithImage(image: ChapterImage): Chapter {
+    return createChapter(0, { images: [image], content: `<p>正文<img src="${image.id}" alt="插图"></p>` });
 }
 
 describe("buildEpub image resources", () => {
@@ -42,13 +31,9 @@ describe("buildEpub image resources", () => {
 
     it("writes a normalized image, manifest MIME, and XHTML reference consistently", async () => {
         const bytes = new Uint8Array([0xff, 0xd8, 0xff, 0xe0]);
-        const image: ChapterImage = {
-            id: "img_0_0.jpg",
-            blob: new Blob([bytes], { type: "image/jpeg" }),
-            mediaType: "image/jpeg"
-        };
+        const image = createChapterImage(0);
 
-        const epub = await buildEpub([createChapter(image)], metadata, false);
+        const epub = await buildEpub([chapterWithImage(image)], metadata, false);
         const zip = await JSZip.loadAsync(await epub.arrayBuffer());
         const manifest = await zip.file("OEBPS/content.opf")?.async("string");
         const chapterXhtml = await zip.file("OEBPS/chap_1.xhtml")?.async("string");
@@ -60,40 +45,66 @@ describe("buildEpub image resources", () => {
         expect(embeddedImage).toEqual(bytes);
     });
 
-    it("rejects a legacy generic-binary manifest MIME", async () => {
-        const invalidImage = {
-            id: "img_0_0.jpg",
-            blob: new Blob([new Uint8Array([0xff, 0xd8, 0xff, 0xe0])], { type: "application/octet-stream" }),
-            mediaType: "application/octet-stream"
-        } as unknown as ChapterImage;
+    it.each([
+        ["legacy MIME", "application/octet-stream", new Blob(["image"], { type: "application/octet-stream" })],
+        ["mismatched Blob MIME", "image/jpeg", new Blob(["image"], { type: "image/png" })],
+        ["empty image", "image/jpeg", new Blob([], { type: "image/jpeg" })]
+    ])("keeps chapter text and skips a cached image with %s", async (_reason, mediaType, blob) => {
+        const image = { id: "img_0_0.jpg", blob, mediaType } as ChapterImage;
 
-        await expect(buildEpub([createChapter(invalidImage)], metadata, false)).rejects.toThrow(
-            "EPUB 不支持的 MIME: application/octet-stream"
-        );
+        const epub = await buildEpub([chapterWithImage(image)], metadata, false);
+        const zip = await JSZip.loadAsync(await epub.arrayBuffer());
+        const manifest = await zip.file("OEBPS/content.opf")?.async("string");
+        const chapterXhtml = await zip.file("OEBPS/chap_1.xhtml")?.async("string");
+
+        expect(manifest).not.toContain(image.id);
+        expect(zip.file(`OEBPS/${image.id}`)).toBeNull();
+        expect(chapterXhtml).not.toContain(image.id);
+        expect(chapterXhtml).toContain("正文");
     });
 
-    it("rejects a Blob whose MIME disagrees with the manifest", async () => {
-        const mismatchedImage: ChapterImage = {
-            id: "img_0_0.jpg",
-            blob: new Blob([new Uint8Array([0xff, 0xd8, 0xff, 0xe0])], { type: "application/octet-stream" }),
-            mediaType: "image/jpeg"
+    it("writes static XHTML and one UTC modification timestamp in the package metadata", async () => {
+        const chapter: Chapter = {
+            title: "章节 <一>",
+            txtSegment: "正文",
+            content: `<main><details open><summary>章末附录</summary><novel-panel><p>data:text/css</p><ruby>字<rt>音</rt></ruby><table><tr><td>表格</td></tr></table>
+                <a href="https://example.test/reading">链接</a><span style="color: red" onclick="">正文</span>
+                <script type="text/plain">页面标记</script><object title="页面对象"></object><form><input></form></novel-panel></details></main>`
         };
+        vi.setSystemTime(new Date("2026-03-15T13:14:15.678Z"));
 
-        await expect(buildEpub([createChapter(mismatchedImage)], metadata, false)).rejects.toThrow(
-            "Blob MIME (application/octet-stream) 与 manifest MIME (image/jpeg) 不一致"
-        );
-    });
+        try {
+            const sourceUrl = "https://www.esjzone.cc/forum/100/1.html";
+            const missingChapter = createMissingChapterPlaceholder({ index: 0, title: "缺失章节", url: sourceUrl });
+            const epub = await buildEpub([chapter, missingChapter], { ...metadata, uuid: "id <book> & author" }, false);
+            const zip = await JSZip.loadAsync(await epub.arrayBuffer());
+            const parser = new DOMParser();
+            const opf = parser.parseFromString((await zip.file("OEBPS/content.opf")?.async("string"))!, "text/xml");
+            const doc = parser.parseFromString((await zip.file("OEBPS/chap_1.xhtml")?.async("string"))!, "text/xml");
 
-    it("rejects an empty image Blob", async () => {
-        const emptyImage: ChapterImage = {
-            id: "img_0_0.jpg",
-            blob: new Blob([], { type: "image/jpeg" }),
-            mediaType: "image/jpeg"
-        };
+            expect(
+                Array.from(opf.querySelectorAll('meta[property="dcterms:modified"]'), (node) => node.textContent)
+            ).toEqual(["2026-03-15T13:14:15Z"]);
+            expect(opf.getElementById("BookId")?.textContent).toBe("id <book> & author");
+            expect(doc.querySelector("title")?.textContent).toBe(chapter.title);
+            expect(doc.querySelector("main details[open] summary")?.textContent).toBe("章末附录");
+            expect(doc.querySelector("main details p")?.textContent).toBe("data:text/css");
+            expect(doc.querySelector("novel-panel")).toBeNull();
+            expect(doc.querySelector("ruby rt")?.textContent).toBe("音");
+            expect(doc.querySelector("table td")?.textContent).toBe("表格");
+            expect(doc.querySelector("a")?.getAttribute("href")).toBe("https://example.test/reading");
+            expect(doc.querySelector("span")?.getAttribute("style")).toBe("color: red;");
+            expect(doc.querySelector("script, object, form, [onclick]")).toBeNull();
 
-        await expect(buildEpub([createChapter(emptyImage)], metadata, false)).rejects.toThrow(
-            "图片 img_0_0.jpg 内容为空"
-        );
+            const missingDoc = parser.parseFromString(
+                (await zip.file("OEBPS/chap_2.xhtml")?.async("string"))!,
+                "text/xml"
+            );
+            expect(missingDoc.querySelector(".esj-missing-chapter")?.textContent).toContain("[章节缺失]");
+            expect(missingDoc.querySelector(".esj-missing-chapter a")?.getAttribute("href")).toBe(sourceUrl);
+        } finally {
+            vi.useRealTimers();
+        }
     });
 
     it("embeds a mapped font as an independent manifest resource", async () => {
@@ -122,20 +133,5 @@ describe("buildEpub image resources", () => {
         expect(chapterXhtml).toContain('lang="en"');
         expect(chapterXhtml).toContain("font-feature-settings: &quot;locl&quot; 0");
         expect(embeddedFont).toEqual(fontBytes);
-    });
-
-    it("keeps the explicit missing chapter warning and source URL", async () => {
-        const chapter = createMissingChapterPlaceholder({
-            index: 0,
-            title: "缺失章节",
-            url: "https://www.esjzone.cc/forum/100/1.html"
-        });
-
-        const epub = await buildEpub([chapter], metadata, false);
-        const zip = await JSZip.loadAsync(await epub.arrayBuffer());
-        const chapterXhtml = await zip.file("OEBPS/chap_1.xhtml")?.async("string");
-
-        expect(chapterXhtml).toContain("[章节缺失]");
-        expect(chapterXhtml).toContain("https://www.esjzone.cc/forum/100/1.html");
     });
 });

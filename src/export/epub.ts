@@ -1,30 +1,13 @@
 import { loadScript } from "../browser/script-loader";
-import { isSupportedImageMediaType } from "../content/image-format";
 import { escapeXml } from "./text";
-import type { Chapter, BookMetadata, ChapterImage } from "../content/model";
+import type { Chapter, BookMetadata } from "../content/model";
 import { prepareChapterMappingExport } from "../content/mapping-font";
+import { createStaticChapterBody, getChapterExportImages } from "./chapter-body";
 
 import type JSZip from "jszip";
 
-function validateChapterImage(image: ChapterImage, chapterIndex: number): void {
-    const imageLabel = `第 ${chapterIndex + 1} 章图片 ${image.id}`;
-    if (!isSupportedImageMediaType(image.mediaType)) {
-        throw new Error(`${imageLabel} 使用了 EPUB 不支持的 MIME: ${image.mediaType}`);
-    }
-    if (image.blob.size === 0) {
-        throw new Error(`${imageLabel} 内容为空`);
-    }
-
-    const blobType = image.blob.type.split(";", 1)[0].trim().toLowerCase();
-    if (blobType !== image.mediaType) {
-        throw new Error(
-            `${imageLabel} 的 Blob MIME (${blobType || "unknown"}) 与 manifest MIME (${image.mediaType}) 不一致`
-        );
-    }
-}
-
 /**
- * 校验章节资源并组装 EPUB，无效图片或字体绑定使生成失败
+ * 以静态章节正文和有效的资源组装 EPUB
  */
 export async function buildEpub(chapters: Chapter[], metadata: BookMetadata, includeTagPage: boolean): Promise<Blob> {
     let ZipClass: new () => JSZip;
@@ -63,6 +46,7 @@ export async function buildEpub(chapters: Chapter[], metadata: BookMetadata, inc
 
     const manifestItems: string[] = [];
     const spineItems: string[] = [];
+    const serializer = new XMLSerializer();
 
     // 封面独立注册资源；标签页仅在本次设置启用且存在标签时加入阅读顺序
     let coverMeta = "";
@@ -114,9 +98,14 @@ export async function buildEpub(chapters: Chapter[], metadata: BookMetadata, inc
     for (let i = 0; i < chapters.length; i++) {
         const id = `chap_${i + 1}`;
         const filename = `${id}.xhtml`;
-        const title = chapters[i].title || `第${i + 1}章`;
-        const mappingExport = prepareChapterMappingExport(chapters[i], i);
-        const body = convertToXhtml(mappingExport?.contentHtml || chapters[i].content || "");
+        const chapter = chapters[i];
+        const title = chapter.title || `第${i + 1}章`;
+        const mappingExport = prepareChapterMappingExport(chapter, i);
+        const images = getChapterExportImages(chapter);
+        const imageIds = new Set(images.map((image) => image.id));
+        const body = createStaticChapterBody(mappingExport?.contentHtml ?? chapter.content, (src) =>
+            imageIds.has(src) ? src : null
+        );
         let mappingFontStyle = "";
         if (mappingExport) {
             const fontId = `font_${i + 1}`;
@@ -127,15 +116,11 @@ export async function buildEpub(chapters: Chapter[], metadata: BookMetadata, inc
         }
 
         // 处理章节中的图片
-        const chap = chapters[i];
-        if (chap.images && chap.images.length > 0) {
-            chap.images.forEach((img) => {
-                validateChapterImage(img, i);
-                oebps.file(img.id, img.blob);
-                manifestItems.push(
-                    `<item id="${img.id.replace(".", "_")}" href="${img.id}" media-type="${img.mediaType}" />`
-                );
-            });
+        for (const image of images) {
+            oebps.file(image.id, image.blob);
+            manifestItems.push(
+                `<item id="${image.id.replace(".", "_")}" href="${image.id}" media-type="${image.mediaType}" />`
+            );
         }
 
         const xhtml = `<?xml version="1.0" encoding="utf-8"?>
@@ -143,7 +128,7 @@ export async function buildEpub(chapters: Chapter[], metadata: BookMetadata, inc
               <head><title>${escapeXml(title)}</title>${mappingFontStyle}</head>
               <body>
                 <h2>${escapeXml(title)}</h2>
-                <div>${body}</div>
+                <div>${serializer.serializeToString(body.content)}</div>
               </body>
             </html>`;
 
@@ -157,7 +142,7 @@ export async function buildEpub(chapters: Chapter[], metadata: BookMetadata, inc
     oebps.file("nav.xhtml", navHtml);
     manifestItems.push(`<item id="nav" href="nav.xhtml" properties="nav" media-type="application/xhtml+xml"/>`);
 
-    const uniqueId = metadata.uuid || "id-" + Date.now();
+    const uniqueId = escapeXml(metadata.uuid || "id-" + Date.now());
     const title = escapeXml(metadata.title || "未知書名");
     const author = escapeXml(metadata.author || "");
     const tagMetadata = tags.map((tag) => `<dc:subject>${escapeXml(tag)}</dc:subject>`).join("\n");
@@ -174,6 +159,7 @@ export async function buildEpub(chapters: Chapter[], metadata: BookMetadata, inc
             <dc:description>${escapeXml(metadata.description || "")}</dc:description>
             ${tagMetadata}
             <dc:date>${pubdate}</dc:date>
+            <meta property="dcterms:modified">${pubdate.replace(/\.\d{3}Z$/, "Z")}</meta>
             ${coverMeta}
           </metadata>
           <manifest>
@@ -188,63 +174,4 @@ export async function buildEpub(chapters: Chapter[], metadata: BookMetadata, inc
 
     const blob = await zip.generateAsync({ type: "blob", compression: "DEFLATE" });
     return blob;
-}
-
-// 将章节 HTML 序列化为 XHTML 并清理属性，单个节点序列化失败时跳过该节点
-function convertToXhtml(htmlString: string): string {
-    if (!htmlString) {
-        return "";
-    }
-
-    // 先解析为独立文档，再清理属性并序列化各个正文节点
-    const parser = new DOMParser();
-    const doc = parser.parseFromString(htmlString, "text/html");
-
-    // 检查 XML 属性名，并清理不允许的带冒号属性
-    const allElements = doc.body.querySelectorAll("*");
-
-    // XML 属性名正则
-    const validXmlNameRegex = /^[a-zA-Z_:][a-zA-Z0-9_\-.:]*$/;
-
-    allElements.forEach((el) => {
-        const attrs = Array.from(el.attributes);
-
-        for (const attr of attrs) {
-            const name = attr.name;
-
-            // 检查语法合法性
-            if (!validXmlNameRegex.test(name)) {
-                el.removeAttribute(name);
-                continue;
-            }
-
-            // 检查冒号命名空间
-            if (name.includes(":")) {
-                // 以 xml 开头的属性名不在此处移除，不进一步校验命名空间绑定
-                if (!name.startsWith("xmlns") && !name.startsWith("xml")) {
-                    el.removeAttribute(name);
-                }
-            }
-        }
-    });
-
-    // 使用 XMLSerializer 进行序列化
-    const serializer = new XMLSerializer();
-
-    const xhtmlParts: string[] = [];
-
-    Array.from(doc.body.childNodes).forEach((node) => {
-        try {
-            let str = serializer.serializeToString(node);
-
-            // 移除 XMLSerializer 自动添加的冗余 xmlns
-            str = str.replace(/ xmlns="http:\/\/www\.w3\.org\/1999\/xhtml"/g, "");
-
-            xhtmlParts.push(str);
-        } catch (e) {
-            console.warn("XHTML 序列化节点失败:", node, e);
-        }
-    });
-
-    return xhtmlParts.join("");
 }

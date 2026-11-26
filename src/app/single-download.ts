@@ -1,12 +1,15 @@
 import { getExportCapabilities } from "./export";
 import { triggerDownload } from "../browser/files";
-import { buildCurrentChapterHtml, embedChapterImages } from "../export/html";
+import { fetchPageText } from "../browser/request";
+import { parseInertHtml } from "../browser/html";
+import { buildCurrentChapterHtml } from "../export/html";
 import { buildCurrentChapterTxt } from "../export/txt";
 import { createCurrentChapterFilename } from "../export/filename";
-import { parseChapterHtml, normalizeParsedChapter } from "../site/chapter";
+import { findChapterBookLink, parseChapterHtml, normalizeParsedChapter } from "../site/chapter";
 import { parseBookMetadata } from "../site/book";
 import { getImageDownloadSetting } from "../storage/settings";
 import { processHtmlImages } from "../site/images";
+import type { ChapterImage } from "../content/model";
 import { addDownloadHistory } from "../storage/history";
 import { MappingFontError } from "../content/mapping-font";
 import { confirmMappingFontExport } from "../ui/popups";
@@ -26,13 +29,14 @@ import {
  * 抓取并下载当前单章节页面
  */
 export async function downloadCurrentPage(format: "txt" | "html" = "txt"): Promise<void> {
-    const viewAllBtn = document.querySelector(".entry-navigation .view-all") as HTMLAnchorElement | null;
+    const viewAllBtn = findChapterBookLink(document);
     const bookId =
         viewAllBtn?.href.match(/\/detail\/(\d+)/)?.[1] || location.pathname.match(/\/forum\/(\d+)\//)?.[1] || "unknown";
     const diagnosticTaskId = `single-${bookId}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     let diagnosticResult: "success" | "cancelled" | "failed" = "failed";
     let generated = false;
     let downloadTriggered = false;
+    const imageEnabled = format === "html" && getImageDownloadSetting();
 
     startBrowserDiagnosticSession({
         taskId: diagnosticTaskId,
@@ -41,13 +45,11 @@ export async function downloadCurrentPage(format: "txt" | "html" = "txt"): Promi
         pageUrl: location.href,
         sourcePageType: "single",
         totalChapters: 1,
-        imageEnabled: getImageDownloadSetting()
+        imageEnabled
     });
 
     try {
         log(t("single.log.started", { format: format.toUpperCase() }));
-
-        const { txtIntro, filenameBookName, htmlMeta } = await readCurrentBookMetadata(viewAllBtn, diagnosticTaskId);
 
         const html = document.documentElement.outerHTML;
         const defaultTitle = document.title.split(" - ")[0] || "未命名章节";
@@ -63,6 +65,26 @@ export async function downloadCurrentPage(format: "txt" | "html" = "txt"): Promi
         }
 
         const parsed = parseChapterHtml(html, defaultTitle);
+        const { title, contentText } = parsed;
+        const bodyFailure = parsed.pageFailure || (format === "txt" && !contentText ? "chapter-content-missing" : null);
+        if (bodyFailure) {
+            recordBrowserDiagnosticFailure(
+                {
+                    scope: "chapter",
+                    stage: "parse",
+                    code: bodyFailure,
+                    message: bodyFailure,
+                    chapter: { index: 0, title, url: location.href }
+                },
+                diagnosticTaskId
+            );
+            showMessagePopup({
+                tone: "warning",
+                title: t("single.bodyMissing.title"),
+                message: t("single.bodyMissing.message")
+            });
+            return;
+        }
 
         let normalized;
         try {
@@ -108,52 +130,31 @@ export async function downloadCurrentPage(format: "txt" | "html" = "txt"): Promi
             return;
         }
 
-        const title = parsed.title;
+        const { txtIntro, filenameBookName, htmlMeta } = await readCurrentBookMetadata(viewAllBtn, diagnosticTaskId);
         const author = htmlMeta.author || parsed.author;
-        const contentText = parsed.contentText;
         let contentHtml = normalized.chapter.content;
-        const imageEnabled = getImageDownloadSetting();
+        let images: ChapterImage[] = [];
         let imageSuccessCount = 0;
         let imageFailureCount = 0;
 
-        // TXT 空正文提前退出，其余情况继续共用资源准备与格式生成
-        if (format === "txt" && !contentText) {
-            recordBrowserDiagnosticFailure(
-                {
-                    scope: "chapter",
-                    stage: "parse",
-                    code: "chapter-content-missing",
-                    message: "chapter-content-missing",
-                    chapter: { index: 0, title, url: location.href }
-                },
-                diagnosticTaskId
-            );
-            showMessagePopup({
-                tone: "warning",
-                title: t("single.bodyMissing.title"),
-                message: t("single.bodyMissing.message")
-            });
-            return;
-        }
-
         if (imageEnabled) {
-            ({ contentHtml, imageSuccessCount, imageFailureCount } = await prepareCurrentChapterImages(
+            ({ contentHtml, images, imageSuccessCount, imageFailureCount } = await prepareCurrentChapterImages(
                 contentHtml,
                 title,
-                diagnosticTaskId
+                diagnosticTaskId,
+                parsed.sourceUrl
             ));
         }
 
         let blob: Blob;
         const downloadFilename = createCurrentChapterFilename(filenameBookName, title, format);
 
-        // 图片准备仍先于两种格式生成，TXT 不跳过原有资源工作
         if (format === "txt") {
             blob = buildCurrentChapterTxt({ intro: txtIntro, title, author, pageUrl: location.href, contentText });
         } else {
             blob = await buildCurrentChapterHtml(
-                { ...normalized.chapter, content: contentHtml },
-                { title, author, intro: htmlMeta.intro, pageUrl: location.href }
+                { ...normalized.chapter, content: contentHtml, images },
+                { title, author, intro: htmlMeta.intro, pageUrl: location.href, imageEnabled }
             );
         }
         generated = true;
@@ -239,11 +240,8 @@ async function readCurrentBookMetadata(bookLink: HTMLAnchorElement | null, diagn
     if (bookLink && bookLink.href) {
         try {
             log(t("single.log.metadata"));
-            const resp = await fetch(bookLink.href);
-            const html = await resp.text();
-            const doc = new DOMParser().parseFromString(html, "text/html");
-
-            const meta = parseBookMetadata(doc, bookLink.href);
+            const html = await fetchPageText(bookLink.href);
+            const meta = parseBookMetadata(parseInertHtml(html).content, bookLink.href);
 
             updateBrowserDiagnosticSessionMetadata(diagnosticTaskId, {
                 bookName: meta.rawBookName || meta.bookName,
@@ -255,7 +253,7 @@ async function readCurrentBookMetadata(bookLink: HTMLAnchorElement | null, diagn
             filenameBookName = meta.bookName;
 
             htmlMeta.intro = meta.baseIntroTxt;
-            htmlMeta.bookName = meta.bookName;
+            htmlMeta.bookName = meta.rawBookName || meta.bookName;
             htmlMeta.author = meta.author;
         } catch {
             console.warn("书籍元数据获取失败，仅下载正文");
@@ -265,15 +263,22 @@ async function readCurrentBookMetadata(bookLink: HTMLAnchorElement | null, diagn
     return { txtIntro, filenameBookName, htmlMeta };
 }
 
-// 两种格式沿用同一资源准备时机；图片失败降级为原正文，并保留原任务诊断
-async function prepareCurrentChapterImages(contentHtml: string, title: string, diagnosticTaskId: string) {
+// 图片失败降级为原正文，并保留原任务诊断
+async function prepareCurrentChapterImages(
+    contentHtml: string,
+    title: string,
+    diagnosticTaskId: string,
+    sourceUrl: string
+) {
+    let images: ChapterImage[] = [];
     let imageSuccessCount = 0;
     let imageFailureCount: number;
     log(t("single.log.images"));
     try {
-        const processed = await processHtmlImages(contentHtml, 0);
+        const processed = await processHtmlImages(contentHtml, 0, sourceUrl);
 
-        contentHtml = await embedChapterImages(processed.processedHtml, processed.images);
+        contentHtml = processed.processedHtml;
+        images = processed.images;
         imageSuccessCount = processed.images.length;
         imageFailureCount = processed.failCount;
         processed.failures.forEach((failure) => {
@@ -308,5 +313,5 @@ async function prepareCurrentChapterImages(contentHtml: string, title: string, d
         }
         log(t("single.log.imagesFailed"));
     }
-    return { contentHtml, imageSuccessCount, imageFailureCount };
+    return { contentHtml, images, imageSuccessCount, imageFailureCount };
 }

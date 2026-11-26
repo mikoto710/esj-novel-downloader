@@ -1,7 +1,7 @@
 import { el } from "../dom";
 import { showMessagePopup } from "../dialogs/message";
 import { downloadCurrentPage } from "../../app/single-download";
-import { parseChapterHtml, normalizeParsedChapter } from "../../site/chapter";
+import { findChapterBookLink, parseChapterHtml, normalizeParsedChapter } from "../../site/chapter";
 import { MappingFontError } from "../../content/mapping-font";
 import { isProtectedChapterHtml } from "../../site/protected-chapter";
 import { bindInterfaceAttribute, subscribeInterfaceLocaleChange, t } from "../locale";
@@ -96,17 +96,19 @@ async function updateSinglePageMappingUi(version: number): Promise<void> {
     const isCurrent = () =>
         version === mappingUiRefreshVersion && elements.txtButton.isConnected && elements.htmlButton.isConnected;
     try {
-        if (!document.querySelector(".forum-content")) {
-            throw new Error(t("single.bodyMissing.message"));
-        }
-        if (isProtectedChapterHtml(document.documentElement.outerHTML)) {
+        const html = document.documentElement.outerHTML;
+        if (isProtectedChapterHtml(html)) {
             if (!isCurrent()) {
                 return;
             }
             guideSingleProtectedExport(elements);
             return;
         }
-        const parsed = parseChapterHtml(document.documentElement.outerHTML, document.title.split(" - ")[0]);
+        const parsed = parseChapterHtml(html, document.title.split(" - ")[0]);
+        if (parsed.pageFailure) {
+            showSingleMappingFailure(elements, t("single.bodyMissing.message"));
+            return;
+        }
         const normalized = await normalizeParsedChapter(parsed);
 
         // 正文或语言可能在预检期间变化，旧结果不再更新当前工具栏
@@ -182,7 +184,7 @@ function installSinglePageMappingUiLifecycle(): void {
         true
     );
 
-    // 正文延迟插入或密码解锁替换内容后，重新判断两个导出按钮的可用性
+    // 正文延迟插入、空壳填充或密码解锁后，重新判断两个导出按钮的可用性
     const contentObserver = new MutationObserver((mutations) => {
         const chapterAdded = mutations.some((mutation) =>
             Array.from(mutation.addedNodes).some(
@@ -191,21 +193,15 @@ function installSinglePageMappingUiLifecycle(): void {
                     (node.matches(".forum-content") || Boolean(node.querySelector(".forum-content")))
             )
         );
-        const waitingForUnlock = Boolean(document.querySelector('[data-esj-protected="true"]'));
-        const protectedContentChanged =
-            waitingForUnlock &&
-            !document.querySelector(
-                '.forum-content input#pw[type="password"], .forum-content input[name="pw"][type="password"]'
-            ) &&
-            mutations.some((mutation) => {
-                const target = mutation.target instanceof Element ? mutation.target : mutation.target.parentElement;
-                return Boolean(target?.closest(".forum-content"));
-            });
-        if (chapterAdded || protectedContentChanged) {
+        const chapterChanged = mutations.some((mutation) => {
+            const target = mutation.target instanceof Element ? mutation.target : mutation.target.parentElement;
+            return Boolean(target?.closest(".forum-content") && !target.closest(".entry-navigation"));
+        });
+        if (chapterAdded || chapterChanged) {
             scheduleSinglePageMappingUiRefresh();
         }
     });
-    contentObserver.observe(document.documentElement, { childList: true, subtree: true });
+    contentObserver.observe(document.documentElement, { childList: true, characterData: true, subtree: true });
 }
 
 function handleProtectedSingleExport(button: HTMLElement): boolean {
@@ -252,7 +248,7 @@ function createSingleExportButton(format: "txt" | "html"): HTMLElement {
  */
 export function injectSinglePageButton(): void {
     // 复用网站章节导航容器，导出入口与“回整合”放在同一组
-    const viewAllBtn = document.querySelector(".entry-navigation .view-all");
+    const viewAllBtn = findChapterBookLink(document);
 
     if (!viewAllBtn || !viewAllBtn.parentElement) {
         return;
@@ -260,15 +256,20 @@ export function injectSinglePageButton(): void {
 
     const container = viewAllBtn.parentElement;
 
-    // 已有按钮只刷新预检，不重复插入入口
-    if (document.querySelector("#btn-download-single")) {
-        installSinglePageMappingUiLifecycle();
-        scheduleSinglePageMappingUiRefresh();
+    const existing = getSingleExportElements();
+    if (
+        existing?.container === container &&
+        existing.txtButton.parentElement === container &&
+        existing.htmlButton.parentElement === container
+    ) {
         return;
     }
 
-    // 按 TXT、HTML 顺序挂载，再启动预检同步按钮状态
-    container.append(createSingleExportButton("txt"), createSingleExportButton("html"));
+    // 导航替换时按 TXT、HTML 顺序挂载，并重新预检当前正文
+    existing?.container.querySelector("#esj-single-mapping-warning")?.remove();
+    const textButton = document.querySelector("#btn-download-single") ?? createSingleExportButton("txt");
+    const htmlButton = document.querySelector("#btn-download-single-html") ?? createSingleExportButton("html");
+    container.append(textButton, htmlButton);
     installSinglePageMappingUiLifecycle();
     scheduleSinglePageMappingUiRefresh();
 }

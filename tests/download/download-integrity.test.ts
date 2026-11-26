@@ -1,16 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { getChapterRetryReason, scanChapterIntegrity } from "../../src/download/integrity";
-import { createChapter, createDownloadTask } from "../support";
+import { createChapter, createChapterImage, createDownloadTask } from "../support";
 
 describe("getChapterRetryReason", () => {
-    it("retries a missing chapter", () => {
-        expect(getChapterRetryReason(undefined, true)).toBe("missing");
-    });
-
-    it("retries a chapter with failed images", () => {
-        expect(getChapterRetryReason({ imageErrors: 2 }, true)).toBe("image-errors");
-    });
-
     it("retries a legacy cached chapter with application/octet-stream images", () => {
         expect(
             getChapterRetryReason(
@@ -28,12 +20,21 @@ describe("getChapterRetryReason", () => {
             getChapterRetryReason(
                 {
                     imageErrors: 0,
-                    images: [{ mediaType: "image/jpeg" }]
+                    images: [createChapterImage(0)]
                 },
                 true
             )
         ).toBeNull();
     });
+
+    it.each([undefined, new Blob([], { type: "image/jpeg" }), new Blob(["image"], { type: "image/png" })])(
+        "retries cached images with a missing, empty or mismatched Blob (%s)",
+        (blob) => {
+            expect(getChapterRetryReason({ images: [{ mediaType: "image/jpeg", blob }] }, true)).toBe(
+                "invalid-image-media-type"
+            );
+        }
+    );
 
     it("ignores image state when image downloads are disabled", () => {
         expect(

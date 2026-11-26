@@ -420,7 +420,7 @@ export const ZH_TW_MESSAGES = Object.freeze({
     "diagnostics.summary.failures": "失敗摘要：{records}",
     "diagnostics.summary.none": "無",
     "diagnostics.failure.chapterLoginPage": "章節請求傳回網站登入頁",
-    "diagnostics.failure.chapterContentMissing": "章節回應缺少內文區塊",
+    "diagnostics.failure.chapterContentMissing": "章節回應沒有內文",
     "diagnostics.failure.invalidImageUrl": "圖片網址無效",
     "diagnostics.failure.imageFormatUnrecognized": "無法辨識圖片格式",
     "diagnostics.failure.imageProcessingFailed": "圖片處理未完成，已保留原始連結",

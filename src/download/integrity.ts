@@ -1,4 +1,4 @@
-import { hasInvalidImageMediaTypes } from "../content/image-format";
+import { isValidChapterImage } from "../content/image-format";
 import type { Chapter } from "../content/model";
 import type { DownloadTask } from "./contracts";
 
@@ -17,7 +17,7 @@ export interface ChapterIntegrityIssue {
 
 // 只依赖完整性检查所需字段，避免把 Chapter 的存储结构固化到判定函数中
 interface ChapterIntegrityData {
-    images?: readonly { mediaType: string }[];
+    images?: readonly { mediaType?: unknown; blob?: unknown }[];
     imageErrors?: number;
 }
 
@@ -37,7 +37,7 @@ export function getChapterRetryReason(
     if ((chapter.imageErrors ?? 0) > 0) {
         return "image-errors";
     }
-    if (hasInvalidImageMediaTypes(chapter.images)) {
+    if (chapter.images?.some((image) => !isValidChapterImage(image))) {
         return "invalid-image-media-type";
     }
     return null;

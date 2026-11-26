@@ -4,24 +4,12 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { injectSinglePageButton } from "../../src/ui/pages/single";
 import { setInterfaceLocalePreference } from "../../src/storage/settings";
 
-function createWoff2Bytes(): Uint8Array {
-    const bytes = new Uint8Array(64);
-    const view = new DataView(bytes.buffer);
-    view.setUint32(0, 0x774f4632, false);
-    view.setUint32(8, bytes.byteLength, false);
-    return bytes;
-}
-
-function createMappedContent(family = "1"): string {
-    const dataUrl = `data:font/woff2;base64,${Buffer.from(createWoff2Bytes()).toString("base64")}`;
-    const css = `@font-face { font-family: '${family}'; src: url('${dataUrl}') format('woff2'); }`;
-    return `<link rel="stylesheet" href="data:text/css,${encodeURIComponent(css)}"><section style="font-family: '${family}', sans-serif;"><p>Mapped body</p></section>`;
-}
+import { createMappedContent } from "../support/mapped-font-fixture";
 
 function installSinglePage(contentHtml?: string): void {
     document.title = "Test chapter - ESJZone";
     document.body.innerHTML = `
-        <nav class="entry-navigation"><a class="view-all">View all</a></nav>
+        <nav class="entry-navigation"><a class="view-all" href="/detail/1.html">View all</a></nav>
         <div class="customizer-text-switch"><button type="button">原</button></div>
         <h2>Test chapter</h2>
         <div class="single-post-meta"><div>Test author</div></div>

@@ -85,8 +85,15 @@ export function isSupportedImageMediaType(mediaType: string): mediaType is Suppo
 }
 
 /**
- * 判断图片列表中是否存在不支持的媒体类型
+ * 判断章节图片的声明类型与实际 Blob 是否满足缓存恢复和导出的要求
  */
-export function hasInvalidImageMediaTypes(images: readonly { mediaType: string }[] | undefined): boolean {
-    return images?.some((image) => !isSupportedImageMediaType(image.mediaType)) ?? false;
+export function isValidChapterImage(image: { mediaType?: unknown; blob?: unknown } | null | undefined): boolean {
+    const { mediaType, blob } = image || {};
+    return (
+        typeof mediaType === "string" &&
+        isSupportedImageMediaType(mediaType) &&
+        blob instanceof Blob &&
+        blob.size > 0 &&
+        blob.type.split(";", 1)[0].trim().toLowerCase() === mediaType
+    );
 }

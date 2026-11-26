@@ -100,7 +100,7 @@ export function exportBookTxt(data: CachedData, view: ExportView): void {
     if (!getExportCapabilities(data.chapters).txtEnabled) {
         return;
     }
-    const filename = createBookExportFilename(data.metadata.title, "txt", data.exportFilename);
+    const filename = createBookExportFilename(data.filenameBookName ?? data.metadata.title, "txt", data.exportFilename);
     let blob: Blob;
     try {
         blob = buildTxt(data.txt);
@@ -152,7 +152,10 @@ export async function exportBookRich(data: CachedData, format: "epub" | "html", 
             }
         }
         stage = "download";
-        triggerDownload(blob, createBookExportFilename(data.metadata.title, format, data.exportFilename));
+        triggerDownload(
+            blob,
+            createBookExportFilename(data.filenameBookName ?? data.metadata.title, format, data.exportFilename)
+        );
         recordExportOutcome(data, format, "success");
         void recordBookExport(data, format);
     } catch (error) {

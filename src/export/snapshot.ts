@@ -19,6 +19,7 @@ export interface ExportSnapshot {
     txt: string;
     chapters: Chapter[];
     metadata: BookMetadata;
+    filenameBookName?: string;
     exportContext: {
         bookId: string;
         taskId: string;
@@ -71,8 +72,9 @@ export function createExportData(
     return {
         txt: assembleBookTxt(options.introTxt, assembled),
         chapters: assembled,
+        filenameBookName: options.bookName,
         metadata: {
-            title: options.bookName,
+            title: options.rawBookName || options.bookName,
             author: options.author || "未知作者",
             description: options.description,
             tags: options.tags,

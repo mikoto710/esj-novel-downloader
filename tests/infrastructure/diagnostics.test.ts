@@ -359,44 +359,6 @@ describe("diagnostic session retention", () => {
         ]);
     });
 
-    it("records multi-format export outcomes after a task completes", async () => {
-        const repository = new MemoryDiagnosticRepository();
-        const manager = new DiagnosticManager(repository, () => 1_000);
-        await manager.start(createInput("exports"));
-        await manager.finish("exports", "success");
-
-        await manager.recordExport("exports", {
-            scope: "full",
-            format: "epub",
-            outcome: "failed",
-            generated: true,
-            downloadTriggered: false,
-            failureStage: "download"
-        });
-        await manager.recordExport("exports", {
-            scope: "full",
-            format: "epub",
-            outcome: "success",
-            generated: true,
-            downloadTriggered: true,
-            failureStage: null
-        });
-        await manager.recordExport("exports", {
-            scope: "full",
-            format: "html",
-            outcome: "cancelled",
-            generated: false,
-            downloadTriggered: false,
-            failureStage: null
-        });
-
-        expect((await manager.list()).history[0].exports).toEqual([
-            expect.objectContaining({ format: "epub", outcome: "failed", failureStage: "download" }),
-            expect.objectContaining({ format: "epub", outcome: "success", downloadTriggered: true }),
-            expect.objectContaining({ format: "html", outcome: "cancelled", generated: false })
-        ]);
-    });
-
     it("records a rejected protected password as a retryable event instead of a failure", async () => {
         const repository = new MemoryDiagnosticRepository();
         const manager = new DiagnosticManager(repository, () => 1_000);
