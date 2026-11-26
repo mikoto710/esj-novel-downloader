@@ -419,7 +419,7 @@ export const ZH_CN_MESSAGES = Object.freeze({
     "diagnostics.summary.failures": "失败摘要：{records}",
     "diagnostics.summary.none": "无",
     "diagnostics.failure.chapterLoginPage": "章节请求返回了站点登录页",
-    "diagnostics.failure.chapterContentMissing": "章节响应没有正文内容",
+    "diagnostics.failure.chapterContentMissing": "章节响应缺少正文容器",
     "diagnostics.failure.invalidImageUrl": "图片链接无效",
     "diagnostics.failure.imageFormatUnrecognized": "无法识别图片格式",
     "diagnostics.failure.imageProcessingFailed": "图片处理未完成，已保留原链接",

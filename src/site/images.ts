@@ -1,6 +1,5 @@
 import { sleepWithAbort } from "../browser/timing";
 import { fetchWithTimeout } from "../browser/request";
-import { parseInertHtml } from "../browser/html";
 import { normalizeImageBlob } from "../content/image-format";
 import type { BookCover, ChapterImage } from "../content/model";
 
@@ -91,12 +90,11 @@ async function compressImage(blob: Blob, quality = 0.7, maxWidth = 800): Promise
 }
 
 /**
- * 按章节页地址采集插图，返回替换正文及图片故障信息
+ * 按当前页面地址采集章节插图，返回替换正文及图片故障信息
  */
 export async function processHtmlImages(
     htmlContent: string,
     chapterIndex: number,
-    sourceUrl = location.href,
     signal?: AbortSignal
 ): Promise<{
     processedHtml: string;
@@ -104,8 +102,10 @@ export async function processHtmlImages(
     failCount: number;
     failures: ImageProcessingFailure[];
 }> {
-    const template = parseInertHtml(htmlContent);
-    const imgs = Array.from(template.content.querySelectorAll("img"));
+    const div = document.createElement("div");
+    div.innerHTML = htmlContent;
+
+    const imgs = Array.from(div.querySelectorAll("img"));
     const images: ChapterImage[] = [];
     let failCount = 0;
     const failures: ImageProcessingFailure[] = [];
@@ -116,7 +116,7 @@ export async function processHtmlImages(
 
     for (let i = 0; i < imgs.length; i++) {
         const img = imgs[i];
-        const src = img.getAttribute("src");
+        let src = img.getAttribute("src");
         if (!src) {
             continue;
         }
@@ -126,9 +126,12 @@ export async function processHtmlImages(
         let failureStage: ImageFailureStage = "url";
         let failureCode = "invalid-image-url";
 
-        const resolvedSrc = resolveImageUrl(src, sourceUrl);
+        // URL 预处理
+        // 相对图片沿用发起页面的地址基准，批量采集也不改用目标章节 URL
+        const resolvedSrc = resolveImageUrl(src, location.href);
         if (resolvedSrc) {
-            img.setAttribute("src", resolvedSrc);
+            src = resolvedSrc;
+            img.setAttribute("src", src);
         } else {
             console.warn(`非法 URL: ${src}`);
         }
@@ -146,7 +149,7 @@ export async function processHtmlImages(
 
                 try {
                     const response = await fetchWithTimeout(
-                        resolvedSrc,
+                        src!,
                         {
                             method: "GET",
                             referrerPolicy: "no-referrer",
@@ -187,7 +190,8 @@ export async function processHtmlImages(
                     });
 
                     // 成功修改 DOM
-                    img.setAttribute("src", imageFilename);
+                    img.removeAttribute("src");
+                    img.setAttribute("data-epub-src", imageFilename);
                     img.removeAttribute("srcset");
                     img.removeAttribute("loading");
                     img.style.maxWidth = "100%";
@@ -201,7 +205,7 @@ export async function processHtmlImages(
                     }
                     // 如果还没到最后一次，等待后重试
                     if (attempt < MAX_RETRIES) {
-                        console.warn(`⚠️ 图片下载波动，重试 (${attempt}/${MAX_RETRIES}): ${resolvedSrc}`);
+                        console.warn(`⚠️ 图片下载波动，重试 (${attempt}/${MAX_RETRIES}): ${src}`);
                         await sleepWithAbort(1500, signal);
                     }
                 }
@@ -222,8 +226,12 @@ export async function processHtmlImages(
         }
     }
 
+    // 还原 HTML，替换 data-epub-src 为 src
+    let finalHtml = div.innerHTML;
+    finalHtml = finalHtml.replace(/data-epub-src="/g, 'src="');
+
     return {
-        processedHtml: template.innerHTML,
+        processedHtml: finalHtml,
         images,
         failCount,
         failures

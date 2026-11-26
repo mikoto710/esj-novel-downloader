@@ -33,15 +33,6 @@ describe("book preparation lifetime", () => {
         await deleteTestDatabase("esj-novel-downloader-diagnostics");
     });
 
-    it.each([
-        ["covers/a.jpg", "https://www.esjzone.cc/detail/covers/a.jpg"],
-        ["//images.example.test/a.jpg", "https://images.example.test/a.jpg"]
-    ])("resolves the cover relative to the book detail URL (%s)", (coverUrl, expected) => {
-        const detailUrl = "https://www.esjzone.cc/detail/100.html";
-
-        expect(loadDetailBook(createDetailPageFixture({ coverUrl }), detailUrl).meta.coverUrl).toBe(expected);
-    });
-
     it("shows a cancellable window while the directory is still pending", async () => {
         const entered = createDeferred<void>();
         const directory = createDeferred<PreparedBook>();

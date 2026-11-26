@@ -3,7 +3,6 @@ import type { ChapterFetcherPort, ChapterPageFailureCode, DownloadTask } from ".
 import { normalizeChapterMappingFont } from "../content/mapping-font";
 import { isReadingElement } from "../content/reading-markup";
 import { fetchPageText, fetchWithTimeout } from "../browser/request";
-import { parseInertHtml } from "../browser/html";
 import { processHtmlImages, type ImageProcessingFailure } from "./images";
 import { RequestGate } from "./request-gate";
 import { isCurrentSiteChapter } from "./routes";
@@ -14,10 +13,9 @@ const TEXT_BLOCKS = new Set(
     )
 );
 
-function readChapterBody(body: HTMLElement, title: string): { text: string; hasBody: boolean } {
+function readChapterText(body: HTMLElement, title: string): string {
     const lines: string[] = [];
     let line = "";
-    let hasImage = false;
 
     function endLine(explicit = false) {
         if (explicit || line.trim()) {
@@ -35,10 +33,6 @@ function readChapterBody(body: HTMLElement, title: string): { text: string; hasB
                 endLine(true);
                 return;
             }
-            if (tag === "IMG") {
-                hasImage ||= Boolean(node.getAttribute("src")?.trim());
-                return;
-            }
             const block = TEXT_BLOCKS.has(tag);
             if (block) {
                 endLine();
@@ -53,26 +47,25 @@ function readChapterBody(body: HTMLElement, title: string): { text: string; hasB
     body.childNodes.forEach(visit);
     endLine();
     const first = lines.findIndex(Boolean);
-    if (first >= 0 && lines[first] === title) {
+    if (first >= 0 && lines[first] === title.trim()) {
         lines.splice(first, 1);
     }
-    return { text: lines.join("\n").trim(), hasBody: first >= 0 || hasImage };
+    return lines.join("\n").trim();
 }
 
 /**
- * 解析章节标题、作者与正文，按章节页地址还原阅读链接
+ * 解析章节 HTML 的标题、作者和正文，书名沿用当前页面标题
  */
-export function parseChapterHtml(html: string, defaultTitle: string, sourceUrl = location.href) {
-    const doc = parseInertHtml(html).content;
+export function parseChapterHtml(html: string, defaultTitle: string) {
+    const doc = new DOMParser().parseFromString(html, "text/html");
 
-    const h2 = doc.querySelector("h2")?.textContent?.trim() || defaultTitle;
+    const h2 = (doc.querySelector("h2") as HTMLElement)?.innerText || defaultTitle;
 
     const bookName = document.title.split(" - ")[0].trim();
 
-    const author = doc.querySelector(".single-post-meta div")?.textContent?.trim() || "";
+    const author = (doc.querySelector(".single-post-meta div") as HTMLElement)?.innerText.trim() || "";
 
     const contentEl = doc.querySelector<HTMLElement>(".forum-content");
-    const body = contentEl ? readChapterBody(contentEl, h2) : null;
     let pageFailure: ChapterPageFailureCode | undefined;
     if (!contentEl) {
         const loginForm = doc.querySelector("form.login-box");
@@ -81,33 +74,20 @@ export function parseChapterHtml(html: string, defaultTitle: string, sourceUrl =
             loginForm.querySelector('input[type="password"][name="pwd"]')
                 ? "chapter-login-page"
                 : "chapter-content-missing";
-    } else if (!body?.hasBody) {
-        pageFailure = "chapter-content-missing";
     }
 
-    contentEl?.querySelectorAll("a[href]").forEach((link) => {
-        const href = link.getAttribute("href")?.trim();
-        if (!href || href.startsWith("#")) {
-            return;
-        }
-        try {
-            const url = new URL(href, sourceUrl);
-            if (url.protocol === "http:" || url.protocol === "https:") {
-                link.setAttribute("href", url.href);
-            }
-        } catch {
-            // 无法解析的地址由导出时的链接校验移除
-        }
-    });
+    // HTML 与 EPUB 共用原始正文 HTML，插图和字体随后处理
     const contentHtml = contentEl ? contentEl.innerHTML : "";
+
+    // 获取用于 TXT 的纯文本
+    const contentText = contentEl ? readChapterText(contentEl, h2) : "";
 
     return {
         title: h2,
         author,
         contentHtml,
-        contentText: body?.text || "",
+        contentText,
         bookName,
-        sourceUrl,
         ...(pageFailure ? { pageFailure } : {})
     };
 }
@@ -154,7 +134,7 @@ export async function processParsedChapter(
 
     if (imageEnabled) {
         try {
-            const processed = await processHtmlImages(finalHtml, chapterIndex, result.sourceUrl, signal);
+            const processed = await processHtmlImages(finalHtml, chapterIndex, signal);
             finalHtml = processed.processedHtml;
             images = processed.images;
             imageErrors = processed.failCount;
@@ -184,13 +164,6 @@ export async function processParsedChapter(
         imageFailures,
         ...(processingFailed ? { imageProcessingError } : {})
     };
-}
-
-/**
- * 定位单章导航中指向书籍详情的原站链接
- */
-export function findChapterBookLink(root: ParentNode): HTMLAnchorElement | null {
-    return root.querySelector('.entry-navigation a.view-all[href]:not([href=""])');
 }
 
 /**
@@ -225,10 +198,5 @@ export function createChapterFetcher(requestGate: RequestGate, useBrowserFetch: 
 
 // 移除 HTML 字符串中的所有 img 标签
 function removeImgTags(html: string): string {
-    if (!/<img\b/i.test(html)) {
-        return html;
-    }
-    const template = parseInertHtml(html);
-    template.content.querySelectorAll("img").forEach((img) => img.remove());
-    return template.innerHTML;
+    return html.replace(/<img[^>]*>/gi, "");
 }

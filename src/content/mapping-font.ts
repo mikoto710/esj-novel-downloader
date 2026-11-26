@@ -1,5 +1,4 @@
 import type { Chapter, ChapterMappingFont } from "./model";
-import { parseInertHtml } from "../browser/html";
 
 export const MAX_CHAPTER_MAPPING_FONT_BYTES = 4 * 1024 * 1024;
 
@@ -145,7 +144,12 @@ function getCssFontDataUrl(block: string): string {
     return unquoted?.[1] || "";
 }
 
-const MAPPING_MARKUP = /<(?:link|section)\b/i;
+function createTemplate(contentHtml: string): HTMLTemplateElement {
+    const doc = new DOMParser().parseFromString("<!doctype html><html><body></body></html>", "text/html");
+    const template = doc.createElement("template");
+    template.innerHTML = contentHtml;
+    return template;
+}
 
 function getDirectElements(template: HTMLTemplateElement): Element[] {
     return Array.from(template.content.childNodes).filter((node): node is Element => node.nodeType === 1);
@@ -207,7 +211,7 @@ function findMappedSection(elements: Element[]): HTMLElement[] {
 
 // 提取唯一且完整的映射字体绑定，部分结构信号必须报错
 function extractMappingFont(contentHtml: string): ExtractedMappingFont | null {
-    const template = parseInertHtml(contentHtml);
+    const template = createTemplate(contentHtml);
     const elements = getDirectElements(template);
     const dataCss = findDataCssLinkLocations(template);
     const mappedSections = findMappedSection(elements);
@@ -284,9 +288,11 @@ async function createMappingFont(family: string, bytes: Uint8Array, signal?: Abo
 }
 
 function findNormalizedMappedFamily(contentHtml: string): string | null {
-    const template = parseInertHtml(contentHtml);
+    const template = createTemplate(contentHtml);
     const elements = getDirectElements(template);
-    const dataCssLink = findDataCssLinkLocations(template).signalCount > 0;
+    const dataCssLink = elements.some(
+        (element) => element.tagName === "LINK" && (element.getAttribute("href") || "").startsWith("data:text/css")
+    );
     const mappedSections = findMappedSection(elements);
     if (dataCssLink || mappedSections.length !== 1) {
         return null;
@@ -328,8 +334,8 @@ export async function normalizeChapterMappingFont(
         return { kind: "mapped", chapter, changed: false };
     }
 
-    // 无需为没有字体链接或章节区块的正文建立 DOM
-    if (!MAPPING_MARKUP.test(chapter.content)) {
+    // 普通缓存通常不含这两个标记，先走快速路径，避免高命中任务重复创建数千个 DOM
+    if (!chapter.content.includes("data:text/css") && !/font-family\s*:\s*['"]?\d+/i.test(chapter.content)) {
         return { kind: "normal", chapter, changed: false };
     }
 
@@ -354,14 +360,8 @@ export function prepareChapterMappingExport(
 ): PreparedChapterMappingExport | null {
     const font = chapter.mappingFont;
     if (!font) {
-        if (MAPPING_MARKUP.test(chapter.content)) {
-            const template = parseInertHtml(chapter.content);
-            if (
-                findDataCssLinkLocations(template).signalCount > 0 ||
-                findMappedSection(getDirectElements(template)).length > 0
-            ) {
-                throw new MappingFontError("structure-invalid", "export-font-missing", { chapter: chapterIndex + 1 });
-            }
+        if (chapter.content.includes("data:text/css") || /font-family\s*:\s*['"]?\d+/i.test(chapter.content)) {
+            throw new MappingFontError("structure-invalid", "export-font-missing", { chapter: chapterIndex + 1 });
         }
         return null;
     }
@@ -377,13 +377,19 @@ export function prepareChapterMappingExport(
         });
     }
 
-    const template = parseInertHtml(chapter.content);
+    const template = createTemplate(chapter.content);
     const elements = getDirectElements(template);
     const mappedSections = findMappedSection(elements);
     if (mappedSections.length !== 1 || getFirstFontFamily(mappedSections[0].style.fontFamily) !== font.family) {
         throw new MappingFontError("structure-invalid", "export-font-family-mismatch", { chapter: chapterIndex + 1 });
     }
-    if (findDataCssLinkLocations(template).signalCount > 0) {
+    if (
+        elements.some(
+            (element) =>
+                element.tagName === "LINK" &&
+                (element.getAttribute("href") || "").toLowerCase().startsWith("data:text/css")
+        )
+    ) {
         throw new MappingFontError("structure-invalid", "export-unvalidated-style", { chapter: chapterIndex + 1 });
     }
 

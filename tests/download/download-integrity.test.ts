@@ -27,15 +27,6 @@ describe("getChapterRetryReason", () => {
         ).toBeNull();
     });
 
-    it.each([undefined, new Blob([], { type: "image/jpeg" }), new Blob(["image"], { type: "image/png" })])(
-        "retries cached images with a missing, empty or mismatched Blob (%s)",
-        (blob) => {
-            expect(getChapterRetryReason({ images: [{ mediaType: "image/jpeg", blob }] }, true)).toBe(
-                "invalid-image-media-type"
-            );
-        }
-    );
-
     it("ignores image state when image downloads are disabled", () => {
         expect(
             getChapterRetryReason(

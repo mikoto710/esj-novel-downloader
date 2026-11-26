@@ -44,7 +44,7 @@ describe("browser chapter response contracts", () => {
         mocks.fetchWithTimeout
             .mockResolvedValueOnce(new Response(loginForm))
             .mockResolvedValueOnce(new Response(loginForm.replace('name="pwd"', 'name="password"')))
-            .mockResolvedValueOnce(new Response(createChapterFixture({ contentHtml: "<p> \n <br></p>" })))
+            .mockResolvedValueOnce(new Response(""))
             .mockResolvedValueOnce(
                 new Response(createChapterFixture({ contentHtml: normal }).replace("</body>", `${loginForm}</body>`))
             )
@@ -126,13 +126,9 @@ describe("browser chapter response contracts", () => {
             await vi.importActual<typeof import("../../src/site/images")>("../../src/site/images");
         mocks.processHtmlImages.mockImplementation(processHtmlImages);
         const [task] = createBrowserDownloadTasks(1);
-        const imageUrl = "https://www.esjzone.cc/forum/100/pictures/a.jpg";
-        const externalImageUrl = "https://example.test/pictures/b.jpg";
-        expect(new URL("pictures/a.jpg", location.href).href).not.toBe(imageUrl);
+        const imageUrl = "https://example.test/pictures/a.jpg";
         const chapterHtml = createChapterFixture({
-            contentHtml: `<p id="notes"><a href="2.html?view=full#end">后记</a>
-                <a href="//example.test/notes">译注</a><a href="#notes">本段</a>
-                <img src="pictures/a.jpg" alt="插图"><img src="${externalImageUrl}" alt="外链插图"></p>`
+            contentHtml: `<p>正文<img src="${imageUrl}" alt="插图"></p>`
         });
         setChapterRequestMode("fetch");
         const browserFetch = vi.fn(async () => new Response(chapterHtml));
@@ -146,26 +142,12 @@ describe("browser chapter response contracts", () => {
             await runtime.runBookDownload({ ...createBrowserDownloadOptions([task]), imageEnabled: true })
         );
         const chapter = data.chapters[0];
-        const doc = new DOMParser().parseFromString(chapter.content, "text/html");
-
         expect(browserFetch).toHaveBeenCalledExactlyOnceWith(
             task.url,
             expect.objectContaining({ credentials: "include", mode: "same-origin" })
         );
-        expect(mocks.fetchWithTimeout.mock.calls.map(([url]) => url)).toEqual([imageUrl, externalImageUrl]);
-        expect(Array.from(doc.querySelectorAll("a"), (link) => link.getAttribute("href"))).toEqual([
-            "https://www.esjzone.cc/forum/100/2.html?view=full#end",
-            "https://example.test/notes",
-            "#notes"
-        ]);
-        expect(Array.from(doc.querySelectorAll("img"), (image) => image.getAttribute("src"))).toEqual([
-            "img_0_0.jpg",
-            "img_0_1.jpg"
-        ]);
-        expect(chapter.images).toMatchObject([
-            { id: "img_0_0.jpg", mediaType: "image/jpeg" },
-            { id: "img_0_1.jpg", mediaType: "image/jpeg" }
-        ]);
+        expect(mocks.fetchWithTimeout.mock.calls.map(([url]) => url)).toEqual([imageUrl]);
+        expect(chapter.images).toMatchObject([{ id: "img_0_0.jpg", mediaType: "image/jpeg" }]);
     });
 
     it("keeps cached chapter content when an image retry returns a login page", async () => {

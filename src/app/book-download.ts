@@ -692,7 +692,7 @@ function createChapterProcessor(taskId: string): ChapterProcessorPort {
         }
     };
     const processChapterHtml: ChapterProcessorPort["process"] = async (html, task, imageEnabled, signal) => {
-        const parsed = parseChapterHtml(html, task.title, task.url);
+        const parsed = parseChapterHtml(html, task.title);
         if (parsed.pageFailure) {
             return { pageFailure: parsed.pageFailure };
         }

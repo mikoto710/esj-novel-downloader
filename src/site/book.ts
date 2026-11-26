@@ -1,19 +1,17 @@
 import { createBookDirectorySnapshot, type BookDirectorySnapshot } from "./book-directory";
 import type { DownloadTask } from "../download/contracts";
 import { fetchPageText } from "../browser/request";
-import { parseInertHtml } from "../browser/html";
-import { resolveImageUrl } from "./images";
 
 /**
- * 解析书籍元数据，封面地址以详情页 URL 为基准
+ * 解析书籍元数据，相对封面地址沿用当前页面 origin
  */
-export function parseBookMetadata(doc: Document | DocumentFragment, pageUrl: string) {
+export function parseBookMetadata(doc: Document, pageUrl: string) {
     let bookName = "未命名小说";
     const titleEl = doc.querySelector(".book-detail h2.text-normal");
     if (titleEl) {
         bookName = titleEl.textContent?.trim() || bookName;
     } else {
-        bookName = (doc.querySelector("title")?.textContent || "").split(" - ")[0].trim();
+        bookName = doc.title.split(" - ")[0].trim();
     }
 
     const symbolMap: Record<string, string> = {
@@ -69,8 +67,14 @@ export function parseBookMetadata(doc: Document | DocumentFragment, pageUrl: str
         .filter((tag, index, allTags) => tag.length > 0 && allTags.indexOf(tag) === index);
 
     // 封面
-    const rawSrc = doc.querySelector(".product-gallery img")?.getAttribute("src");
-    const coverUrl = (rawSrc && resolveImageUrl(rawSrc, pageUrl)) || undefined;
+    const imgNode = doc.querySelector(".product-gallery img") as HTMLImageElement;
+    let coverUrl: string | undefined = undefined;
+    if (imgNode) {
+        const rawSrc = imgNode.getAttribute("src");
+        if (rawSrc) {
+            coverUrl = rawSrc.startsWith("http") ? rawSrc : `${location.origin}${rawSrc}`;
+        }
+    }
 
     // 简介
     let descText = "";
@@ -148,7 +152,7 @@ export function getForumBookId(pathname: string): string {
     return "";
 }
 
-function readBookPlan(doc: Document | DocumentFragment, pageUrl: string, fetched: boolean): PreparedBook {
+function readBookPlan(doc: Document, pageUrl: string, fetched: boolean): PreparedBook {
     const container = doc.querySelector("#chapterList");
     const chapterLinks = Array.from(container?.querySelectorAll("a") || []) as HTMLAnchorElement[];
     if (!container || chapterLinks.length === 0) {
@@ -193,5 +197,6 @@ export async function loadForumBook(bookId: string, origin: string, signal?: Abo
             { cause: error }
         );
     }
-    return readBookPlan(parseInertHtml(html).content, detailUrl, true);
+    const doc = new DOMParser().parseFromString(html, "text/html");
+    return readBookPlan(doc, detailUrl, true);
 }
