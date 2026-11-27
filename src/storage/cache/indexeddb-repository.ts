@@ -1,6 +1,5 @@
 import { get, promisifyRequest } from "idb-keyval";
-import { cacheV3Store, getBookLockKey, runWriteTransaction } from "./database";
-import { isBookDownloadLockActive, type BookDownloadLock } from "../book-lock";
+import { cacheV3Store, runWriteTransaction } from "./database";
 import type { ChapterCacheSources } from "./chapter-source";
 import { createStorageError } from "./storage-error";
 import type { CacheMeta } from "./model";
@@ -200,12 +199,12 @@ export async function readCacheChaptersV3(
     taskId?: string
 ): Promise<Map<number, Chapter>> {
     return cacheV3Store("readonly", async (store) => {
-        const [records, sources, lock] = await Promise.all([
+        const [records, sources, manifest] = await Promise.all([
             promisifyRequest<StoredChapterV3[]>(store.getAll(getChapterRange(bookId))),
             readChapterSources(store, bookId, requested),
-            taskId ? promisifyRequest<BookDownloadLock | undefined>(store.get(getBookLockKey(bookId))) : undefined
+            taskId ? promisifyRequest<CacheManifestV3 | undefined>(store.get(getManifestKey(bookId))) : undefined
         ]);
-        if (taskId && (!isBookDownloadLockActive(lock) || lock.taskId !== taskId)) {
+        if (taskId && !isOpenWriter(manifest, taskId)) {
             throw createStorageError("ownership-lost", "claim");
         }
         return new Map(
@@ -240,26 +239,15 @@ export async function listCacheManifestsV3(): Promise<CacheManifestV3[]> {
     return (records as CacheManifestV3[]).filter((record) => record.version === 3);
 }
 
-// 锁和缓存清单共用一个写事务，事务提交前其他页面不能更换所有者
+// 同一事务内读取缓存清单并以当前 writer 判定后续写入
 function writeBookCache<T>(
     bookId: string,
-    taskId: string | null,
-    denied: T,
     write: (store: IDBObjectStore, current: CacheManifestV3 | undefined, setResult: (result: T) => void) => void,
     signal?: AbortSignal
 ): Promise<T> {
     return runWriteTransaction<T>((store, setResult) => {
-        const lockRequest: IDBRequest<BookDownloadLock | undefined> = store.get(getBookLockKey(bookId));
         const manifestRequest: IDBRequest<CacheManifestV3 | undefined> = store.get(getManifestKey(bookId));
-        manifestRequest.onsuccess = () => {
-            const lock = lockRequest.result;
-            const authorized = isBookDownloadLockActive(lock) ? lock.taskId === taskId : taskId === null;
-            if (authorized) {
-                write(store, manifestRequest.result, setResult);
-            } else {
-                setResult(denied);
-            }
-        };
+        manifestRequest.onsuccess = () => write(store, manifestRequest.result, setResult);
     }, signal);
 }
 
@@ -269,6 +257,7 @@ function writeBookCache<T>(
 export async function claimCacheV3(
     bookId: string,
     taskId: string,
+    expectedWriterTaskId: string | undefined,
     migrationSource: CacheMigrationSource | null,
     maxAgeMs: number,
     requestedImageEnabled: boolean,
@@ -277,9 +266,11 @@ export async function claimCacheV3(
 ): Promise<CacheClaimV3Result> {
     return writeBookCache<CacheClaimV3Result>(
         bookId,
-        taskId,
-        { status: "ownership-lost" },
         (store, current, setResult) => {
+            if (current?.writerTaskId !== expectedWriterTaskId) {
+                setResult({ status: "ownership-lost" });
+                return;
+            }
             const reusable = Boolean(
                 current && !current.cleared && current.version === 3 && Date.now() - current.ts <= maxAgeMs
             );
@@ -393,8 +384,6 @@ export async function putCacheBatchV3(
 ): Promise<boolean> {
     return writeBookCache(
         bookId,
-        taskId,
-        false,
         (store, current, setResult) => {
             if (!isOpenWriter(current, taskId)) {
                 setResult(false);
@@ -446,8 +435,6 @@ export async function putCacheCoverV3ForTask(
 ): Promise<boolean> {
     return writeBookCache(
         bookId,
-        taskId,
-        false,
         (store, current, setResult) => {
             if (!isOpenWriter(current, taskId)) {
                 setResult(false);
@@ -483,8 +470,6 @@ export async function finishCacheV3ForTask(
 ): Promise<boolean> {
     return writeBookCache(
         bookId,
-        taskId,
-        false,
         (store, current, setResult) => {
             if (!current || current.writerTaskId !== taskId || current.cleared) {
                 setResult(false);
@@ -538,8 +523,6 @@ function writeClearedCache(store: IDBObjectStore, bookId: string, writerTaskId: 
 export async function clearCacheV3ForTask(bookId: string, taskId: string, signal?: AbortSignal): Promise<boolean> {
     return writeBookCache(
         bookId,
-        taskId,
-        false,
         (store, current, setResult) => {
             if (!current || current.writerTaskId !== taskId) {
                 setResult(false);
@@ -553,10 +536,14 @@ export async function clearCacheV3ForTask(bookId: string, taskId: string, signal
 }
 
 /**
- * 书籍无活动锁时清理章节和封面，并写入 cleared 清单
+ * writer 未变化时清理章节和封面，并写入 cleared 清单
  */
-export async function clearCacheV3(bookId: string): Promise<boolean> {
-    return writeBookCache(bookId, null, false, (store, current, setResult) => {
+export async function clearCacheV3(bookId: string, expectedWriterTaskId: string | undefined): Promise<boolean> {
+    return writeBookCache(bookId, (store, current, setResult) => {
+        if (current?.writerTaskId !== expectedWriterTaskId) {
+            setResult(false);
+            return;
+        }
         writeClearedCache(store, bookId, current?.writerTaskId || "cleared");
         setResult(true);
     });

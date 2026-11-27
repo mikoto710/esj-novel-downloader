@@ -87,14 +87,14 @@ export function createTaskCacheWriter(
         return false;
     }
 
-    // 部分选择成功后关闭 writer，暂时写入故障允许重试一次
-    async function finishRangeCacheWriter(): Promise<boolean> {
+    // 关闭 writer，暂时写入故障允许重试一次
+    async function closeWriter(signal = ports.cancellation.signal): Promise<boolean> {
         for (let attempt = 1; attempt <= 2; attempt++) {
             try {
-                return await ports.cache.finishForTask(options.bookId, options.taskId, meta, ports.cancellation.signal);
+                return await ports.cache.finishForTask(options.bookId, options.taskId, meta, signal);
             } catch (error) {
                 const normalized = normalizeStorageError(error, "write");
-                if (attempt === 1 && normalized.reason !== "ownership-lost" && !ports.cancellation.signal?.aborted) {
+                if (attempt === 1 && normalized.reason !== "ownership-lost" && !signal?.aborted) {
                     ports.log({
                         code: "cache-write-retry",
                         params: {
@@ -129,6 +129,7 @@ export function createTaskCacheWriter(
          * true 表示当前写入链已确认提交；false 保留取消/丢弃/超时或 failure，调用方先复核用户取消
          */
         flush: () => buffer.flush(),
+        closeWriter,
         assertHealthy,
         /**
          * 确认写入并关闭自选缓存或清理全本缓存，附带的清理错误随已就绪的结果报告
@@ -143,7 +144,7 @@ export function createTaskCacheWriter(
             const operation = plan.retainCacheOnSuccess ? "write" : "clear";
             try {
                 const finished = plan.retainCacheOnSuccess
-                    ? await finishRangeCacheWriter()
+                    ? await closeWriter()
                     : await ports.cache.clearForTask(options.bookId, options.taskId, ports.cancellation.signal);
                 if (!finished && !ports.cancellation.isCancellationRequested()) {
                     throw createStorageError("ownership-lost", operation);

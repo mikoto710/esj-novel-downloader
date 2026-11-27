@@ -125,6 +125,11 @@ describe("pagehide download cache", () => {
                 result: "cancelled",
                 task: { phase: "cancelled", cancellationOutcome: "saved" }
             });
+            const { readCacheManifestV3 } = await import("../../src/storage/cache/indexeddb-repository");
+            await expect(readCacheManifestV3(bookId)).resolves.toMatchObject({
+                writerTaskId: current!.taskId,
+                writerClosedAt: expect.any(Number)
+            });
 
             const replacement = await locks.acquireBookDownloadLock(bookId, "forum");
             expect(replacement.acquired).toBe(true);

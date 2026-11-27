@@ -62,11 +62,11 @@ describe("independent cover cache contracts", () => {
         await storage.putBookCoverForTask("402", lock.taskId, "https://img.example/current.jpg", createCover("jpg"));
         await (await import("../../src/storage/book-lock")).releaseBookDownloadLock(lock);
         const nextLock = await acquireCacheLock("402");
+        await storage.claimBookCache("402", nextLock.taskId, false);
 
         await expect(
             storage.putBookCoverForTask("402", lock.taskId, "https://img.example/stale.png", createCover("png"))
         ).resolves.toBe(false);
-        await storage.claimBookCache("402", nextLock.taskId, false);
         await expect(storage.loadBookCover("402", "https://img.example/current.jpg")).resolves.not.toBeNull();
         await expect(storage.loadBookCover("402", "https://img.example/stale.png")).resolves.toBeNull();
     });

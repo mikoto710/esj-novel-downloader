@@ -52,6 +52,7 @@ describe("book lock contracts", () => {
         const stopHeartbeat = locks.startBookDownloadLockHeartbeat(acquired.lock, onCancellationRequested, 1);
 
         try {
+            expect((await indexedDB.databases()).map(({ name }) => name)).toEqual(["esj-novel-downloader"]);
             expect(await locks.requestBookDownloadCancellation("104", acquired.lock.taskId, true)).toEqual({
                 requested: true,
                 taskId: acquired.lock.taskId

@@ -2,7 +2,7 @@
 
 import { IDBFactory } from "fake-indexeddb";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { createCacheMeta, createChapter } from "../support";
+import { createCacheMeta, createChapter, createDeferred } from "../support";
 import { acquireCacheLock } from "../support/book-cache";
 
 describe("cross-page lock recovery contracts", () => {
@@ -98,10 +98,11 @@ describe("cross-page lock recovery contracts", () => {
         await Promise.all([locks.releaseBookDownloadLock(first.lock), locks.releaseBookDownloadLock(second.lock)]);
     });
 
-    it("lets a new task take over an expired lock without granting the stale writer cache access", async () => {
+    it("rejects stale writes and queued claims after the replacement claims the cache", async () => {
         vi.stubGlobal("BroadcastChannel", undefined);
         const locks = await import("../../src/storage/book-lock");
         const storage = await import("../../src/storage/cache/book-cache");
+        const repository = await import("../../src/storage/cache/indexeddb-repository");
         const first = await locks.acquireBookDownloadLock("730", "detail");
         if (!first.acquired) {
             throw new Error("expected first lock");
@@ -114,22 +115,33 @@ describe("cross-page lock recovery contracts", () => {
             createCacheMeta({ bookId: "730", imageEnabled: false })
         );
 
-        vi.spyOn(Date, "now").mockReturnValue(first.lock.heartbeatAt + 60_001);
-        const replacement = await locks.acquireBookDownloadLock("730", "forum");
-        if (!replacement.acquired) {
-            throw new Error("expected expired lock takeover");
+        const lateClaimQueued = createDeferred<void>();
+        const resumeLateClaim = createDeferred<void>();
+        const claimCacheV3 = repository.claimCacheV3;
+        vi.spyOn(repository, "claimCacheV3").mockImplementationOnce(async (...args) => {
+            lateClaimQueued.resolve();
+            await resumeLateClaim.promise;
+            return claimCacheV3(...args);
+        });
+        const lateClaim = storage
+            .claimBookCache("730", first.lock.taskId, true, undefined, { allowInvalidation: true })
+            .catch((error: unknown) => error);
+        let replacement: Awaited<ReturnType<typeof locks.acquireBookDownloadLock>>;
+        try {
+            await vi.waitFor(() => expect(lateClaimQueued.settled).toBe(true));
+            vi.spyOn(Date, "now").mockReturnValue(first.lock.heartbeatAt + 60_001);
+            replacement = await locks.acquireBookDownloadLock("730", "forum");
+            expect(replacement.acquired).toBe(true);
+            expect(await storage.clearBookCache("730")).toBe(false);
+            await expect(storage.claimBookCache("730", replacement.lock.taskId, false)).resolves.toMatchObject({
+                status: "claimed",
+                size: 1
+            });
+        } finally {
+            resumeLateClaim.resolve();
         }
+        expect(await lateClaim).toMatchObject({ reason: "ownership-lost" });
         const staleBatch = new Map([[0, createChapter(0, { content: "stale overwrite" })]]);
-        expect(await storage.putBookCacheBatchForTask("730", first.lock.taskId, staleBatch)).toBe(false);
-        expect(await storage.clearBookCache("730")).toBe(false);
-        expect(await storage.clearBookCacheForTask("730", first.lock.taskId)).toBe(false);
-        await expect(
-            storage.claimBookCache("730", first.lock.taskId, true, undefined, { allowInvalidation: true })
-        ).rejects.toMatchObject({ reason: "ownership-lost" });
-        const claimed = await storage.claimBookCache("730", replacement.lock.taskId, false);
-
-        if (claimed.status !== "claimed") throw new Error("expected compatible cache claim");
-        expect(claimed.map?.get(0)?.content).toBe("recoverable chapter");
         expect(await locks.ownsActiveBookDownloadLock(first.lock)).toBe(false);
         expect(await locks.heartbeatBookDownloadLock(first.lock)).toBe(false);
         expect(await storage.putBookCacheBatchForTask("730", first.lock.taskId, staleBatch)).toBe(false);
@@ -142,7 +154,6 @@ describe("cross-page lock recovery contracts", () => {
             )
         ).toBe(true);
 
-        const repository = await import("../../src/storage/cache/indexeddb-repository");
         const restored = await repository.readCacheChaptersV3("730");
         expect(restored.size).toBe(2);
         expect(restored.get(0)?.content).toBe("recoverable chapter");

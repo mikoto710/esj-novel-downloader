@@ -1,6 +1,7 @@
 import type { ChapterCacheSources } from "./chapter-source";
 import type { CacheMeta, PersistentCacheEntry } from "./model";
 import type { BookCover, Chapter } from "../../content/model";
+import { getActiveBookDownloadLock } from "../book-lock";
 import {
     claimCacheV3,
     clearCacheV3,
@@ -169,6 +170,7 @@ export async function claimBookCache(
     options: BookCacheClaimOptions = {}
 ): Promise<BookCacheClaimResult> {
     try {
+        // 先记住缓存 writer，再查独立锁，防止已排队的认领覆盖后来的 writer
         const manifest = await readCacheManifestV3(bookId);
         const legacy = manifest ? null : await readLegacyCache(bookId);
         const migrationSource = isReusableLegacyCache(legacy?.data)
@@ -180,10 +182,14 @@ export async function claimBookCache(
         const attemptCount = migrationSource ? 2 : 1;
         let claimResult: Awaited<ReturnType<typeof claimCacheV3>> | null = null;
         for (let attempt = 1; attempt <= attemptCount; attempt++) {
+            if ((await getActiveBookDownloadLock(bookId))?.taskId !== taskId) {
+                throw createStorageError("ownership-lost", "claim");
+            }
             try {
                 claimResult = await claimCacheV3(
                     bookId,
                     taskId,
+                    manifest?.writerTaskId,
                     migrationSource,
                     CACHE_EXPIRE_TIME,
                     requestedImageEnabled,
@@ -333,6 +339,9 @@ export async function putBookCoverForTask(
  */
 export async function clearBookCacheForTask(bookId: string, taskId: string, signal?: AbortSignal): Promise<boolean> {
     try {
+        if ((await getActiveBookDownloadLock(bookId))?.taskId !== taskId) {
+            return false;
+        }
         const cleared = await clearCacheV3ForTask(bookId, taskId, signal);
         if (!cleared) {
             return false;
@@ -406,7 +415,8 @@ export async function listBookCaches(): Promise<{ entries: PersistentCacheEntry[
  */
 export async function clearBookCache(bookId: string): Promise<boolean> {
     try {
-        if (!(await clearCacheV3(bookId))) {
+        const manifest = await readCacheManifestV3(bookId);
+        if ((await getActiveBookDownloadLock(bookId)) || !(await clearCacheV3(bookId, manifest?.writerTaskId))) {
             return false;
         }
         publishCacheSyncEvent({ type: "cache-cleared", bookId });

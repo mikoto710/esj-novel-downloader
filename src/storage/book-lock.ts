@@ -1,7 +1,7 @@
-import { get, promisifyRequest } from "idb-keyval";
+import { createStore, get, values } from "idb-keyval";
 import type { DownloadCancellationMode } from "../download/contracts";
 import type { SourcePageType } from "../content/model";
-import { cacheV3Store, getBookLockKey, runWriteTransaction } from "./cache/database";
+import { runWriteTransaction } from "./cache/database";
 
 export type BookDownloadLockStatus = "preparing" | "running" | "released";
 
@@ -41,33 +41,34 @@ export type WaitForBookDownloadCancellationResult =
 const LOCK_TTL_MS = 60 * 1000;
 const HEARTBEAT_INTERVAL_MS = 3 * 1000;
 const CANCELLATION_GRACE_MS = 10 * 1000;
+const lockStore = createStore("esj-novel-downloader", "book-download-locks");
 
-/**
- * 锁和持久缓存写入使用相同的有效期判定
- */
-export function isBookDownloadLockActive(lock: BookDownloadLock | undefined): lock is BookDownloadLock {
+function isBookDownloadLockActive(lock: BookDownloadLock | undefined): lock is BookDownloadLock {
     return lock !== undefined && lock.status !== "released" && Date.now() - lock.heartbeatAt < LOCK_TTL_MS;
 }
 
 function readLock(bookId: string): Promise<BookDownloadLock | undefined> {
-    return get<BookDownloadLock>(getBookLockKey(bookId), cacheV3Store);
+    return get<BookDownloadLock>(bookId, lockStore);
 }
 
 function updateLock<T>(
     bookId: string,
     update: (current: BookDownloadLock | undefined) => { result: T; next?: BookDownloadLock }
 ): Promise<T> {
-    return runWriteTransaction<T>((store, setResult) => {
-        const key = getBookLockKey(bookId);
-        const request: IDBRequest<BookDownloadLock | undefined> = store.get(key);
-        request.onsuccess = () => {
-            const { result, next } = update(request.result);
-            if (next) {
-                store.put(next, key);
-            }
-            setResult(result);
-        };
-    });
+    return runWriteTransaction<T>(
+        (store, setResult) => {
+            const request: IDBRequest<BookDownloadLock | undefined> = store.get(bookId);
+            request.onsuccess = () => {
+                const { result, next } = update(request.result);
+                if (next) {
+                    store.put(next, bookId);
+                }
+                setResult(result);
+            };
+        },
+        undefined,
+        lockStore
+    );
 }
 
 function updateActiveLock(
@@ -101,8 +102,7 @@ export async function ownsActiveBookDownloadLock(lock: BookDownloadLock | null):
  * 列出所有有效的书籍锁
  */
 export async function listActiveBookDownloadLocks(): Promise<BookDownloadLock[]> {
-    const range = IDBKeyRange.bound(["lock", ""], ["lock", "\uffff"]);
-    const locks = await cacheV3Store("readonly", (store) => promisifyRequest<BookDownloadLock[]>(store.getAll(range)));
+    const locks = await values<BookDownloadLock>(lockStore);
     return locks.filter(isBookDownloadLockActive);
 }
 

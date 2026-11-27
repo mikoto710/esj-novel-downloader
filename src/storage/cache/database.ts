@@ -6,10 +6,6 @@ const CACHE_V3_DATABASE = "esj-novel-downloader-cache-v3";
 const CACHE_V3_STORE = "records";
 export const cacheV3Store = createStore(CACHE_V3_DATABASE, CACHE_V3_STORE);
 
-export function getBookLockKey(bookId: string): IDBValidKey {
-    return ["lock", bookId];
-}
-
 function createCacheAbortError(): DOMException {
     return new DOMException("缓存事务已中止", "AbortError");
 }
@@ -17,9 +13,10 @@ function createCacheAbortError(): DOMException {
 // 在事务提交后返回已登记的业务结果，同步回调只负责安排 IDB 请求
 export function runWriteTransaction<T>(
     operation: (store: IDBObjectStore, setResult: CacheTransactionResult<T>) => void,
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    useStore = cacheV3Store
 ): Promise<T> {
-    return cacheV3Store(
+    return useStore(
         "readwrite",
         (store) =>
             new Promise<T>((resolve, reject) => {

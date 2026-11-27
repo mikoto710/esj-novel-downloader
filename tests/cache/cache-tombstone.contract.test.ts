@@ -22,12 +22,14 @@ describe("cache tombstone cleanup contracts", () => {
         await set(key, cached);
 
         const read = IDBObjectStore.prototype.get;
-        const fault = vi.spyOn(IDBObjectStore.prototype, "get").mockImplementationOnce(function (
+        const fault = vi.spyOn(IDBObjectStore.prototype, "get").mockImplementation(function (
             this: IDBObjectStore,
             key
         ) {
             const request = read.call(this, key);
-            request.addEventListener("success", () => this.transaction.abort(), { once: true });
+            if (this.transaction.mode === "readwrite") {
+                request.addEventListener("success", () => this.transaction.abort(), { once: true });
+            }
             return request;
         });
         await expect(storage.clearBookCache("600")).rejects.toMatchObject({

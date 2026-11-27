@@ -1,5 +1,10 @@
 import type { DownloadCancellationOutcome, DownloadDependencies, DownloadOptions, DownloadResult } from "./contracts";
-import { StorageError, toStorageFailure, createStorageError } from "../storage/cache/storage-error";
+import {
+    StorageError,
+    toStorageFailure,
+    createStorageError,
+    normalizeStorageError
+} from "../storage/cache/storage-error";
 import { MappingFontError } from "../content/mapping-font";
 import { createDownloadPlan } from "./plan";
 import type { CacheMeta } from "../storage/cache/model";
@@ -318,6 +323,19 @@ async function finishCancellation(
         outcome = await cache.cancel(deadline);
         await deadline.wait(Promise.all([cover, cache.flush()]));
         storageFailure = cache.failure;
+        if (outcome === "saved") {
+            try {
+                if (!(await deadline.wait(cache.closeWriter(deadline.signal)))) {
+                    outcome = "ownership-lost";
+                }
+            } catch (error) {
+                if (error === deadline.signal.reason) {
+                    throw error;
+                }
+                outcome = "save-failed";
+                storageFailure = toStorageFailure(normalizeStorageError(error, "write"));
+            }
+        }
     } catch (error) {
         if (!(error instanceof StorageError) || error !== deadline.signal.reason) {
             throw error;

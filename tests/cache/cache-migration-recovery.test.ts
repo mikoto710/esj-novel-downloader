@@ -40,6 +40,9 @@ vi.mock("../../src/storage/cache/sync", () => ({
     publishCacheSyncEvent: mocks.publish,
     subscribeCacheSync: vi.fn(() => vi.fn())
 }));
+vi.mock("../../src/storage/book-lock", () => ({
+    getActiveBookDownloadLock: async () => ({ taskId: "task-200" })
+}));
 
 describe("v2 cache migration recovery", () => {
     const chapter = createChapter(0, { content: "legacy chapter" });
