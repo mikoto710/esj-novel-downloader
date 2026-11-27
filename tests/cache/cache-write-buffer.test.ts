@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { ChapterCacheWriteBuffer, type CacheWritePolicy } from "../../src/download/cache-write-buffer";
+import { CANCELLATION_CACHE_FLUSH_TIMEOUT_MS } from "../../src/download/cancellation-deadline";
 import type { Chapter } from "../../src/content/model";
 import type { DownloadCancellationMode } from "../../src/download/contracts";
 import { createChapter, createDeferred, useFakeClock } from "../support";
@@ -163,7 +164,7 @@ describe("ChapterCacheWriteBuffer", () => {
         }
     });
 
-    it.each([4_000, 6_000])(
+    it.each([CANCELLATION_CACHE_FLUSH_TIMEOUT_MS - 1_000, CANCELLATION_CACHE_FLUSH_TIMEOUT_MS + 1_000])(
         "counts the first cancellation deadline when saving starts after %i ms without a subscription",
         async (elapsed) => {
             const clock = useFakeClock();
@@ -190,11 +191,12 @@ describe("ChapterCacheWriteBuffer", () => {
             try {
                 await buffer.add(0, createChapter(0));
                 requestedAt = Date.now();
-                // 取消先发生，实际保存入口稍后才取得执行权；不能从入口重新给满五秒
+                // 取消先发生，保存入口只剩首次取消期限内的时间
                 await clock.advanceBy(elapsed);
                 const saving = buffer.flushForCancellation();
-                if (elapsed < 5_000) {
-                    await clock.advanceBy(999);
+                const remaining = CANCELLATION_CACHE_FLUSH_TIMEOUT_MS - elapsed;
+                if (remaining > 0) {
+                    await clock.advanceBy(remaining - 1);
                     expect(writeSignal?.aborted).toBe(false);
                     await clock.advanceBy(1);
                 }

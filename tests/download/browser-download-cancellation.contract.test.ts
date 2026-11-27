@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { CANCELLATION_CACHE_FLUSH_TIMEOUT_MS } from "../../src/download/cancellation-deadline";
 import { createDeferred, useFakeClock } from "../support";
 import { createProtectedChapterFixture } from "../support/fixtures";
 import {
@@ -149,16 +150,17 @@ describe("browser download cancellation contracts", () => {
         const downloadPromise = runtime.runBookDownload(createBrowserDownloadOptions(createBrowserDownloadTasks(5)));
         await saveStarted.promise;
         runtime.abortActiveDownload();
-        if (stage !== "write") {
+        const elapsed = stage === "write" ? 0 : 1_000;
+        if (elapsed > 0) {
             // 收尾只剩首次取消期限内的时间
-            await clock.advanceBy(1_000);
+            await clock.advanceBy(elapsed);
             save.resolve(true);
         }
 
         try {
             const finished = vi.fn();
             void downloadPromise.then(finished);
-            await clock.advanceBy(stage === "write" ? 4_999 : 3_999);
+            await clock.advanceBy(CANCELLATION_CACHE_FLUSH_TIMEOUT_MS - elapsed - 1);
             expect(finished).not.toHaveBeenCalled();
             if (stage === "ownership") {
                 expect(mocks.ownsLock).toHaveBeenCalledOnce();

@@ -1,4 +1,5 @@
 import { createStore, get, values } from "idb-keyval";
+import { CANCELLATION_CACHE_FLUSH_TIMEOUT_MS } from "../download/cancellation-deadline";
 import type { DownloadCancellationMode } from "../download/contracts";
 import type { SourcePageType } from "../content/model";
 import { runWriteTransaction } from "./cache/database";
@@ -40,7 +41,6 @@ export type WaitForBookDownloadCancellationResult =
 
 const LOCK_TTL_MS = 60 * 1000;
 const HEARTBEAT_INTERVAL_MS = 3 * 1000;
-const CANCELLATION_GRACE_MS = 10 * 1000;
 const lockStore = createStore("esj-novel-downloader", "book-download-locks");
 
 function isBookDownloadLockActive(lock: BookDownloadLock | undefined): lock is BookDownloadLock {
@@ -139,7 +139,7 @@ export async function waitForBookDownloadCancellation(
     bookId: string,
     taskId: string
 ): Promise<WaitForBookDownloadCancellationResult> {
-    const deadline = Date.now() + CANCELLATION_GRACE_MS + 1000;
+    const deadline = Date.now() + CANCELLATION_CACHE_FLUSH_TIMEOUT_MS + HEARTBEAT_INTERVAL_MS + 1_000;
     while (Date.now() < deadline) {
         const current = await readLock(bookId);
         if (!current) {

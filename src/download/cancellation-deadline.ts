@@ -1,7 +1,7 @@
 import { createStorageError } from "../storage/cache/storage-error";
 import type { DownloadCancellationPort, DownloadSchedulerPort } from "./contracts";
 
-export const CANCELLATION_CACHE_FLUSH_TIMEOUT_MS = 5_000;
+export const CANCELLATION_CACHE_FLUSH_TIMEOUT_MS = 10_000;
 
 /**
  * 从首次取消计时，允许调用方停止等待未返回的操作
